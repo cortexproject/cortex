@@ -1356,7 +1356,99 @@ documentation&lt;/a&gt;
 for the full list of environment variables you can configure.&lt;/p&gt;
 &lt;p&gt;Note that you must specify one of &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; or
 &lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
+even if you plan to use the default values.&lt;/p&gt;</description></item><item><title>Docs: Running Cortex with Cassandra</title><link>/docs/guides/cassandra/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/cassandra/</guid><description>
+&lt;p&gt;This guide covers how to run a single local Cortex instance - with the chunks storage engine - storing time series chunks and index in Cassandra.&lt;/p&gt;
+&lt;p&gt;In this guide we&amp;rsquo;re going to:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Setup a locally running Cassandra&lt;/li&gt;
+&lt;li&gt;Configure Cortex to store chunks and index on Cassandra&lt;/li&gt;
+&lt;li&gt;Configure Prometheus to send series to Cortex&lt;/li&gt;
+&lt;li&gt;Configure Grafana to visualise metrics&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;setup-a-locally-running-cassandra&#34;&gt;Setup a locally running Cassandra&lt;/h2&gt;
+&lt;p&gt;Run Cassandra with the following command:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Use Docker to execute the Cassandra Query Language (CQL) shell in the container:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker exec -it &amp;lt;container_id&amp;gt; cqlsh
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Create a new Cassandra keyspace for Cortex metrics:&lt;/p&gt;
+&lt;p&gt;A keyspace is an object that is used to hold column families, user defined types. A keyspace is like RDBMS database which contains column families, indexes, user defined types.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;CREATE KEYSPACE cortex WITH replication = {&#39;class&#39;:&#39;SimpleStrategy&#39;, &#39;replication_factor&#39; : 1};
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2 id=&#34;configure-cortex-to-store-chunks-and-index-on-cassandra&#34;&gt;Configure Cortex to store chunks and index on Cassandra&lt;/h2&gt;
+&lt;p&gt;Now, we have to configure Cortex to store the chunks and index in Cassandra. Create a config file called &lt;code&gt;single-process-config.yaml&lt;/code&gt;, then add the content below. Make sure to replace the following placeholders:
+- &lt;code&gt;LOCALHOST&lt;/code&gt;: Addresses of your Cassandra instance. This can accept multiple addresses by passing them as comma separated values.
+- &lt;code&gt;KEYSPACE&lt;/code&gt;: The name of the Cassandra keyspace used to store the metrics.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;single-process-config.yaml&lt;/code&gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# Configuration for running Cortex in single-process mode.
+# This should not be used in production. It is only for getting started
+# and development.
+# Disable the requirement that every request to Cortex has a
+# X-Scope-OrgID header. `fake` will be substituted in instead.
+auth_enabled: false
+server:
+http_listen_port: 9009
+# Configure the server to allow messages up to 100MB.
+grpc_server_max_recv_msg_size: 104857600
+grpc_server_max_send_msg_size: 104857600
+grpc_server_max_concurrent_streams: 1000
+distributor:
+shard_by_all_labels: true
+pool:
+health_check_ingesters: true
+ingester_client:
+grpc_client_config:
+# Configure the client to allow messages up to 100MB.
+max_recv_msg_size: 104857600
+max_send_msg_size: 104857600
+use_gzip_compression: true
+ingester:
+lifecycler:
+# The address to advertise for this ingester. Will be autodiscovered by
+# looking up address on eth0 or en0; can be specified if this fails.
+address: 127.0.0.1
+# We want to start immediately and flush on shutdown.
+join_after: 0
+claim_on_rollout: false
+final_sleep: 0s
+num_tokens: 512
+# Use an in memory ring store, so we don&#39;t need to launch a Consul.
+ring:
+kvstore:
+store: inmemory
+replication_factor: 1
+# Use cassandra as storage -for both index store and chunks store.
+schema:
+configs:
+- from: 2019-07-29
+store: cassandra
+object_store: cassandra
+schema: v10
+index:
+prefix: index_
+period: 168h
+storage:
+cassandra:
+addresses: LOCALHOST # configure cassandra addresses here.
+keyspace: KEYSPACE # configure desired keyspace here.
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Run Cortex using the latest stable version:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex -config.file=/etc/single-process-config.yaml
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;In case you prefer to run the master version, please follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md&#34;&gt;documentation&lt;/a&gt; on how to build Cortex from source.&lt;/p&gt;
+&lt;h2 id=&#34;configure-prometheus-to-send-series-to-cortex&#34;&gt;Configure Prometheus to send series to Cortex&lt;/h2&gt;
+&lt;p&gt;Now that Cortex is up, it should be running on &lt;code&gt;http://localhost:9009&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;remote_write:
+- url: http://localhost:9009/api/prom/push
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2 id=&#34;configure-grafana-to-visualise-metrics&#34;&gt;Configure Grafana to visualise metrics&lt;/h2&gt;
+&lt;p&gt;Run grafana to visualise metrics from Cortex:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker run -d --name=grafana -p 3000:3000 grafana/grafana
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code&gt;http://localhost:9009/api/prom&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;[CHANGE] Flags changed with transition to upstream Prometheus rules manager:

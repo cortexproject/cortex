@@ -22,7 +22,7 @@ type Config struct {
 }
 
 // NewLocalObjectObjectClient makes a new chunk.ObjectClient that writes objects to local FS.
-func NewLocalObjectObjectClient(_ context.Context, cfg Config) (*ObjectClient, error) {
+func NewLocalObjectObjectClient(cfg Config) (*ObjectClient, error) {
 	return &ObjectClient{cfg: cfg}, nil
 }
 
@@ -33,7 +33,7 @@ func (s *ObjectClient) Get(ctx context.Context, objectName string) ([]byte, erro
 }
 
 // Put object into the store
-func (s *ObjectClient) Put(ctx context.Context, objectName string, object io.Reader) error {
+func (s *ObjectClient) Put(ctx context.Context, objectName string, object io.ReadSeeker) error {
 	buf, err := ioutil.ReadAll(object)
 	if err != nil {
 		return err

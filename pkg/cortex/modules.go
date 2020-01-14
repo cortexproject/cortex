@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -36,7 +37,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
 )
 
 type moduleName int
@@ -296,7 +296,6 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
-
 
 	// We want ingester to also query the store when using boltdb
 	if cfg.Schema.ActiveIndexType() == "boltdb" {

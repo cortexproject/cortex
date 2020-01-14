@@ -24,7 +24,7 @@ type Config struct {
 	BucketName string `yaml:"bucket_name"`
 }
 
-// NewGCSObjectClient makes a new chunk.ObjectClient that writes objects to GCS.
+// NewGCSObjectClient makes a new ObjectClient that writes objects to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg Config) (*ObjectClient, error) {
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s *ObjectClient) Get(ctx context.Context, objectName string) ([]byte, erro
 }
 
 // Put object into the store
-func (s *ObjectClient) Put(ctx context.Context, objectName string, object io.Reader) error {
+func (s *ObjectClient) Put(ctx context.Context, objectName string, object io.ReadSeeker) error {
 	writer := s.bucket.Object(objectName).NewWriter(ctx)
 	defer writer.Close()
 

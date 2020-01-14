@@ -4,7 +4,7 @@
 
 -- https://github.com/mattes/migrate/tree/master/database/postgres#upgrading-from-v1
 -- Wrap all commands in BEGIN and COMMIT to accomadate upgrade
-BEGIN
+BEGIN;
 
 -- The existing id, type columns are the id & type of the entity that owns the
 -- config.
@@ -17,4 +17,4 @@ ALTER TABLE configs ADD COLUMN id SERIAL;
 ALTER TABLE configs DROP CONSTRAINT configs_pkey;
 ALTER TABLE configs ADD PRIMARY KEY (id, owner_id, owner_type, subsystem);
 
-COMMIT
+COMMIT;

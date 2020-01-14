@@ -33,8 +33,8 @@ func NewFileAlertStore(cfg FileAlertStoreConfig) (*FileAlertStore, error) {
 }
 
 // ListAlertConfigs returns a list of each users alertmanager config.
-func (f *FileAlertStore) ListAlertConfigs(ctx context.Context) ([]alerts.AlertConfigDesc, error) {
-	var configs []alerts.AlertConfigDesc
+func (f *FileAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+	var configs map[string]alerts.AlertConfigDesc
 
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -54,10 +54,12 @@ func (f *FileAlertStore) ListAlertConfigs(ctx context.Context) ([]alerts.AlertCo
 				return err
 			}
 
-			configs = append(configs, alerts.AlertConfigDesc{
-				User:      strings.TrimSuffix(info.Name(), ext),
+			user := strings.TrimSuffix(info.Name(), ext)
+
+			configs[user] = alerts.AlertConfigDesc{
+				User:      user,
 				RawConfig: string(content),
-			})
+			}
 		}
 		return nil
 	})

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/alertmanager/storage/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
@@ -32,7 +31,7 @@ func NewAlertStore(cfg AlertStoreConfig) (alerts.AlertStore, error) {
 		if err != nil {
 			return nil, err
 		}
-		return alerts.NewsConfigAlertStore(c), nil
+		return alerts.NewConfigAlertStore(c), nil
 	case "file":
 		return local.NewFileAlertStore(cfg.File)
 	default:

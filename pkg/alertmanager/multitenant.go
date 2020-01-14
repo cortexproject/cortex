@@ -250,7 +250,7 @@ func (am *MultitenantAlertmanager) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (am *MultitenantAlertmanager) loadAllConfigs() []alerts.AlertConfigDesc {
+func (am *MultitenantAlertmanager) loadAllConfigs() map[string]alerts.AlertConfigDesc {
 	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
 		cfgs, err := am.poll()
@@ -273,7 +273,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (am *MultitenantAlertmanager) poll() ([]alerts.AlertConfigDesc, error) {
+func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, error) {
 	cfgs, err := am.store.ListAlertConfigs(context.Background())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
@@ -282,7 +282,7 @@ func (am *MultitenantAlertmanager) poll() ([]alerts.AlertConfigDesc, error) {
 	return cfgs, nil
 }
 
-func (am *MultitenantAlertmanager) addNewConfigs(cfgs []alerts.AlertConfigDesc) {
+func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]alerts.AlertConfigDesc) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for _, cfg := range cfgs {

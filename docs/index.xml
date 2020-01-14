@@ -1385,7 +1385,7 @@ even if you plan to use the default values.&lt;/p&gt;</description></item><item>
 &lt;li&gt;[BUGFIX] TSDB: Fixed querying ingesters in &lt;code&gt;LEAVING&lt;/code&gt; state with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1854&#34;&gt;#1854&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1837&#34;&gt;#1837&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a &lt;code&gt;JOINING&lt;/code&gt; ingester with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1818&#34;&gt;#1818&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[BUGFIX] TSDB: ShipInterval of &amp;lt;=0 treated as disabled instead of allowing panic. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1975&#34;&gt;#1975&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] TSDB: &lt;code&gt;experimental.tsdb.ship-interval&lt;/code&gt; of &amp;lt;=0 treated as disabled instead of allowing panic. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1975&#34;&gt;#1975&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;0-4-0-2019-12-02&#34;&gt;0.4.0 / 2019-12-02&lt;/h2&gt;
 &lt;ul&gt;

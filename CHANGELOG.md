@@ -26,7 +26,7 @@
 * [BUGFIX] TSDB: Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
 * [BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
 * [BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
-* [BUGFIX] TSDB: ShipInterval of <=0 treated as disabled instead of allowing panic. #1975
+* [BUGFIX] TSDB: `experimental.tsdb.ship-interval` of <=0 treated as disabled instead of allowing panic. #1975
 
 ## 0.4.0 / 2019-12-02
 

@@ -124,6 +124,9 @@ type valueDesc struct {
 
 	// version (local only) is used to keep track of what we're gossiping about, and invalidate old messages
 	version uint
+
+	// Codec used to write this value.
+	codecID string
 }
 
 var (

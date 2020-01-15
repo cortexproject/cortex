@@ -97,6 +97,10 @@ func (d *data) getAllTokens() []uint32 {
 
 type dataCodec struct{}
 
+func (d dataCodec) CodecID() string {
+	return "testDataCodec"
+}
+
 func (d dataCodec) Decode(b []byte) (interface{}, error) {
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	out := &data{}

@@ -421,6 +421,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	}
 
 	i.TSDBState.dbs[userID] = db
+	memUsers.Inc()
 
 	return db, nil
 }

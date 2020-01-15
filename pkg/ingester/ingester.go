@@ -36,13 +36,17 @@ const (
 )
 
 type ingesterMetrics struct {
-	flushQueueLength    prometheus.Gauge
-	ingestedSamples     prometheus.Counter
-	ingestedSamplesFail prometheus.Counter
-	queries             prometheus.Counter
-	queriedSamples      prometheus.Histogram
-	queriedSeries       prometheus.Histogram
-	queriedChunks       prometheus.Histogram
+	flushQueueLength      prometheus.Gauge
+	ingestedSamples       prometheus.Counter
+	ingestedSamplesFail   prometheus.Counter
+	queries               prometheus.Counter
+	queriedSamples        prometheus.Histogram
+	queriedSeries         prometheus.Histogram
+	queriedChunks         prometheus.Histogram
+	memSeries             prometheus.Gauge
+	memUsers              prometheus.Gauge
+	memSeriesCreatedTotal *prometheus.CounterVec
+	memSeriesRemovedTotal *prometheus.CounterVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -81,6 +85,22 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 		}),
+		memSeries: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_series",
+			Help: "The current number of series in memory.",
+		}),
+		memUsers: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_users",
+			Help: "The current number of users in memory.",
+		}),
+		memSeriesCreatedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_series_created_total",
+			Help: "The total number of series that were created per user.",
+		}, []string{"user"}),
+		memSeriesRemovedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_series_removed_total",
+			Help: "The total number of series that were removed per user.",
+		}, []string{"user"}),
 	}
 
 	if r != nil {
@@ -92,6 +112,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedSamples,
 			m.queriedSeries,
 			m.queriedChunks,
+			m.memSeries,
+			m.memUsers,
+			m.memSeriesCreatedTotal,
+			m.memSeriesRemovedTotal,
 		)
 	}
 
@@ -212,7 +236,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg)
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()

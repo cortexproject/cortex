@@ -75,7 +75,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg)
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	// Scan and open TSDB's that already exist on disk
 	if err := i.openExistingTSDB(context.Background()); err != nil {
@@ -399,6 +399,8 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 
 	// Add the db to list of user databases
 	i.TSDBState.dbs[userID] = db
+	i.metrics.memUsers.Inc()
+
 	return db, nil
 }
 
@@ -533,7 +535,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 			i.userStatesMtx.Lock()
 			i.TSDBState.dbs[userID] = db
 			i.userStatesMtx.Unlock()
-
+			i.metrics.memUsers.Inc()
 		}(userID)
 
 		return filepath.SkipDir // Don't descend into directories

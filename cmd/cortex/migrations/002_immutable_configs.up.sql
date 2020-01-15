@@ -3,7 +3,7 @@
 -- there are no data in production and only one row in dev.
 
 -- https://github.com/mattes/migrate/tree/master/database/postgres#upgrading-from-v1
--- Wrap all commands in BEGIN and COMMIT to accomadate upgrade
+-- Wrap all commands in BEGIN and COMMIT to accommodate upgrade
 BEGIN;
 
 -- The existing id, type columns are the id & type of the entity that owns the

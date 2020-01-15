@@ -80,3 +80,41 @@ func TestValidateLabels(t *testing.T) {
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }
+
+func TestValidateLabelOrder(t *testing.T) {
+	var cfg validateLabelsCfg
+	cfg.maxLabelNameLength = 10
+	cfg.maxLabelNamesPerSeries = 10
+	cfg.maxLabelValueLength = 10
+
+	userID := "testUser"
+
+	err := ValidateLabels(cfg, userID, []client.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "m"},
+		{Name: "b", Value: "b"},
+		{Name: "a", Value: "a"},
+	})
+	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errLabelsNotSorted, "a", `m{b="b", a="a"}`), err)
+}
+
+func TestValidateLabelDuplication(t *testing.T) {
+	var cfg validateLabelsCfg
+	cfg.maxLabelNameLength = 10
+	cfg.maxLabelNamesPerSeries = 10
+	cfg.maxLabelValueLength = 10
+
+	userID := "testUser"
+
+	err := ValidateLabels(cfg, userID, []client.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "a"},
+		{Name: model.MetricNameLabel, Value: "b"},
+	})
+	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "__name__", `a{__name__="b"}`), err)
+
+	err = ValidateLabels(cfg, userID, []client.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "a"},
+		{Name: "a", Value: "a"},
+		{Name: "a", Value: "a"},
+	})
+	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "a", `a{a="a", a="a"}`), err)
+}

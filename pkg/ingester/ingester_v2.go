@@ -2,7 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -72,6 +76,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Scan and open TSDB's that already exist on disk
+	if err := i.openExistingTSDB(context.Background()); err != nil {
+		return nil, err
+	}
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
@@ -382,11 +391,23 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
+	// Create the database and a shipper for a user
+	db, err := i.createTSDB(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the db to list of user databases
+	i.TSDBState.dbs[userID] = db
+	return db, nil
+}
+
+// createTSDB creates a TSDB for a given userID, and returns the created db.
+func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
 	// Create a new user database
-	var err error
-	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 		NoLockfile:        true,
@@ -422,8 +443,6 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 		}()
 	}
 
-	i.TSDBState.dbs[userID] = db
-
 	return db, nil
 }
 
@@ -458,4 +477,74 @@ func (i *Ingester) closeAllTSDB() {
 	// Wait until all Close() completed
 	i.userStatesMtx.Unlock()
 	wg.Wait()
+}
+
+// openExistingTSDB walks the user tsdb dir, and opens a tsdb for each user. This may start a WAL replay, so we limit the number of
+// concurrently opening TSDB.
+func (i *Ingester) openExistingTSDB(ctx context.Context) error {
+	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
+	wg := &sync.WaitGroup{}
+	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
+
+	err := filepath.Walk(i.cfg.TSDBConfig.Dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+
+		// Skip root dir and all other files
+		if path == i.cfg.TSDBConfig.Dir || !info.IsDir() {
+			return nil
+		}
+
+		// Top level directories are assumed to be user TSDBs
+		userID := info.Name()
+		f, err := os.Open(path)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID, "path", path)
+			return filepath.SkipDir
+		}
+		defer f.Close()
+
+		// If the dir is empty skip it
+		if _, err := f.Readdirnames(1); err != nil {
+			if err != io.EOF {
+				level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+			}
+
+			return filepath.SkipDir
+		}
+
+		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
+		if err := openGate.Start(ctx); err != nil {
+			return err
+		}
+
+		wg.Add(1)
+		go func(userID string) {
+			defer wg.Done()
+			defer openGate.Done()
+			db, err := i.createTSDB(userID)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+				return
+			}
+
+			// Add the database to the map of user databases
+			i.userStatesMtx.Lock()
+			i.TSDBState.dbs[userID] = db
+			i.userStatesMtx.Unlock()
+
+		}(userID)
+
+		return filepath.SkipDir // Don't descend into directories
+	})
+
+	// Wait for all opening routines to finish
+	wg.Wait()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error while opening existing TSDBs")
+	} else {
+		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
+	}
+	return err
 }

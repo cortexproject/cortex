@@ -66,7 +66,7 @@ type Config struct {
 	Ingester       ingester.Config          `yaml:"ingester,omitempty"`
 	Storage        storage.Config           `yaml:"storage,omitempty"`
 	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"`
+	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig   validation.Limits        `yaml:"limits,omitempty"`
 	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`

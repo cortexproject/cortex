@@ -21,14 +21,14 @@ func TestRulerShutdown(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.RulerRingKey)
+		return testutils.NumTokens(config.RulerRing.KVStore.Mock, "localhost", ring.RulerRingKey)
 	})
 }
 
 // TestRulerRestart tests a restarting ruler doesn't keep adding more tokens.
 func TestRulerRestart(t *testing.T) {
 	config := defaultRulerConfig()
-	config.LifecyclerConfig.SkipUnregister = true
+	config.RulerRing.SkipUnregister = true
 	config.EnableSharding = true
 
 	{
@@ -38,7 +38,7 @@ func TestRulerRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.RulerRingKey)
+		return testutils.NumTokens(config.RulerRing.KVStore.Mock, "localhost", ring.RulerRingKey)
 	})
 
 	{
@@ -50,6 +50,6 @@ func TestRulerRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.RulerRingKey)
+		return testutils.NumTokens(config.RulerRing.KVStore.Mock, "localhost", ring.RulerRingKey)
 	})
 }

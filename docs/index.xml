@@ -1474,6 +1474,10 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;li&gt;&lt;p&gt;[FEATURE] EXPERIMENTAL: Added &lt;code&gt;/series&lt;/code&gt; API endpoint support with TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1830&#34;&gt;#1830&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[FEATURE] Added &amp;ldquo;multi&amp;rdquo; KV store that can interact with two other KV stores, primary one for all reads and writes, and secondary one, which only receives writes. Primary/secondary store can be modified in runtime via runtime-config mechanism (previously &amp;ldquo;overrides&amp;rdquo;). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1749&#34;&gt;#1749&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Added &lt;code&gt;password&lt;/code&gt; and &lt;code&gt;enable_tls&lt;/code&gt; options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1917&#34;&gt;#1917&lt;/a&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;--experimental.tsdb.max-tsdb-opening-concurrency-on-startup&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1861&#34;&gt;#1861&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1904&#34;&gt;#1904&lt;/a&gt; ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1921&#34;&gt;#1921&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] TSDB: Fixed handling of out of order/bound samples in ingesters with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1864&#34;&gt;#1864&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;

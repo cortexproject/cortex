@@ -194,8 +194,12 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		return nil, err
 	}
 
+	numSeries := 0
+	numSamples := 0
+
 	result := &client.QueryResponse{}
 	for ss.Next() {
+		numSeries++
 		series := ss.At()
 
 		ts := client.TimeSeries{
@@ -204,12 +208,16 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 
 		it := series.Iterator()
 		for it.Next() {
+			numSamples++
 			t, v := it.At()
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 
 		result.Timeseries = append(result.Timeseries, ts)
 	}
+
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
 
 	return result, ss.Err()
 }

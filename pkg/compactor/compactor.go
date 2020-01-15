@@ -219,6 +219,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
+			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
 			return ctx.Err()
 		}
 
@@ -270,7 +271,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 }
 
 func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
-	users := make([]string, 0)
+	var users []string
 
 	err := c.bucketClient.Iter(ctx, "", func(entry string) error {
 		users = append(users, strings.TrimSuffix(entry, "/"))

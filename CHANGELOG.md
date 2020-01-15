@@ -2,7 +2,11 @@
 
 ## master / unreleased
 
-## 0.5.0-rc.0 / 2020-01-08 
+## 0.5.0 / 2020-01-15
+
+Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that can be sharded.
+Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full
+instructions below to upgrade your Postgres.
 
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
   * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
@@ -23,7 +27,6 @@
 * [FEATURE] EXPERIMENTAL: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Added "multi" KV store that can interact with two other KV stores, primary one for all reads and writes, and secondary one, which only receives writes. Primary/secondary store can be modified in runtime via runtime-config mechanism (previously "overrides"). #1749
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
-* [BUGFIX] Wrapped migration in BEGIN and COMMIT #1980
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922
@@ -31,6 +34,17 @@
 * [BUGFIX] TSDB: Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
 * [BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
 * [BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
+
+### Upgrading Postgres
+
+Reference: https://github.com/golang-migrate/migrate/tree/master/database/postgres#upgrading-from-v1
+
+1. Install the migrate package cli tool: https://github.com/golang-migrate/migrate/tree/master/cmd/migrate#installation
+2. Run the migrate command:
+
+```bash
+migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgres://localhost:5432/database force 2 
+```
 
 ## 0.4.0 / 2019-12-02
 

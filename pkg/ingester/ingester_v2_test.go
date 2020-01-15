@@ -34,6 +34,7 @@ func TestIngester_v2Push(t *testing.T) {
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
 		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
 	}
 	userID := "test"
@@ -69,6 +70,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -96,6 +100,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -123,6 +130,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -150,6 +160,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_users The current number of users in memory.
 				# TYPE cortex_ingester_memory_users gauge
 				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 	}
@@ -211,6 +224,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
 		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
 	}
 
@@ -261,6 +275,9 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		# HELP cortex_ingester_memory_users The current number of users in memory.
 		# TYPE cortex_ingester_memory_users gauge
 		cortex_ingester_memory_users 2
+		# HELP cortex_ingester_memory_series The current number of series in memory.
+		# TYPE cortex_ingester_memory_series gauge
+		cortex_ingester_memory_series 2
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))

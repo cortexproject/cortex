@@ -68,6 +68,16 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		},
 	}
 
+	// Replace specific metrics which we can't directly track but we need to read
+	// them from the underlying system (ie. TSDB).
+	if registerer != nil {
+		registerer.Unregister(i.metrics.memSeries)
+		registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_series",
+			Help: "The current number of series in memory.",
+		}, i.numSeriesInTSDB))
+	}
+
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
@@ -549,4 +559,17 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
 	}
 	return err
+}
+
+// numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.
+func (i *Ingester) numSeriesInTSDB() float64 {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	count := uint64(0)
+	for _, db := range i.TSDBState.dbs {
+		count += db.Head().NumSeries()
+	}
+
+	return float64(count)
 }

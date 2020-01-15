@@ -237,6 +237,96 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 
 }
 
+func TestNoFutureQueries(t *testing.T) {
+	testCases := []struct {
+		name               string
+		mint, maxt         time.Time
+		hitStores          bool
+		maxQueryIntoFuture time.Duration
+	}{
+		{
+			name:               "hit-test1",
+			mint:               time.Now().Add(-5 * time.Hour),
+			maxt:               time.Now().Add(1 * time.Hour),
+			hitStores:          true,
+			maxQueryIntoFuture: 10 * time.Minute,
+		},
+		{
+			name:               "hit-test2",
+			mint:               time.Now().Add(-5 * time.Hour),
+			maxt:               time.Now().Add(-59 * time.Minute),
+			hitStores:          true,
+			maxQueryIntoFuture: 10 * time.Minute,
+		},
+		{ // Skipping stores is disabled.
+			name:               "max-query-into-future-disabled",
+			mint:               time.Now().Add(500 * time.Hour),
+			maxt:               time.Now().Add(5000 * time.Hour),
+			hitStores:          true,
+			maxQueryIntoFuture: 0,
+		},
+		{ // Still hit because of staleness.
+			name:               "hit-test3",
+			mint:               time.Now().Add(12 * time.Minute),
+			maxt:               time.Now().Add(60 * time.Minute),
+			hitStores:          true,
+			maxQueryIntoFuture: 10 * time.Minute,
+		},
+		{
+			name:               "dont-hit-test1",
+			mint:               time.Now().Add(100 * time.Minute),
+			maxt:               time.Now().Add(5 * time.Hour),
+			hitStores:          false,
+			maxQueryIntoFuture: 10 * time.Minute,
+		},
+		{
+			name:               "dont-hit-test2",
+			mint:               time.Now().Add(16 * time.Minute),
+			maxt:               time.Now().Add(60 * time.Minute),
+			hitStores:          false,
+			maxQueryIntoFuture: 10 * time.Minute,
+		},
+	}
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:     util.Logger,
+		MaxSamples: 1e6,
+		Timeout:    1 * time.Minute,
+	})
+
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.metricsRegisterer = nil
+
+	for _, ingesterStreaming := range []bool{true, false} {
+		cfg.IngesterStreaming = ingesterStreaming
+		for _, c := range testCases {
+			cfg.MaxQueryIntoFuture = c.maxQueryIntoFuture
+			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
+				chunkStore := &errChunkStore{}
+				distributor := &errDistributor{}
+
+				queryable, _ := New(cfg, distributor, chunkStore)
+				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				require.NoError(t, err)
+
+				ctx := user.InjectOrgID(context.Background(), "0")
+				r := query.Exec(ctx)
+				_, err = r.Matrix()
+
+				if c.hitStores {
+					// If the ingester was hit, the distributor always returns errDistributorError.
+					require.Error(t, err)
+					require.Equal(t, errDistributorError.Error(), err.Error())
+				} else {
+					// If the ingester was hit, there would have been an error from errDistributor.
+					require.NoError(t, err)
+				}
+			})
+		}
+	}
+}
+
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
 func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *mockDistributor {
@@ -292,18 +382,27 @@ func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q quer
 	return r
 }
 
+type errChunkStore struct {
+}
+
+func (m *errChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	return nil, errDistributorError
+}
+
+func (m *errChunkStore) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return storage.NoopQuerier(), errDistributorError
+}
+
 type errDistributor struct {
-	m model.Matrix
-	r []client.TimeSeriesChunk
 }
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 
 func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	return m.m, errDistributorError
+	return nil, errDistributorError
 }
 func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
-	return m.r, errDistributorError
+	return nil, errDistributorError
 }
 func (m *errDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
 	return nil, errDistributorError
@@ -382,7 +481,11 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
 	})
+
 	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.metricsRegisterer = nil
+
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
 		for _, c := range testCases {

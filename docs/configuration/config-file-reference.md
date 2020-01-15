@@ -568,6 +568,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.query-store-after
 [query_store_after: <duration> | default = 0s]
 
+# Maximum duration into the future you can query. 0 to disable.
+# CLI flag: -querier.max-query-into-future
+[max_query_into_future: <duration> | default = 10m0s]
+
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
 [defaultevaluationinterval: <duration> | default = 1m0s]

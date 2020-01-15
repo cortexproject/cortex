@@ -49,14 +49,14 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 	fs := flag.NewFlagSet("", flag.PanicOnError)
 	cfg := Config{}
 	cfg.RegisterFlags(fs)
-	fs.Parse([]string{
+	require.NoError(t, fs.Parse([]string{
 		"-compactor.block-ranges=2h,48h",
 		"-compactor.consistency-delay=1h",
 		"-compactor.block-sync-concurrency=123",
 		"-compactor.data-dir=/tmp",
 		"-compactor.compaction-interval=15m",
 		"-compactor.compaction-retries=123",
-	})
+	}))
 
 	assert.Equal(t, cortex_tsdb.DurationList{2 * time.Hour, 48 * time.Hour}, cfg.BlockRanges)
 	assert.Equal(t, time.Hour, cfg.ConsistencyDelay)

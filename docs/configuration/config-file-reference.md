@@ -220,7 +220,7 @@ ha_tracker:
 
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -distributor.ha-tracker.prefix
-    [prefix: <string> | default = "collectors/"]
+    [prefix: <string> | default = "ha-tracker/"]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker

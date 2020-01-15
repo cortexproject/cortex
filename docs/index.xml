@@ -1480,6 +1480,7 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;li&gt;&lt;p&gt;[BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1837&#34;&gt;#1837&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a &lt;code&gt;JOINING&lt;/code&gt; ingester with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1818&#34;&gt;#1818&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] TSDB: &lt;code&gt;experimental.tsdb.ship-interval&lt;/code&gt; of &amp;lt;=0 treated as disabled instead of allowing panic. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1975&#34;&gt;#1975&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[BUGFIX] TSDB: Fixed &lt;code&gt;cortex_ingester_queried_samples&lt;/code&gt; and &lt;code&gt;cortex_ingester_queried_series&lt;/code&gt; metrics when using block storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1981&#34;&gt;#1981&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;0-4-0-2019-12-02&#34;&gt;0.4.0 / 2019-12-02&lt;/h2&gt;
 &lt;ul&gt;

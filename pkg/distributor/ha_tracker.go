@@ -115,8 +115,12 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 		"distributor.ha-tracker.failover-timeout",
 		30*time.Second,
 		"If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
-	// We want the ability to use different Consul instances for the ring and for HA cluster tracking.
-	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ha-tracker.", f)
+
+	// We want the ability to use different Consul instances for the ring and
+	// for HA cluster tracking. We also customize the default keys prefix, in
+	// order to not clash with the ring key if they both share the same KVStore
+	// backend (ie. run on the same consul cluster).
+	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ha-tracker.", "ha-tracker/", f)
 }
 
 // Validate config and returns error on failure

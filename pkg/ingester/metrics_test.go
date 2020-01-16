@@ -12,11 +12,11 @@ import (
 func TestShipperMetrics(t *testing.T) {
 	mainReg := prometheus.NewRegistry()
 
-	shipper := newTsdbMetrics(mainReg)
+	tsdbMetrics := newTsdbMetrics(mainReg)
 
-	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user1"), 12345)
-	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user2"), 85787)
-	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user3"), 999)
+	tsdbMetrics.setRegistryForUser("user1", populateShipperMetrics(12345))
+	tsdbMetrics.setRegistryForUser("user2", populateShipperMetrics(85787))
+	tsdbMetrics.setRegistryForUser("user3", populateShipperMetrics(999))
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total dir sync attempts
@@ -42,7 +42,8 @@ func TestShipperMetrics(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func populateShipperMetrics(r prometheus.Registerer, base float64) {
+func populateShipperMetrics(base float64) *prometheus.Registry {
+	r := prometheus.NewRegistry()
 	dirSyncs := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_dir_syncs_total",
 		Help: "Total dir sync attempts",
@@ -71,4 +72,6 @@ func populateShipperMetrics(r prometheus.Registerer, base float64) {
 	r.MustRegister(dirSyncFailures)
 	r.MustRegister(uploads)
 	r.MustRegister(uploadFailures)
+
+	return r
 }

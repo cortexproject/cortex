@@ -25,7 +25,8 @@ const (
 
 // Validation errors
 var (
-	errUnsupportedBackend = errors.New("unsupported TSDB storage backend")
+	errUnsupportedBackend  = errors.New("unsupported TSDB storage backend")
+	errInvalidSyncInterval = errors.New("the sync interval should be > 0")
 )
 
 // Config holds the config information for TSDB storage
@@ -99,7 +100,7 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedBackend
 	}
 
-	return nil
+	return cfg.BucketStore.Validate()
 }
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier
@@ -128,4 +129,13 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 // stored by the ingester
 func (cfg *Config) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
+}
+
+// Validate the config
+func (cfg *BucketStoreConfig) Validate() error {
+	if cfg.SyncInterval <= 0 {
+		return errInvalidSyncInterval
+	}
+
+	return nil
 }

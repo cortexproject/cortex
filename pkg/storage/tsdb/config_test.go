@@ -18,20 +18,38 @@ func TestConfig_Validate(t *testing.T) {
 		"should pass on S3 backend": {
 			config: Config{
 				Backend: "s3",
+				BucketStore: BucketStoreConfig{
+					SyncInterval: 5 * time.Minute,
+				},
 			},
 			expectedErr: nil,
 		},
 		"should pass on GCS backend": {
 			config: Config{
 				Backend: "gcs",
+				BucketStore: BucketStoreConfig{
+					SyncInterval: 5 * time.Minute,
+				},
 			},
 			expectedErr: nil,
 		},
 		"should pass on unknown backend": {
 			config: Config{
 				Backend: "unknown",
+				BucketStore: BucketStoreConfig{
+					SyncInterval: 5 * time.Minute,
+				},
 			},
 			expectedErr: errUnsupportedBackend,
+		},
+		"should fail on invalid sync interval": {
+			config: Config{
+				Backend: "s3",
+				BucketStore: BucketStoreConfig{
+					SyncInterval: 0,
+				},
+			},
+			expectedErr: errInvalidSyncInterval,
 		},
 	}
 

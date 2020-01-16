@@ -66,6 +66,9 @@ func (s *cachingIndexClient) Stop() {
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	log, ctx := spanlogger.New(ctx, "cachingIndexClient.QueryPages")
+	defer log.Finish()
+
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 

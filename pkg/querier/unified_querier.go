@@ -9,9 +9,10 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 )
 
-func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, cfg Config) storage.Queryable {
+func newUnifiedChunkQueryable(ds, cs chunkstore.ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		ucq := &unifiedChunkQuerier{
 			querier: querier{
@@ -44,7 +45,7 @@ func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkI
 }
 
 type unifiedChunkQuerier struct {
-	stores []ChunkStore
+	stores []chunkstore.ChunkStore
 
 	// We reuse metadataQuery, LabelValues and Close from querier.
 	querier
@@ -57,7 +58,7 @@ func (q *unifiedChunkQuerier) Get(ctx context.Context, userID string, from, thro
 	css := make(chan []chunk.Chunk, len(q.stores))
 	errs := make(chan error, len(q.stores))
 	for _, store := range q.stores {
-		go func(store ChunkStore) {
+		go func(store chunkstore.ChunkStore) {
 			cs, err := store.Get(ctx, userID, from, through, matchers...)
 			if err != nil {
 				errs <- err

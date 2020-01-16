@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -90,7 +92,7 @@ func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matche
 	if sp == nil {
 		panic(fmt.Errorf("select params must be set"))
 	}
-	return matrixToSeriesSet(m.matrix), nil, nil
+	return series.MatrixToSeriesSet(m.matrix), nil, nil
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

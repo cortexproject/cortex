@@ -1,4 +1,4 @@
-package querier
+package series
 
 import (
 	"testing"
@@ -10,15 +10,15 @@ import (
 )
 
 func TestConcreteSeriesSet(t *testing.T) {
-	series1 := &concreteSeries{
+	series1 := &ConcreteSeries{
 		labels:  labels.FromStrings("foo", "bar"),
 		samples: []model.SamplePair{{Value: 1, Timestamp: 2}},
 	}
-	series2 := &concreteSeries{
+	series2 := &ConcreteSeries{
 		labels:  labels.FromStrings("foo", "baz"),
 		samples: []model.SamplePair{{Value: 3, Timestamp: 4}},
 	}
-	c := newConcreteSeriesSet([]storage.Series{series2, series1})
+	c := NewConcreteSeriesSet([]storage.Series{series2, series1})
 	require.True(t, c.Next())
 	require.Equal(t, series1, c.At())
 	require.True(t, c.Next())
@@ -39,7 +39,7 @@ func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
 			Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
 		},
 	}
-	ss := matrixToSeriesSet(matrix)
+	ss := MatrixToSeriesSet(matrix)
 	require.True(t, ss.Next())
 	require.NoError(t, ss.Err())
 

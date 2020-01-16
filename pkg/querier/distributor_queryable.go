@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 // Distributor is the read interface to the distributor, made an interface here
@@ -51,7 +52,7 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return matrixToSeriesSet(matrix), nil, nil
+	return series.MatrixToSeriesSet(matrix), nil, nil
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

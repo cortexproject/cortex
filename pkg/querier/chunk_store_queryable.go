@@ -12,11 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) storage.SeriesIterator
 
-func newChunkStoreQueryable(store ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
+func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		return &chunkStoreQuerier{
 			store:             store,
@@ -29,7 +31,7 @@ func newChunkStoreQueryable(store ChunkStore, chunkIteratorFunc chunkIteratorFun
 }
 
 type chunkStoreQuerier struct {
-	store             ChunkStore
+	store             chunkstore.ChunkStore
 	chunkIteratorFunc chunkIteratorFunc
 	ctx               context.Context
 	mint, maxt        int64
@@ -66,7 +68,7 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 		})
 	}
 
-	return newConcreteSeriesSet(series)
+	return seriesset.NewConcreteSeriesSet(series)
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

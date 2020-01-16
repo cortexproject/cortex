@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
 
@@ -48,7 +49,7 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			return
 		}
 
-		store, ok := querier.(ChunkStore)
+		store, ok := querier.(chunkstore.ChunkStore)
 		if !ok {
 			http.Error(w, "not supported", http.StatusServiceUnavailable)
 			return

@@ -654,6 +654,10 @@ results_cache:
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
+
+# Parse the ast and parallelize sums by shard.
+# CLI flag: -querier.sum-shards
+[sum_shards: <boolean> | default = false]
 ```
 
 ## `ruler_config`

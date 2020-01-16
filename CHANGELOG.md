@@ -44,6 +44,7 @@ instructions below to upgrade your Postgres.
   * Renamed `cortex_querier_sync_seconds` metric to `cortex_querier_blocks_sync_seconds`
   * Track `cortex_querier_blocks_sync_seconds` metric for the initial sync too
   * Fixed race condition
+* [ENHANCEMENT] Experimental TSDB: Added dedicated flag `-experimental.tsdb.bucket-store.tenant-sync-concurrency` to configure the maximum number of concurrent tenants for which blocks are synched.
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922

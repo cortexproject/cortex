@@ -100,13 +100,17 @@ tsdb:
   # TSDB blocks retention in the ingester before a block is removed. This
   # should be larger than the block_ranges_period and large enough to give
   # ingesters enough time to discover newly uploaded blocks.
-  # CLI flag: -experimental.tsdb.retention-period duration
+  # CLI flag: -experimental.tsdb.retention-period
   [ retention_period: <duration> | default = 6h]
 
-  # The frequency at which the ingester shipper look for unshipped TSDB blocks
-  # and start uploading them to the long-term storage.
-  # CLI flag: -experimental.tsdb.ship-interval duration
-  [ship_interval: <duration> | default = 30s]
+  # How frequently the TSDB blocks are scanned and new ones are shipped to
+  # the storage. 0 means shipping is disabled.
+  # CLI flag: -experimental.tsdb.ship-interval
+  [ship_interval: <duration> | default = 1m]
+
+  # Maximum number of tenants concurrently shipping blocks to the storage.
+  # CLI flag: -experimental.tsdb.ship-concurrency
+  [ship_concurrency: <int> | default = 10]
 
   # The bucket store configuration applies to queriers and configure how queriers
   # iteract with the long-term storage backend.
@@ -140,10 +144,13 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
     [max_concurrent: <int> | default = 20]
 
-    # Number of Go routines, per tenant, to use when syncing blocks from the
-    # long-term storage.
+    # Maximum number of concurrent tenants synching blocks.
+    # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency
+    [tenant_sync_concurrency: <int> | default = 10]
+
+    # Maximum number of concurrent blocks synching per tenant.
     # CLI flag: -experimental.tsdb.bucket-store.block-sync-concurrency
-    [block_sync_concurrency: <int> | default = 20s]
+    [block_sync_concurrency: <int> | default = 20]
 
   # Configures the S3 storage backend.
   # Required only when "s3" backend has been selected.

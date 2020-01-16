@@ -16,7 +16,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/shipper"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -545,11 +544,11 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		wg := &sync.WaitGroup{}
 		wg.Add(len(i.TSDBState.dbs))
 
-		for _, db := range i.TSDBState.dbs {
-			go func(db *tsdb.DB) {
+		for _, userDB := range i.TSDBState.dbs {
+			go func(db *UserTSDB) {
 				defer wg.Done()
 				db.DisableCompactions()
-			}(db)
+			}(userDB)
 		}
 
 		i.userStatesMtx.RUnlock()
@@ -634,7 +633,13 @@ func unshippedBlocks(dir string) (map[string][]string, error) {
 
 		m, err := shipper.ReadMetaFile(filepath.Join(dir, userID))
 		if err != nil {
-			return nil, err
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+
+			// If the meta file doesn't exit, it means the first sync for this
+			// user didn't occur yet, so we're going to consider all blocks unshipped.
+			m = &shipper.Meta{}
 		}
 
 		shipped := make(map[string]bool)

@@ -27,11 +27,27 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
-		"should pass on unknown backend": {
+		"should fail on unknown backend": {
 			config: Config{
 				Backend: "unknown",
 			},
 			expectedErr: errUnsupportedBackend,
+		},
+		"should fail on invalid ship concurrency": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    time.Minute,
+				ShipConcurrency: 0,
+			},
+			expectedErr: errInvalidShipConcurrency,
+		},
+		"should pass on invalid ship concurrency but shipping is disabled": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    0,
+				ShipConcurrency: 0,
+			},
+			expectedErr: nil,
 		},
 	}
 

@@ -76,7 +76,7 @@ func TestUserStore_InitialSync(t *testing.T) {
 func TestUserStore_syncUserStores(t *testing.T) {
 	cfg := tsdb.Config{}
 	flagext.DefaultValues(&cfg)
-	cfg.BucketStore.BlockSyncConcurrency = 2
+	cfg.BucketStore.TenantSyncConcurrency = 2
 
 	// Disable the sync interval so that there will be no initial sync.
 	cfg.BucketStore.SyncInterval = 0

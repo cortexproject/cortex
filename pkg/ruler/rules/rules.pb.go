@@ -4,6 +4,7 @@
 package rules
 
 import (
+	encoding_binary "encoding/binary"
 	fmt "fmt"
 	_ "github.com/cortexproject/cortex/pkg/ingester/client"
 	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -122,6 +123,9 @@ type RuleDesc struct {
 	For         *time.Duration                                                     `protobuf:"bytes,4,opt,name=for,proto3,stdduration" json:"for,omitempty"`
 	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,5,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
 	Annotations []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,6,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
+	State       string                                                             `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	Health      string                                                             `protobuf:"bytes,8,opt,name=health,proto3" json:"health,omitempty"`
+	LastError   string                                                             `protobuf:"bytes,9,opt,name=lastError,proto3" json:"lastError,omitempty"`
 }
 
 func (m *RuleDesc) Reset()      { *m = RuleDesc{} }
@@ -184,43 +188,169 @@ func (m *RuleDesc) GetFor() *time.Duration {
 	return nil
 }
 
+func (m *RuleDesc) GetState() string {
+	if m != nil {
+		return m.State
+	}
+	return ""
+}
+
+func (m *RuleDesc) GetHealth() string {
+	if m != nil {
+		return m.Health
+	}
+	return ""
+}
+
+func (m *RuleDesc) GetLastError() string {
+	if m != nil {
+		return m.LastError
+	}
+	return ""
+}
+
+type Alert struct {
+	State        string                                                             `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	Labels       []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,2,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
+	Annotations  []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,3,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
+	Value        float64                                                            `protobuf:"fixed64,4,opt,name=value,proto3" json:"value,omitempty"`
+	ActiveAtMs   int64                                                              `protobuf:"varint,5,opt,name=active_at_ms,json=activeAtMs,proto3" json:"active_at_ms,omitempty"`
+	FiredAtMs    int64                                                              `protobuf:"varint,6,opt,name=fired_at_ms,json=firedAtMs,proto3" json:"fired_at_ms,omitempty"`
+	ResolvedAtMs int64                                                              `protobuf:"varint,7,opt,name=resolved_at_ms,json=resolvedAtMs,proto3" json:"resolved_at_ms,omitempty"`
+	LastSentAt   int64                                                              `protobuf:"varint,8,opt,name=last_sent_at,json=lastSentAt,proto3" json:"last_sent_at,omitempty"`
+	ValidUntilMs int64                                                              `protobuf:"varint,9,opt,name=valid_until_ms,json=validUntilMs,proto3" json:"valid_until_ms,omitempty"`
+}
+
+func (m *Alert) Reset()      { *m = Alert{} }
+func (*Alert) ProtoMessage() {}
+func (*Alert) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8e722d3e922f0937, []int{2}
+}
+func (m *Alert) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Alert) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Alert.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Alert) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Alert.Merge(m, src)
+}
+func (m *Alert) XXX_Size() int {
+	return m.Size()
+}
+func (m *Alert) XXX_DiscardUnknown() {
+	xxx_messageInfo_Alert.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Alert proto.InternalMessageInfo
+
+func (m *Alert) GetState() string {
+	if m != nil {
+		return m.State
+	}
+	return ""
+}
+
+func (m *Alert) GetValue() float64 {
+	if m != nil {
+		return m.Value
+	}
+	return 0
+}
+
+func (m *Alert) GetActiveAtMs() int64 {
+	if m != nil {
+		return m.ActiveAtMs
+	}
+	return 0
+}
+
+func (m *Alert) GetFiredAtMs() int64 {
+	if m != nil {
+		return m.FiredAtMs
+	}
+	return 0
+}
+
+func (m *Alert) GetResolvedAtMs() int64 {
+	if m != nil {
+		return m.ResolvedAtMs
+	}
+	return 0
+}
+
+func (m *Alert) GetLastSentAt() int64 {
+	if m != nil {
+		return m.LastSentAt
+	}
+	return 0
+}
+
+func (m *Alert) GetValidUntilMs() int64 {
+	if m != nil {
+		return m.ValidUntilMs
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*RuleGroupDesc)(nil), "rules.RuleGroupDesc")
 	proto.RegisterType((*RuleDesc)(nil), "rules.RuleDesc")
+	proto.RegisterType((*Alert)(nil), "rules.Alert")
 }
 
 func init() { proto.RegisterFile("rules.proto", fileDescriptor_8e722d3e922f0937) }
 
 var fileDescriptor_8e722d3e922f0937 = []byte{
-	// 448 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x51, 0x41, 0x8b, 0xd4, 0x30,
-	0x14, 0x6e, 0x76, 0x66, 0xea, 0x4c, 0x06, 0x11, 0x83, 0x48, 0x5c, 0x24, 0x53, 0x16, 0x84, 0x5e,
-	0x6c, 0x71, 0x3d, 0xee, 0x45, 0x87, 0x05, 0x3d, 0x78, 0x90, 0x1e, 0xbd, 0xa5, 0xed, 0xdb, 0x5a,
-	0xcd, 0x36, 0x25, 0x49, 0xc5, 0x8b, 0xe0, 0x4f, 0xf0, 0xe8, 0x4f, 0xf0, 0xa7, 0xec, 0x71, 0xc0,
-	0xcb, 0xe2, 0x61, 0x75, 0x3a, 0x17, 0x8f, 0x0b, 0xfe, 0x01, 0x49, 0xd2, 0xba, 0x7b, 0x14, 0xc1,
-	0x53, 0xde, 0x97, 0xef, 0xe5, 0xbd, 0xef, 0xfb, 0x82, 0x97, 0xaa, 0x13, 0xa0, 0x93, 0x56, 0x49,
-	0x23, 0xc9, 0xcc, 0x81, 0xfd, 0x87, 0x55, 0x6d, 0x5e, 0x77, 0x79, 0x52, 0xc8, 0xd3, 0xb4, 0x92,
-	0x95, 0x4c, 0x1d, 0x9b, 0x77, 0x27, 0x0e, 0x39, 0xe0, 0x2a, 0xff, 0x6a, 0x9f, 0x55, 0x52, 0x56,
-	0x02, 0xae, 0xba, 0xca, 0x4e, 0x71, 0x53, 0xcb, 0x66, 0xe0, 0x9f, 0x5c, 0x1b, 0x57, 0x48, 0x65,
-	0xe0, 0x7d, 0xab, 0xe4, 0x1b, 0x28, 0xcc, 0x80, 0xd2, 0xf6, 0x6d, 0x95, 0xd6, 0x4d, 0x05, 0xda,
-	0x80, 0x4a, 0x0b, 0x51, 0x43, 0x33, 0x52, 0x7e, 0xc2, 0xc1, 0x57, 0x84, 0x6f, 0x66, 0x9d, 0x80,
-	0x67, 0x4a, 0x76, 0xed, 0x31, 0xe8, 0x82, 0x10, 0x3c, 0x6d, 0xf8, 0x29, 0x50, 0x14, 0xa1, 0x78,
-	0x91, 0xb9, 0x9a, 0xdc, 0xc7, 0x0b, 0x7b, 0xea, 0x96, 0x17, 0x40, 0xf7, 0x1c, 0x71, 0x75, 0x41,
-	0x8e, 0xf0, 0xbc, 0x6e, 0x0c, 0xa8, 0x77, 0x5c, 0xd0, 0x49, 0x84, 0xe2, 0xe5, 0xe1, 0xbd, 0xc4,
-	0x0b, 0x4f, 0x46, 0xe1, 0xc9, 0xf1, 0x20, 0x7c, 0x3d, 0xfd, 0xfc, 0x7d, 0x85, 0xb2, 0x3f, 0x0f,
-	0xc8, 0x03, 0xec, 0xa3, 0xa1, 0xd3, 0x68, 0x12, 0x2f, 0x0f, 0x6f, 0x25, 0x3e, 0x35, 0xab, 0xc9,
-	0xca, 0xc9, 0x3c, 0x4b, 0x28, 0xbe, 0x51, 0x82, 0x00, 0x03, 0x25, 0x9d, 0x45, 0x28, 0x9e, 0x67,
-	0x23, 0xb4, 0x7a, 0x3b, 0x0d, 0x8a, 0x86, 0x5e, 0xaf, 0xad, 0x0f, 0x7e, 0xed, 0xe1, 0xf9, 0x38,
-	0xc1, 0x36, 0xd8, 0x5c, 0x46, 0x43, 0xb6, 0x26, 0x77, 0x71, 0xa8, 0xa0, 0x90, 0xaa, 0x1c, 0xdc,
-	0x0c, 0x88, 0xdc, 0xc1, 0x33, 0x2e, 0x40, 0x19, 0xe7, 0x63, 0x91, 0x79, 0x40, 0x1e, 0xe1, 0xc9,
-	0x89, 0x54, 0x74, 0xfa, 0x77, 0xde, 0x6c, 0x2f, 0xd1, 0x38, 0x14, 0x3c, 0x07, 0xa1, 0xe9, 0xcc,
-	0xf9, 0xba, 0x9d, 0x0c, 0xb1, 0xbf, 0xb0, 0xb7, 0x2f, 0x79, 0xad, 0xd6, 0xcf, 0xcf, 0x2e, 0x56,
-	0xc1, 0xb7, 0x8b, 0xd5, 0xbf, 0x7c, 0xa2, 0x1f, 0xf3, 0xb4, 0xe4, 0xad, 0x01, 0x95, 0x0d, 0xab,
-	0xc8, 0x07, 0xbc, 0xe4, 0x4d, 0x23, 0x8d, 0x53, 0xa3, 0x69, 0xf8, 0xff, 0x37, 0x5f, 0xdf, 0xb7,
-	0x3e, 0xda, 0x6c, 0x59, 0x70, 0xbe, 0x65, 0xc1, 0xe5, 0x96, 0xa1, 0x8f, 0x3d, 0x43, 0x5f, 0x7a,
-	0x86, 0xce, 0x7a, 0x86, 0x36, 0x3d, 0x43, 0x3f, 0x7a, 0x86, 0x7e, 0xf6, 0x2c, 0xb8, 0xec, 0x19,
-	0xfa, 0xb4, 0x63, 0xc1, 0x66, 0xc7, 0x82, 0xf3, 0x1d, 0x0b, 0x5e, 0xf9, 0x0f, 0xce, 0x43, 0x17,
-	0xe7, 0xe3, 0xdf, 0x01, 0x00, 0x00, 0xff, 0xff, 0x67, 0x3a, 0xe5, 0x13, 0x36, 0x03, 0x00, 0x00,
+	// 614 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x54, 0x31, 0x6f, 0x13, 0x3d,
+	0x18, 0x3e, 0xf7, 0x92, 0x34, 0x71, 0xfa, 0x7d, 0x08, 0x0b, 0x21, 0x53, 0x21, 0x37, 0xaa, 0x40,
+	0xca, 0xc2, 0x45, 0x94, 0xb1, 0x0b, 0xa9, 0x8a, 0x60, 0xa0, 0x12, 0x3a, 0xc4, 0xc2, 0x12, 0x39,
+	0x77, 0x6f, 0xaf, 0x07, 0xee, 0xf9, 0x64, 0xfb, 0x22, 0x16, 0x24, 0x7e, 0x02, 0x23, 0x3f, 0x81,
+	0x7f, 0xc1, 0xda, 0xb1, 0x12, 0x03, 0x15, 0x43, 0xa1, 0xd7, 0x85, 0xb1, 0x3f, 0x01, 0xd9, 0xbe,
+	0x4b, 0x3b, 0x22, 0x24, 0x60, 0x8a, 0x9f, 0xe7, 0x7d, 0xef, 0xf1, 0xf3, 0x3e, 0xb6, 0x83, 0x87,
+	0xaa, 0x12, 0xa0, 0xa3, 0x52, 0x49, 0x23, 0x49, 0xd7, 0x81, 0xf5, 0x7b, 0x59, 0x6e, 0x0e, 0xaa,
+	0x79, 0x94, 0xc8, 0xc3, 0x49, 0x26, 0x33, 0x39, 0x71, 0xd5, 0x79, 0xb5, 0xef, 0x90, 0x03, 0x6e,
+	0xe5, 0xbf, 0x5a, 0x67, 0x99, 0x94, 0x99, 0x80, 0xcb, 0xae, 0xb4, 0x52, 0xdc, 0xe4, 0xb2, 0x68,
+	0xea, 0x0f, 0xaf, 0xc8, 0x25, 0x52, 0x19, 0x78, 0x53, 0x2a, 0xf9, 0x0a, 0x12, 0xd3, 0xa0, 0x49,
+	0xf9, 0x3a, 0x9b, 0xe4, 0x45, 0x06, 0xda, 0x80, 0x9a, 0x24, 0x22, 0x87, 0xa2, 0x2d, 0x79, 0x85,
+	0xcd, 0xcf, 0x08, 0xff, 0x17, 0x57, 0x02, 0x1e, 0x2b, 0x59, 0x95, 0xbb, 0xa0, 0x13, 0x42, 0x70,
+	0xa7, 0xe0, 0x87, 0x40, 0xd1, 0x08, 0x8d, 0x07, 0xb1, 0x5b, 0x93, 0xdb, 0x78, 0x60, 0x7f, 0x75,
+	0xc9, 0x13, 0xa0, 0x2b, 0xae, 0x70, 0x49, 0x90, 0x6d, 0xdc, 0xcf, 0x0b, 0x03, 0x6a, 0xc1, 0x05,
+	0x0d, 0x47, 0x68, 0x3c, 0xdc, 0xba, 0x15, 0x79, 0xe3, 0x51, 0x6b, 0x3c, 0xda, 0x6d, 0x8c, 0xef,
+	0x74, 0x3e, 0x7c, 0xdb, 0x40, 0xf1, 0xf2, 0x03, 0x72, 0x17, 0xfb, 0x68, 0x68, 0x67, 0x14, 0x8e,
+	0x87, 0x5b, 0xd7, 0x22, 0x9f, 0x9a, 0xf5, 0x64, 0xed, 0xc4, 0xbe, 0x4a, 0x28, 0x5e, 0x4d, 0x41,
+	0x80, 0x81, 0x94, 0x76, 0x47, 0x68, 0xdc, 0x8f, 0x5b, 0x68, 0xfd, 0x56, 0x1a, 0x14, 0xed, 0x79,
+	0xbf, 0x76, 0xbd, 0xf9, 0x29, 0xc4, 0xfd, 0x56, 0xc1, 0x36, 0xd8, 0x5c, 0xda, 0x81, 0xec, 0x9a,
+	0xdc, 0xc4, 0x3d, 0x05, 0x89, 0x54, 0x69, 0x33, 0x4d, 0x83, 0xc8, 0x0d, 0xdc, 0xe5, 0x02, 0x94,
+	0x71, 0x73, 0x0c, 0x62, 0x0f, 0xc8, 0x7d, 0x1c, 0xee, 0x4b, 0x45, 0x3b, 0xbf, 0x36, 0x9b, 0xed,
+	0x25, 0x1a, 0xf7, 0x04, 0x9f, 0x83, 0xd0, 0xb4, 0xeb, 0xe6, 0xba, 0x1e, 0x35, 0xb1, 0x3f, 0xb5,
+	0xec, 0x33, 0x9e, 0xab, 0x9d, 0x27, 0x47, 0xa7, 0x1b, 0xc1, 0xd7, 0xd3, 0x8d, 0xdf, 0x39, 0x44,
+	0x2f, 0x33, 0x4d, 0x79, 0x69, 0x40, 0xc5, 0xcd, 0x56, 0xe4, 0x2d, 0x1e, 0xf2, 0xa2, 0x90, 0xc6,
+	0xb9, 0xd1, 0xb4, 0xf7, 0xe7, 0x77, 0xbe, 0xba, 0x9f, 0x0d, 0x4f, 0x1b, 0x6e, 0x80, 0xae, 0xfa,
+	0xf0, 0x1c, 0xb0, 0x51, 0x1f, 0x00, 0x17, 0xe6, 0x80, 0xf6, 0x7d, 0xd4, 0x1e, 0xd9, 0x3b, 0x25,
+	0xb8, 0x36, 0x8f, 0x94, 0x92, 0x8a, 0x0e, 0xfc, 0x9d, 0x5a, 0x12, 0x9b, 0x5f, 0x42, 0xdc, 0x9d,
+	0xba, 0xf0, 0x97, 0xaa, 0xe8, 0xaa, 0xea, 0x65, 0xbe, 0x2b, 0xff, 0x2c, 0xdf, 0xf0, 0xef, 0xe7,
+	0xbb, 0xe0, 0xa2, 0x02, 0x77, 0x11, 0x51, 0xec, 0x01, 0x19, 0xe1, 0x35, 0x9e, 0x98, 0x7c, 0x01,
+	0x33, 0x6e, 0x66, 0x87, 0xda, 0x3d, 0x8f, 0x30, 0xc6, 0x9e, 0x9b, 0x9a, 0x3d, 0x4d, 0x18, 0x1e,
+	0xee, 0xe7, 0x0a, 0xd2, 0xa6, 0xa1, 0xe7, 0x1a, 0x06, 0x8e, 0x72, 0xf5, 0x3b, 0xf8, 0x7f, 0x05,
+	0x5a, 0x8a, 0xc5, 0xb2, 0x65, 0xd5, 0xb5, 0xac, 0xb5, 0xac, 0xeb, 0x1a, 0xe1, 0x35, 0x7b, 0x3c,
+	0x33, 0x0d, 0x85, 0x99, 0x71, 0xe3, 0x4e, 0x33, 0x8c, 0xb1, 0xe5, 0x9e, 0x43, 0x61, 0xa6, 0xc6,
+	0xea, 0x2c, 0xb8, 0xc8, 0xd3, 0x59, 0x55, 0x98, 0x5c, 0x58, 0x9d, 0x81, 0xd7, 0x71, 0xec, 0x0b,
+	0x4b, 0xee, 0xe9, 0x9d, 0xed, 0xe3, 0x33, 0x16, 0x9c, 0x9c, 0xb1, 0xe0, 0xe2, 0x8c, 0xa1, 0x77,
+	0x35, 0x43, 0x1f, 0x6b, 0x86, 0x8e, 0x6a, 0x86, 0x8e, 0x6b, 0x86, 0xbe, 0xd7, 0x0c, 0xfd, 0xa8,
+	0x59, 0x70, 0x51, 0x33, 0xf4, 0xfe, 0x9c, 0x05, 0xc7, 0xe7, 0x2c, 0x38, 0x39, 0x67, 0xc1, 0x4b,
+	0xff, 0x37, 0x30, 0xef, 0xb9, 0x47, 0xf7, 0xe0, 0x67, 0x00, 0x00, 0x00, 0xff, 0xff, 0x48, 0x33,
+	0x8f, 0x49, 0x5c, 0x05, 0x00, 0x00,
 }
 
 func (this *RuleGroupDesc) Equal(that interface{}) bool {
@@ -326,6 +456,73 @@ func (this *RuleDesc) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if this.State != that1.State {
+		return false
+	}
+	if this.Health != that1.Health {
+		return false
+	}
+	if this.LastError != that1.LastError {
+		return false
+	}
+	return true
+}
+func (this *Alert) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Alert)
+	if !ok {
+		that2, ok := that.(Alert)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.State != that1.State {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].Equal(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Annotations) != len(that1.Annotations) {
+		return false
+	}
+	for i := range this.Annotations {
+		if !this.Annotations[i].Equal(that1.Annotations[i]) {
+			return false
+		}
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	if this.ActiveAtMs != that1.ActiveAtMs {
+		return false
+	}
+	if this.FiredAtMs != that1.FiredAtMs {
+		return false
+	}
+	if this.ResolvedAtMs != that1.ResolvedAtMs {
+		return false
+	}
+	if this.LastSentAt != that1.LastSentAt {
+		return false
+	}
+	if this.ValidUntilMs != that1.ValidUntilMs {
+		return false
+	}
 	return true
 }
 func (this *RuleGroupDesc) GoString() string {
@@ -349,7 +546,7 @@ func (this *RuleDesc) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 13)
 	s = append(s, "&rules.RuleDesc{")
 	s = append(s, "Expr: "+fmt.Sprintf("%#v", this.Expr)+",\n")
 	s = append(s, "Record: "+fmt.Sprintf("%#v", this.Record)+",\n")
@@ -357,6 +554,27 @@ func (this *RuleDesc) GoString() string {
 	s = append(s, "For: "+fmt.Sprintf("%#v", this.For)+",\n")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	s = append(s, "Annotations: "+fmt.Sprintf("%#v", this.Annotations)+",\n")
+	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
+	s = append(s, "Health: "+fmt.Sprintf("%#v", this.Health)+",\n")
+	s = append(s, "LastError: "+fmt.Sprintf("%#v", this.LastError)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Alert) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 13)
+	s = append(s, "&rules.Alert{")
+	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
+	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
+	s = append(s, "Annotations: "+fmt.Sprintf("%#v", this.Annotations)+",\n")
+	s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
+	s = append(s, "ActiveAtMs: "+fmt.Sprintf("%#v", this.ActiveAtMs)+",\n")
+	s = append(s, "FiredAtMs: "+fmt.Sprintf("%#v", this.FiredAtMs)+",\n")
+	s = append(s, "ResolvedAtMs: "+fmt.Sprintf("%#v", this.ResolvedAtMs)+",\n")
+	s = append(s, "LastSentAt: "+fmt.Sprintf("%#v", this.LastSentAt)+",\n")
+	s = append(s, "ValidUntilMs: "+fmt.Sprintf("%#v", this.ValidUntilMs)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -503,6 +721,103 @@ func (m *RuleDesc) MarshalTo(dAtA []byte) (int, error) {
 			i += n
 		}
 	}
+	if len(m.State) > 0 {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i += copy(dAtA[i:], m.State)
+	}
+	if len(m.Health) > 0 {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Health)))
+		i += copy(dAtA[i:], m.Health)
+	}
+	if len(m.LastError) > 0 {
+		dAtA[i] = 0x4a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.LastError)))
+		i += copy(dAtA[i:], m.LastError)
+	}
+	return i, nil
+}
+
+func (m *Alert) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Alert) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.State) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i += copy(dAtA[i:], m.State)
+	}
+	if len(m.Labels) > 0 {
+		for _, msg := range m.Labels {
+			dAtA[i] = 0x12
+			i++
+			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if len(m.Annotations) > 0 {
+		for _, msg := range m.Annotations {
+			dAtA[i] = 0x1a
+			i++
+			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if m.Value != 0 {
+		dAtA[i] = 0x21
+		i++
+		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
+		i += 8
+	}
+	if m.ActiveAtMs != 0 {
+		dAtA[i] = 0x28
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(m.ActiveAtMs))
+	}
+	if m.FiredAtMs != 0 {
+		dAtA[i] = 0x30
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(m.FiredAtMs))
+	}
+	if m.ResolvedAtMs != 0 {
+		dAtA[i] = 0x38
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(m.ResolvedAtMs))
+	}
+	if m.LastSentAt != 0 {
+		dAtA[i] = 0x40
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(m.LastSentAt))
+	}
+	if m.ValidUntilMs != 0 {
+		dAtA[i] = 0x48
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(m.ValidUntilMs))
+	}
 	return i, nil
 }
 
@@ -583,6 +898,61 @@ func (m *RuleDesc) Size() (n int) {
 			n += 1 + l + sovRules(uint64(l))
 		}
 	}
+	l = len(m.State)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	l = len(m.Health)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	l = len(m.LastError)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	return n
+}
+
+func (m *Alert) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.State)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if len(m.Labels) > 0 {
+		for _, e := range m.Labels {
+			l = e.Size()
+			n += 1 + l + sovRules(uint64(l))
+		}
+	}
+	if len(m.Annotations) > 0 {
+		for _, e := range m.Annotations {
+			l = e.Size()
+			n += 1 + l + sovRules(uint64(l))
+		}
+	}
+	if m.Value != 0 {
+		n += 9
+	}
+	if m.ActiveAtMs != 0 {
+		n += 1 + sovRules(uint64(m.ActiveAtMs))
+	}
+	if m.FiredAtMs != 0 {
+		n += 1 + sovRules(uint64(m.FiredAtMs))
+	}
+	if m.ResolvedAtMs != 0 {
+		n += 1 + sovRules(uint64(m.ResolvedAtMs))
+	}
+	if m.LastSentAt != 0 {
+		n += 1 + sovRules(uint64(m.LastSentAt))
+	}
+	if m.ValidUntilMs != 0 {
+		n += 1 + sovRules(uint64(m.ValidUntilMs))
+	}
 	return n
 }
 
@@ -625,6 +995,27 @@ func (this *RuleDesc) String() string {
 		`For:` + strings.Replace(fmt.Sprintf("%v", this.For), "Duration", "duration.Duration", 1) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
+		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+		`Health:` + fmt.Sprintf("%v", this.Health) + `,`,
+		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Alert) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Alert{`,
+		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
+		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
+		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`ActiveAtMs:` + fmt.Sprintf("%v", this.ActiveAtMs) + `,`,
+		`FiredAtMs:` + fmt.Sprintf("%v", this.FiredAtMs) + `,`,
+		`ResolvedAtMs:` + fmt.Sprintf("%v", this.ResolvedAtMs) + `,`,
+		`LastSentAt:` + fmt.Sprintf("%v", this.LastSentAt) + `,`,
+		`ValidUntilMs:` + fmt.Sprintf("%v", this.ValidUntilMs) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1105,6 +1496,361 @@ func (m *RuleDesc) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.State = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Health", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Health = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastError", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastError = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRules(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRules
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthRules
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Alert) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRules
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Alert: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Alert: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.State = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Labels = append(m.Labels, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
+			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Annotations", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Annotations = append(m.Annotations, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
+			if err := m.Annotations[len(m.Annotations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var v uint64
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+			m.Value = float64(math.Float64frombits(v))
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ActiveAtMs", wireType)
+			}
+			m.ActiveAtMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ActiveAtMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FiredAtMs", wireType)
+			}
+			m.FiredAtMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FiredAtMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResolvedAtMs", wireType)
+			}
+			m.ResolvedAtMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ResolvedAtMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastSentAt", wireType)
+			}
+			m.LastSentAt = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastSentAt |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValidUntilMs", wireType)
+			}
+			m.ValidUntilMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ValidUntilMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRules(dAtA[iNdEx:])

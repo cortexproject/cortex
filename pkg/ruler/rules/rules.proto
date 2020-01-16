@@ -17,7 +17,7 @@ option (gogoproto.unmarshaler_all) = true;
 message RuleGroupDesc {
   string name = 1;
   string namespace = 2;
-  google.protobuf.Duration interval = 3 [ (gogoproto.stdduration) = true ];
+  google.protobuf.Duration interval = 3 [(gogoproto.stdduration) = true];
   repeated RuleDesc rules = 4;
   bool deleted = 5;
   string user = 6;
@@ -28,17 +28,38 @@ message RuleDesc {
   string expr = 1;
   string record = 2;
   string alert = 3;
-    google.protobuf.Duration for = 4 [(gogoproto.stdduration) = true];
-    repeated cortex.LabelPair labels = 5 [
-      (gogoproto.nullable) = false,
-      (gogoproto.customtype) =
-          "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
-    ];
-    ;
-    repeated cortex.LabelPair annotations = 6 [
-      (gogoproto.nullable) = false,
-      (gogoproto.customtype) =
-          "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
-    ];
-    ;
+  google.protobuf.Duration for = 4 [(gogoproto.stdduration) = true];
+  repeated cortex.LabelPair labels = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+  ];
+  repeated cortex.LabelPair annotations = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+  ];
+  string state = 7;
+  string health = 8;
+  string lastError = 9;
+}
+
+message Alert {
+  string state = 1;
+  repeated cortex.LabelPair labels = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+  ];
+  repeated cortex.LabelPair annotations = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+  ];
+  double value = 4;
+  int64 active_at_ms = 5;
+  int64 fired_at_ms = 6;
+  int64 resolved_at_ms = 7;
+  int64 last_sent_at = 8;
+  int64 valid_until_ms = 9;
 }

@@ -9,8 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
@@ -19,16 +27,10 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
+	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
-
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -63,6 +65,8 @@ type Config struct {
 	SearchPendingFor time.Duration
 	LifecyclerConfig ring.LifecyclerConfig
 	FlushCheckPeriod time.Duration
+
+	EnableAPI bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -92,6 +96,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
+	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
 }
 
 // Ruler evaluates rules.
@@ -443,4 +448,97 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		Registerer:  reg,
 	}
 	return promRules.NewManager(opts), nil
+}
+
+func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
+	rgs := []*rules.RuleGroupDesc{}
+	ownedRules, err := r.Rules(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	rgs = append(rgs, ownedRules.Groups...)
+
+	rulers, err := r.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range rulers.Ingesters {
+		conn, err := grpc.Dial(r.Addr, grpc.WithInsecure())
+		if err != nil {
+			return nil, err
+		}
+		cc := NewRulerClient(conn)
+		newGrps, err := cc.Rules(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		rgs = append(rgs, newGrps.Groups...)
+	}
+
+	return rgs, nil
+}
+
+func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	groupDescs := []*rules.RuleGroupDesc{}
+
+	var groups []*promRules.Group
+	r.userManagerMtx.Lock()
+	mngr, exists := r.userManagers[userID]
+	if exists {
+		groups = mngr.RuleGroups()
+	}
+	r.userManagerMtx.Unlock()
+
+	for _, group := range groups {
+		interval := group.Interval()
+		groupDesc := &rules.RuleGroupDesc{
+			Name:      group.Name(),
+			Namespace: group.File(),
+			Interval:  &interval,
+			User:      userID,
+		}
+		for _, r := range group.Rules() {
+			lastError := ""
+			if r.LastError() != nil {
+				lastError = r.LastError().Error()
+			}
+
+			var ruleDesc *rules.RuleDesc
+			switch rule := r.(type) {
+			case *promRules.AlertingRule:
+				dur := rule.Duration()
+				ruleDesc = &rules.RuleDesc{
+					State:       rule.State().String(),
+					Alert:       rule.Name(),
+					Expr:        rule.Query().String(),
+					For:         &dur,
+					Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
+					Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
+					Health:      string(rule.Health()),
+					LastError:   lastError,
+				}
+			case *promRules.RecordingRule:
+				ruleDesc = &rules.RuleDesc{
+					Record:    rule.Name(),
+					Expr:      rule.Query().String(),
+					Labels:    client.FromLabelsToLabelAdapters(rule.Labels()),
+					Health:    string(rule.Health()),
+					LastError: lastError,
+				}
+			default:
+				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
+			}
+			groupDesc.Rules = append(groupDesc.Rules, ruleDesc)
+		}
+		groupDescs = append(groupDescs, groupDesc)
+	}
+
+	return &RulesResponse{Groups: groupDescs}, nil
 }

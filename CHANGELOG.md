@@ -2,10 +2,8 @@
 
 ## master / unreleased
 
-## 0.5.0-rc1 / 2020-01-15
-
 Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that might need to be sharded.
-If you are running with a high `-ruler.num-workers` and if you're not able to execute all your rules in 15s, then you'll need to shard.
+If you are running with a high `-ruler.num-workers` and if you're not able to execute all your rules in `-ruler.evaluation-interval`, then you'll need to shard.
 Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full
 instructions below to upgrade your Postgres.
 
@@ -36,11 +34,12 @@ instructions below to upgrade your Postgres.
 * [BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
 * [BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
 
-### Upgrading Postgres
+### Upgrading Postgres (if you're using configs service)
 
 Reference: https://github.com/golang-migrate/migrate/tree/master/database/postgres#upgrading-from-v1
 
 1. Install the migrate package cli tool: https://github.com/golang-migrate/migrate/tree/master/cmd/migrate#installation
+2. Drop the `schema_migrations` table: `DROP TABLE schema_migrations;`.
 2. Run the migrate command:
 
 ```bash

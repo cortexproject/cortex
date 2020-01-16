@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
@@ -30,6 +31,10 @@ type UserStore struct {
 	stores   map[string]*store.BucketStore
 	client   storepb.StoreClient
 	logLevel logging.Level
+
+	// Maps userID -> registry
+	regsMu sync.Mutex
+	regs   map[string]*prometheus.Registry
 }
 
 // NewUserStore returns a new UserStore
@@ -124,9 +129,10 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			if err != nil {
 				return err
 			}
+			reg := prometheus.NewRegistry()
 			bs, err = store.NewBucketStore(
 				u.logger,
-				nil,
+				reg,
 				userBkt,
 				filepath.Join(u.cfg.BucketStore.SyncDir, user),
 				indexCache,
@@ -147,6 +153,10 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 
 			u.stores[user] = bs
+
+			u.regsMu.Lock()
+			u.regs[user] = reg
+			u.regsMu.Unlock()
 		}
 
 		wg.Add(1)

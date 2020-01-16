@@ -115,6 +115,11 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
+    # How frequently scan the bucket to look for changes (new blocks shipped by
+    # ingesters and blocks removed by retention or compaction).
+    # CLI flag: -experimental.tsdb.bucket-store.sync-interval
+    [sync_interval: <duration> | default = 5m]
+
     # Size - in bytes - of a per-tenant in-memory index cache used to speed up
     # blocks index lookups.
     # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes

@@ -57,7 +57,7 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Regis
 	level.Info(util.Logger).Log("msg", "successfully synchronized TSDB blocks for all users")
 
 	stopc := make(chan struct{})
-	go runutil.Repeat(30*time.Second, stopc, func() error {
+	go runutil.Repeat(cfg.BucketStore.SyncInterval, stopc, func() error {
 		ts := time.Now()
 		if err := us.SyncStores(context.Background()); err != nil && err != io.EOF {
 			level.Warn(util.Logger).Log("msg", "sync stores failed", "err", err)

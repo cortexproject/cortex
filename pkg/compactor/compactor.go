@@ -125,7 +125,16 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 	return newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registerer)
 }
 
-func newCompactor(ctx context.Context, cancelCtx context.CancelFunc, compactorCfg Config, storageCfg cortex_tsdb.Config, bucketClient objstore.Bucket, tsdbCompactor tsdb.Compactor, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+func newCompactor(
+	ctx context.Context,
+	cancelCtx context.CancelFunc,
+	compactorCfg Config,
+	storageCfg cortex_tsdb.Config,
+	bucketClient objstore.Bucket,
+	tsdbCompactor tsdb.Compactor,
+	logger log.Logger,
+	registerer prometheus.Registerer,
+) (*Compactor, error) {
 	c := &Compactor{
 		compactorCfg:  compactorCfg,
 		storageCfg:    storageCfg,

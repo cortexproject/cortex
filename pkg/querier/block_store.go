@@ -3,10 +3,12 @@ package querier
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -15,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -32,10 +35,13 @@ type UserStore struct {
 	client      storepb.StoreClient
 	logLevel    logging.Level
 	tsdbMetrics *tsdbBucketStoreMetrics
+
+	// Metrics.
+	syncTimes prometheus.Histogram
 }
 
 // NewUserStore returns a new UserStore
-func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*UserStore, error) {
+func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
 	bkt, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", logger)
 	if err != nil {
 		return nil, err
@@ -48,6 +54,15 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 		stores:      map[string]*store.BucketStore{},
 		logLevel:    logLevel,
 		tsdbMetrics: newTSDBBucketStoreMetrics(),
+		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_querier_blocks_sync_seconds",
+			Help:    "The total time it takes to perform a sync stores",
+			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
+		}),
+	}
+
+	if registerer != nil {
+		registerer.MustRegister(u.syncTimes, u.tsdbMetrics)
 	}
 
 	serv := grpc.NewServer()
@@ -65,11 +80,22 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 
 	u.client = storepb.NewStoreClient(cc)
 
+	// Run an initial blocks sync, required in order to be able to serve queries.
+	level.Info(logger).Log("msg", "synchronizing TSDB blocks for all users")
+	if err := u.initialSync(context.Background()); err != nil {
+		level.Warn(logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
+		return nil, err
+	}
+	level.Info(logger).Log("msg", "successfully synchronized TSDB blocks for all users")
+
+	// Periodically sync the blocks.
+	go u.syncStoresLoop()
+
 	return u, nil
 }
 
-// InitialSync iterates over the storage bucket creating user bucket stores, and calling InitialSync on each of them
-func (u *UserStore) InitialSync(ctx context.Context) error {
+// initialSync iterates over the storage bucket creating user bucket stores, and calling initialSync on each of them
+func (u *UserStore) initialSync(ctx context.Context) error {
 	if err := u.syncUserStores(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
@@ -79,8 +105,34 @@ func (u *UserStore) InitialSync(ctx context.Context) error {
 	return nil
 }
 
-// SyncStores iterates over the storage bucket creating user bucket stores
-func (u *UserStore) SyncStores(ctx context.Context) error {
+// syncStoresLoop periodically calls syncStores() to synchronize the blocks for all tenants.
+func (u *UserStore) syncStoresLoop() {
+	stopc := make(chan struct{})
+
+	err := runutil.Repeat(u.cfg.BucketStore.SyncInterval, stopc, func() error {
+		ts := time.Now()
+
+		level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
+		if err := u.syncStores(context.Background()); err != nil && err != io.EOF {
+			level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
+		} else {
+			level.Info(u.logger).Log("msg", "successfully synchronized TSDB blocks for all users")
+		}
+
+		u.syncTimes.Observe(time.Since(ts).Seconds())
+		return nil
+	})
+
+	if err != nil {
+		// This should never occur because the rununtil.Repeat() returns error
+		// only if the callback function returns error (which doesn't), but since
+		// we have to handle the error because of the linter, it's better to log it.
+		level.Error(u.logger).Log("msg", "blocks synchronization has been halted due to an unexpected error", "err", err)
+	}
+}
+
+// syncStores iterates over the storage bucket creating user bucket stores
+func (u *UserStore) syncStores(ctx context.Context) error {
 	if err := u.syncUserStores(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	}); err != nil {

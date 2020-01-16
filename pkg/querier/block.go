@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -17,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
@@ -25,46 +23,19 @@ import (
 
 // BlockQuerier is a querier of thanos blocks
 type BlockQuerier struct {
-	syncTimes prometheus.Histogram
-	us        *UserStore
+	us *UserStore
 }
 
 // NewBlockQuerier returns a client to query a block store
-func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Registerer) (*BlockQuerier, error) {
-	b := &BlockQuerier{
-		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_sync_seconds",
-			Help:    "The total time it takes to perform a sync stores",
-			Buckets: prometheus.DefBuckets,
-		}),
-	}
-
-	us, err := NewUserStore(cfg, logLevel, util.Logger)
+func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQuerier, error) {
+	us, err := NewUserStore(cfg, logLevel, util.Logger, registerer)
 	if err != nil {
 		return nil, err
 	}
-	b.us = us
 
-	if r != nil {
-		r.MustRegister(b.syncTimes, us.tsdbMetrics)
+	b := &BlockQuerier{
+		us: us,
 	}
-
-	level.Info(util.Logger).Log("msg", "synchronizing TSDB blocks for all users")
-	if err := us.InitialSync(context.Background()); err != nil {
-		level.Warn(util.Logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
-		return nil, err
-	}
-	level.Info(util.Logger).Log("msg", "successfully synchronized TSDB blocks for all users")
-
-	stopc := make(chan struct{})
-	go runutil.Repeat(cfg.BucketStore.SyncInterval, stopc, func() error {
-		ts := time.Now()
-		if err := us.SyncStores(context.Background()); err != nil && err != io.EOF {
-			level.Warn(util.Logger).Log("msg", "sync stores failed", "err", err)
-		}
-		b.syncTimes.Observe(time.Since(ts).Seconds())
-		return nil
-	})
 
 	return b, nil
 }

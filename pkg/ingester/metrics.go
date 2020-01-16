@@ -150,7 +150,7 @@ func (sm *shipperMetrics) Collect(out chan<- prometheus.Metric) {
 	for userID, r := range regs {
 		m, err := r.Gather()
 		if err != nil {
-			level.Debug(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
+			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
 			continue
 		}
 

@@ -31,6 +31,12 @@ import (
 func TestIngester_v2Push(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_ingested_samples_total",
+		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
+		"cortex_ingester_memory_users",
+	}
 	userID := "test"
 
 	tests := map[string]struct {
@@ -61,6 +67,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -85,6 +97,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -109,6 +127,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -133,6 +157,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 	}
@@ -182,11 +212,75 @@ func TestIngester_v2Push(t *testing.T) {
 			assert.Equal(t, testData.expectedIngested, res.Timeseries)
 
 			// Check tracked Prometheus metrics
-			metricNames := []string{"cortex_ingester_ingested_samples_total", "cortex_ingester_ingested_samples_failures_total"}
 			err = testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), metricNames...)
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_ingested_samples_total",
+		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
+		"cortex_ingester_memory_users",
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push timeseries for each user
+	for _, userID := range []string{"test-1", "test-2"} {
+		reqs := []*client.WriteRequest{
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				client.API),
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				client.API),
+		}
+
+		for _, req := range reqs {
+			ctx := user.InjectOrgID(context.Background(), userID)
+			_, err := i.v2Push(ctx, req)
+			require.NoError(t, err)
+		}
+	}
+
+	// Check tracked Prometheus metrics
+	expectedMetrics := `
+		# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+		# TYPE cortex_ingester_ingested_samples_total counter
+		cortex_ingester_ingested_samples_total 4
+		# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+		# TYPE cortex_ingester_ingested_samples_failures_total counter
+		cortex_ingester_ingested_samples_failures_total 0
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 2
+		# HELP cortex_ingester_memory_series The current number of series in memory.
+		# TYPE cortex_ingester_memory_series gauge
+		cortex_ingester_memory_series 2
+	`
+
+	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
 func Test_Ingester_v2LabelNames(t *testing.T) {

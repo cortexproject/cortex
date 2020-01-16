@@ -209,12 +209,10 @@ func (sm *tsdbMetrics) registries() map[string]*prometheus.Registry {
 	return regs
 }
 
-func (sm *tsdbMetrics) newRegistryForUser(userID string) prometheus.Registerer {
-	reg := prometheus.NewRegistry()
+func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
 	sm.regsMu.Lock()
-	sm.regs[userID] = reg
+	sm.regs[userID] = registry
 	sm.regsMu.Unlock()
-	return reg
 }
 
 func sumCounters(mfs []*dto.MetricFamily) float64 {

@@ -419,7 +419,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
-	tsdbPromReg := i.TSDBState.tsdbMetrics.newRegistryForUser(userID)
+	tsdbPromReg := prometheus.NewRegistry()
 
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
@@ -460,6 +460,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 		}()
 	}
 
+	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
 	return db, nil
 }
 

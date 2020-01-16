@@ -12,11 +12,11 @@ import (
 func TestShipperMetrics(t *testing.T) {
 	mainReg := prometheus.NewRegistry()
 
-	shipper := newShipperMetrics(mainReg)
+	shipper := newTsdbMetrics(mainReg)
 
-	populateShipperMetrics(shipper.newRegistryForUser("user1"), 12345)
-	populateShipperMetrics(shipper.newRegistryForUser("user2"), 85787)
-	populateShipperMetrics(shipper.newRegistryForUser("user3"), 999)
+	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user1"), 12345)
+	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user2"), 85787)
+	populateShipperMetrics(shipper.getOrCreateRegistryForUser("user3"), 999)
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total dir sync attempts

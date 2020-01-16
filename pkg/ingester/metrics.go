@@ -6,7 +6,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 )
 
 const (
@@ -184,7 +183,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	regs := sm.registries()
-	data := gatheredMetricsPerUser{}
+	data := util.NewMetricFamiliersPerUser()
 
 	for userID, r := range regs {
 		m, err := r.Gather()
@@ -193,16 +192,16 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 			continue
 		}
 
-		data.addGatheredDataForUser(userID, m)
+		data.AddGatheredDataForUser(userID, m)
 	}
 
 	// OK, we have it all. Let's build results.
 	for metric, desc := range sm.sumCountersGlobally {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.sumCountersAcrossAllUsers(metric))
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.SumCountersAcrossAllUsers(metric))
 	}
 
 	for metric, desc := range sm.sumCountersPerUser {
-		userValues := data.sumCountersPerUser(metric)
+		userValues := data.SumCountersPerUser(metric)
 		for user, val := range userValues {
 			out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, user)
 		}
@@ -225,57 +224,4 @@ func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Re
 	sm.regsMu.Lock()
 	sm.regs[userID] = registry
 	sm.regsMu.Unlock()
-}
-
-func sumCounters(mfs []*dto.MetricFamily) float64 {
-	result := float64(0)
-	for _, mf := range mfs {
-		if mf.Type == nil || *mf.Type != dto.MetricType_COUNTER {
-			continue
-		}
-
-		for _, m := range mf.Metric {
-			if m == nil || m.Counter == nil || m.Counter.Value == nil {
-				continue
-			}
-
-			result += *m.Counter.Value
-		}
-	}
-	return result
-}
-
-// first key = userID, second key = metric name. Value = slice of gathered values with the same metric name.
-type gatheredMetricsPerUser map[string]map[string][]*dto.MetricFamily
-
-func (d gatheredMetricsPerUser) addGatheredDataForUser(userID string, metrics []*dto.MetricFamily) {
-	// first, create new map which maps metric names to a slice of MetricFamily instances.
-	// That makes it easier to do searches later.
-	perMetricName := map[string][]*dto.MetricFamily{}
-
-	for _, m := range metrics {
-		if m.Name == nil {
-			continue
-		}
-		perMetricName[*m.Name] = append(perMetricName[*m.Name], m)
-	}
-
-	d[userID] = perMetricName
-}
-
-func (d gatheredMetricsPerUser) sumCountersAcrossAllUsers(counter string) float64 {
-	result := float64(0)
-	for _, perMetric := range d {
-		result += sumCounters(perMetric[counter])
-	}
-	return result
-}
-
-func (d gatheredMetricsPerUser) sumCountersPerUser(counter string) map[string]float64 {
-	result := map[string]float64{}
-	for user, perMetric := range d {
-		v := sumCounters(perMetric[counter])
-		result[user] = v
-	}
-	return result
 }

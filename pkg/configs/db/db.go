@@ -19,14 +19,14 @@ type Config struct {
 	PasswordFile  string
 
 	// Allow injection of mock DBs for unit testing.
-	Mock DB
+	Mock DB `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
-	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
-	flag.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
+	f.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
+	f.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
+	f.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
 }
 
 // DB is the interface for the database.

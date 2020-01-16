@@ -93,10 +93,10 @@ type MultitenantAlertmanagerConfig struct {
 	ExternalURL  flagext.URLValue
 	PollInterval time.Duration
 
-	clusterBindAddr      string
-	clusterAdvertiseAddr string
-	peers                flagext.StringSlice
-	peerTimeout          time.Duration
+	ClusterBindAddr      string
+	ClusterAdvertiseAddr string
+	Peers                flagext.StringSlice
+	PeerTimeout          time.Duration
 
 	FallbackConfigFile string
 	AutoWebhookRoot    string
@@ -106,19 +106,19 @@ const defaultClusterAddr = "0.0.0.0:9094"
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.DataDir, "alertmanager.storage.path", "data/", "Base path for data storage.")
-	flag.DurationVar(&cfg.Retention, "alertmanager.storage.retention", 5*24*time.Hour, "How long to keep data for.")
+	f.StringVar(&cfg.DataDir, "alertmanager.storage.path", "data/", "Base path for data storage.")
+	f.DurationVar(&cfg.Retention, "alertmanager.storage.retention", 5*24*time.Hour, "How long to keep data for.")
 
-	flag.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
+	f.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 
-	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
-	flag.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
-	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
+	f.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
+	f.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
+	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
-	flag.StringVar(&cfg.clusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Listen address for cluster.")
-	flag.StringVar(&cfg.clusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
-	flag.Var(&cfg.peers, "cluster.peer", "Initial peers (may be repeated).")
-	flag.DurationVar(&cfg.peerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
+	f.StringVar(&cfg.ClusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Listen address for cluster.")
+	f.StringVar(&cfg.ClusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
+	f.Var(&cfg.Peers, "cluster.peer", "Initial peers (may be repeated).")
+	f.DurationVar(&cfg.PeerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -173,13 +173,13 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 	}
 
 	var peer *cluster.Peer
-	if cfg.clusterBindAddr != "" {
+	if cfg.ClusterBindAddr != "" {
 		peer, err = cluster.Create(
 			log.With(util.Logger, "component", "cluster"),
 			prometheus.DefaultRegisterer,
-			cfg.clusterBindAddr,
-			cfg.clusterAdvertiseAddr,
-			cfg.peers,
+			cfg.ClusterBindAddr,
+			cfg.ClusterAdvertiseAddr,
+			cfg.Peers,
 			true,
 			cluster.DefaultPushPullInterval,
 			cluster.DefaultGossipInterval,
@@ -241,7 +241,10 @@ func (am *MultitenantAlertmanager) Stop() {
 		am.Stop()
 	}
 	am.alertmanagersMtx.Unlock()
-	am.peer.Leave(am.cfg.peerTimeout)
+	err := am.peer.Leave(am.cfg.PeerTimeout)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: failed to leave the cluster", "err", err)
+	}
 	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
 
@@ -433,7 +436,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		DataDir:     am.cfg.DataDir,
 		Logger:      util.Logger,
 		Peer:        am.peer,
-		PeerTimeout: am.cfg.peerTimeout,
+		PeerTimeout: am.cfg.PeerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
 	})

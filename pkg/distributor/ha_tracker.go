@@ -110,7 +110,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax,
 		"distributor.ha-tracker.update-timeout-jitter-max",
 		5*time.Second,
-		"To spread the HA deduping heartbeats out over time.")
+		"Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout,
 		"distributor.ha-tracker.failover-timeout",
 		30*time.Second,

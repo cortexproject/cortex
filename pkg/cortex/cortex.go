@@ -66,15 +66,15 @@ type Config struct {
 	Ingester       ingester.Config          `yaml:"ingester,omitempty"`
 	Storage        storage.Config           `yaml:"storage,omitempty"`
 	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty"`
+	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig   validation.Limits        `yaml:"limits,omitempty"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty"`
+	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
 	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb"`
+	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
@@ -88,7 +88,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "target module (default All)")
+	f.Var(&c.Target, "target", "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")

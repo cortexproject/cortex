@@ -122,6 +122,10 @@ type tsdbMetrics struct {
 	memSeriesCreatedTotal *prometheus.Desc
 	memSeriesRemovedTotal *prometheus.Desc
 
+	// These maps drive the collection output. Key = original metric name to group.
+	sumCountersGlobally map[string]*prometheus.Desc
+	sumCountersPerUser  map[string]*prometheus.Desc
+
 	regsMu sync.RWMutex                    // custom mutex for shipper registry, to avoid blocking main user state mutex on collection
 	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
 }
@@ -149,6 +153,18 @@ func newTsdbMetrics(r prometheus.Registerer) *tsdbMetrics {
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
 		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
+	}
+
+	m.sumCountersGlobally = map[string]*prometheus.Desc{
+		"thanos_shipper_dir_syncs_total":         m.dirSyncs,
+		"thanos_shipper_dir_sync_failures_total": m.dirSyncFailures,
+		"thanos_shipper_uploads_total":           m.uploads,
+		"thanos_shipper_upload_failures_total":   m.uploadFailures,
+	}
+
+	m.sumCountersPerUser = map[string]*prometheus.Desc{
+		"prometheus_tsdb_head_series_created_total": m.memSeriesCreatedTotal,
+		"prometheus_tsdb_head_series_removed_total": m.memSeriesRemovedTotal,
 	}
 
 	if r != nil {
@@ -181,19 +197,15 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	}
 
 	// OK, we have it all. Let's build results.
-	out <- prometheus.MustNewConstMetric(sm.dirSyncs, prometheus.CounterValue, data.sumCountersAcrossAllUsers("thanos_shipper_dir_syncs_total"))
-	out <- prometheus.MustNewConstMetric(sm.dirSyncFailures, prometheus.CounterValue, data.sumCountersAcrossAllUsers("thanos_shipper_dir_sync_failures_total"))
-	out <- prometheus.MustNewConstMetric(sm.uploads, prometheus.CounterValue, data.sumCountersAcrossAllUsers("thanos_shipper_uploads_total"))
-	out <- prometheus.MustNewConstMetric(sm.uploadFailures, prometheus.CounterValue, data.sumCountersAcrossAllUsers("thanos_shipper_upload_failures_total"))
-
-	memSeriesCreated := data.sumCountersPerUser("prometheus_tsdb_head_series_created_total")
-	for user, val := range memSeriesCreated {
-		out <- prometheus.MustNewConstMetric(sm.memSeriesCreatedTotal, prometheus.CounterValue, val, user)
+	for metric, desc := range sm.sumCountersGlobally {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.sumCountersAcrossAllUsers(metric))
 	}
 
-	memSeriesRemoved := data.sumCountersPerUser("prometheus_tsdb_head_series_removed_total")
-	for user, val := range memSeriesRemoved {
-		out <- prometheus.MustNewConstMetric(sm.memSeriesRemovedTotal, prometheus.CounterValue, val, user)
+	for metric, desc := range sm.sumCountersPerUser {
+		memSeriesRemoved := data.sumCountersPerUser(metric)
+		for user, val := range memSeriesRemoved {
+			out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, user)
+		}
 	}
 }
 

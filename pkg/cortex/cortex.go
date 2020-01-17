@@ -76,7 +76,7 @@ type Config struct {
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
-	Compactor      compactor.Config         `yaml:"compactor,omitempty"`
+	Compactor      compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`

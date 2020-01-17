@@ -12,7 +12,9 @@ service Ruler {
   rpc Rules(RulesRequest) returns (RulesResponse) {};
 }
 
-message RulesRequest {}
+message RulesRequest {
+  string user = 1;
+}
 
 message RulesResponse {
   repeated rules.RuleGroupDesc groups = 1;

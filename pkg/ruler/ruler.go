@@ -450,9 +450,10 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	return promRules.NewManager(opts), nil
 }
 
-func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
+func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
 	rgs := []*rules.RuleGroupDesc{}
-	ownedRules, err := r.Rules(ctx, nil)
+	req := &RulesRequest{User: userID}
+	ownedRules, err := r.Rules(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +470,7 @@ func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
 			return nil, err
 		}
 		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, nil)
+		newGrps, err := cc.Rules(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -481,10 +482,7 @@ func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
 }
 
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
+	userID := in.User
 
 	groupDescs := []*rules.RuleGroupDesc{}
 

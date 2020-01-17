@@ -112,16 +112,15 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 }
 
 func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	ctx := user.InjectOrgID(req.Context(), userID)
 
-	logger := util.WithContext(ctx, util.Logger)
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := r.getRules(ctx)
+	rgs, err := r.getRules(req.Context(), userID)
 
 	if err != nil {
 		b, err := json.Marshal(&response{

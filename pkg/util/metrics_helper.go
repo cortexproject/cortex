@@ -68,7 +68,26 @@ func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, des
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
-func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string, labelNames ...string) {
+func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
+	var (
+		sampleCount uint64
+		sampleSum   float64
+		quantiles   map[float64]float64
+	)
+
+	for _, userMetrics := range d { // for each user
+		for _, m := range userMetrics[summaryName].GetMetric() {
+			summary := m.GetSummary()
+			sampleCount += summary.GetSampleCount()
+			sampleSum += summary.GetSampleSum()
+			quantiles = mergeSummaryQuantiles(quantiles, summary.GetQuantile())
+		}
+	}
+
+	out <- prometheus.MustNewConstSummary(desc, sampleCount, sampleSum, quantiles)
+}
+
+func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string, labelNames ...string) {
 	type summaryResult struct {
 		sampleCount uint64
 		sampleSum   float64
@@ -78,31 +97,48 @@ func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, 
 
 	result := map[string]summaryResult{}
 
-	for _, perMetric := range d { // for each user
-		mf := perMetric[summaryName]
-		for _, m := range mf.GetMetric() {
-			lbls, include := getLabelValues(m, labelNames)
-			if !include {
-				continue
-			}
+	for _, userMetrics := range d { // for each user
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[summaryName], labelNames)
 
-			key := getLabelsString(lbls)
-			r := result[key]
-			if r.labelValues == nil {
-				r.labelValues = lbls
-			}
-			summary := m.GetSummary()
-			r.sampleCount += summary.GetSampleCount()
-			r.sampleSum += summary.GetSampleSum()
-			r.quantiles = mergeSummaryQuantiles(r.quantiles, summary.GetQuantile())
+		for key, mwl := range metricsPerLabelValue {
+			for _, m := range mwl.metrics {
+				r := result[key]
+				if r.labelValues == nil {
+					r.labelValues = mwl.labelValues
+				}
 
-			result[key] = r
+				summary := m.GetSummary()
+				r.sampleCount += summary.GetSampleCount()
+				r.sampleSum += summary.GetSampleSum()
+				r.quantiles = mergeSummaryQuantiles(r.quantiles, summary.GetQuantile())
+
+				result[key] = r
+			}
 		}
 	}
 
 	for _, sr := range result {
 		out <- prometheus.MustNewConstSummary(desc, sr.sampleCount, sr.sampleSum, sr.quantiles, sr.labelValues...)
 	}
+}
+
+func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string) {
+	var (
+		sampleCount uint64
+		sampleSum   float64
+		buckets     map[float64]uint64
+	)
+
+	for _, userMetrics := range d { // for each user
+		for _, m := range userMetrics[histogramName].GetMetric() {
+			histo := m.GetHistogram()
+			sampleCount += histo.GetSampleCount()
+			sampleSum += histo.GetSampleSum()
+			buckets = mergeHistogramBuckets(buckets, histo.GetBucket())
+		}
+	}
+
+	out <- prometheus.MustNewConstHistogram(desc, sampleCount, sampleSum, buckets)
 }
 
 func mergeSummaryQuantiles(quantiles map[float64]float64, summaryQuantiles []*dto.Quantile) map[float64]float64 {
@@ -122,11 +158,49 @@ func mergeSummaryQuantiles(quantiles map[float64]float64, summaryQuantiles []*dt
 	return out
 }
 
-func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
-	if len(labelNames) == 0 {
-		return nil, true
+func mergeHistogramBuckets(buckets map[float64]uint64, histogramBuckets []*dto.Bucket) map[float64]uint64 {
+	if len(histogramBuckets) == 0 {
+		return buckets
 	}
 
+	out := buckets
+	if out == nil {
+		out = map[float64]uint64{}
+	}
+
+	for _, q := range histogramBuckets {
+		// we assume that all histograms have same buckets
+		out[q.GetUpperBound()] += q.GetCumulativeCount()
+	}
+	return out
+}
+
+type metricsWithLabels struct {
+	labelValues []string
+	metrics     []*dto.Metric
+}
+
+func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[string]metricsWithLabels {
+	result := map[string]metricsWithLabels{}
+
+	for _, m := range mf.GetMetric() {
+		lbls, include := getLabelValues(m, labelNames)
+		if !include {
+			continue
+		}
+
+		key := getLabelsString(lbls)
+		r := result[key]
+		if r.labelValues == nil {
+			r.labelValues = lbls
+		}
+		r.metrics = append(r.metrics, m)
+		result[key] = r
+	}
+	return result
+}
+
+func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
 	all := map[string]string{}
 	for _, lp := range m.GetLabel() {
 		all[lp.GetName()] = lp.GetValue()
@@ -145,10 +219,6 @@ func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
 }
 
 func getLabelsString(labelValues []string) string {
-	if len(labelValues) == 0 {
-		return ""
-	}
-
 	buf := bytes.Buffer{}
 	for _, v := range labelValues {
 		buf.WriteString(v)

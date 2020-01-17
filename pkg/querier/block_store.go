@@ -48,6 +48,10 @@ type UserStore struct {
 	seriesDataSizeTouched *prometheus.Desc
 	seriesDataSizeFetched *prometheus.Desc
 	seriesBlocksQueried   *prometheus.Desc
+	seriesGetAllDuration  *prometheus.Desc
+	seriesMergeDuration   *prometheus.Desc
+	resultSeriesCount     *prometheus.Desc
+	chunkSizeBytes        *prometheus.Desc
 }
 
 // NewUserStore returns a new UserStore
@@ -104,6 +108,23 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 		seriesBlocksQueried: prometheus.NewDesc(
 			"cortex_bucket_store_series_blocks_queried",
 			"TSDB: Number of blocks in a bucket store that were touched to satisfy a query.",
+			nil, nil),
+
+		seriesGetAllDuration: prometheus.NewDesc(
+			"thanos_bucket_store_series_get_all_duration_seconds",
+			"TSDB: Time it takes until all per-block prepares and preloads for a query are finished.",
+			nil, nil),
+		seriesMergeDuration: prometheus.NewDesc(
+			"thanos_bucket_store_series_merge_duration_seconds",
+			"TSDB: Time it takes to merge sub-results from all queried blocks into a single result.",
+			nil, nil),
+		resultSeriesCount: prometheus.NewDesc(
+			"thanos_bucket_store_series_result_series",
+			"Number of series observed in the final result of a query.",
+			nil, nil),
+		chunkSizeBytes: prometheus.NewDesc(
+			"thanos_bucket_store_sent_chunk_size_bytes",
+			"TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
 			nil, nil),
 	}
 
@@ -328,7 +349,15 @@ func (u *UserStore) Describe(out chan<- *prometheus.Desc) {
 	out <- u.blockDrops
 	out <- u.blockDropFailures
 	out <- u.blocksLoaded
-
+	out <- u.seriesDataTouched
+	out <- u.seriesDataFetched
+	out <- u.seriesDataSizeTouched
+	out <- u.seriesDataSizeFetched
+	out <- u.seriesBlocksQueried
+	out <- u.seriesGetAllDuration
+	out <- u.seriesMergeDuration
+	out <- u.resultSeriesCount
+	out <- u.chunkSizeBytes
 }
 
 func (u *UserStore) Collect(out chan<- prometheus.Metric) {
@@ -354,9 +383,14 @@ func (u *UserStore) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfGauges(out, u.blocksLoaded, "thanos_bucket_store_blocks_loaded")
 
-	data.SendSumOfSummaries(out, u.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
-	data.SendSumOfSummaries(out, u.seriesDataFetched, "thanos_bucket_store_series_data_fetched", "data_type")
-	data.SendSumOfSummaries(out, u.seriesDataSizeTouched, "thanos_bucket_store_series_data_size_touched_bytes", "data_type")
-	data.SendSumOfSummaries(out, u.seriesDataSizeFetched, "thanos_bucket_store_series_data_size_fetched_bytes", "data_type")
-	data.SendSumOfSummaries(out, u.seriesBlocksQueried, "thanos_bucket_store_series_blocks_queried")
+	data.SendSumOfSummariesWithLabels(out, u.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
+	data.SendSumOfSummariesWithLabels(out, u.seriesDataFetched, "thanos_bucket_store_series_data_fetched", "data_type")
+	data.SendSumOfSummariesWithLabels(out, u.seriesDataSizeTouched, "thanos_bucket_store_series_data_size_touched_bytes", "data_type")
+	data.SendSumOfSummariesWithLabels(out, u.seriesDataSizeFetched, "thanos_bucket_store_series_data_size_fetched_bytes", "data_type")
+	data.SendSumOfSummariesWithLabels(out, u.seriesBlocksQueried, "thanos_bucket_store_series_blocks_queried")
+
+	data.SendSumOfHistograms(out, u.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
+	data.SendSumOfHistograms(out, u.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
+	data.SendSumOfSummaries(out, u.resultSeriesCount, "thanos_bucket_store_series_result_series")
+	data.SendSumOfHistograms(out, u.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
 }

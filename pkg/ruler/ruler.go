@@ -451,18 +451,20 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	return promRules.NewManager(opts), nil
 }
 
-func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
-	ctx, err := user.InjectIntoGRPCRequest(ctx)
-	rgs := []*rules.RuleGroupDesc{}
-	ownedRules, err := r.Rules(ctx, nil)
+func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
+	rgs, err := r.getRules(userID)
 	if err != nil {
 		return nil, err
 	}
-	rgs = append(rgs, ownedRules.Groups...)
 
 	rulers, err := r.ring.GetAll()
 	if err != nil {
 		return nil, err
+	}
+
+	ctx, err = user.InjectIntoGRPCRequest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
 	for _, r := range rulers.Ingesters {
@@ -475,19 +477,13 @@ func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
 		}
-
 		rgs = append(rgs, newGrps.Groups...)
 	}
 
 	return rgs, nil
 }
 
-func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, _, err := user.ExtractFromGRPCRequest(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract org id from context, %v", err)
-	}
-
+func (r *Ruler) getRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	groupDescs := []*rules.RuleGroupDesc{}
 
 	var groups []*promRules.Group
@@ -540,6 +536,19 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 			groupDesc.Rules = append(groupDesc.Rules, ruleDesc)
 		}
 		groupDescs = append(groupDescs, groupDesc)
+	}
+	return groupDescs, nil
+}
+
+func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
+	userID, _, err := user.ExtractFromGRPCRequest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to extract org id from context, %v", err)
+	}
+
+	groupDescs, err := r.getRules(userID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &RulesResponse{Groups: groupDescs}, nil

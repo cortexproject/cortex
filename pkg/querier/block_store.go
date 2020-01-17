@@ -10,7 +10,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,32 +25,13 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger   log.Logger
-	cfg      tsdb.Config
-	bucket   objstore.BucketReader
-	stores   map[string]*store.BucketStore
-	client   storepb.StoreClient
-	logLevel logging.Level
-
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
-
-	// exported metrics
-	blockLoads            *prometheus.Desc
-	blockLoadFailures     *prometheus.Desc
-	blockDrops            *prometheus.Desc
-	blockDropFailures     *prometheus.Desc
-	blocksLoaded          *prometheus.Desc
-	seriesDataTouched     *prometheus.Desc
-	seriesDataFetched     *prometheus.Desc
-	seriesDataSizeTouched *prometheus.Desc
-	seriesDataSizeFetched *prometheus.Desc
-	seriesBlocksQueried   *prometheus.Desc
-	seriesGetAllDuration  *prometheus.Desc
-	seriesMergeDuration   *prometheus.Desc
-	resultSeriesCount     *prometheus.Desc
-	chunkSizeBytes        *prometheus.Desc
+	logger      log.Logger
+	cfg         tsdb.Config
+	bucket      objstore.BucketReader
+	stores      map[string]*store.BucketStore
+	client      storepb.StoreClient
+	logLevel    logging.Level
+	tsdbMetrics *tsdbBucketStoreMetrics
 }
 
 // NewUserStore returns a new UserStore
@@ -62,70 +42,12 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 	}
 
 	u := &UserStore{
-		logger:   logger,
-		cfg:      cfg,
-		bucket:   bkt,
-		stores:   map[string]*store.BucketStore{},
-		logLevel: logLevel,
-		regs:     map[string]*prometheus.Registry{},
-
-		blockLoads: prometheus.NewDesc(
-			"cortex_bucket_store_block_loads_total",
-			"TSDB: Total number of remote block loading attempts.",
-			nil, nil),
-		blockLoadFailures: prometheus.NewDesc(
-			"cortex_bucket_store_block_load_failures_total",
-			"TSDB: Total number of failed remote block loading attempts.",
-			nil, nil),
-		blockDrops: prometheus.NewDesc(
-			"cortex_bucket_store_block_drops_total",
-			"TSDB: Total number of local blocks that were dropped.",
-			nil, nil),
-		blockDropFailures: prometheus.NewDesc(
-			"cortex_bucket_store_block_drop_failures_total",
-			"TSDB: Total number of local blocks that failed to be dropped.",
-			nil, nil),
-		blocksLoaded: prometheus.NewDesc(
-			"cortex_bucket_store_blocks_loaded",
-			"TSDB: Number of currently loaded blocks.",
-			nil, nil),
-		seriesDataTouched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_touched",
-			"TSDB: How many items of a data type in a block were touched for a single series request.",
-			[]string{"data_type"}, nil),
-		seriesDataFetched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_fetched",
-			"TSDB: How many items of a data type in a block were fetched for a single series request.",
-			[]string{"data_type"}, nil),
-		seriesDataSizeTouched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_size_touched_bytes",
-			"TSDB: Size of all items of a data type in a block were touched for a single series request.",
-			[]string{"data_type"}, nil),
-		seriesDataSizeFetched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_size_fetched_bytes",
-			"TSDB: Size of all items of a data type in a block were fetched for a single series request.",
-			[]string{"data_type"}, nil),
-		seriesBlocksQueried: prometheus.NewDesc(
-			"cortex_bucket_store_series_blocks_queried",
-			"TSDB: Number of blocks in a bucket store that were touched to satisfy a query.",
-			nil, nil),
-
-		seriesGetAllDuration: prometheus.NewDesc(
-			"thanos_bucket_store_series_get_all_duration_seconds",
-			"TSDB: Time it takes until all per-block prepares and preloads for a query are finished.",
-			nil, nil),
-		seriesMergeDuration: prometheus.NewDesc(
-			"thanos_bucket_store_series_merge_duration_seconds",
-			"TSDB: Time it takes to merge sub-results from all queried blocks into a single result.",
-			nil, nil),
-		resultSeriesCount: prometheus.NewDesc(
-			"thanos_bucket_store_series_result_series",
-			"Number of series observed in the final result of a query.",
-			nil, nil),
-		chunkSizeBytes: prometheus.NewDesc(
-			"thanos_bucket_store_sent_chunk_size_bytes",
-			"TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
-			nil, nil),
+		logger:      logger,
+		cfg:         cfg,
+		bucket:      bkt,
+		stores:      map[string]*store.BucketStore{},
+		logLevel:    logLevel,
+		tsdbMetrics: newTSDBBucketStoreMetrics(),
 	}
 
 	serv := grpc.NewServer()
@@ -229,10 +151,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 
 			u.stores[user] = bs
-
-			u.regsMu.Lock()
-			u.regs[user] = reg
-			u.regsMu.Unlock()
+			u.tsdbMetrics.addUserRegistry(user, reg)
 		}
 
 		wg.Add(1)
@@ -329,68 +248,4 @@ func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesReq
 	}
 
 	return store.LabelValues(ctx, req)
-}
-
-func (u *UserStore) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	u.regsMu.Lock()
-	defer u.regsMu.Unlock()
-	for uid, r := range u.regs {
-		regs[uid] = r
-	}
-
-	return regs
-}
-
-func (u *UserStore) Describe(out chan<- *prometheus.Desc) {
-	out <- u.blockLoads
-	out <- u.blockLoadFailures
-	out <- u.blockDrops
-	out <- u.blockDropFailures
-	out <- u.blocksLoaded
-	out <- u.seriesDataTouched
-	out <- u.seriesDataFetched
-	out <- u.seriesDataSizeTouched
-	out <- u.seriesDataSizeFetched
-	out <- u.seriesBlocksQueried
-	out <- u.seriesGetAllDuration
-	out <- u.seriesMergeDuration
-	out <- u.resultSeriesCount
-	out <- u.chunkSizeBytes
-}
-
-func (u *UserStore) Collect(out chan<- prometheus.Metric) {
-	regs := u.registries()
-	data := util.NewMetricFamiliersPerUser()
-
-	for userID, r := range regs {
-		m, err := r.Gather()
-		if err == nil {
-			err = data.AddGatheredDataForUser(userID, m)
-		}
-
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
-			continue
-		}
-	}
-
-	data.SendSumOfCounters(out, u.blockLoads, "thanos_bucket_store_block_loads_total")
-	data.SendSumOfCounters(out, u.blockLoadFailures, "thanos_bucket_store_block_load_failures_total")
-	data.SendSumOfCounters(out, u.blockDrops, "thanos_bucket_store_block_drops_total")
-	data.SendSumOfCounters(out, u.blockDropFailures, "thanos_bucket_store_block_drop_failures_total")
-
-	data.SendSumOfGauges(out, u.blocksLoaded, "thanos_bucket_store_blocks_loaded")
-
-	data.SendSumOfSummariesWithLabels(out, u.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
-	data.SendSumOfSummariesWithLabels(out, u.seriesDataFetched, "thanos_bucket_store_series_data_fetched", "data_type")
-	data.SendSumOfSummariesWithLabels(out, u.seriesDataSizeTouched, "thanos_bucket_store_series_data_size_touched_bytes", "data_type")
-	data.SendSumOfSummariesWithLabels(out, u.seriesDataSizeFetched, "thanos_bucket_store_series_data_size_fetched_bytes", "data_type")
-	data.SendSumOfSummariesWithLabels(out, u.seriesBlocksQueried, "thanos_bucket_store_series_blocks_queried")
-
-	data.SendSumOfHistograms(out, u.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
-	data.SendSumOfHistograms(out, u.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
-	data.SendSumOfSummaries(out, u.resultSeriesCount, "thanos_bucket_store_series_result_series")
-	data.SendSumOfHistograms(out, u.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
 }

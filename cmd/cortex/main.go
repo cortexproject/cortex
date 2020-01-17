@@ -27,6 +27,8 @@ func init() {
 
 const configFileOption = "config.file"
 
+var exitOnError = true
+
 func main() {
 	var (
 		cfg                  cortex.Config
@@ -61,7 +63,19 @@ func main() {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 	}
 
-	flag.Parse()
+	// parse flags. We don't use flag.Parse() because it either exits on errors, or ignores them.
+	// We want to either exit or return on error (for tests).
+	if !exitOnError {
+		flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
+	}
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		if exitOnError {
+			os.Exit(2)
+		}
+
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

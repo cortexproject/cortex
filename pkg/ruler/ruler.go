@@ -467,8 +467,11 @@ func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*rules.RuleGroup
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	for _, r := range rulers.Ingesters {
-		conn, err := grpc.Dial(r.Addr, grpc.WithInsecure())
+	for _, rlr := range rulers.Ingesters {
+		if rlr.GetAddr() == r.lifecycler.Addr {
+			continue
+		}
+		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())
 		if err != nil {
 			return nil, err
 		}

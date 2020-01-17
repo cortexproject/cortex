@@ -45,6 +45,8 @@ type TSDBState struct {
 	// Used to run only once operations at shutdown, during the blocks/wal
 	// transferring to a joining ingester
 	transferOnce sync.Once
+
+	shipperMetrics *shipperMetrics
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -63,8 +65,9 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
-			dbs:    make(map[string]*tsdb.DB),
-			bucket: bucketClient,
+			dbs:            make(map[string]*tsdb.DB),
+			bucket:         bucketClient,
+			shipperMetrics: newShipperMetrics(registerer),
 		},
 	}
 
@@ -440,7 +443,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		s := shipper.New(util.Logger, i.TSDBState.shipperMetrics.newRegistryForUser(userID), udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
 		i.done.Add(1)
 		go func() {
 			defer i.done.Done()

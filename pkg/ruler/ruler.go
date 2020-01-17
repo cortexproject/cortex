@@ -451,6 +451,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 }
 
 func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
+	ctx = user.InjectOrgID(ctx, userID)
 	rgs := []*rules.RuleGroupDesc{}
 	req := &RulesRequest{User: userID}
 	ownedRules, err := r.Rules(ctx, req)
@@ -483,7 +484,6 @@ func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroup
 
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
 	userID := in.User
-
 	groupDescs := []*rules.RuleGroupDesc{}
 
 	var groups []*promRules.Group

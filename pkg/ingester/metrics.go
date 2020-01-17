@@ -202,8 +202,8 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	}
 
 	for metric, desc := range sm.sumCountersPerUser {
-		memSeriesRemoved := data.sumCountersPerUser(metric)
-		for user, val := range memSeriesRemoved {
+		userValues := data.sumCountersPerUser(metric)
+		for user, val := range userValues {
 			out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, user)
 		}
 	}

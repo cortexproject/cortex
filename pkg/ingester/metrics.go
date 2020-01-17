@@ -121,10 +121,6 @@ type tsdbMetrics struct {
 	memSeriesCreatedTotal *prometheus.Desc
 	memSeriesRemovedTotal *prometheus.Desc
 
-	// These maps drive the collection output. Key = original metric name to group.
-	sumCountersGlobally map[string]*prometheus.Desc
-	sumCountersPerUser  map[string]*prometheus.Desc
-
 	regsMu sync.RWMutex                    // custom mutex for shipper registry, to avoid blocking main user state mutex on collection
 	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
 }
@@ -152,18 +148,6 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
 		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
-	}
-
-	m.sumCountersGlobally = map[string]*prometheus.Desc{
-		"thanos_shipper_dir_syncs_total":         m.dirSyncs,
-		"thanos_shipper_dir_sync_failures_total": m.dirSyncFailures,
-		"thanos_shipper_uploads_total":           m.uploads,
-		"thanos_shipper_upload_failures_total":   m.uploadFailures,
-	}
-
-	m.sumCountersPerUser = map[string]*prometheus.Desc{
-		"prometheus_tsdb_head_series_created_total": m.memSeriesCreatedTotal,
-		"prometheus_tsdb_head_series_removed_total": m.memSeriesRemovedTotal,
 	}
 
 	if r != nil {
@@ -197,16 +181,13 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	}
 
 	// OK, we have it all. Let's build results.
-	for metric, desc := range sm.sumCountersGlobally {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.SumCountersAcrossAllUsers(metric))
-	}
+	data.SendSumOfCounters(out, sm.dirSyncs, "thanos_shipper_dir_syncs_total")
+	data.SendSumOfCounters(out, sm.dirSyncFailures, "thanos_shipper_dir_sync_failures_total")
+	data.SendSumOfCounters(out, sm.uploads, "thanos_shipper_uploads_total")
+	data.SendSumOfCounters(out, sm.uploadFailures, "thanos_shipper_upload_failures_total")
 
-	for metric, desc := range sm.sumCountersPerUser {
-		userValues := data.SumCountersPerUser(metric)
-		for user, val := range userValues {
-			out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, user)
-		}
-	}
+	data.SendSumOfCountersPerUser(out, sm.memSeriesCreatedTotal, "prometheus_tsdb_head_series_created_total")
+	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")
 }
 
 // make a copy of the map, so that metrics can be gathered while the new registry is being added.

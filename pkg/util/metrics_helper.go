@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -22,8 +23,7 @@ func NewMetricFamiliersPerUser() MetricFamiliesPerUser {
 // Gatherer.Gather specifies that there metric families are uniquely named, and we use that fact here.
 // If they are not, this method returns error.
 func (d MetricFamiliesPerUser) AddGatheredDataForUser(userID string, metrics []*dto.MetricFamily) error {
-	// first, create new map which maps metric names to a slice of MetricFamily instances.
-	// That makes it easier to do searches later.
+	// Keeping map of metric name to its family makes it easier to do searches later.
 	perMetricName := map[string]*dto.MetricFamily{}
 
 	for _, m := range metrics {
@@ -43,46 +43,43 @@ func (d MetricFamiliesPerUser) AddGatheredDataForUser(userID string, metrics []*
 	return nil
 }
 
-// SumCountersAcrossAllUsers returns sum(counter).
-func (d MetricFamiliesPerUser) SumCountersAcrossAllUsers(counter string) float64 {
+func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	result := float64(0)
 	for _, perMetric := range d {
 		result += sum(perMetric[counter], counterValue)
 	}
-	return result
+
+	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, result)
 }
 
-// SumCountersPerUser returns sum(counter) by (userID), where userID will be the map key.
-func (d MetricFamiliesPerUser) SumCountersPerUser(counter string) map[string]float64 {
-	result := map[string]float64{}
+func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	for user, perMetric := range d {
 		v := sum(perMetric[counter], counterValue)
-		result[user] = v
+
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, v, user)
 	}
-	return result
 }
 
-// SumCountersAcrossAllUsers returns sum(counter).
-func (d MetricFamiliesPerUser) SumGaugesAcrossAllUsers(gauge string) float64 {
+func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
 	result := float64(0)
 	for _, perMetric := range d {
 		result += sum(perMetric[gauge], gaugeValue)
 	}
-	return result
+	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
-type SummaryResult struct {
-	SampleCount uint64
-	SampleSum   float64
-	Quantiles   map[float64]float64
-	LabelValues []string
-}
+func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string, labelNames ...string) {
+	type summaryResult struct {
+		sampleCount uint64
+		sampleSum   float64
+		quantiles   map[float64]float64
+		labelValues []string
+	}
 
-func (d MetricFamiliesPerUser) SummariersAcrossAllUsers(metricName string, labelNames ...string) []SummaryResult {
-	result := map[string]SummaryResult{}
+	result := map[string]summaryResult{}
 
 	for _, perMetric := range d { // for each user
-		mf := perMetric[metricName]
+		mf := perMetric[summaryName]
 		for _, m := range mf.GetMetric() {
 			lbls, include := getLabelValues(m, labelNames)
 			if !include {
@@ -91,23 +88,21 @@ func (d MetricFamiliesPerUser) SummariersAcrossAllUsers(metricName string, label
 
 			key := getLabelsString(lbls)
 			r := result[key]
-			if r.LabelValues == nil {
-				r.LabelValues = lbls
+			if r.labelValues == nil {
+				r.labelValues = lbls
 			}
 			summary := m.GetSummary()
-			r.SampleCount += summary.GetSampleCount()
-			r.SampleSum += summary.GetSampleSum()
-			r.Quantiles = mergeSummaryQuantiles(r.Quantiles, summary.GetQuantile())
+			r.sampleCount += summary.GetSampleCount()
+			r.sampleSum += summary.GetSampleSum()
+			r.quantiles = mergeSummaryQuantiles(r.quantiles, summary.GetQuantile())
 
 			result[key] = r
 		}
 	}
 
-	out := make([]SummaryResult, 0, len(result))
 	for _, sr := range result {
-		out = append(out, sr)
+		out <- prometheus.MustNewConstSummary(desc, sr.sampleCount, sr.sampleSum, sr.quantiles, sr.labelValues...)
 	}
-	return out
 }
 
 func mergeSummaryQuantiles(quantiles map[float64]float64, summaryQuantiles []*dto.Quantile) map[float64]float64 {

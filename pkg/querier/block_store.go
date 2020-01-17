@@ -44,11 +44,6 @@ type UserStore struct {
 	blockDropFailures *prometheus.Desc
 	blocksLoaded      *prometheus.Desc
 	seriesDataTouched *prometheus.Desc
-
-	// original metric name -> exported metric
-	countersMap  map[string]*prometheus.Desc
-	gaugesMap    map[string]*prometheus.Desc
-	summariesMap map[string]*prometheus.Desc
 }
 
 // NewUserStore returns a new UserStore
@@ -90,21 +85,6 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 			"thanos_bucket_store_series_data_touched",
 			"TSDB: How many items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
-	}
-
-	u.countersMap = map[string]*prometheus.Desc{
-		"thanos_bucket_store_block_loads_total":         u.blockLoads,
-		"thanos_bucket_store_block_load_failures_total": u.blockLoadFailures,
-		"thanos_bucket_store_block_drops_total":         u.blockDrops,
-		"thanos_bucket_store_block_drop_failures_total": u.blockDropFailures,
-	}
-
-	u.gaugesMap = map[string]*prometheus.Desc{
-		"thanos_bucket_store_blocks_loaded": u.blocksLoaded,
-	}
-
-	u.summariesMap = map[string]*prometheus.Desc{
-		"thanos_bucket_store_series_data_touched": u.seriesDataTouched,
 	}
 
 	serv := grpc.NewServer()
@@ -347,16 +327,12 @@ func (u *UserStore) Collect(out chan<- prometheus.Metric) {
 		}
 	}
 
-	for metric, desc := range u.countersMap {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.SumCountersAcrossAllUsers(metric))
-	}
-	for metric, desc := range u.gaugesMap {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, data.SumGaugesAcrossAllUsers(metric))
-	}
-	for metric, desc := range u.summariesMap {
-		result := data.SummariersAcrossAllUsers(metric)
-		for _, sum := range result {
-			out <- prometheus.MustNewConstSummary(desc, sum.SampleCount, sum.SampleSum, sum.Quantiles, sum.LabelValues...)
-		}
-	}
+	data.SendSumOfCounters(out, u.blockLoads, "thanos_bucket_store_block_loads_total")
+	data.SendSumOfCounters(out, u.blockLoadFailures, "thanos_bucket_store_block_load_failures_total")
+	data.SendSumOfCounters(out, u.blockDrops, "thanos_bucket_store_block_drops_total")
+	data.SendSumOfCounters(out, u.blockDropFailures, "thanos_bucket_store_block_drop_failures_total")
+
+	data.SendSumOfGauges(out, u.blocksLoaded, "thanos_bucket_store_blocks_loaded")
+
+	data.SendSumOfSummaries(out, u.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
 }

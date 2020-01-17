@@ -12,7 +12,7 @@ import (
 func TestShipperMetrics(t *testing.T) {
 	mainReg := prometheus.NewRegistry()
 
-	tsdbMetrics := newTsdbMetrics(mainReg)
+	tsdbMetrics := newTSDBMetrics(mainReg)
 
 	tsdbMetrics.setRegistryForUser("user1", populateShipperMetrics(12345))
 	tsdbMetrics.setRegistryForUser("user2", populateShipperMetrics(85787))

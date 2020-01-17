@@ -67,7 +67,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*tsdb.DB),
 			bucket:      bucketClient,
-			tsdbMetrics: newTsdbMetrics(registerer),
+			tsdbMetrics: newTSDBMetrics(registerer),
 		},
 	}
 

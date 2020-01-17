@@ -130,7 +130,7 @@ type tsdbMetrics struct {
 	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
 }
 
-func newTsdbMetrics(r prometheus.Registerer) *tsdbMetrics {
+func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 	m := &tsdbMetrics{
 		regs: make(map[string]*prometheus.Registry),
 

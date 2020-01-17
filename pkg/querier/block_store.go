@@ -39,8 +39,8 @@ type UserStore struct {
 	syncMaxt model.TimeOrDurationValue
 
 	// Keeps a bucket store for each tenant.
-	stores   map[string]*store.BucketStore
 	storesMu sync.RWMutex
+	stores   map[string]*store.BucketStore
 
 	// Used to cancel workers and wait until done.
 	workers       sync.WaitGroup
@@ -178,16 +178,17 @@ func (u *UserStore) syncStores(ctx context.Context) error {
 }
 
 func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
-	start := time.Now()
-	defer func() {
+	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
-	}()
+	}(time.Now())
 
-	wg := &sync.WaitGroup{}
-	jobs := make(chan struct {
+	type job struct {
 		userID string
 		store  *store.BucketStore
-	})
+	}
+
+	wg := &sync.WaitGroup{}
+	jobs := make(chan job)
 
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
@@ -215,10 +216,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			return err
 		}
 
-		jobs <- struct {
-			userID string
-			store  *store.BucketStore
-		}{
+		jobs <- job{
 			userID: user,
 			store:  bs,
 		}

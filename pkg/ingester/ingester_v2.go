@@ -105,6 +105,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var firstPartialErr error
 
+	defer client.ReuseSlice(req.Timeseries)
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -182,8 +184,6 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
-
-	client.ReuseSlice(req.Timeseries)
 
 	if firstPartialErr != nil {
 		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())

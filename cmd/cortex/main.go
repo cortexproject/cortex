@@ -29,12 +29,27 @@ const configFileOption = "config.file"
 
 func main() {
 	var (
+		cfg                  cortex.Config
 		eventSampleRate      int
 		ballastBytes         int
 		mutexProfileFraction int
 	)
 
-	cfg := parseAndLoadConfigFile()
+	configFile := parseConfigFileParameter()
+
+	// This sets default values from flags to the config.
+	// It needs to be called before parsing the config file!
+	flagext.RegisterFlags(&cfg)
+
+	if configFile != "" {
+		if err := LoadConfig(configFile, &cfg); err != nil {
+			fmt.Printf("error loading config from %s: %v\n", configFile, err)
+			if exitOnError {
+				os.Exit(1)
+			}
+			return
+		}
+	}
 
 	// Ignore -config.file here, since it was already parsed, but it's still present on command line.
 	flagext.IgnoredFlag(flag.CommandLine, configFileOption, "Configuration file to load.")
@@ -46,7 +61,6 @@ func main() {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 	}
 
-	flagext.RegisterFlags(&cfg)
 	flag.Parse()
 
 	// Validate the config once both the config file has been loaded
@@ -54,7 +68,10 @@ func main() {
 	err := cfg.Validate()
 	if err != nil {
 		fmt.Printf("error validating config: %v\n", err)
-		os.Exit(1)
+		if exitOnError {
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
@@ -85,22 +102,14 @@ func main() {
 }
 
 // Parse -config.file option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.
-func parseAndLoadConfigFile() cortex.Config {
+func parseConfigFileParameter() string {
 	var configFile = ""
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError) // ignore unknown flags here.
 	fs.SetOutput(ioutil.Discard)                            // eat all error messages for unknown flags, and default Usage output
 	fs.StringVar(&configFile, configFileOption, "", "")     // usage not used in this function.
 	_ = fs.Parse(os.Args[1:])
 
-	var cfg cortex.Config
-	if configFile != "" {
-		if err := LoadConfig(configFile, &cfg); err != nil {
-			fmt.Printf("error loading config from %s: %v\n", configFile, err)
-			os.Exit(1)
-		}
-	}
-
-	return cfg
+	return configFile
 }
 
 // LoadConfig read YAML-formatted config from filename into cfg.

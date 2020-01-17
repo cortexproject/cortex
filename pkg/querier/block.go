@@ -28,7 +28,12 @@ type BlockQuerier struct {
 
 // NewBlockQuerier returns a client to query a block store
 func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQuerier, error) {
-	us, err := NewUserStore(cfg, logLevel, util.Logger, registerer)
+	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", util.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	us, err := NewUserStore(cfg, bucketClient, logLevel, util.Logger, registerer)
 	if err != nil {
 		return nil, err
 	}

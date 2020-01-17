@@ -30,30 +30,35 @@ import (
 type UserStore struct {
 	logger      log.Logger
 	cfg         tsdb.Config
-	bucket      objstore.BucketReader
-	stores      map[string]*store.BucketStore
+	bucket      objstore.Bucket
 	client      storepb.StoreClient
 	logLevel    logging.Level
 	tsdbMetrics *tsdbBucketStoreMetrics
+
+	// Keeps a bucket store for each tenant.
+	stores   map[string]*store.BucketStore
+	storesMu sync.RWMutex
+
+	// Used to cancel workers and wait until done.
+	workers       sync.WaitGroup
+	workersCancel context.CancelFunc
 
 	// Metrics.
 	syncTimes prometheus.Histogram
 }
 
 // NewUserStore returns a new UserStore
-func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
-	bkt, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", logger)
-	if err != nil {
-		return nil, err
-	}
+func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
+	workersCtx, workersCancel := context.WithCancel(context.Background())
 
 	u := &UserStore{
-		logger:      logger,
-		cfg:         cfg,
-		bucket:      bkt,
-		stores:      map[string]*store.BucketStore{},
-		logLevel:    logLevel,
-		tsdbMetrics: newTSDBBucketStoreMetrics(),
+		logger:        logger,
+		cfg:           cfg,
+		bucket:        bucketClient,
+		stores:        map[string]*store.BucketStore{},
+		logLevel:      logLevel,
+		tsdbMetrics:   newTSDBBucketStoreMetrics(),
+		workersCancel: workersCancel,
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -80,46 +85,65 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger, re
 
 	u.client = storepb.NewStoreClient(cc)
 
-	// Run an initial blocks sync, required in order to be able to serve queries.
-	level.Info(logger).Log("msg", "synchronizing TSDB blocks for all users")
-	if err := u.initialSync(context.Background()); err != nil {
-		level.Warn(logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
-		return nil, err
-	}
-	level.Info(logger).Log("msg", "successfully synchronized TSDB blocks for all users")
+	// If the sync is disabled we never sync blocks, which means the bucket store
+	// will be empty and no series will be returned once queried.
+	if u.cfg.BucketStore.SyncInterval > 0 {
+		// Run an initial blocks sync, required in order to be able to serve queries.
+		if err := u.initialSync(workersCtx); err != nil {
+			return nil, err
+		}
 
-	// Periodically sync the blocks.
-	go u.syncStoresLoop()
+		// Periodically sync the blocks.
+		u.workers.Add(1)
+		go u.syncStoresLoop(workersCtx)
+	}
 
 	return u, nil
 }
 
+// Stop the blocks sync and waits until done.
+func (u *UserStore) Stop() {
+	u.workersCancel()
+	u.workers.Wait()
+}
+
 // initialSync iterates over the storage bucket creating user bucket stores, and calling initialSync on each of them
 func (u *UserStore) initialSync(ctx context.Context) error {
+	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
+
 	if err := u.syncUserStores(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
+		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
 		return err
 	}
 
+	level.Info(u.logger).Log("msg", "successfully synchronized TSDB blocks for all users")
 	return nil
 }
 
 // syncStoresLoop periodically calls syncStores() to synchronize the blocks for all tenants.
-func (u *UserStore) syncStoresLoop() {
-	stopc := make(chan struct{})
+func (u *UserStore) syncStoresLoop(ctx context.Context) {
+	defer u.workers.Done()
 
-	err := runutil.Repeat(u.cfg.BucketStore.SyncInterval, stopc, func() error {
-		ts := time.Now()
+	syncInterval := u.cfg.BucketStore.SyncInterval
 
+	// Since we've just run the initial sync, we should wait the next
+	// sync interval before resynching.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(syncInterval):
+	}
+
+	err := runutil.Repeat(syncInterval, ctx.Done(), func() error {
 		level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
-		if err := u.syncStores(context.Background()); err != nil && err != io.EOF {
+		if err := u.syncStores(ctx); err != nil && err != io.EOF {
 			level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
 		} else {
 			level.Info(u.logger).Log("msg", "successfully synchronized TSDB blocks for all users")
 		}
 
-		u.syncTimes.Observe(time.Since(ts).Seconds())
 		return nil
 	})
 
@@ -143,81 +167,56 @@ func (u *UserStore) syncStores(ctx context.Context) error {
 }
 
 func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
-	mint, maxt := &model.TimeOrDurationValue{}, &model.TimeOrDurationValue{}
-	mint.Set("0000-01-01T00:00:00Z")
-	maxt.Set("9999-12-31T23:59:59Z")
+	start := time.Now()
+	defer func() {
+		u.syncTimes.Observe(time.Since(start).Seconds())
+	}()
 
 	wg := &sync.WaitGroup{}
+	jobs := make(chan struct {
+		userID string
+		store  *store.BucketStore
+	})
+
+	// Create a pool of workers which will synchronize blocks. The pool size
+	// is limited in order to avoid to concurrently sync a lot of tenants in
+	// a large cluster.
+	for i := 0; i < u.cfg.BucketStore.BlockSyncConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for job := range jobs {
+				if err := f(ctx, job.store); err != nil {
+					level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks for user", "user", job.userID, "err", err)
+				}
+			}
+		}()
+	}
+
+	// Iterate the bucket, lazily create a bucket store for each new user found
+	// and submit a sync job for each user.
 	err := u.bucket.Iter(ctx, "", func(s string) error {
 		user := strings.TrimSuffix(s, "/")
 
-		var bs *store.BucketStore
-		var ok bool
-		if bs, ok = u.stores[user]; !ok {
-			level.Info(u.logger).Log("msg", "creating user bucket store", "user", user)
-
-			// Instance a new bucket used by this tenant's shipper. We're going
-			// to instance a new context instead of reusing the one of this function,
-			// because the bucket client's lifespan is longer.
-			bkt, err := tsdb.NewBucketClient(context.Background(), u.cfg, fmt.Sprintf("cortex-%s", user), u.logger)
-			if err != nil {
-				return err
-			}
-
-			// Bucket with the user wrapper
-			userBkt := &ingester.Bucket{
-				UserID: user,
-				Bucket: bkt,
-			}
-
-			reg := prometheus.NewRegistry()
-
-			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
-			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, reg, storecache.Opts{
-				MaxSizeBytes:     indexCacheSizeBytes,
-				MaxItemSizeBytes: maxItemSizeBytes,
-			})
-			if err != nil {
-				return err
-			}
-			bs, err = store.NewBucketStore(
-				u.logger,
-				reg,
-				userBkt,
-				filepath.Join(u.cfg.BucketStore.SyncDir, user),
-				indexCache,
-				uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
-				u.cfg.BucketStore.MaxSampleCount,
-				u.cfg.BucketStore.MaxConcurrent,
-				u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
-				u.cfg.BucketStore.BlockSyncConcurrency,
-				&store.FilterConfig{
-					MinTime: *mint,
-					MaxTime: *maxt,
-				},
-				nil,   // No relabelling config
-				false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
-			)
-			if err != nil {
-				return err
-			}
-
-			u.stores[user] = bs
-			u.tsdbMetrics.addUserRegistry(user, reg)
+		bs, err := u.getOrCreateStore(user)
+		if err != nil {
+			return err
 		}
 
-		wg.Add(1)
-		go func(userID string, s *store.BucketStore) {
-			defer wg.Done()
-			if err := f(ctx, s); err != nil {
-				level.Warn(u.logger).Log("msg", "user sync failed", "user", userID)
-			}
-		}(user, bs)
+		jobs <- struct {
+			userID string
+			store  *store.BucketStore
+		}{
+			userID: user,
+			store:  bs,
+		}
 
 		return nil
 	})
 
+	// Wait until all workers completed.
+	close(jobs)
 	wg.Wait()
 
 	return err
@@ -235,8 +234,8 @@ func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storep
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store, ok := u.stores[v[0]]
-	if !ok {
+	store := u.getStore(v[0])
+	if store == nil {
 		return nil, nil
 	}
 
@@ -255,8 +254,8 @@ func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesS
 		return fmt.Errorf("no userID")
 	}
 
-	store, ok := u.stores[v[0]]
-	if !ok {
+	store := u.getStore(v[0])
+	if store == nil {
 		return nil
 	}
 
@@ -275,8 +274,8 @@ func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReque
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store, ok := u.stores[v[0]]
-	if !ok {
+	store := u.getStore(v[0])
+	if store == nil {
 		return nil, nil
 	}
 
@@ -295,10 +294,85 @@ func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesReq
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store, ok := u.stores[v[0]]
-	if !ok {
+	store := u.getStore(v[0])
+	if store == nil {
 		return nil, nil
 	}
 
 	return store.LabelValues(ctx, req)
+}
+
+func (u *UserStore) getStore(userID string) *store.BucketStore {
+	u.storesMu.RLock()
+	store, _ := u.stores[userID]
+	u.storesMu.RUnlock()
+
+	return store
+}
+
+func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) {
+	// Check if the store already exists.
+	bs := u.getStore(userID)
+	if bs != nil {
+		return bs, nil
+	}
+
+	u.storesMu.Lock()
+	defer u.storesMu.Unlock()
+
+	// Check again for the store in the event it was created in-between locks.
+	bs, _ = u.stores[userID]
+	if bs != nil {
+		return bs, nil
+	}
+
+	level.Info(u.logger).Log("msg", "creating user bucket store", "user", userID)
+
+	// Bucket with the user wrapper
+	userBkt := &ingester.Bucket{
+		UserID: userID,
+		Bucket: u.bucket,
+	}
+
+	reg := prometheus.NewRegistry()
+	indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
+	maxItemSizeBytes := indexCacheSizeBytes / 2
+	indexCache, err := storecache.NewInMemoryIndexCache(u.logger, reg, storecache.Opts{
+		MaxSizeBytes:     indexCacheSizeBytes,
+		MaxItemSizeBytes: maxItemSizeBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	mint, maxt := &model.TimeOrDurationValue{}, &model.TimeOrDurationValue{}
+	mint.Set("0000-01-01T00:00:00Z")
+	maxt.Set("9999-12-31T23:59:59Z")
+
+	bs, err = store.NewBucketStore(
+		u.logger,
+		reg,
+		userBkt,
+		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
+		indexCache,
+		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
+		u.cfg.BucketStore.MaxSampleCount,
+		u.cfg.BucketStore.MaxConcurrent,
+		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
+		u.cfg.BucketStore.BlockSyncConcurrency,
+		&store.FilterConfig{
+			MinTime: *mint,
+			MaxTime: *maxt,
+		},
+		nil,   // No relabelling config
+		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	u.stores[userID] = bs
+	u.tsdbMetrics.addUserRegistry(userID, reg)
+
+	return bs, nil
 }

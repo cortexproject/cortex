@@ -74,13 +74,15 @@ func TestRequest(t *testing.T) {
 }
 
 func TestResponse(t *testing.T) {
+	r := *parsedResponse
+	r.Headers = respHeaders
 	for i, tc := range []struct {
 		body     string
 		expected *PrometheusResponse
 	}{
 		{
 			body:     responseBody,
-			expected: parsedResponse,
+			expected: &r,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {

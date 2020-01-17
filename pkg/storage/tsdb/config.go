@@ -25,8 +25,7 @@ const (
 
 // Validation errors
 var (
-	errUnsupportedBackend  = errors.New("unsupported TSDB storage backend")
-	errInvalidSyncInterval = errors.New("the sync interval should be > 0")
+	errUnsupportedBackend = errors.New("unsupported TSDB storage backend")
 )
 
 // Config holds the config information for TSDB storage

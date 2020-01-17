@@ -72,11 +72,11 @@ func (d *DurationList) Set(s string) error {
 	return nil
 }
 
-// ToMillisecond returns the duration list in milliseconds
-func (d *DurationList) ToMillisecond() []int64 {
+// ToMilliseconds returns the duration list in milliseconds
+func (d *DurationList) ToMilliseconds() []int64 {
 	values := make([]int64, 0, len(*d))
 	for _, t := range *d {
-		values = append(values, int64(t/time.Millisecond))
+		values = append(values, t.Milliseconds())
 	}
 
 	return values

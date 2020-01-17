@@ -44,40 +44,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.retryMinBackoff = 10 * time.Second
 	cfg.retryMaxBackoff = time.Minute
 
-	f.Var(
-		&cfg.BlockRanges,
-		"compactor.block-ranges",
-		"Comma separated list of compaction ranges expressed in the time duration format")
-
-	f.DurationVar(
-		&cfg.ConsistencyDelay,
-		"compactor.consistency-delay",
-		30*time.Minute,
-		fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.MinimumAgeForRemoval))
-
-	f.IntVar(
-		&cfg.BlockSyncConcurrency,
-		"compactor.block-sync-concurrency",
-		20,
-		"Number of goroutines to use when syncing block metadata from object storage")
-
-	f.StringVar(
-		&cfg.DataDir,
-		"compactor.data-dir",
-		"./data",
-		"Data directory in which to cache blocks and process compactions")
-
-	f.DurationVar(
-		&cfg.CompactionInterval,
-		"compactor.compaction-interval",
-		time.Hour,
-		"The frequency at which the compaction runs")
-
-	f.IntVar(
-		&cfg.CompactionRetries,
-		"compactor.compaction-retries",
-		3,
-		"How many times to retry a failed compaction during a single compaction interval")
+	f.Var(&cfg.BlockRanges, "compactor.block-ranges", "Comma separated list of compaction ranges expressed in the time duration format")
+	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 30*time.Minute, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.MinimumAgeForRemoval))
+	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of goroutines to use when syncing block metadata from object storage")
+	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
+	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
+	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
@@ -116,7 +88,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
-	tsdbCompactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMillisecond(), downsample.NewPool())
+	tsdbCompactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
 	if err != nil {
 		cancelCtx()
 		return nil, errors.Wrap(err, "failed to create TSDB compactor")
@@ -205,7 +177,7 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 	c.compactionRunsStarted.Inc()
 
 	for retries.Ongoing() {
-		if err := c.compactUsers(ctx); err == nil {
+		if success := c.compactUsers(ctx); success {
 			c.compactionRunsCompleted.Inc()
 			return
 		}
@@ -216,12 +188,12 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 	c.compactionRunsFailed.Inc()
 }
 
-func (c *Compactor) compactUsers(ctx context.Context) error {
+func (c *Compactor) compactUsers(ctx context.Context) bool {
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
 	users, err := c.discoverUsers(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return err
+		return false
 	}
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
 
@@ -229,7 +201,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return ctx.Err()
+			return false
 		}
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
@@ -242,7 +214,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return nil
+	return true
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {

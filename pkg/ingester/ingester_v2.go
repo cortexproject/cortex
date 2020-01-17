@@ -426,7 +426,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	// Create a new user database
 	db, err := tsdb.Open(udir, util.Logger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecond(),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMilliseconds(),
 		NoLockfile:        true,
 	})
 	if err != nil {

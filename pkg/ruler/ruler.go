@@ -450,11 +450,10 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	return promRules.NewManager(opts), nil
 }
 
-func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
-	ctx = user.InjectOrgID(ctx, userID)
+func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
+	ctx, err := user.InjectIntoGRPCRequest(ctx)
 	rgs := []*rules.RuleGroupDesc{}
-	req := &RulesRequest{User: userID}
-	ownedRules, err := r.Rules(ctx, req)
+	ownedRules, err := r.Rules(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +470,7 @@ func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroup
 			return nil, err
 		}
 		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, req)
+		newGrps, err := cc.Rules(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -483,7 +482,11 @@ func (r *Ruler) getRules(ctx context.Context, userID string) ([]*rules.RuleGroup
 }
 
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID := in.User
+	userID, _, err := user.ExtractFromGRPCRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	groupDescs := []*rules.RuleGroupDesc{}
 
 	var groups []*promRules.Group

@@ -4,6 +4,7 @@
 package rules
 
 import (
+	encoding_binary "encoding/binary"
 	fmt "fmt"
 	_ "github.com/cortexproject/cortex/pkg/ingester/client"
 	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -11,6 +12,7 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	_ "github.com/golang/protobuf/ptypes/duration"
+	_ "github.com/golang/protobuf/ptypes/timestamp"
 	io "io"
 	math "math"
 	reflect "reflect"
@@ -122,6 +124,10 @@ type RuleDesc struct {
 	For         *time.Duration                                                     `protobuf:"bytes,4,opt,name=for,proto3,stdduration" json:"for,omitempty"`
 	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,5,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
 	Annotations []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,6,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
+	State       string                                                             `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	Health      string                                                             `protobuf:"bytes,8,opt,name=health,proto3" json:"health,omitempty"`
+	LastError   string                                                             `protobuf:"bytes,9,opt,name=lastError,proto3" json:"lastError,omitempty"`
+	Alerts      []*Alert                                                           `protobuf:"bytes,10,rep,name=alerts,proto3" json:"alerts,omitempty"`
 }
 
 func (m *RuleDesc) Reset()      { *m = RuleDesc{} }
@@ -184,43 +190,178 @@ func (m *RuleDesc) GetFor() *time.Duration {
 	return nil
 }
 
+func (m *RuleDesc) GetState() string {
+	if m != nil {
+		return m.State
+	}
+	return ""
+}
+
+func (m *RuleDesc) GetHealth() string {
+	if m != nil {
+		return m.Health
+	}
+	return ""
+}
+
+func (m *RuleDesc) GetLastError() string {
+	if m != nil {
+		return m.LastError
+	}
+	return ""
+}
+
+func (m *RuleDesc) GetAlerts() []*Alert {
+	if m != nil {
+		return m.Alerts
+	}
+	return nil
+}
+
+type Alert struct {
+	State       string                                                             `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,2,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
+	Annotations []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,3,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
+	Value       float64                                                            `protobuf:"fixed64,4,opt,name=value,proto3" json:"value,omitempty"`
+	ActiveAt    *time.Time                                                         `protobuf:"bytes,5,opt,name=active_at,json=activeAt,proto3,stdtime" json:"active_at,omitempty"`
+	FiredAt     *time.Time                                                         `protobuf:"bytes,6,opt,name=fired_at,json=firedAt,proto3,stdtime" json:"fired_at,omitempty"`
+	ResolvedAt  *time.Time                                                         `protobuf:"bytes,7,opt,name=resolved_at,json=resolvedAt,proto3,stdtime" json:"resolved_at,omitempty"`
+	LastSentAt  *time.Time                                                         `protobuf:"bytes,8,opt,name=last_sent_at,json=lastSentAt,proto3,stdtime" json:"last_sent_at,omitempty"`
+	ValidUntil  *time.Time                                                         `protobuf:"bytes,9,opt,name=valid_until,json=validUntil,proto3,stdtime" json:"valid_until,omitempty"`
+}
+
+func (m *Alert) Reset()      { *m = Alert{} }
+func (*Alert) ProtoMessage() {}
+func (*Alert) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8e722d3e922f0937, []int{2}
+}
+func (m *Alert) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Alert) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Alert.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Alert) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Alert.Merge(m, src)
+}
+func (m *Alert) XXX_Size() int {
+	return m.Size()
+}
+func (m *Alert) XXX_DiscardUnknown() {
+	xxx_messageInfo_Alert.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Alert proto.InternalMessageInfo
+
+func (m *Alert) GetState() string {
+	if m != nil {
+		return m.State
+	}
+	return ""
+}
+
+func (m *Alert) GetValue() float64 {
+	if m != nil {
+		return m.Value
+	}
+	return 0
+}
+
+func (m *Alert) GetActiveAt() *time.Time {
+	if m != nil {
+		return m.ActiveAt
+	}
+	return nil
+}
+
+func (m *Alert) GetFiredAt() *time.Time {
+	if m != nil {
+		return m.FiredAt
+	}
+	return nil
+}
+
+func (m *Alert) GetResolvedAt() *time.Time {
+	if m != nil {
+		return m.ResolvedAt
+	}
+	return nil
+}
+
+func (m *Alert) GetLastSentAt() *time.Time {
+	if m != nil {
+		return m.LastSentAt
+	}
+	return nil
+}
+
+func (m *Alert) GetValidUntil() *time.Time {
+	if m != nil {
+		return m.ValidUntil
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*RuleGroupDesc)(nil), "rules.RuleGroupDesc")
 	proto.RegisterType((*RuleDesc)(nil), "rules.RuleDesc")
+	proto.RegisterType((*Alert)(nil), "rules.Alert")
 }
 
 func init() { proto.RegisterFile("rules.proto", fileDescriptor_8e722d3e922f0937) }
 
 var fileDescriptor_8e722d3e922f0937 = []byte{
-	// 448 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x51, 0x41, 0x8b, 0xd4, 0x30,
-	0x14, 0x6e, 0x76, 0x66, 0xea, 0x4c, 0x06, 0x11, 0x83, 0x48, 0x5c, 0x24, 0x53, 0x16, 0x84, 0x5e,
-	0x6c, 0x71, 0x3d, 0xee, 0x45, 0x87, 0x05, 0x3d, 0x78, 0x90, 0x1e, 0xbd, 0xa5, 0xed, 0xdb, 0x5a,
-	0xcd, 0x36, 0x25, 0x49, 0xc5, 0x8b, 0xe0, 0x4f, 0xf0, 0xe8, 0x4f, 0xf0, 0xa7, 0xec, 0x71, 0xc0,
-	0xcb, 0xe2, 0x61, 0x75, 0x3a, 0x17, 0x8f, 0x0b, 0xfe, 0x01, 0x49, 0xd2, 0xba, 0x7b, 0x14, 0xc1,
-	0x53, 0xde, 0x97, 0xef, 0xe5, 0xbd, 0xef, 0xfb, 0x82, 0x97, 0xaa, 0x13, 0xa0, 0x93, 0x56, 0x49,
-	0x23, 0xc9, 0xcc, 0x81, 0xfd, 0x87, 0x55, 0x6d, 0x5e, 0x77, 0x79, 0x52, 0xc8, 0xd3, 0xb4, 0x92,
-	0x95, 0x4c, 0x1d, 0x9b, 0x77, 0x27, 0x0e, 0x39, 0xe0, 0x2a, 0xff, 0x6a, 0x9f, 0x55, 0x52, 0x56,
-	0x02, 0xae, 0xba, 0xca, 0x4e, 0x71, 0x53, 0xcb, 0x66, 0xe0, 0x9f, 0x5c, 0x1b, 0x57, 0x48, 0x65,
-	0xe0, 0x7d, 0xab, 0xe4, 0x1b, 0x28, 0xcc, 0x80, 0xd2, 0xf6, 0x6d, 0x95, 0xd6, 0x4d, 0x05, 0xda,
-	0x80, 0x4a, 0x0b, 0x51, 0x43, 0x33, 0x52, 0x7e, 0xc2, 0xc1, 0x57, 0x84, 0x6f, 0x66, 0x9d, 0x80,
-	0x67, 0x4a, 0x76, 0xed, 0x31, 0xe8, 0x82, 0x10, 0x3c, 0x6d, 0xf8, 0x29, 0x50, 0x14, 0xa1, 0x78,
-	0x91, 0xb9, 0x9a, 0xdc, 0xc7, 0x0b, 0x7b, 0xea, 0x96, 0x17, 0x40, 0xf7, 0x1c, 0x71, 0x75, 0x41,
-	0x8e, 0xf0, 0xbc, 0x6e, 0x0c, 0xa8, 0x77, 0x5c, 0xd0, 0x49, 0x84, 0xe2, 0xe5, 0xe1, 0xbd, 0xc4,
-	0x0b, 0x4f, 0x46, 0xe1, 0xc9, 0xf1, 0x20, 0x7c, 0x3d, 0xfd, 0xfc, 0x7d, 0x85, 0xb2, 0x3f, 0x0f,
-	0xc8, 0x03, 0xec, 0xa3, 0xa1, 0xd3, 0x68, 0x12, 0x2f, 0x0f, 0x6f, 0x25, 0x3e, 0x35, 0xab, 0xc9,
-	0xca, 0xc9, 0x3c, 0x4b, 0x28, 0xbe, 0x51, 0x82, 0x00, 0x03, 0x25, 0x9d, 0x45, 0x28, 0x9e, 0x67,
-	0x23, 0xb4, 0x7a, 0x3b, 0x0d, 0x8a, 0x86, 0x5e, 0xaf, 0xad, 0x0f, 0x7e, 0xed, 0xe1, 0xf9, 0x38,
-	0xc1, 0x36, 0xd8, 0x5c, 0x46, 0x43, 0xb6, 0x26, 0x77, 0x71, 0xa8, 0xa0, 0x90, 0xaa, 0x1c, 0xdc,
-	0x0c, 0x88, 0xdc, 0xc1, 0x33, 0x2e, 0x40, 0x19, 0xe7, 0x63, 0x91, 0x79, 0x40, 0x1e, 0xe1, 0xc9,
-	0x89, 0x54, 0x74, 0xfa, 0x77, 0xde, 0x6c, 0x2f, 0xd1, 0x38, 0x14, 0x3c, 0x07, 0xa1, 0xe9, 0xcc,
-	0xf9, 0xba, 0x9d, 0x0c, 0xb1, 0xbf, 0xb0, 0xb7, 0x2f, 0x79, 0xad, 0xd6, 0xcf, 0xcf, 0x2e, 0x56,
-	0xc1, 0xb7, 0x8b, 0xd5, 0xbf, 0x7c, 0xa2, 0x1f, 0xf3, 0xb4, 0xe4, 0xad, 0x01, 0x95, 0x0d, 0xab,
-	0xc8, 0x07, 0xbc, 0xe4, 0x4d, 0x23, 0x8d, 0x53, 0xa3, 0x69, 0xf8, 0xff, 0x37, 0x5f, 0xdf, 0xb7,
-	0x3e, 0xda, 0x6c, 0x59, 0x70, 0xbe, 0x65, 0xc1, 0xe5, 0x96, 0xa1, 0x8f, 0x3d, 0x43, 0x5f, 0x7a,
-	0x86, 0xce, 0x7a, 0x86, 0x36, 0x3d, 0x43, 0x3f, 0x7a, 0x86, 0x7e, 0xf6, 0x2c, 0xb8, 0xec, 0x19,
-	0xfa, 0xb4, 0x63, 0xc1, 0x66, 0xc7, 0x82, 0xf3, 0x1d, 0x0b, 0x5e, 0xf9, 0x0f, 0xce, 0x43, 0x17,
-	0xe7, 0xe3, 0xdf, 0x01, 0x00, 0x00, 0xff, 0xff, 0x67, 0x3a, 0xe5, 0x13, 0x36, 0x03, 0x00, 0x00,
+	// 645 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x54, 0x4f, 0x6b, 0x14, 0x31,
+	0x14, 0xdf, 0x74, 0xff, 0x67, 0x2b, 0x62, 0x10, 0x89, 0x45, 0xb2, 0x4b, 0x51, 0xd8, 0x8b, 0xbb,
+	0x58, 0x8f, 0x45, 0x70, 0x97, 0x8a, 0x1e, 0x3c, 0xc8, 0xa8, 0x17, 0x2f, 0x25, 0x3b, 0xf3, 0x3a,
+	0x1d, 0xcd, 0x4e, 0x86, 0x24, 0xb3, 0x78, 0x11, 0xfc, 0x08, 0x3d, 0xfa, 0x11, 0xfc, 0x28, 0x3d,
+	0x16, 0xbc, 0x14, 0x0f, 0xd5, 0x4e, 0x11, 0xbc, 0x08, 0xfd, 0x08, 0x92, 0x64, 0xa6, 0x5b, 0xf4,
+	0xb2, 0x08, 0xea, 0x69, 0xf2, 0x7b, 0x2f, 0xbf, 0xf7, 0xe7, 0xf7, 0x5e, 0x06, 0xf7, 0x54, 0x2e,
+	0x40, 0x8f, 0x32, 0x25, 0x8d, 0x24, 0x4d, 0x07, 0x36, 0xee, 0xc6, 0x89, 0xd9, 0xcf, 0x67, 0xa3,
+	0x50, 0xce, 0xc7, 0xb1, 0x8c, 0xe5, 0xd8, 0x79, 0x67, 0xf9, 0x9e, 0x43, 0x0e, 0xb8, 0x93, 0x67,
+	0x6d, 0xb0, 0x58, 0xca, 0x58, 0xc0, 0xf2, 0x56, 0x94, 0x2b, 0x6e, 0x12, 0x99, 0x96, 0xfe, 0xfe,
+	0xaf, 0x7e, 0x93, 0xcc, 0x41, 0x1b, 0x3e, 0xcf, 0xca, 0x0b, 0x0f, 0x2f, 0xe5, 0x0b, 0xa5, 0x32,
+	0xf0, 0x36, 0x53, 0xf2, 0x35, 0x84, 0xa6, 0x44, 0xe3, 0xec, 0x4d, 0x3c, 0x4e, 0xd2, 0x18, 0xb4,
+	0x01, 0x35, 0x0e, 0x45, 0x02, 0x69, 0xe5, 0xf2, 0x11, 0x36, 0x3f, 0x21, 0x7c, 0x25, 0xc8, 0x05,
+	0x3c, 0x56, 0x32, 0xcf, 0x76, 0x40, 0x87, 0x84, 0xe0, 0x46, 0xca, 0xe7, 0x40, 0xd1, 0x00, 0x0d,
+	0xbb, 0x81, 0x3b, 0x93, 0x5b, 0xb8, 0x6b, 0xbf, 0x3a, 0xe3, 0x21, 0xd0, 0x35, 0xe7, 0x58, 0x1a,
+	0xc8, 0x36, 0xee, 0x24, 0xa9, 0x01, 0xb5, 0xe0, 0x82, 0xd6, 0x07, 0x68, 0xd8, 0xdb, 0xba, 0x39,
+	0xf2, 0x95, 0x8f, 0xaa, 0xca, 0x47, 0x3b, 0x65, 0x67, 0xd3, 0xc6, 0x87, 0x2f, 0x7d, 0x14, 0x5c,
+	0x10, 0xc8, 0x1d, 0xec, 0xb5, 0xa3, 0x8d, 0x41, 0x7d, 0xd8, 0xdb, 0xba, 0x3a, 0xf2, 0xb2, 0xda,
+	0x9a, 0x6c, 0x39, 0x81, 0xf7, 0x12, 0x8a, 0xdb, 0x11, 0x08, 0x30, 0x10, 0xd1, 0xe6, 0x00, 0x0d,
+	0x3b, 0x41, 0x05, 0x6d, 0xbd, 0xb9, 0x06, 0x45, 0x5b, 0xbe, 0x5e, 0x7b, 0xde, 0xfc, 0x56, 0xc7,
+	0x9d, 0x2a, 0x82, 0xbd, 0x60, 0x75, 0xa9, 0x1a, 0xb2, 0x67, 0x72, 0x03, 0xb7, 0x14, 0x84, 0x52,
+	0x45, 0x65, 0x37, 0x25, 0x22, 0xd7, 0x71, 0x93, 0x0b, 0x50, 0xc6, 0xf5, 0xd1, 0x0d, 0x3c, 0x20,
+	0xf7, 0x70, 0x7d, 0x4f, 0x2a, 0xda, 0x58, 0xad, 0x37, 0x7b, 0x97, 0x68, 0xdc, 0x12, 0x7c, 0x06,
+	0x42, 0xd3, 0xa6, 0xeb, 0xeb, 0xda, 0xa8, 0x94, 0xfd, 0xa9, 0xb5, 0x3e, 0xe3, 0x89, 0x9a, 0x3e,
+	0x39, 0x3c, 0xe9, 0xd7, 0x3e, 0x9f, 0xf4, 0xff, 0x64, 0x88, 0x3e, 0xcc, 0x24, 0xe2, 0x99, 0x01,
+	0x15, 0x94, 0xa9, 0xc8, 0x3b, 0xdc, 0xe3, 0x69, 0x2a, 0x8d, 0xab, 0x46, 0xd3, 0xd6, 0xdf, 0xcf,
+	0x7c, 0x39, 0x9f, 0x15, 0x4f, 0x1b, 0x6e, 0x80, 0xb6, 0xbd, 0x78, 0x0e, 0x58, 0xa9, 0xf7, 0x81,
+	0x0b, 0xb3, 0x4f, 0x3b, 0x5e, 0x6a, 0x8f, 0xec, 0x4e, 0x09, 0xae, 0xcd, 0x23, 0xa5, 0xa4, 0xa2,
+	0x5d, 0xbf, 0x53, 0x17, 0x06, 0x72, 0x1b, 0xb7, 0x9c, 0xf6, 0x9a, 0x62, 0xd7, 0xc5, 0x7a, 0xb9,
+	0x17, 0x13, 0x6b, 0x0c, 0x4a, 0xdf, 0xe6, 0x8f, 0x06, 0x6e, 0x3a, 0xcb, 0x32, 0x37, 0xba, 0x9c,
+	0x7b, 0x39, 0x85, 0xb5, 0xff, 0x36, 0x85, 0xfa, 0xbf, 0x9f, 0xc2, 0x82, 0x8b, 0x1c, 0xdc, 0xba,
+	0xa2, 0xc0, 0x03, 0xf2, 0x00, 0x77, 0x79, 0x68, 0x92, 0x05, 0xec, 0x72, 0xe3, 0x5e, 0x50, 0x6f,
+	0x6b, 0xe3, 0xb7, 0x45, 0x7e, 0x51, 0xfd, 0x5e, 0xa6, 0x8d, 0x03, 0xf7, 0x4a, 0x3d, 0x65, 0x62,
+	0xec, 0x13, 0xdf, 0x4b, 0x14, 0x44, 0x96, 0xdd, 0x5a, 0x91, 0xdd, 0x76, 0x8c, 0x89, 0x21, 0x13,
+	0xdc, 0x53, 0xa0, 0xa5, 0x58, 0x78, 0x7e, 0x7b, 0x45, 0x3e, 0xae, 0x48, 0x13, 0x43, 0xa6, 0x78,
+	0xdd, 0xee, 0xc6, 0xae, 0x86, 0xd4, 0xd8, 0x18, 0x9d, 0x55, 0x63, 0x58, 0xd6, 0x73, 0x48, 0x8d,
+	0x2f, 0x63, 0xc1, 0x45, 0x12, 0xed, 0xe6, 0xa9, 0x49, 0x84, 0x5b, 0xb9, 0x95, 0x42, 0x38, 0xd2,
+	0x4b, 0xcb, 0x99, 0x6e, 0x1f, 0x9d, 0xb2, 0xda, 0xf1, 0x29, 0xab, 0x9d, 0x9f, 0x32, 0xf4, 0xbe,
+	0x60, 0xe8, 0x63, 0xc1, 0xd0, 0x61, 0xc1, 0xd0, 0x51, 0xc1, 0xd0, 0xd7, 0x82, 0xa1, 0xef, 0x05,
+	0xab, 0x9d, 0x17, 0x0c, 0x1d, 0x9c, 0xb1, 0xda, 0xd1, 0x19, 0xab, 0x1d, 0x9f, 0xb1, 0xda, 0x2b,
+	0xff, 0x0b, 0x9b, 0xb5, 0x5c, 0x8a, 0xfb, 0x3f, 0x03, 0x00, 0x00, 0xff, 0xff, 0xfa, 0xf4, 0x48,
+	0x2d, 0x39, 0x06, 0x00, 0x00,
 }
 
 func (this *RuleGroupDesc) Equal(that interface{}) bool {
@@ -326,6 +467,101 @@ func (this *RuleDesc) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if this.State != that1.State {
+		return false
+	}
+	if this.Health != that1.Health {
+		return false
+	}
+	if this.LastError != that1.LastError {
+		return false
+	}
+	if len(this.Alerts) != len(that1.Alerts) {
+		return false
+	}
+	for i := range this.Alerts {
+		if !this.Alerts[i].Equal(that1.Alerts[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *Alert) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Alert)
+	if !ok {
+		that2, ok := that.(Alert)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.State != that1.State {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].Equal(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Annotations) != len(that1.Annotations) {
+		return false
+	}
+	for i := range this.Annotations {
+		if !this.Annotations[i].Equal(that1.Annotations[i]) {
+			return false
+		}
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	if that1.ActiveAt == nil {
+		if this.ActiveAt != nil {
+			return false
+		}
+	} else if !this.ActiveAt.Equal(*that1.ActiveAt) {
+		return false
+	}
+	if that1.FiredAt == nil {
+		if this.FiredAt != nil {
+			return false
+		}
+	} else if !this.FiredAt.Equal(*that1.FiredAt) {
+		return false
+	}
+	if that1.ResolvedAt == nil {
+		if this.ResolvedAt != nil {
+			return false
+		}
+	} else if !this.ResolvedAt.Equal(*that1.ResolvedAt) {
+		return false
+	}
+	if that1.LastSentAt == nil {
+		if this.LastSentAt != nil {
+			return false
+		}
+	} else if !this.LastSentAt.Equal(*that1.LastSentAt) {
+		return false
+	}
+	if that1.ValidUntil == nil {
+		if this.ValidUntil != nil {
+			return false
+		}
+	} else if !this.ValidUntil.Equal(*that1.ValidUntil) {
+		return false
+	}
 	return true
 }
 func (this *RuleGroupDesc) GoString() string {
@@ -349,7 +585,7 @@ func (this *RuleDesc) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 14)
 	s = append(s, "&rules.RuleDesc{")
 	s = append(s, "Expr: "+fmt.Sprintf("%#v", this.Expr)+",\n")
 	s = append(s, "Record: "+fmt.Sprintf("%#v", this.Record)+",\n")
@@ -357,6 +593,30 @@ func (this *RuleDesc) GoString() string {
 	s = append(s, "For: "+fmt.Sprintf("%#v", this.For)+",\n")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	s = append(s, "Annotations: "+fmt.Sprintf("%#v", this.Annotations)+",\n")
+	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
+	s = append(s, "Health: "+fmt.Sprintf("%#v", this.Health)+",\n")
+	s = append(s, "LastError: "+fmt.Sprintf("%#v", this.LastError)+",\n")
+	if this.Alerts != nil {
+		s = append(s, "Alerts: "+fmt.Sprintf("%#v", this.Alerts)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Alert) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 13)
+	s = append(s, "&rules.Alert{")
+	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
+	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
+	s = append(s, "Annotations: "+fmt.Sprintf("%#v", this.Annotations)+",\n")
+	s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
+	s = append(s, "ActiveAt: "+fmt.Sprintf("%#v", this.ActiveAt)+",\n")
+	s = append(s, "FiredAt: "+fmt.Sprintf("%#v", this.FiredAt)+",\n")
+	s = append(s, "ResolvedAt: "+fmt.Sprintf("%#v", this.ResolvedAt)+",\n")
+	s = append(s, "LastSentAt: "+fmt.Sprintf("%#v", this.LastSentAt)+",\n")
+	s = append(s, "ValidUntil: "+fmt.Sprintf("%#v", this.ValidUntil)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -503,6 +763,140 @@ func (m *RuleDesc) MarshalTo(dAtA []byte) (int, error) {
 			i += n
 		}
 	}
+	if len(m.State) > 0 {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i += copy(dAtA[i:], m.State)
+	}
+	if len(m.Health) > 0 {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Health)))
+		i += copy(dAtA[i:], m.Health)
+	}
+	if len(m.LastError) > 0 {
+		dAtA[i] = 0x4a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.LastError)))
+		i += copy(dAtA[i:], m.LastError)
+	}
+	if len(m.Alerts) > 0 {
+		for _, msg := range m.Alerts {
+			dAtA[i] = 0x52
+			i++
+			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
+}
+
+func (m *Alert) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Alert) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.State) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i += copy(dAtA[i:], m.State)
+	}
+	if len(m.Labels) > 0 {
+		for _, msg := range m.Labels {
+			dAtA[i] = 0x12
+			i++
+			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if len(m.Annotations) > 0 {
+		for _, msg := range m.Annotations {
+			dAtA[i] = 0x1a
+			i++
+			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if m.Value != 0 {
+		dAtA[i] = 0x21
+		i++
+		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
+		i += 8
+	}
+	if m.ActiveAt != nil {
+		dAtA[i] = 0x2a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ActiveAt)))
+		n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ActiveAt, dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
+	}
+	if m.FiredAt != nil {
+		dAtA[i] = 0x32
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.FiredAt)))
+		n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.FiredAt, dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
+	}
+	if m.ResolvedAt != nil {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ResolvedAt)))
+		n5, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ResolvedAt, dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n5
+	}
+	if m.LastSentAt != nil {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.LastSentAt)))
+		n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.LastSentAt, dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n6
+	}
+	if m.ValidUntil != nil {
+		dAtA[i] = 0x4a
+		i++
+		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ValidUntil)))
+		n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ValidUntil, dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n7
+	}
 	return i, nil
 }
 
@@ -583,6 +977,72 @@ func (m *RuleDesc) Size() (n int) {
 			n += 1 + l + sovRules(uint64(l))
 		}
 	}
+	l = len(m.State)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	l = len(m.Health)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	l = len(m.LastError)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if len(m.Alerts) > 0 {
+		for _, e := range m.Alerts {
+			l = e.Size()
+			n += 1 + l + sovRules(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *Alert) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.State)
+	if l > 0 {
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if len(m.Labels) > 0 {
+		for _, e := range m.Labels {
+			l = e.Size()
+			n += 1 + l + sovRules(uint64(l))
+		}
+	}
+	if len(m.Annotations) > 0 {
+		for _, e := range m.Annotations {
+			l = e.Size()
+			n += 1 + l + sovRules(uint64(l))
+		}
+	}
+	if m.Value != 0 {
+		n += 9
+	}
+	if m.ActiveAt != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ActiveAt)
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if m.FiredAt != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.FiredAt)
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if m.ResolvedAt != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ResolvedAt)
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if m.LastSentAt != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.LastSentAt)
+		n += 1 + l + sovRules(uint64(l))
+	}
+	if m.ValidUntil != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ValidUntil)
+		n += 1 + l + sovRules(uint64(l))
+	}
 	return n
 }
 
@@ -625,6 +1085,28 @@ func (this *RuleDesc) String() string {
 		`For:` + strings.Replace(fmt.Sprintf("%v", this.For), "Duration", "duration.Duration", 1) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
+		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+		`Health:` + fmt.Sprintf("%v", this.Health) + `,`,
+		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
+		`Alerts:` + strings.Replace(fmt.Sprintf("%v", this.Alerts), "Alert", "Alert", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Alert) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Alert{`,
+		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
+		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
+		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`ActiveAt:` + strings.Replace(fmt.Sprintf("%v", this.ActiveAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
+		`FiredAt:` + strings.Replace(fmt.Sprintf("%v", this.FiredAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
+		`ResolvedAt:` + strings.Replace(fmt.Sprintf("%v", this.ResolvedAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
+		`LastSentAt:` + strings.Replace(fmt.Sprintf("%v", this.LastSentAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
+		`ValidUntil:` + strings.Replace(fmt.Sprintf("%v", this.ValidUntil), "Timestamp", "timestamp.Timestamp", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1102,6 +1584,480 @@ func (m *RuleDesc) Unmarshal(dAtA []byte) error {
 			}
 			m.Annotations = append(m.Annotations, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
 			if err := m.Annotations[len(m.Annotations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.State = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Health", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Health = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastError", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastError = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Alerts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Alerts = append(m.Alerts, &Alert{})
+			if err := m.Alerts[len(m.Alerts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRules(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRules
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthRules
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Alert) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRules
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Alert: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Alert: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.State = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Labels = append(m.Labels, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
+			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Annotations", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Annotations = append(m.Annotations, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
+			if err := m.Annotations[len(m.Annotations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var v uint64
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+			m.Value = float64(math.Float64frombits(v))
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ActiveAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ActiveAt == nil {
+				m.ActiveAt = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ActiveAt, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FiredAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.FiredAt == nil {
+				m.FiredAt = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.FiredAt, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResolvedAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ResolvedAt == nil {
+				m.ResolvedAt = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ResolvedAt, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastSentAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.LastSentAt == nil {
+				m.LastSentAt = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.LastSentAt, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValidUntil", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRules
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRules
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRules
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ValidUntil == nil {
+				m.ValidUntil = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ValidUntil, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

@@ -45,7 +45,7 @@ func main() {
 
 	if configFile != "" {
 		if err := LoadConfig(configFile, &cfg); err != nil {
-			fmt.Printf("error loading config from %s: %v\n", configFile, err)
+			fmt.Fprintf(os.Stderr, "error loading config from %s: %v\n", configFile, err)
 			if testMode {
 				return
 			}

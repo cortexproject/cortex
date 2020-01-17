@@ -14,56 +14,62 @@ import (
 
 func TestName(t *testing.T) {
 	for name, tc := range map[string]struct {
-		arguments []string
-		yaml      string
-		message   string
+		arguments     []string
+		yaml          string
+		stdoutMessage string // string that must be included in stdout
+		stderrMessage string // string that must be included in stderr
 	}{
 		"help": {
-			arguments: []string{"-h"},
-			message:   configFileOption,
+			arguments:     []string{"-h"},
+			stderrMessage: configFileOption,
 		},
 
 		// check that config file is used
 		"config with unknown target": {
-			yaml:    "target: unknown",
-			message: "unrecognised module name: unknown",
+			yaml:          "target: unknown",
+			stderrMessage: "unrecognised module name: unknown",
+		},
+
+		"argument with unknown target": {
+			arguments:     []string{"-target=unknown"},
+			stderrMessage: "unrecognised module name: unknown",
 		},
 
 		"unknown flag": {
-			arguments: []string{"-unknown.flag"},
-			message:   "unknown.flag",
+			arguments:     []string{"-unknown.flag"},
+			stderrMessage: "-unknown.flag",
 		},
 
 		"config with wrong argument override": {
-			yaml:      "target: ingester",
-			arguments: []string{"-target=unknown"},
-			message:   "unrecognised module name: unknown",
+			yaml:          "target: ingester",
+			arguments:     []string{"-target=unknown"},
+			stderrMessage: "unrecognised module name: unknown",
 		},
 
 		"default values": {
-			message: "target: all\n",
+			stdoutMessage: "target: all\n",
 		},
 
 		"config": {
-			yaml:    "target: ingester",
-			message: "target: ingester\n",
+			yaml:          "target: ingester",
+			stdoutMessage: "target: ingester\n",
 		},
 
 		"config with arguments override": {
-			yaml:      "target: ingester",
-			arguments: []string{"-target=distributor"},
-			message:   "target: distributor\n",
+			yaml:          "target: ingester",
+			arguments:     []string{"-target=distributor"},
+			stdoutMessage: "target: distributor\n",
 		},
 
 		// we cannot test the happy path, as cortex would then fully start
 	} {
 		t.Run(name, func(t *testing.T) {
-			testSingle(t, tc.arguments, tc.yaml, []byte(tc.message))
+			testSingle(t, tc.arguments, tc.yaml, []byte(tc.stdoutMessage), []byte(tc.stderrMessage))
 		})
 	}
 }
 
-func testSingle(t *testing.T, arguments []string, yaml string, message []byte) {
+func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, stderrMessage []byte) {
 	oldArgs, oldStdout, oldStderr := os.Args, os.Stdout, os.Stderr
 	defer func() {
 		os.Stdout = oldStdout
@@ -98,7 +104,12 @@ func testSingle(t *testing.T, arguments []string, yaml string, message []byte) {
 	main()
 
 	stdout, stderr := co.Done()
-	require.True(t, bytes.Contains(stdout, message) || bytes.Contains(stderr, message), "Message expected in output: %q, got stdout: %q and stderr: %q", message, stdout, stderr)
+	if !bytes.Contains(stdout, stdoutMessage) {
+		t.Errorf("Expected on stdout: %q, stdout: %s\n", stdoutMessage, stdout)
+	}
+	if !bytes.Contains(stderr, stderrMessage) {
+		t.Errorf("Expected on stderr: %q, stderr: %s\n", stderrMessage, stderr)
+	}
 }
 
 type capturedOutput struct {

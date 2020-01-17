@@ -90,17 +90,22 @@ func TestUserStore_syncUserStores(t *testing.T) {
 
 	// Sync user stores and count the number of times the callback is called.
 	storesCount := int32(0)
-	us.syncUserStores(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
+	err = us.syncUserStores(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
 		atomic.AddInt32(&storesCount, 1)
 		return nil
 	})
 
+	assert.NoError(t, err)
 	bucketClient.AssertNumberOfCalls(t, "Iter", 1)
 	assert.Equal(t, storesCount, int32(3))
 }
 
 func mockLoggingLevel() logging.Level {
 	level := logging.Level{}
-	level.Set("info")
+	err := level.Set("info")
+	if err != nil {
+		panic(err)
+	}
+
 	return level
 }

@@ -35,6 +35,9 @@ type UserStore struct {
 	logLevel    logging.Level
 	tsdbMetrics *tsdbBucketStoreMetrics
 
+	syncMint model.TimeOrDurationValue
+	syncMaxt model.TimeOrDurationValue
+
 	// Keeps a bucket store for each tenant.
 	stores   map[string]*store.BucketStore
 	storesMu sync.RWMutex
@@ -64,6 +67,14 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
+	}
+
+	// Configure the time range to sync all blocks.
+	if err := u.syncMint.Set("0000-01-01T00:00:00Z"); err != nil {
+		return nil, err
+	}
+	if err := u.syncMaxt.Set("9999-12-31T23:59:59Z"); err != nil {
+		return nil, err
 	}
 
 	if registerer != nil {
@@ -304,7 +315,7 @@ func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesReq
 
 func (u *UserStore) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
-	store, _ := u.stores[userID]
+	store := u.stores[userID]
 	u.storesMu.RUnlock()
 
 	return store
@@ -321,7 +332,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	defer u.storesMu.Unlock()
 
 	// Check again for the store in the event it was created in-between locks.
-	bs, _ = u.stores[userID]
+	bs = u.stores[userID]
 	if bs != nil {
 		return bs, nil
 	}
@@ -345,10 +356,6 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		return nil, err
 	}
 
-	mint, maxt := &model.TimeOrDurationValue{}, &model.TimeOrDurationValue{}
-	mint.Set("0000-01-01T00:00:00Z")
-	maxt.Set("9999-12-31T23:59:59Z")
-
 	bs, err = store.NewBucketStore(
 		u.logger,
 		reg,
@@ -361,8 +368,8 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		&store.FilterConfig{
-			MinTime: *mint,
-			MaxTime: *maxt,
+			MinTime: u.syncMint,
+			MaxTime: u.syncMaxt,
 		},
 		nil,   // No relabelling config
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

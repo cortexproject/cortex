@@ -3,6 +3,7 @@ package ruler
 import (
 	native_ctx "context"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"net/http"
 	"net/url"
@@ -472,7 +473,7 @@ func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
 		cc := NewRulerClient(conn)
 		newGrps, err := cc.Rules(ctx, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
 		}
 
 		rgs = append(rgs, newGrps.Groups...)
@@ -484,7 +485,7 @@ func (r *Ruler) getRules(ctx context.Context) ([]*rules.RuleGroupDesc, error) {
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
 	userID, _, err := user.ExtractFromGRPCRequest(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to extract org id from context, %v", err)
 	}
 
 	groupDescs := []*rules.RuleGroupDesc{}

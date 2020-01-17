@@ -115,6 +115,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
+		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}

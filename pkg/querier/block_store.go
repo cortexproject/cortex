@@ -43,10 +43,12 @@ type UserStore struct {
 	blockDrops        *prometheus.Desc
 	blockDropFailures *prometheus.Desc
 	blocksLoaded      *prometheus.Desc
+	seriesDataTouched *prometheus.Desc
 
 	// original metric name -> exported metric
-	countersMap map[string]*prometheus.Desc
-	gaugesMap   map[string]*prometheus.Desc
+	countersMap  map[string]*prometheus.Desc
+	gaugesMap    map[string]*prometheus.Desc
+	summariesMap map[string]*prometheus.Desc
 }
 
 // NewUserStore returns a new UserStore
@@ -84,6 +86,10 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 			"cortex_bucket_store_blocks_loaded",
 			"TSDB: Number of currently loaded blocks.",
 			nil, nil),
+		seriesDataTouched: prometheus.NewDesc(
+			"thanos_bucket_store_series_data_touched",
+			"TSDB: How many items of a data type in a block were touched for a single series request.",
+			[]string{"data_type"}, nil),
 	}
 
 	u.countersMap = map[string]*prometheus.Desc{
@@ -95,6 +101,10 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 
 	u.gaugesMap = map[string]*prometheus.Desc{
 		"thanos_bucket_store_blocks_loaded": u.blocksLoaded,
+	}
+
+	u.summariesMap = map[string]*prometheus.Desc{
+		"thanos_bucket_store_series_data_touched": u.seriesDataTouched,
 	}
 
 	serv := grpc.NewServer()
@@ -327,12 +337,14 @@ func (u *UserStore) Collect(out chan<- prometheus.Metric) {
 
 	for userID, r := range regs {
 		m, err := r.Gather()
+		if err == nil {
+			err = data.AddGatheredDataForUser(userID, m)
+		}
+
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
 			continue
 		}
-
-		data.AddGatheredDataForUser(userID, m)
 	}
 
 	for metric, desc := range u.countersMap {
@@ -340,5 +352,11 @@ func (u *UserStore) Collect(out chan<- prometheus.Metric) {
 	}
 	for metric, desc := range u.gaugesMap {
 		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, data.SumGaugesAcrossAllUsers(metric))
+	}
+	for metric, desc := range u.summariesMap {
+		result := data.SummariersAcrossAllUsers(metric)
+		for _, sum := range result {
+			out <- prometheus.MustNewConstSummary(desc, sum.SampleCount, sum.SampleSum, sum.Quantiles, sum.LabelValues...)
+		}
 	}
 }

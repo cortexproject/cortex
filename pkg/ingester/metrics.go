@@ -187,12 +187,13 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 
 	for userID, r := range regs {
 		m, err := r.Gather()
+		if err == nil {
+			err = data.AddGatheredDataForUser(userID, m)
+		}
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
 			continue
 		}
-
-		data.AddGatheredDataForUser(userID, m)
 	}
 
 	// OK, we have it all. Let's build results.

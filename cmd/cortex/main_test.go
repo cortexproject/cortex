@@ -18,13 +18,13 @@ func TestName(t *testing.T) {
 		yaml      string
 		message   string
 	}{
-		"-h": {
+		"help": {
 			arguments: []string{"-h"},
 			message:   configFileOption,
 		},
 
 		// check that config file is used
-		"-config.file": {
+		"config with unknown target": {
 			yaml:    "target: unknown",
 			message: "unrecognised module name: unknown",
 		},
@@ -34,10 +34,25 @@ func TestName(t *testing.T) {
 			message:   "unknown.flag",
 		},
 
-		"-config.file + argument override": {
+		"config with wrong argument override": {
 			yaml:      "target: ingester",
 			arguments: []string{"-target=unknown"},
 			message:   "unrecognised module name: unknown",
+		},
+
+		"default values": {
+			message: "target: all\n",
+		},
+
+		"config": {
+			yaml:    "target: ingester",
+			message: "target: ingester\n",
+		},
+
+		"config with arguments override": {
+			yaml:      "target: ingester",
+			arguments: []string{"-target=distributor"},
+			message:   "target: distributor\n",
 		},
 
 		// we cannot test the happy path, as cortex would then fully start
@@ -73,7 +88,7 @@ func testSingle(t *testing.T, arguments []string, yaml string, message []byte) {
 
 	arguments = append([]string{"./cortex"}, arguments...)
 
-	exitOnError = false
+	testMode = true
 	os.Args = arguments
 	co := captureOutput(t)
 
@@ -83,7 +98,7 @@ func testSingle(t *testing.T, arguments []string, yaml string, message []byte) {
 	main()
 
 	stdout, stderr := co.Done()
-	require.True(t, bytes.Contains(stdout, message) || bytes.Contains(stderr, message))
+	require.True(t, bytes.Contains(stdout, message) || bytes.Contains(stderr, message), "Message expected in output: %q, got stdout: %q and stderr: %q", message, stdout, stderr)
 }
 
 type capturedOutput struct {

@@ -27,7 +27,7 @@ func init() {
 
 const configFileOption = "config.file"
 
-var exitOnError = true
+var testMode = false
 
 func main() {
 	var (
@@ -46,10 +46,10 @@ func main() {
 	if configFile != "" {
 		if err := LoadConfig(configFile, &cfg); err != nil {
 			fmt.Printf("error loading config from %s: %v\n", configFile, err)
-			if exitOnError {
-				os.Exit(1)
+			if testMode {
+				return
 			}
-			return
+			os.Exit(1)
 		}
 	}
 
@@ -63,29 +63,22 @@ func main() {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 	}
 
-	// parse flags. We don't use flag.Parse() because it either exits on errors, or ignores them.
-	// We want to either exit or return on error (for tests).
-	if !exitOnError {
+	if testMode {
+		// Don't exit on error in test mode. Just parse parameters, dump config and stop.
 		flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
-	}
-	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
-		if exitOnError {
-			os.Exit(2)
-		}
-
-		fmt.Fprintln(os.Stderr, err)
+		flag.Parse()
+		DumpYaml(&cfg)
 		return
 	}
+
+	flag.Parse()
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	err := cfg.Validate()
 	if err != nil {
 		fmt.Printf("error validating config: %v\n", err)
-		if exitOnError {
-			os.Exit(1)
-		}
-		return
+		os.Exit(1)
 	}
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
@@ -118,9 +111,10 @@ func main() {
 // Parse -config.file option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.
 func parseConfigFileParameter() string {
 	var configFile = ""
-	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError) // ignore unknown flags here.
-	fs.SetOutput(ioutil.Discard)                            // eat all error messages for unknown flags, and default Usage output
-	fs.StringVar(&configFile, configFileOption, "", "")     // usage not used in this function.
+	// ignore errors and any output here. Any flag errors will be reported by main flag.Parse() call.
+	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	fs.StringVar(&configFile, configFileOption, "", "") // usage not used in this function.
 	_ = fs.Parse(os.Args[1:])
 
 	return configFile
@@ -139,4 +133,13 @@ func LoadConfig(filename string, cfg *cortex.Config) error {
 	}
 
 	return nil
+}
+
+func DumpYaml(cfg *cortex.Config) {
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	} else {
+		fmt.Printf("%s\n", out)
+	}
 }

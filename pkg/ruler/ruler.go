@@ -541,9 +541,9 @@ func (r *Ruler) getRules(userID string) ([]*rules.RuleGroupDesc, error) {
 }
 
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, _, err := user.ExtractFromGRPCRequest(ctx)
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to extract org id from context, %v", err)
+		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	groupDescs, err := r.getRules(userID)

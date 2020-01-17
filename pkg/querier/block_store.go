@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,6 +36,17 @@ type UserStore struct {
 	// Maps userID -> registry
 	regsMu sync.Mutex
 	regs   map[string]*prometheus.Registry
+
+	// exported metrics
+	blockLoads        *prometheus.Desc
+	blockLoadFailures *prometheus.Desc
+	blockDrops        *prometheus.Desc
+	blockDropFailures *prometheus.Desc
+	blocksLoaded      *prometheus.Desc
+
+	// original metric name -> exported metric
+	countersMap map[string]*prometheus.Desc
+	gaugesMap   map[string]*prometheus.Desc
 }
 
 // NewUserStore returns a new UserStore
@@ -48,8 +60,41 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 		logger:   logger,
 		cfg:      cfg,
 		bucket:   bkt,
-		stores:   make(map[string]*store.BucketStore),
+		stores:   map[string]*store.BucketStore{},
 		logLevel: logLevel,
+		regs:     map[string]*prometheus.Registry{},
+
+		blockLoads: prometheus.NewDesc(
+			"cortex_bucket_store_block_loads_total",
+			"TSDB: Total number of remote block loading attempts.",
+			nil, nil),
+		blockLoadFailures: prometheus.NewDesc(
+			"cortex_bucket_store_block_load_failures_total",
+			"TSDB: Total number of failed remote block loading attempts.",
+			nil, nil),
+		blockDrops: prometheus.NewDesc(
+			"cortex_bucket_store_block_drops_total",
+			"TSDB: Total number of local blocks that were dropped.",
+			nil, nil),
+		blockDropFailures: prometheus.NewDesc(
+			"cortex_bucket_store_block_drop_failures_total",
+			"TSDB: Total number of local blocks that failed to be dropped.",
+			nil, nil),
+		blocksLoaded: prometheus.NewDesc(
+			"cortex_bucket_store_blocks_loaded",
+			"TSDB: Number of currently loaded blocks.",
+			nil, nil),
+	}
+
+	u.countersMap = map[string]*prometheus.Desc{
+		"thanos_bucket_store_block_loads_total":         u.blockLoads,
+		"thanos_bucket_store_block_load_failures_total": u.blockLoadFailures,
+		"thanos_bucket_store_block_drops_total":         u.blockDrops,
+		"thanos_bucket_store_block_drop_failures_total": u.blockDropFailures,
+	}
+
+	u.gaugesMap = map[string]*prometheus.Desc{
+		"thanos_bucket_store_blocks_loaded": u.blocksLoaded,
 	}
 
 	serv := grpc.NewServer()
@@ -253,4 +298,47 @@ func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesReq
 	}
 
 	return store.LabelValues(ctx, req)
+}
+
+func (u *UserStore) registries() map[string]*prometheus.Registry {
+	regs := map[string]*prometheus.Registry{}
+
+	u.regsMu.Lock()
+	defer u.regsMu.Unlock()
+	for uid, r := range u.regs {
+		regs[uid] = r
+	}
+
+	return regs
+}
+
+func (u *UserStore) Describe(out chan<- *prometheus.Desc) {
+	out <- u.blockLoads
+	out <- u.blockLoadFailures
+	out <- u.blockDrops
+	out <- u.blockDropFailures
+	out <- u.blocksLoaded
+
+}
+
+func (u *UserStore) Collect(out chan<- prometheus.Metric) {
+	regs := u.registries()
+	data := util.NewMetricFamiliersPerUser()
+
+	for userID, r := range regs {
+		m, err := r.Gather()
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
+			continue
+		}
+
+		data.AddGatheredDataForUser(userID, m)
+	}
+
+	for metric, desc := range u.countersMap {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.SumCountersAcrossAllUsers(metric))
+	}
+	for metric, desc := range u.gaugesMap {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, data.SumGaugesAcrossAllUsers(metric))
+	}
 }

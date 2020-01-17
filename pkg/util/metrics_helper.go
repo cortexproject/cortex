@@ -34,7 +34,7 @@ func (d MetricFamiliesPerUser) AddGatheredDataForUser(userID string, metrics []*
 func (d MetricFamiliesPerUser) SumCountersAcrossAllUsers(counter string) float64 {
 	result := float64(0)
 	for _, perMetric := range d {
-		result += sumCounters(perMetric[counter])
+		result += sum(perMetric[counter], counterValue)
 	}
 	return result
 }
@@ -43,19 +43,31 @@ func (d MetricFamiliesPerUser) SumCountersAcrossAllUsers(counter string) float64
 func (d MetricFamiliesPerUser) SumCountersPerUser(counter string) map[string]float64 {
 	result := map[string]float64{}
 	for user, perMetric := range d {
-		v := sumCounters(perMetric[counter])
+		v := sum(perMetric[counter], counterValue)
 		result[user] = v
 	}
 	return result
 }
 
-func sumCounters(mfs []*dto.MetricFamily) float64 {
+// SumCountersAcrossAllUsers returns sum(counter).
+func (d MetricFamiliesPerUser) SumGaugesAcrossAllUsers(gauge string) float64 {
+	result := float64(0)
+	for _, perMetric := range d {
+		result += sum(perMetric[gauge], gaugeValue)
+	}
+	return result
+}
+
+func sum(mfs []*dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	result := float64(0)
 	for _, mf := range mfs {
 		for _, m := range mf.Metric {
-			// This works even if m is nil, m.Counter is nil or m.Counter.Value is nil (it returns 0 in those cases)
-			result += m.GetCounter().GetValue()
+			result += fn(m)
 		}
 	}
 	return result
 }
+
+// This works even if m is nil, m.Counter is nil or m.Counter.Value is nil (it returns 0 in those cases)
+func counterValue(m *dto.Metric) float64 { return m.GetCounter().GetValue() }
+func gaugeValue(m *dto.Metric) float64   { return m.GetGauge().GetValue() }

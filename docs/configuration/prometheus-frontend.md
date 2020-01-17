@@ -1,7 +1,7 @@
 ---
 title: "Prometheus Frontend"
 linkTitle: "Prometheus Frontend"
-weight: 2
+weight: 3
 slug: prometheus-frontend
 ---
 

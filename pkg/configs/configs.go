@@ -203,10 +203,8 @@ func (c RulesConfig) parseV2Formatted() (map[string]rulefmt.RuleGroups, error) {
 
 	for fn, content := range c.Files {
 		rgs, errs := rulefmt.Parse([]byte(content))
-		if errs != nil {
-			for _, err := range errs {
-				return nil, err
-			}
+		for _, err := range errs { // return just the first error, if any
+			return nil, err
 		}
 		ruleMap[fn] = *rgs
 

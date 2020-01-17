@@ -1,7 +1,7 @@
 ---
 title: "Cortex Arguments"
 linkTitle: "Cortex Arguments Explained"
-weight: 1
+weight: 2
 slug: arguments
 ---
 

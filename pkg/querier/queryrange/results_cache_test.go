@@ -31,6 +31,12 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
+	respHeaders = []*PrometheusResponseHeader{
+		{
+			Name:   "Content-Type",
+			Values: []string{"application/json"},
+		},
+	}
 	parsedResponse = &PrometheusResponse{
 		Status: "success",
 		Data: PrometheusData{
@@ -105,6 +111,57 @@ func mkExtent(start, end int64) Extent {
 		Start:    start,
 		End:      end,
 		Response: any,
+	}
+}
+
+func TestShouldCache(t *testing.T) {
+	for i, tc := range []struct {
+		input    Response
+		expected bool
+	}{
+		// Does not contain the needed header.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+			}),
+			expected: true,
+		},
+		// Does contain the header which has the value.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   cachecontrolHeader,
+						Values: []string{noCacheValue},
+					},
+				},
+			}),
+			expected: false,
+		},
+		// Header contains extra values but still good.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   cachecontrolHeader,
+						Values: []string{"foo", noCacheValue},
+					},
+				},
+			}),
+			expected: false,
+		},
+	} {
+		{
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				ret := shouldCacheResponse(tc.input)
+				require.Equal(t, tc.expected, ret)
+			})
+		}
 	}
 }
 

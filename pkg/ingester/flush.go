@@ -137,7 +137,7 @@ func (i *Ingester) sweepUsers(immediate bool) {
 	oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
 }
 
-type flushReason int
+type flushReason int8
 
 const (
 	noFlush = iota
@@ -146,6 +146,7 @@ const (
 	reasonAged
 	reasonIdle
 	reasonStale
+	reasonSpreadFlush
 )
 
 func (f flushReason) String() string {
@@ -162,6 +163,8 @@ func (f flushReason) String() string {
 		return "Idle"
 	case reasonStale:
 		return "Stale"
+	case reasonSpreadFlush:
+		return "Spread"
 	default:
 		panic("unrecognised flushReason")
 	}
@@ -196,6 +199,9 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 
 	// Flush if we have more than one chunk, and haven't already flushed the first chunk
 	if len(series.chunkDescs) > 1 && !series.chunkDescs[0].flushed {
+		if series.chunkDescs[0].flushReason != noFlush {
+			return series.chunkDescs[0].flushReason
+		}
 		return reasonMultipleChunksInSeries
 	} else if len(series.chunkDescs) > 0 {
 		// Otherwise look in more detail at the first chunk
@@ -287,7 +293,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
 	chunks := series.chunkDescs
 	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp, series.isStale()) != noFlush) {
-		series.closeHead()
+		series.closeHead(reasonImmediate)
 	} else {
 		chunks = chunks[:len(chunks)-1]
 	}

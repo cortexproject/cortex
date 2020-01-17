@@ -4,7 +4,7 @@ This document defines project governance for the project.
 
 ## Voting
 
-The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote.
+The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.
 
 For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.
 Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time, the votes will be tallied and the outcome noted.

@@ -38,12 +38,16 @@ type UserStore struct {
 	regs   map[string]*prometheus.Registry
 
 	// exported metrics
-	blockLoads        *prometheus.Desc
-	blockLoadFailures *prometheus.Desc
-	blockDrops        *prometheus.Desc
-	blockDropFailures *prometheus.Desc
-	blocksLoaded      *prometheus.Desc
-	seriesDataTouched *prometheus.Desc
+	blockLoads            *prometheus.Desc
+	blockLoadFailures     *prometheus.Desc
+	blockDrops            *prometheus.Desc
+	blockDropFailures     *prometheus.Desc
+	blocksLoaded          *prometheus.Desc
+	seriesDataTouched     *prometheus.Desc
+	seriesDataFetched     *prometheus.Desc
+	seriesDataSizeTouched *prometheus.Desc
+	seriesDataSizeFetched *prometheus.Desc
+	seriesBlocksQueried   *prometheus.Desc
 }
 
 // NewUserStore returns a new UserStore
@@ -82,9 +86,25 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 			"TSDB: Number of currently loaded blocks.",
 			nil, nil),
 		seriesDataTouched: prometheus.NewDesc(
-			"thanos_bucket_store_series_data_touched",
+			"cortex_bucket_store_series_data_touched",
 			"TSDB: How many items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
+		seriesDataFetched: prometheus.NewDesc(
+			"cortex_bucket_store_series_data_fetched",
+			"TSDB: How many items of a data type in a block were fetched for a single series request.",
+			[]string{"data_type"}, nil),
+		seriesDataSizeTouched: prometheus.NewDesc(
+			"cortex_bucket_store_series_data_size_touched_bytes",
+			"TSDB: Size of all items of a data type in a block were touched for a single series request.",
+			[]string{"data_type"}, nil),
+		seriesDataSizeFetched: prometheus.NewDesc(
+			"cortex_bucket_store_series_data_size_fetched_bytes",
+			"TSDB: Size of all items of a data type in a block were fetched for a single series request.",
+			[]string{"data_type"}, nil),
+		seriesBlocksQueried: prometheus.NewDesc(
+			"cortex_bucket_store_series_blocks_queried",
+			"TSDB: Number of blocks in a bucket store that were touched to satisfy a query.",
+			nil, nil),
 	}
 
 	serv := grpc.NewServer()
@@ -335,4 +355,8 @@ func (u *UserStore) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGauges(out, u.blocksLoaded, "thanos_bucket_store_blocks_loaded")
 
 	data.SendSumOfSummaries(out, u.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
+	data.SendSumOfSummaries(out, u.seriesDataFetched, "thanos_bucket_store_series_data_fetched", "data_type")
+	data.SendSumOfSummaries(out, u.seriesDataSizeTouched, "thanos_bucket_store_series_data_size_touched_bytes", "data_type")
+	data.SendSumOfSummaries(out, u.seriesDataSizeFetched, "thanos_bucket_store_series_data_size_fetched_bytes", "data_type")
+	data.SendSumOfSummaries(out, u.seriesBlocksQueried, "thanos_bucket_store_series_blocks_queried")
 }

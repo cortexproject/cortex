@@ -1,0 +1,22 @@
+// Ruler Service Representation
+// This service is used to retrieve the current state of rules running across
+// all Rulers in a cluster. It allows cortex to fully serve the `/api/v1/{rules|alerts}`
+// Prometheus API
+syntax = "proto3";
+package ruler;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/ruler/rules/rules.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service Ruler {
+  rpc Rules(RulesRequest) returns (RulesResponse) {};
+}
+
+message RulesRequest {}
+
+message RulesResponse {
+  repeated rules.RuleGroupDesc groups = 1;
+}

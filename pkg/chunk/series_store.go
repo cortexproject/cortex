@@ -449,11 +449,18 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 			return err
 		}
 	} else {
-		err := c.storage.PutChunks(ctx, chunks)
-		if err != nil {
+		// When the Index & chunk store are not the same, we write to the index store first.
+		// If this is throttled or errors it will not attempt to write the chunk.
+		// The reasonsing is htat some of the chunk store options have an open limit for throughput,
+		// but charge a per operation fee. Thus rapidly or otherwise unnecessarily writing chunk data
+		// incurs a monetary expense that can be avoided.
+		// S3, GCP and Azure blob storage services charge these sorts of fees.
+		if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
 			return err
 		}
-		if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
+
+		err := c.storage.PutChunks(ctx, chunks)
+		if err != nil {
 			return err
 		}
 	}

@@ -736,6 +736,10 @@ ring:
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flushcheckperiod: <duration> | default = 1m0s]
+
+# Enable the ruler api
+# CLI flag: -experimental.ruler.enable-api
+[enableapi: <boolean> | default = false]
 ```
 
 ## `alertmanager_config`

@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: consul
@@ -32,3 +32,6 @@ spec:
           containerPort: 8400
         - name: http-noscrape
           containerPort: 8500
+  selector:
+    matchLabels:
+      name: consul

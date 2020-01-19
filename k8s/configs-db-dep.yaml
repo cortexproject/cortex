@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: configs-db
@@ -22,3 +22,6 @@ spec:
             value: configs
         ports:
         - containerPort: 5432
+  selector:
+    matchLabels:
+      name: configs-db

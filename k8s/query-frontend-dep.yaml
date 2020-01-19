@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: query-frontend
@@ -24,3 +24,6 @@ spec:
           name: grpc
         - containerPort: 80
           name: http
+  selector:
+    matchLabels:
+      name: query-frontend

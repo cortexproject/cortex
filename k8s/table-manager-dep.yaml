@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: table-manager
@@ -24,3 +24,6 @@ spec:
         - -dynamodb.chunk-table.from=2017-04-17
         ports:
         - containerPort: 80
+  selector:
+    matchLabels:
+      name: table-manager

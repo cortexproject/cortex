@@ -33,7 +33,7 @@ subjects:
   name: retrieval
   namespace: default
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: retrieval
@@ -60,3 +60,6 @@ spec:
         - name: config-volume
           configMap:
             name: retrieval-config
+  selector:
+    matchLabels:
+      name: retrieval

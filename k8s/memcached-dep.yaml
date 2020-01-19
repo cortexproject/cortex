@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: memcached
@@ -22,3 +22,6 @@ spec:
         ports:
         - name: clients
           containerPort: 11211
+  selector:
+    matchLabels:
+      name: memcached

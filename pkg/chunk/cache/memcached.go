@@ -36,7 +36,7 @@ type observableVecCollector struct {
 func (observableVecCollector) Register()                             {}
 func (observableVecCollector) Before(method string, start time.Time) {}
 func (o observableVecCollector) After(method, statusCode string, start time.Time) {
-	o.v.WithLabelValues(method, statusCode).Observe(time.Now().Sub(start).Seconds())
+	o.v.WithLabelValues(method, statusCode).Observe(time.Since(start).Seconds())
 }
 
 // MemcachedConfig is config to make a Memcached

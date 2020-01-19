@@ -207,7 +207,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
+	if time.Since(i.startTime) < i.cfg.MinReadyDuration {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 

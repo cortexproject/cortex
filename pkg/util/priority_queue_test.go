@@ -19,20 +19,6 @@ func (i simpleItem) Key() string {
 	return strconv.FormatInt(int64(i), 10)
 }
 
-type richItem struct {
-	priority int64
-	key      string
-	value    string
-}
-
-func (r richItem) Priority() int64 {
-	return r.priority
-}
-
-func (r richItem) Key() string {
-	return r.key
-}
-
 func TestPriorityQueueBasic(t *testing.T) {
 	queue := NewPriorityQueue(nil)
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")

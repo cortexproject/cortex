@@ -252,7 +252,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
-	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
+	log, _ := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
 	if *through < *from {

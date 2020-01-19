@@ -27,15 +27,6 @@ type timed struct {
 	d DB
 }
 
-func (t timed) errorCode(err error) string {
-	switch err {
-	case nil:
-		return "200"
-	default:
-		return "500"
-	}
-}
-
 func (t timed) GetConfig(ctx context.Context, userID string) (configs.View, error) {
 	var cfg configs.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -152,14 +151,6 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 			require.Equal(t, test.status, w.Result().StatusCode)
 		})
 	}
-}
-
-func defaultOverrides(t *testing.T) *validation.Overrides {
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
-	return overrides
 }
 
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {

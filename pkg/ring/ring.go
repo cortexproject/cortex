@@ -59,12 +59,6 @@ const (
 	Reporting // Special value for inquiring about health
 )
 
-type uint32s []uint32
-
-func (x uint32s) Len() int           { return len(x) }
-func (x uint32s) Less(i, j int) bool { return x[i] < x[j] }
-func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
-
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty ring")
 

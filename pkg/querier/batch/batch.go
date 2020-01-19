@@ -29,10 +29,6 @@ type iterator interface {
 	Err() error
 }
 
-func print(b promchunk.Batch) {
-	fmt.Println("  ", b.Timestamps, b.Index, b.Length)
-}
-
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) storage.SeriesIterator {
 	iter := newMergeIterator(chunks)

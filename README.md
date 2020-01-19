@@ -27,6 +27,7 @@ should read:
 1. [An overview of Cortex's architecture](docs/architecture.md)
 1. [A general guide to running Cortex](docs/guides/running.md)
 1. [Information regarding configuring Cortex](docs/configuration/arguments.md)
+1. [Steps to run Cortex with Cassandra](docs/guides/cortex-with-cassandra.md)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
 

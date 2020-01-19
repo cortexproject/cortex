@@ -42,6 +42,7 @@ require (
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.0.0
+	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
@@ -50,6 +51,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/alertmanager v0.19.0
 	github.com/prometheus/client_golang v1.2.1
+	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/common v0.7.0
 	github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1

@@ -2,7 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,7 +15,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -40,6 +45,8 @@ type TSDBState struct {
 	// Used to run only once operations at shutdown, during the blocks/wal
 	// transferring to a joining ingester
 	transferOnce sync.Once
+
+	shipperMetrics *shipperMetrics
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -58,9 +65,20 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
-			dbs:    make(map[string]*tsdb.DB),
-			bucket: bucketClient,
+			dbs:            make(map[string]*tsdb.DB),
+			bucket:         bucketClient,
+			shipperMetrics: newShipperMetrics(registerer),
 		},
+	}
+
+	// Replace specific metrics which we can't directly track but we need to read
+	// them from the underlying system (ie. TSDB).
+	if registerer != nil {
+		registerer.Unregister(i.metrics.memSeries)
+		registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_series",
+			Help: "The current number of series in memory.",
+		}, i.numSeriesInTSDB))
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
@@ -70,7 +88,12 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg)
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+
+	// Scan and open TSDB's that already exist on disk
+	if err := i.openExistingTSDB(context.Background()); err != nil {
+		return nil, err
+	}
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
@@ -80,7 +103,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr error
+	var firstPartialErr error
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -135,7 +158,10 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
-				lastPartialErr = err
+				if firstPartialErr == nil {
+					firstPartialErr = errors.Wrapf(err, "series=%s", lset.String())
+				}
+
 				continue
 			}
 
@@ -159,8 +185,8 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	client.ReuseSlice(req.Timeseries)
 
-	if lastPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(lastPartialErr, userID).Error())
+	if firstPartialErr != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
 	}
 	return &client.WriteResponse{}, nil
 }
@@ -194,6 +220,8 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		return nil, err
 	}
 
+	numSamples := 0
+
 	result := &client.QueryResponse{}
 	for ss.Next() {
 		series := ss.At()
@@ -208,8 +236,12 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 
+		numSamples += len(ts.Samples)
 		result.Timeseries = append(result.Timeseries, ts)
 	}
+
+	i.metrics.queriedSeries.Observe(float64(len(result.Timeseries)))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
 
 	return result, ss.Err()
 }
@@ -372,11 +404,25 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
+	// Create the database and a shipper for a user
+	db, err := i.createTSDB(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the db to list of user databases
+	i.TSDBState.dbs[userID] = db
+	i.metrics.memUsers.Inc()
+
+	return db, nil
+}
+
+// createTSDB creates a TSDB for a given userID, and returns the created db.
+func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
 	// Create a new user database
-	var err error
-	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 		NoLockfile:        true,
@@ -396,21 +442,21 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	}
 
 	// Create a new shipper for this database
-	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
-	i.done.Add(1)
-	go func() {
-		defer i.done.Done()
-		if err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
-			if uploaded, err := s.Sync(context.Background()); err != nil {
-				level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		s := shipper.New(util.Logger, i.TSDBState.shipperMetrics.newRegistryForUser(userID), udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		i.done.Add(1)
+		go func() {
+			defer i.done.Done()
+			if err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
+				if uploaded, err := s.Sync(context.Background()); err != nil {
+					level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+				}
+				return nil
+			}); err != nil {
+				level.Warn(util.Logger).Log("err", err)
 			}
-			return nil
-		}); err != nil {
-			level.Warn(util.Logger).Log("err", err)
-		}
-	}()
-
-	i.TSDBState.dbs[userID] = db
+		}()
+	}
 
 	return db, nil
 }
@@ -446,4 +492,87 @@ func (i *Ingester) closeAllTSDB() {
 	// Wait until all Close() completed
 	i.userStatesMtx.Unlock()
 	wg.Wait()
+}
+
+// openExistingTSDB walks the user tsdb dir, and opens a tsdb for each user. This may start a WAL replay, so we limit the number of
+// concurrently opening TSDB.
+func (i *Ingester) openExistingTSDB(ctx context.Context) error {
+	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
+	wg := &sync.WaitGroup{}
+	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
+
+	err := filepath.Walk(i.cfg.TSDBConfig.Dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+
+		// Skip root dir and all other files
+		if path == i.cfg.TSDBConfig.Dir || !info.IsDir() {
+			return nil
+		}
+
+		// Top level directories are assumed to be user TSDBs
+		userID := info.Name()
+		f, err := os.Open(path)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID, "path", path)
+			return filepath.SkipDir
+		}
+		defer f.Close()
+
+		// If the dir is empty skip it
+		if _, err := f.Readdirnames(1); err != nil {
+			if err != io.EOF {
+				level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+			}
+
+			return filepath.SkipDir
+		}
+
+		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
+		if err := openGate.Start(ctx); err != nil {
+			return err
+		}
+
+		wg.Add(1)
+		go func(userID string) {
+			defer wg.Done()
+			defer openGate.Done()
+			db, err := i.createTSDB(userID)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+				return
+			}
+
+			// Add the database to the map of user databases
+			i.userStatesMtx.Lock()
+			i.TSDBState.dbs[userID] = db
+			i.userStatesMtx.Unlock()
+			i.metrics.memUsers.Inc()
+		}(userID)
+
+		return filepath.SkipDir // Don't descend into directories
+	})
+
+	// Wait for all opening routines to finish
+	wg.Wait()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error while opening existing TSDBs")
+	} else {
+		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
+	}
+	return err
+}
+
+// numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.
+func (i *Ingester) numSeriesInTSDB() float64 {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	count := uint64(0)
+	for _, db := range i.TSDBState.dbs {
+		count += db.Head().NumSeries()
+	}
+
+	return float64(count)
 }

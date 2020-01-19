@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
@@ -23,31 +22,13 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var (
-	memSeries = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_memory_series",
-		Help: "The current number of series in memory.",
-	})
-	memUsers = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_memory_users",
-		Help: "The current number of users in memory.",
-	})
-	memSeriesCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_memory_series_created_total",
-		Help: "The total number of series that were created per user.",
-	}, []string{"user"})
-	memSeriesRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_memory_series_removed_total",
-		Help: "The total number of series that were removed per user.",
-	}, []string{"user"})
-)
-
 // userStates holds the userState object for all users (tenants),
 // each one containing all the in-memory series for a given user.
 type userStates struct {
 	states  sync.Map
 	limiter *SeriesLimiter
 	cfg     Config
+	metrics *ingesterMetrics
 }
 
 type userState struct {
@@ -62,6 +43,7 @@ type userState struct {
 
 	seriesInMetric []metricCounterShard
 
+	memSeries             prometheus.Gauge
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
 	discardedSamples      *prometheus.CounterVec
@@ -80,10 +62,11 @@ type metricCounterShard struct {
 	m   map[string]int
 }
 
-func newUserStates(limiter *SeriesLimiter, cfg Config) *userStates {
+func newUserStates(limiter *SeriesLimiter, cfg Config, metrics *ingesterMetrics) *userStates {
 	return &userStates{
 		limiter: limiter,
 		cfg:     cfg,
+		metrics: metrics,
 	}
 }
 
@@ -157,14 +140,15 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      seriesInMetric,
 
-			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
-			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+			memSeries:             us.metrics.memSeries,
+			memSeriesCreatedTotal: us.metrics.memSeriesCreatedTotal.WithLabelValues(userID),
+			memSeriesRemovedTotal: us.metrics.memSeriesRemovedTotal.WithLabelValues(userID),
 			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)
 		if !ok {
-			memUsers.Inc()
+			us.metrics.memUsers.Inc()
 		}
 		state = stored.(*userState)
 	}
@@ -212,7 +196,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	}
 
 	u.memSeriesCreatedTotal.Inc()
-	memSeries.Inc()
+	u.memSeries.Inc()
 
 	labels := u.index.Add(metric, fp)
 	series = newMemorySeries(labels)
@@ -256,7 +240,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	}
 
 	u.memSeriesRemovedTotal.Inc()
-	memSeries.Dec()
+	u.memSeries.Dec()
 }
 
 // forSeriesMatching passes all series matching the given matchers to the

@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -491,4 +492,14 @@ func TestFindHALabels(t *testing.T) {
 		assert.Equal(t, c.expected.cluster, cluster)
 		assert.Equal(t, c.expected.replica, replica)
 	}
+}
+
+func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
+	haConfig := HATrackerConfig{}
+	ringConfig := ring.Config{}
+	flagext.DefaultValues(&haConfig)
+	flagext.DefaultValues(&ringConfig)
+
+	assert.Equal(t, "ha-tracker/", haConfig.KVStore.Prefix)
+	assert.NotEqual(t, haConfig.KVStore.Prefix, ringConfig.KVStore.Prefix)
 }

@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -29,6 +31,12 @@ import (
 func TestIngester_v2Push(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_ingested_samples_total",
+		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
+		"cortex_ingester_memory_users",
+	}
 	userID := "test"
 
 	tests := map[string]struct {
@@ -59,6 +67,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -72,7 +86,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfOrderSample, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -83,6 +97,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -96,7 +116,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfBounds, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -107,6 +127,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -120,7 +146,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrAmendSample, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -131,6 +157,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
 				# TYPE cortex_ingester_ingested_samples_failures_total counter
 				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
 			`,
 		},
 	}
@@ -180,11 +212,75 @@ func TestIngester_v2Push(t *testing.T) {
 			assert.Equal(t, testData.expectedIngested, res.Timeseries)
 
 			// Check tracked Prometheus metrics
-			metricNames := []string{"cortex_ingester_ingested_samples_total", "cortex_ingester_ingested_samples_failures_total"}
 			err = testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), metricNames...)
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_ingested_samples_total",
+		"cortex_ingester_ingested_samples_failures_total",
+		"cortex_ingester_memory_series",
+		"cortex_ingester_memory_users",
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push timeseries for each user
+	for _, userID := range []string{"test-1", "test-2"} {
+		reqs := []*client.WriteRequest{
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				client.API),
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				client.API),
+		}
+
+		for _, req := range reqs {
+			ctx := user.InjectOrgID(context.Background(), userID)
+			_, err := i.v2Push(ctx, req)
+			require.NoError(t, err)
+		}
+	}
+
+	// Check tracked Prometheus metrics
+	expectedMetrics := `
+		# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+		# TYPE cortex_ingester_ingested_samples_total counter
+		cortex_ingester_ingested_samples_total 4
+		# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+		# TYPE cortex_ingester_ingested_samples_failures_total counter
+		cortex_ingester_ingested_samples_failures_total 0
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 2
+		# HELP cortex_ingester_memory_series The current number of series in memory.
+		# TYPE cortex_ingester_memory_series gauge
+		cortex_ingester_memory_series 2
+	`
+
+	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
 func Test_Ingester_v2LabelNames(t *testing.T) {
@@ -743,4 +839,81 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 	}
 
 	return ingester, cleanup, nil
+}
+
+func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		setup func(*testing.T, string)
+		check func(*testing.T, *Ingester)
+	}{
+		"empty user dir": {
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Empty(t, i.getTSDB("user0"), "tsdb created for empty user dir")
+			},
+		},
+		"empty tsdbs": {
+			setup: func(t *testing.T, dir string) {},
+			check: func(t *testing.T, i *Ingester) {
+				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on empty dir")
+			},
+		},
+		"missing tsdb dir": {
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.Remove(dir))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on missing dir")
+			},
+		},
+		"populated user dirs with unpopulated": {
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+				require.NoError(t, os.Mkdir(filepath.Join(dir, "user2"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.NotNil(t, i.getTSDB("user0"), "tsdb not created for non-empty user dir")
+				require.NotNil(t, i.getTSDB("user1"), "tsdb not created for non-empty user dir")
+				require.Empty(t, i.getTSDB("user2"), "tsdb created for empty user dir")
+			},
+		},
+	}
+
+	for name, test := range tests {
+		testName := name
+		testData := test
+		t.Run(testName, func(t *testing.T) {
+			clientCfg := defaultClientTestConfig()
+			limits := defaultLimitsTestConfig()
+
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			// Create a temporary directory for TSDB
+			tempDir, err := ioutil.TempDir("", "tsdb")
+			require.NoError(t, err)
+			defer os.RemoveAll(tempDir)
+
+			ingesterCfg := defaultIngesterTestConfig()
+			ingesterCfg.TSDBEnabled = true
+			ingesterCfg.TSDBConfig.Dir = tempDir
+			ingesterCfg.TSDBConfig.Backend = "s3"
+			ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+
+			// setup the tsdbs dir
+			testData.setup(t, tempDir)
+
+			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+			require.NoError(t, err)
+
+			defer ingester.Shutdown()
+
+			testData.check(t, ingester)
+		})
+	}
 }

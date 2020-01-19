@@ -78,6 +78,9 @@ jobs:
     - run:
         name: Check protos are consistent.
         command: make BUILD_IN_CONTAINER=false check-protos
+    - run:
+        name: Check generated documentation is consistent.
+        command: make BUILD_IN_CONTAINER=false check-doc
 
   test:
     <<: *defaults

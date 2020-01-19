@@ -123,7 +123,11 @@ func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 	return first, last, iter.Err()
 }
 
-func (s *memorySeries) closeHead() {
+// closeHead marks the head chunk closed. The caller must have locked
+// the fingerprint of the memorySeries. This method will panic if this
+// series has no chunk descriptors.
+func (s *memorySeries) closeHead(reason flushReason) {
+	s.chunkDescs[0].flushReason = reason
 	s.headChunkClosed = true
 }
 
@@ -212,11 +216,12 @@ func (s *memorySeries) isStale() bool {
 }
 
 type desc struct {
-	C          encoding.Chunk // nil if chunk is evicted.
-	FirstTime  model.Time     // Timestamp of first sample. Populated at creation. Immutable.
-	LastTime   model.Time     // Timestamp of last sample. Populated at creation & on append.
-	LastUpdate model.Time     // This server's local time on last change
-	flushed    bool           // set to true when flush succeeds
+	C           encoding.Chunk // nil if chunk is evicted.
+	FirstTime   model.Time     // Timestamp of first sample. Populated at creation. Immutable.
+	LastTime    model.Time     // Timestamp of last sample. Populated at creation & on append.
+	LastUpdate  model.Time     // This server's local time on last change
+	flushReason flushReason    // If chunk is closed, holds the reason why.
+	flushed     bool           // set to true when flush succeeds
 }
 
 func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc {

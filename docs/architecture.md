@@ -64,7 +64,7 @@ For more information, please check out the [Blocks storage](operations/blocks-st
 
 ## Services
 
-Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
+Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task. These components run separately and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
 
 Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
 
@@ -94,7 +94,7 @@ Distributors are **stateless** and can be scaled up and down as needed.
 
 The distributor features a **High Availability (HA) Tracker**. When enabled, the distributor deduplicates incoming samples from redundant Prometheus servers. This allows you to have multiple HA replicas of the same Prometheus servers, writing the same series to Cortex and then deduplicate these series in the Cortex distributor.
 
-The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated - and thus dropped - if received by any replica which is not the current primary within a cluster.
+The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated (and thus dropped) if received by any replica which is not the current primary within a cluster.
 
 The HA Tracker requires a key-value (KV) store to coordinate which replica is currently elected. The distributor will only accept samples from the current leader. Samples with one or no labels (of the replica and cluster) are accepted by default and never deduplicated.
 
@@ -118,7 +118,7 @@ The trade-off associated with the latter is that writes are more balanced across
 
 #### The hash ring
 
-A hash ring - stored in a key-value (KV) store - is used to achieve consistent hashing for the series sharding and replication across the ingesters. All [ingesters](#ingester) register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is [hashed](#hashing) in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.
+A hash ring (stored in a key-value store) is used to achieve consistent hashing for the series sharding and replication across the ingesters. All [ingesters](#ingester) register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is [hashed](#hashing) in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.
 
 To do the hash lookup, distributors find the smallest appropriate token whose value is larger than the [hash of the series](#hashing). When the replication factor is larger than 1, the next subsequent tokens (clockwise in the ring) that belong to different ingesters will also be included in the result.
 
@@ -148,13 +148,13 @@ Incoming series are not immediately written to the storage but kept in memory an
 
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
-1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period, the ingester will join the ring with a new set of random tokens (ie. during a scale up).
+1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period ("auto-join timeout", configurable via `-ingester.join-after` option), the ingester will join the ring with a new set of random tokens (ie. during a scale up). When hand-over process starts, state changes to `JOINING`.
 
-2. `JOINING` is an ingester's state when it is currently inserting its tokens into the ring and initializing itself. While in this state, the ingester may receive series and tokens from another `LEAVING` ingester, as part of the hand-over process.
+2. `JOINING` is an ingester's state in two situations. First, ingester will switch to a `JOINING` state from `PENDING` state after auto-join timeout. In this case, ingester will generate tokens, store them into the ring, optionally observe the ring for token conflicts and then move to `ACTIVE` state. Second, ingester will also switch into a `JOINING` state as a result of another `LEAVING` ingester initiating a hand-over process with `PENDING` (which then switches to `JOINING` state). `JOINING` ingester then receives series and tokens from `LEAVING` ingester, and if everything goes well, `JOINING` ingester switches to `ACTIVE` state. If hand-over process fails, `JOINING` ingester will move back to `PENDING` state and either wait for another hand-over or auto-join timeout.
 
 3. `ACTIVE` is an ingester's state when it is fully initialized. It may receive both write and read requests for tokens it owns.
 
-4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `JOINING` ingester with which engage an hand-over process, used to transfer the `LEAVING` ingester state to a `JOINING` one (ie. during a rolling update).
+4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `PENDING` ingester to start a hand-over process with, used to transfer the state from `LEAVING` ingester to the `PENDING` one, during a rolling update (`PENDING` ingester moves to `JOINING` state during hand-over process). If there is no new ingester to accept hand-over, ingester in `LEAVING` state will flush data to storage instead. 
 
 5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
@@ -195,7 +195,7 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
-The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends.
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the `-querier.frontend-address` CLI flag) in order to allow them to connect to the query frontends.
 
 Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
@@ -203,7 +203,7 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 The query frontend queuing mechanism is used to:
 
-* Ensure that large queries - that could cause an out-of-memory (OOM) error in the querier - will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+* Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
 * Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
 * Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 

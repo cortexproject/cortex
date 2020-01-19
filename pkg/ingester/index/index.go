@@ -101,6 +101,7 @@ const cacheLineSize = 64
 type indexShard struct {
 	mtx sync.RWMutex
 	idx unlockIndex
+	//nolint:structcheck,unused
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(unlockIndex{})]byte
 }
 

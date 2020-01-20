@@ -12,17 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/hashicorp/memberlist"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/go-kit/kit/log/level"
+	"github.com/hashicorp/memberlist"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
-	maxKeyLength               = 255         // We encode key length as one byte
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 )
@@ -467,10 +465,6 @@ func (m *KV) notifyWatchers(key string) {
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
 func (m *KV) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	if len(key) > maxKeyLength {
-		return fmt.Errorf("key too long: %d", len(key))
-	}
-
 	var lastError error = nil
 
 outer:
@@ -566,27 +560,28 @@ func (m *KV) trySingleCas(key string, f func(in interface{}) (out interface{}, r
 func (m *KV) broadcastNewValue(key string, change Mergeable, version uint) {
 	data, err := m.codec.Encode(change)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to encode ring", "err", err)
+		level.Error(util.Logger).Log("msg", "failed to encode change", "err", err)
 		return
 	}
 
-	buf := bytes.Buffer{}
-	buf.Write([]byte{byte(len(key))})
-	buf.WriteString(key)
-	buf.Write(data)
+	kvPair := KeyValuePair{Key: key, Value: data}
+	pairData, err := kvPair.Marshal()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to serialize KV pair", "err", err)
+	}
 
-	if buf.Len() > 65535 {
+	if len(pairData) > 65535 {
 		// Unfortunately, memberlist will happily let us send bigger messages via gossip,
 		// but then it will fail to parse them properly, because its own size field is 2-bytes only.
 		// (github.com/hashicorp/memberlist@v0.1.4/util.go:167, makeCompoundMessage function)
 		//
 		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
 		// when broadcasting result of push/pull update.
-		level.Debug(util.Logger).Log("msg", "broadcast message too big, not broadcasting", "len", buf.Len())
+		level.Debug(util.Logger).Log("msg", "broadcast message too big, not broadcasting", "len", len(pairData))
 		return
 	}
 
-	m.queueBroadcast(key, change.MergeContent(), version, buf.Bytes())
+	m.queueBroadcast(key, change.MergeContent(), version, pairData)
 }
 
 // NodeMeta is method from Memberlist Delegate interface
@@ -602,35 +597,33 @@ func (m *KV) NotifyMsg(msg []byte) {
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
-	if len(msg) == 0 {
-		level.Warn(util.Logger).Log("msg", "Empty message received")
+	kvPair := KeyValuePair{}
+	err := kvPair.Unmarshal(msg)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "Failed to unmarshal received KV Pair", "err", err)
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
 
-	keyLen := int(msg[0])
-	if len(msg) <= 1+keyLen {
-		level.Warn(util.Logger).Log("msg", "Too short message received", "length", len(msg))
+	if len(kvPair.Key) == 0 {
+		level.Warn(util.Logger).Log("msg", "Invalid KV Pair, empty key")
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
-
-	key := string(msg[1 : 1+keyLen])
-	data := msg[1+keyLen:]
 
 	// we have a ring update! Let's merge it with our version of the ring for given key
-	mod, version, err := m.mergeBytesValueForKey(key, data)
+	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to store received value", "key", key, "err", err)
+		level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 	} else if version > 0 {
-		m.notifyWatchers(key)
+		m.notifyWatchers(kvPair.Key)
 
 		// Forward this message
 		// Memberlist will modify message once this function returns, so we need to make a copy
 		msgCopy := append([]byte(nil), msg...)
 
 		// forward this message further
-		m.queueBroadcast(key, mod.MergeContent(), version, msgCopy)
+		m.queueBroadcast(kvPair.Key, mod.MergeContent(), version, msgCopy)
 	}
 }
 
@@ -671,29 +664,35 @@ func (m *KV) LocalState(join bool) []byte {
 	// For each Key/Value pair in our store, we write:
 	// [1 byte key length] [key] [4-bytes value length] [value]
 
+	kvPair := KeyValuePair{}
+
 	buf := bytes.Buffer{}
 	for key, val := range m.store {
 		if val.value == nil {
 			continue
 		}
 
-		if len(key) > maxKeyLength {
-			level.Error(util.Logger).Log("msg", "key too long", "key", key)
+		kvPair.Reset()
+		kvPair.Key = key
+		kvPair.Value = val.value
+
+		ser, err := kvPair.Marshal()
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to serialize KV Pair", "err", err)
 			continue
 		}
-		if uint(len(val.value)) > math.MaxUint32 {
+
+		if uint(len(ser)) > math.MaxUint32 {
 			level.Error(util.Logger).Log("msg", "value too long", "key", key, "value_length", len(val.value))
 			continue
 		}
 
-		buf.WriteByte(byte(len(key)))
-		buf.WriteString(key)
-		err := binary.Write(&buf, binary.BigEndian, uint32(len(val.value)))
+		err = binary.Write(&buf, binary.BigEndian, uint32(len(ser)))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "failed to write uint32 to buffer?", "err", err)
 			continue
 		}
-		buf.Write(val.value)
+		buf.Write(ser)
 	}
 
 	m.totalSizeOfPulls.Add(float64(buf.Len()))
@@ -703,64 +702,44 @@ func (m *KV) LocalState(join bool) []byte {
 // MergeRemoteState is method from Memberlist Delegate interface
 //
 // This is 'push' part of push/pull sync. We merge incoming KV store (all keys and values) with ours.
-func (m *KV) MergeRemoteState(stateMsg []byte, join bool) {
+func (m *KV) MergeRemoteState(data []byte, join bool) {
 	m.numberOfPushes.Inc()
-	m.totalSizeOfPushes.Add(float64(len(stateMsg)))
+	m.totalSizeOfPushes.Add(float64(len(data)))
 
-	buf := bytes.NewBuffer(stateMsg)
+	kvPair := KeyValuePair{}
 
 	var err error
-	for buf.Len() > 0 {
-		keyLen := byte(0)
-		keyLen, err = buf.ReadByte()
+	for len(data) > 0 {
+		if len(data) < 4 {
+			err = fmt.Errorf("not enough data left for another KV Pair: %d", len(data))
+			break
+		}
+
+		kvPairLength := binary.BigEndian.Uint32(data)
+
+		data = data[4:]
+
+		if len(data) < int(kvPairLength) {
+			err = fmt.Errorf("not enough data left for next KV Pair, expected %d, remaining %d bytes", kvPairLength, len(data))
+			break
+		}
+
+		kvPair.Reset()
+		err = kvPair.Unmarshal(data[:kvPairLength])
 		if err != nil {
+			err = fmt.Errorf("failed to parse KV Pair: %v", err)
 			break
 		}
 
-		keyBuf := make([]byte, keyLen)
-		l := 0
-		l, err = buf.Read(keyBuf)
-		if err != nil {
-			break
-		}
-
-		if l != len(keyBuf) {
-			err = fmt.Errorf("cannot read key, expected %d, got %d bytes", keyLen, l)
-			break
-		}
-
-		key := string(keyBuf)
-
-		// next read the length of the data
-		valueLength := uint32(0)
-		err = binary.Read(buf, binary.BigEndian, &valueLength)
-		if err != nil {
-			break
-		}
-
-		if buf.Len() < int(valueLength) {
-			err = fmt.Errorf("not enough data left for value in key %q, expected %d, remaining %d bytes", key, valueLength, buf.Len())
-			break
-		}
-
-		valueBuf := make([]byte, valueLength)
-		l, err = buf.Read(valueBuf)
-		if err != nil {
-			break
-		}
-
-		if l != len(valueBuf) {
-			err = fmt.Errorf("cannot read value for key %q, expected %d, got %d bytes", key, valueLength, l)
-			break
-		}
+		data = data[kvPairLength:]
 
 		// we have both key and value, try to merge it with our state
-		change, newver, err := m.mergeBytesValueForKey(key, valueBuf)
+		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to store received value", "key", key, "err", err)
+			level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 		} else if newver > 0 {
-			m.notifyWatchers(key)
-			m.broadcastNewValue(key, change, newver)
+			m.notifyWatchers(kvPair.Key)
+			m.broadcastNewValue(kvPair.Key, change, newver)
 		}
 	}
 

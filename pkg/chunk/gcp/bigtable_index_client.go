@@ -151,6 +151,14 @@ type bigtableWriteBatch struct {
 	keysFn keysFn
 }
 
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
+}
+
+func (b bigtableWriteBatch) Update(tableName, hashValue string, rangeValue []byte, value []byte) {
+	panic("implement me")
+}
+
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
 	rows, ok := b.tables[tableName]
 	if !ok {

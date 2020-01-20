@@ -509,3 +509,48 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 
 	return result, missing, nil
 }
+
+func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return c.deleteChunk(ctx, from, through, userID, chunkID, metric, partiallyDeletedInterval, func(chunk Chunk) error {
+		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+	})
+}
+
+func (c *seriesStore) DeleteLabels(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+
+	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
+		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
+	})
+	if err != nil {
+		return err
+	}
+
+	batch := c.index.NewWriteBatch()
+	for i := range entries {
+		batch.Delete(entries[i].TableName, entries[i].HashValue, entries[i].RangeValue)
+	}
+
+	return c.index.BatchWrite(ctx, batch)
+}
+
+func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID string, from, through model.Time) (bool, error) {
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, []string{seriesID})
+	if err != nil {
+		return false, err
+	}
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+	if err != nil {
+		return false, err
+	}
+
+	seriesInUse := false
+	for i := range chunks {
+		if from <= chunks[i].From && chunks[i].From <= through || from <= chunks[i].Through && chunks[i].Through <= through {
+			seriesInUse = true
+			break
+		}
+	}
+
+	return seriesInUse, nil
+}

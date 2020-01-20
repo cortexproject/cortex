@@ -174,7 +174,7 @@ func TestTableManager(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			InactiveThroughputOnDemandMode: true,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestTableManagerTags(t *testing.T) {
 				IndexTables: PeriodicTableConfig{},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -554,7 +554,7 @@ func TestTableManagerTags(t *testing.T) {
 				},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -608,7 +608,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,6 +723,6 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Test table manager retention not multiple of periodic config
 	tbmConfig.RetentionPeriod++
-	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	require.Error(t, err)
 }

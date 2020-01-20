@@ -20,6 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -55,6 +56,7 @@ const (
 	Configs
 	AlertManager
 	Compactor
+	DataPurger
 	All
 )
 
@@ -88,6 +90,8 @@ func (m moduleName) String() string {
 		return "alertmanager"
 	case Compactor:
 		return "compactor"
+	case DataPurger:
+		return "data-purger"
 	case All:
 		return "all"
 	default:
@@ -135,6 +139,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "compactor":
 		*m = Compactor
+		return nil
+	case "data-purger":
+		*m = DataPurger
 		return nil
 	case "all":
 		*m = All
@@ -320,7 +327,21 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 		return
 	}
 
+	// Assume the newest config is the one to use
+	lastConfig := &cfg.Schema.Configs[len(cfg.Schema.Configs)-1]
+	var indexClient chunk.IndexClient
+	indexClient, err = storage.NewIndexClient(lastConfig.IndexType, cfg.Storage, cfg.Schema)
+	if err != nil {
+		return err
+	}
+
+	t.deletesStore, err = storage.NewDeleteStore(cfg.DeletesConfig, indexClient)
+	if err != nil {
+		return
+	}
+
 	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+
 	return
 }
 
@@ -395,7 +416,9 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
+	extraTables := []string{cfg.DeletesConfig.RequestsTableName, cfg.DeletesConfig.PlansTableName}
+	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient,
+		bucketClient, extraTables)
 	if err != nil {
 		return err
 	}
@@ -472,6 +495,31 @@ func (t *Cortex) initCompactor(cfg *Config) (err error) {
 
 func (t *Cortex) stopCompactor() error {
 	t.compactor.Shutdown()
+	return nil
+}
+
+func (t *Cortex) initDataPurger(cfg *Config) (err error) {
+	var deleteRequestHandler *purger.DeleteRequestHandler
+	deleteRequestHandler, err = purger.NewDeleteRequestHandler(t.deletesStore)
+	if err != nil {
+		return
+	}
+
+	t.server.HTTP.Path("/delete_series").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
+	t.server.HTTP.Path("/get_all_delete_requests").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
+
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store)
+	if err != nil {
+		return
+	}
+
+	go t.dataPurger.Run()
+
+	return
+}
+
+func (t *Cortex) stopDataPurger() error {
+	t.dataPurger.Stop()
 	return nil
 }
 
@@ -562,7 +610,13 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopCompactor,
 	},
 
+	DataPurger: {
+		deps: []moduleName{Store, Server},
+		init: (*Cortex).initDataPurger,
+		stop: (*Cortex).stopDataPurger,
+	},
+
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
 	},
 }

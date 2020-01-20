@@ -123,11 +123,12 @@ type TableManager struct {
 	done         chan struct{}
 	wait         sync.WaitGroup
 	bucketClient BucketClient
+	extraTables  []string
 }
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient) (*TableManager, error) {
+	objectClient BucketClient, extraTables []string) (*TableManager, error) {
 
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -144,6 +145,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		client:       tableClient,
 		done:         make(chan struct{}),
 		bucketClient: objectClient,
+		extraTables:  extraTables,
 	}, nil
 }
 
@@ -300,6 +302,16 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 				)...)
 			}
 		}
+	}
+
+	for _, tableName := range m.extraTables {
+		result = append(result, TableDesc{
+			Name:              tableName,
+			ProvisionedRead:   m.cfg.IndexTables.InactiveReadThroughput,
+			ProvisionedWrite:  m.cfg.IndexTables.InactiveWriteThroughput,
+			UseOnDemandIOMode: m.cfg.IndexTables.InactiveThroughputOnDemandMode,
+			Tags:              m.schemaCfg.Configs[len(m.schemaCfg.Configs)-1].IndexTables.Tags,
+		})
 	}
 
 	sort.Sort(byName(result))

@@ -59,7 +59,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureProvisionConfig(2, chunkWriteScale, inactiveWriteScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureReadProvisionConfig(chunkReadScale, inactiveReadScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

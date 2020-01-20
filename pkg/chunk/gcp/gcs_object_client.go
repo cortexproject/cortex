@@ -20,6 +20,10 @@ type gcsObjectClient struct {
 	bucket    *storage.BucketHandle
 }
 
+func (s *gcsObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
 	BucketName      string        `yaml:"bucket_name"`
@@ -98,6 +102,9 @@ func (s *gcsObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Dec
 
 	reader, err := s.bucket.Object(input.ExternalKey()).NewReader(ctx)
 	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return chunk.Chunk{}, chunk.ErrChunkNotFound
+		}
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	defer reader.Close()

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -36,6 +37,10 @@ func init() {
 type s3ObjectClient struct {
 	bucketNames []string
 	S3          s3iface.S3API
+}
+
+func (a s3ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -90,6 +95,9 @@ func (a s3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 		return err
 	})
 	if err != nil {
+		if isS3KeyMissingErr(err) {
+			return chunk.Chunk{}, chunk.ErrChunkNotFound
+		}
 		return chunk.Chunk{}, err
 	}
 	defer resp.Body.Close()
@@ -159,4 +167,12 @@ func (a s3ObjectClient) bucketFromKey(key string) string {
 	hash := hasher.Sum32()
 
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
+}
+
+func isS3KeyMissingErr(err error) bool {
+	if awerr, ok := err.(awserr.Error); ok && awerr.Code() == s3.ErrCodeNoSuchKey {
+		return true
+	}
+
+	return false
 }

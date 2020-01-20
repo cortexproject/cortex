@@ -320,10 +320,11 @@ func (cfg SchemaConfig) PrintYaml() {
 
 // Bucket describes a range of time with a tableName and hashKey
 type Bucket struct {
-	from      uint32
-	through   uint32
-	tableName string
-	hashKey   string
+	from       uint32
+	through    uint32
+	tableName  string
+	hashKey    string
+	bucketSize uint32 // helps with deletion of series ids in series store
 }
 
 func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) []Bucket {
@@ -337,10 +338,11 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
 		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
 		result = append(result, Bucket{
-			from:      uint32(relativeFrom),
-			through:   uint32(relativeThrough),
-			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
-			hashKey:   fmt.Sprintf("%s:%d", userID, i),
+			from:       uint32(relativeFrom),
+			through:    uint32(relativeThrough),
+			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
+			hashKey:    fmt.Sprintf("%s:%d", userID, i),
+			bucketSize: uint32(millisecondsInHour),
 		})
 	}
 	return result
@@ -367,10 +369,11 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
 		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		result = append(result, Bucket{
-			from:      uint32(relativeFrom),
-			through:   uint32(relativeThrough),
-			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
-			hashKey:   fmt.Sprintf("%s:d%d", userID, i),
+			from:       uint32(relativeFrom),
+			through:    uint32(relativeThrough),
+			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
+			hashKey:    fmt.Sprintf("%s:d%d", userID, i),
+			bucketSize: uint32(millisecondsInDay),
 		})
 	}
 	return result

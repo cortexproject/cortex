@@ -212,3 +212,8 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 
 	return nil, nil
 }
+
+// NewDeleteStore creates a new chunk.DeleteStore
+func NewDeleteStore(cfg chunk.DeleteStoreConfig, client chunk.IndexClient) (chunk.DeleteStore, error) {
+	return chunk.NewDeleteStore(cfg, client)
+}

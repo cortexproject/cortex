@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package purgeplan;
+
+option go_package = "purgeplan";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message Plan {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated ChunksGroup ChunksGroup = 3 [(gogoproto.nullable) = false];
+}
+
+// ChunksGroup holds Chunk IDs for a group of chunks which have same series ID
+message ChunksGroup {
+  repeated cortex.LabelPair Labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated ChunkDetails Chunks = 2 [(gogoproto.nullable) = false];
+}
+
+message ChunkDetails {
+  string ID = 1;
+  Interval PartiallyDeletedInterval = 2;
+}
+
+message Interval {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+}

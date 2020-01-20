@@ -71,6 +71,9 @@ func (f *FSObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	filename := base64.StdEncoding.EncodeToString([]byte(c.ExternalKey()))
 	buf, err := ioutil.ReadFile(path.Join(f.cfg.Directory, filename))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return c, chunk.ErrChunkNotFound
+		}
 		return c, err
 	}
 
@@ -92,4 +95,10 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
+}
+
+// DeleteChunk implements BucketClient
+func (f *FSObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	filename := base64.StdEncoding.EncodeToString([]byte(chunkID))
+	return os.Remove(path.Join(f.cfg.Directory, filename))
 }

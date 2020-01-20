@@ -116,6 +116,7 @@ message Chunk {
   int64 end_timestamp_ms = 2;
   int32 encoding = 3;
   bytes data = 4;
+  repeated Interval deletedIntervals = 5;
 }
 
 message TransferChunksResponse {
@@ -166,3 +167,8 @@ message TimeSeriesFile {
 }
 
 message TransferTSDBResponse {}
+
+message Interval {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+}

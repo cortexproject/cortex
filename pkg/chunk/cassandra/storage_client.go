@@ -150,6 +150,14 @@ type writeBatch struct {
 	entries []chunk.IndexEntry
 }
 
+func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
+}
+
+func (b *writeBatch) Update(tableName, hashValue string, rangeValue []byte, value []byte) {
+	panic("implement me")
+}
+
 // NewWriteBatch implement chunk.IndexClient.
 func (s *StorageClient) NewWriteBatch() chunk.WriteBatch {
 	return &writeBatch{}
@@ -304,4 +312,9 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	}
 	err = input.Decode(decodeContext, buf)
 	return input, err
+}
+
+// DeleteChunk removes a chunk
+func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
 }

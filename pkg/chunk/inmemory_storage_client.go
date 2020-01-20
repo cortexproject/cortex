@@ -309,10 +309,26 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
+// DeleteChunk implements StorageClient.
+func (m *MockStorage) DeleteChunk(ctx context.Context, chunkID string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	return nil
+}
+
 type mockWriteBatch []struct {
 	tableName, hashValue string
 	rangeValue           []byte
 	value                []byte
+}
+
+func (b *mockWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
+}
+
+func (b *mockWriteBatch) Update(tableName, hashValue string, rangeValue []byte, value []byte) {
+	panic("implement me")
 }
 
 func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {

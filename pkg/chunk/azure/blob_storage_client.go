@@ -141,3 +141,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 		},
 	})), nil
 }
+
+func (b *BlobStorage) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}

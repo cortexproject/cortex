@@ -155,6 +155,10 @@ type dynamoDBStorageClient struct {
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 }
 
+func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.
 func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg)
@@ -713,6 +717,14 @@ func (b *dynamoDBReadResponseIterator) Value() []byte {
 
 // map key is table name; value is a slice of things to 'put'
 type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
+
+func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
+}
+
+func (b dynamoDBWriteBatch) Update(tableName, hashValue string, rangeValue []byte, value []byte) {
+	panic("implement me")
+}
 
 func (b dynamoDBWriteBatch) Len() int {
 	result := 0

@@ -26,6 +26,7 @@ const (
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrChunkNotFound   = errs.Error("chunk doesn't exist")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -326,4 +327,40 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	it := c.Data.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
+}
+
+// Slice builds a new smaller chunk with data only from given time range
+func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
+	itr := c.Data.NewIterator(nil)
+	if !itr.FindAtOrAfter(from) {
+		return nil, nil
+	}
+
+	pc, err := prom_chunk.NewForEncoding(c.Data.Encoding())
+	if err != nil {
+		return nil, err
+	}
+
+	for !itr.Value().Timestamp.After(through) {
+		oc, err := pc.Add(itr.Value())
+		if err != nil {
+			return nil, err
+		}
+
+		if oc != nil {
+			// ToDo: revisit this
+			return nil, errors.New("slicing should not overflow a chunk")
+		}
+		if !itr.Scan() {
+			break
+		}
+	}
+
+	err = itr.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
+	return &nc, nil
 }

@@ -20,6 +20,7 @@ type ObjectClient interface {
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
+	DeleteChunk(ctx context.Context, chunkID string) error
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
@@ -30,6 +31,8 @@ type ObjectAndIndexClient interface {
 // WriteBatch represents a batch of writes.
 type WriteBatch interface {
 	Add(tableName, hashValue string, rangeValue []byte, value []byte)
+	Update(tableName, hashValue string, rangeValue []byte, value []byte)
+	Delete(tableName, hashValue string, rangeValue []byte)
 }
 
 // ReadBatch represents the results of a QueryPages.

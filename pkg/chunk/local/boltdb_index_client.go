@@ -119,7 +119,9 @@ func (b *boltIndexClient) Stop() {
 
 func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	return &boltWriteBatch{
-		tables: map[string]map[string][]byte{},
+		puts:    map[string]map[string][]byte{},
+		updates: map[string]map[string][]byte{},
+		deletes: map[string]map[string]struct{}{},
 	}
 }
 
@@ -150,7 +152,8 @@ func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 }
 
 func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	for table, kvps := range batch.(*boltWriteBatch).tables {
+	// ToDo: too much code duplication, refactor this
+	for table, kvps := range batch.(*boltWriteBatch).puts {
 		db, err := b.getDB(table)
 		if err != nil {
 			return err
@@ -164,6 +167,59 @@ func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 
 			for key, value := range kvps {
 				if err := b.Put([]byte(key), value); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	for table, kvps := range batch.(*boltWriteBatch).updates {
+		db, err := b.getDB(table)
+		if err != nil {
+			return err
+		}
+
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			b := tx.Bucket(bucketName)
+			if b == nil {
+				return fmt.Errorf("Bucket %s not found in table %s", bucketName, table)
+			}
+
+			for key, value := range kvps {
+				bv := b.Get([]byte(key))
+
+				if bv == nil {
+					return fmt.Errorf("key %s not found for updating its value", key)
+				}
+				if err := b.Put([]byte(key), value); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	for table, kvps := range batch.(*boltWriteBatch).deletes {
+		db, err := b.getDB(table)
+		if err != nil {
+			return err
+		}
+
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			b := tx.Bucket(bucketName)
+			if b == nil {
+				return fmt.Errorf("Bucket %s not found in table %s", bucketName, table)
+			}
+
+			for key := range kvps {
+				if err := b.Delete([]byte(key)); err != nil {
 					return err
 				}
 			}
@@ -230,14 +286,39 @@ func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 }
 
 type boltWriteBatch struct {
-	tables map[string]map[string][]byte
+	puts       map[string]map[string][]byte
+	increments map[string]map[string]int64
+	updates    map[string]map[string][]byte
+	deletes    map[string]map[string]struct{}
+}
+
+func (b *boltWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	table, ok := b.deletes[tableName]
+	if !ok {
+		table = map[string]struct{}{}
+		b.deletes[tableName] = table
+	}
+
+	key := hashValue + separator + string(rangeValue)
+	table[key] = struct{}{}
+}
+
+func (b *boltWriteBatch) Update(tableName, hashValue string, rangeValue []byte, value []byte) {
+	table, ok := b.updates[tableName]
+	if !ok {
+		table = map[string][]byte{}
+		b.updates[tableName] = table
+	}
+
+	key := hashValue + separator + string(rangeValue)
+	table[key] = value
 }
 
 func (b *boltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	table, ok := b.tables[tableName]
+	table, ok := b.puts[tableName]
 	if !ok {
 		table = map[string][]byte{}
-		b.tables[tableName] = table
+		b.puts[tableName] = table
 	}
 
 	key := hashValue + separator + string(rangeValue)

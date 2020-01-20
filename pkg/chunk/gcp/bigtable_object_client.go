@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -17,6 +18,10 @@ type bigtableObjectClient struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
+}
+
+func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
 }
 
 // NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
@@ -140,7 +145,8 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 				} else if err != nil {
 					errs <- errors.WithStack(err)
 				} else if receivedChunks < len(page) {
-					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), receivedChunks))
+					level.Error(util.Logger).Log("msg", errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), receivedChunks)))
+					errs <- chunk.ErrChunkNotFound
 				}
 			}(page)
 		}

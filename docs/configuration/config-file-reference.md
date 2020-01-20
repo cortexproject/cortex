@@ -79,6 +79,28 @@ Supported contents and default values of the config file:
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
 
+deletes:
+  # Store for keeping delete request
+  # CLI flag: -deletes.store
+  [store: <string> | default = ""]
+
+  # Name of the table which stores delete requests
+  # CLI flag: -deletes.requests-table-name
+  [requests_table_name: <string> | default = "delete_requests"]
+
+  # Name of the table which stores delete plans
+  # CLI flag: -deletes.plans-table-name
+  [plans_table_name: <string> | default = "delete_plans"]
+
+  # Name of the table which stores cache generation numbers
+  # CLI flag: -deletes.cache-gen-numbers-table-name
+  [cache_gen_numbers_table_name: <string> | default = "cache_gen_numbers"]
+
+data_purger_config:
+  # Number of workers executing delete plans in parallel
+  # CLI flag: -num-workers
+  [num_workers: <int> | default = 2]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

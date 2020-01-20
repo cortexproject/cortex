@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -15,8 +16,20 @@ import (
 // Value = slice of gathered values with the same metric name.
 type MetricFamiliesPerUser map[string]map[string]*dto.MetricFamily
 
-func NewMetricFamiliersPerUser() MetricFamiliesPerUser {
-	return MetricFamiliesPerUser{}
+func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Registry) MetricFamiliesPerUser {
+	data := MetricFamiliesPerUser{}
+	for userID, r := range regs {
+		m, err := r.Gather()
+		if err == nil {
+			err = data.AddGatheredDataForUser(userID, m)
+		}
+
+		if err != nil {
+			level.Warn(Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
+			continue
+		}
+	}
+	return data
 }
 
 // AddGatheredDataForUser adds user-specific output of Gatherer.Gather method.

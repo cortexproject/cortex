@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -166,19 +165,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
-	regs := sm.registries()
-	data := util.NewMetricFamiliersPerUser()
-
-	for userID, r := range regs {
-		m, err := r.Gather()
-		if err == nil {
-			err = data.AddGatheredDataForUser(userID, m)
-		}
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
-			continue
-		}
-	}
+	data := util.BuildMetricFamiliesPerUserFromUserRegistries(sm.registries())
 
 	// OK, we have it all. Let's build results.
 	data.SendSumOfCounters(out, sm.dirSyncs, "thanos_shipper_dir_syncs_total")

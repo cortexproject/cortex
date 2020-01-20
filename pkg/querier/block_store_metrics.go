@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -189,20 +188,7 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
-	regs := m.registries()
-	data := util.NewMetricFamiliersPerUser()
-
-	for userID, r := range regs {
-		m, err := r.Gather()
-		if err == nil {
-			err = data.AddGatheredDataForUser(userID, m)
-		}
-
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
-			continue
-		}
-	}
+	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
 
 	data.SendSumOfCounters(out, m.blockLoads, "thanos_bucket_store_block_loads_total")
 	data.SendSumOfCounters(out, m.blockLoadFailures, "thanos_bucket_store_block_load_failures_total")

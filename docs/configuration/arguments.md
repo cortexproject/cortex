@@ -305,6 +305,24 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.
 
+#### WAL
+
+- `--ingester.wal-dir`
+   Directory where the WAL data should be stores and/or recovered from.
+
+- `--ingester.wal-enabled`
+
+   Setting this to `true` enables writing to WAL during ingestion.
+
+- `--ingester.checkpoint-enabled`
+   Set this to `true` to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.
+
+- `--ingester.checkpoint-duration` 
+   This is the interval at which checkpoints should be created.
+
+- `--ingester.recover-from-wal`
+   Set this to to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
+
 ## Runtime Configuration file
 
 Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.

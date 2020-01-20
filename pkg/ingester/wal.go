@@ -29,21 +29,21 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	walEnabled         bool
-	checkpointEnabled  bool
-	recover            bool
-	dir                string
-	checkpointDuration time.Duration
+	walEnabled         bool          `yaml:"wal_enabled,omitempty"`
+	checkpointEnabled  bool          `yaml:"checkpoint_enabled,omitempty"`
+	recover            bool          `yaml:"recover_from_wal,omitempty"`
+	dir                string        `yaml:"wal_dir,omitempty"`
+	checkpointDuration time.Duration `yaml:"checkpoint_duration,omitempty"`
 	metricsRegisterer  prometheus.Registerer
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.walEnabled, "ingester.wal-enabled", false, "Enable the WAL.")
-	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing.")
-	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL.")
-	f.StringVar(&cfg.dir, "ingester.wal-dir", "wal", "Directory to store the WAL.")
-	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
+	f.StringVar(&cfg.dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
+	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
+	f.BoolVar(&cfg.walEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
+	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
+	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.

@@ -323,6 +323,27 @@ ring:
 The `ingester_config` configures the Cortex ingester.
 
 ```yaml
+walconfig:
+  # Enable writing of ingested data into WAL.
+  # CLI flag: -ingester.wal-enabled
+  [wal_enabled: <boolean> | default = false]
+
+  # Enable checkpointing of in-memory chunks.
+  # CLI flag: -ingester.checkpoint-enabled
+  [checkpoint_enabled: <boolean> | default = false]
+
+  # Recover data from existing WAL irrespective of WAL enabled/disabled.
+  # CLI flag: -ingester.recover-from-wal
+  [recover_from_wal: <boolean> | default = false]
+
+  # Directory to store the WAL and/or recover from WAL.
+  # CLI flag: -ingester.wal-dir
+  [wal_dir: <string> | default = "wal"]
+
+  # Interval at which checkpoints should be created.
+  # CLI flag: -ingester.checkpoint-duration
+  [checkpoint_duration: <duration> | default = 30m0s]
+
 lifecycler:
   ring:
     kvstore:

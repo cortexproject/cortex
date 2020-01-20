@@ -2,6 +2,7 @@ package querier
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -186,6 +187,39 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 
 `))
 	require.NoError(t, err)
+}
+
+func BenchmarkMetricsCollections10(b *testing.B) {
+	benchmarkMetricsCollection(b, 10)
+}
+
+func BenchmarkMetricsCollections100(b *testing.B) {
+	benchmarkMetricsCollection(b, 100)
+}
+
+func BenchmarkMetricsCollections1000(b *testing.B) {
+	benchmarkMetricsCollection(b, 1000)
+}
+
+func BenchmarkMetricsCollections10000(b *testing.B) {
+	benchmarkMetricsCollection(b, 10000)
+}
+
+func benchmarkMetricsCollection(b *testing.B, users int) {
+	mainReg := prometheus.NewRegistry()
+
+	tsdbMetrics := newTSDBBucketStoreMetrics()
+	mainReg.MustRegister(tsdbMetrics)
+
+	base := 123456.0
+	for i := 0; i < users; i++ {
+		tsdbMetrics.addUserRegistry(fmt.Sprintf("user-%d", i), populateTSDBBucketStore(base*float64(i)))
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mainReg.Gather()
+	}
 }
 
 func populateTSDBBucketStore(base float64) *prometheus.Registry {

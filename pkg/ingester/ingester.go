@@ -299,6 +299,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	// retain anything from `req` past the call to ReuseSlice
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
+			// append() copies the memory in `ts.Labels`
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
 			if err == nil {
 				continue
@@ -340,6 +341,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
 	}
+	// getOrCreateSeries copies the memory for `labels`.
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
 	if err != nil {
 		if ve, ok := err.(*validationError); ok {

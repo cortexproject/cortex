@@ -213,7 +213,8 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	err = u.canAddSeriesFor(string(metricName))
 	if err != nil {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
+		// note we copy `metric` as retaining a reference is unsafe.
+		return fp, nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabelsWithCopy(metric), err)
 	}
 
 	u.memSeriesCreatedTotal.Inc()

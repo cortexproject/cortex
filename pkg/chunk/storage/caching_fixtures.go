@@ -27,7 +27,7 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableCl
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		Size:     500,
 		Validity: 5 * time.Minute,
-	}), 5*time.Minute, limits)
+	}), 5*time.Minute, limits, nil)
 	return indexClient, objectClient, tableClient, schemaConfig, err
 }
 func (f fixture) Teardown() error { return f.fixture.Teardown() }

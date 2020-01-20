@@ -300,7 +300,7 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
-	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
+	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer, t.tombstonesLoader)
 	if err != nil {
 		return
 	}
@@ -340,7 +340,8 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	t.tombstonesLoader = chunk.NewTombstonesLoader(t.deletesStore)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, t.tombstonesLoader)
 
 	return
 }

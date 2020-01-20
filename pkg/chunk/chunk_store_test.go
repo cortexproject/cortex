@@ -23,6 +23,8 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+var ctx = user.InjectOrgID(context.Background(), userID)
+
 type configFactory func() StoreConfig
 
 var schemas = []struct {
@@ -91,7 +93,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	store := NewCompositeStore()
+	store := NewCompositeStore(NewMockTombstonesLoader())
 	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
 	require.NoError(t, err)
 	return store
@@ -99,7 +101,6 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 
 // TestChunkStore_Get tests results are returned correctly depending on the type of query
 func TestChunkStore_Get(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -260,7 +261,6 @@ func TestChunkStore_Get(t *testing.T) {
 }
 
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -372,7 +372,6 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 }
 
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -475,7 +474,6 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
@@ -569,8 +567,6 @@ func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) 
 }
 
 func TestChunkStoreRandom(t *testing.T) {
-	ctx := context.Background()
-
 	for _, schema := range schemas {
 		t.Run(schema.name, func(t *testing.T) {
 			store := newTestChunkStore(t, schema.name)
@@ -640,7 +636,6 @@ func TestChunkStoreRandom(t *testing.T) {
 
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
-	ctx := context.Background()
 	store := newTestChunkStore(t, "v6")
 	defer store.Stop()
 
@@ -705,7 +700,6 @@ func TestChunkStoreLeastRead(t *testing.T) {
 }
 
 func TestIndexCachingWorks(t *testing.T) {
-	ctx := context.Background()
 	metric := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -735,7 +729,6 @@ func TestIndexCachingWorks(t *testing.T) {
 }
 
 func BenchmarkIndexCaching(b *testing.B) {
-	ctx := context.Background()
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
 
@@ -752,7 +745,6 @@ func BenchmarkIndexCaching(b *testing.B) {
 }
 
 func TestChunkStoreError(t *testing.T) {
-	ctx := context.Background()
 	for _, tc := range []struct {
 		query         string
 		from, through model.Time
@@ -800,7 +792,6 @@ func TestChunkStoreError(t *testing.T) {
 }
 
 func TestStoreMaxLookBack(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
 	metric := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "baz"},

@@ -76,3 +76,43 @@ func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Tim
 
 	return matrix, nil
 }
+
+type dummyTombstonesAnalyzer struct{}
+
+// GetDeletedIntervals implements TombstonesAnalyzer
+func (dummyTombstonesAnalyzer) GetDeletedIntervals(labels labels.Labels, from, to model.Time) []model.Interval {
+	return nil
+}
+
+// HasTombstonesForInterval implements TombstonesAnalyzer
+func (dummyTombstonesAnalyzer) HasTombstonesForInterval(from, to model.Time) bool {
+	return false
+}
+
+// Len implements TombstonesAnalyzer
+func (dummyTombstonesAnalyzer) Len() int {
+	return 0
+}
+
+// DummyTombstonesLoader is a noop tombstones loader
+type DummyTombstonesLoader struct{}
+
+// GetPendingTombstones implements TombstonesLoader
+func (DummyTombstonesLoader) GetPendingTombstones(userID string) (TombstonesAnalyzer, error) {
+	return dummyTombstonesAnalyzer{}, nil
+}
+
+// GetStoreCacheGenNumber implements TombstonesLoader
+func (DummyTombstonesLoader) GetStoreCacheGenNumber(userID string) (string, error) {
+	return "", nil
+}
+
+// GetResultsCacheGenNumber implements TombstonesLoader
+func (DummyTombstonesLoader) GetResultsCacheGenNumber(userID string) (string, error) {
+	return "", nil
+}
+
+// NewMockTombstonesLoader creates a new MockTombstonesLoader
+func NewMockTombstonesLoader() DummyTombstonesLoader {
+	return DummyTombstonesLoader{}
+}

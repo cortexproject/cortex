@@ -17,12 +17,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/user"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 )
 
 var (
@@ -359,6 +360,7 @@ func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, err
 			StartTimestampMs: int64(d.FirstTime),
 			EndTimestampMs:   int64(d.LastTime),
 			Encoding:         int32(d.C.Encoding()),
+			DeletedIntervals: chunkcompat.ModelIntervalsToClientIntervals(d.deletedIntervals),
 		}
 
 		buf := bytes.NewBuffer(make([]byte, 0, d.C.Size()))

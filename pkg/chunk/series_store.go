@@ -66,7 +66,7 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits, tombstonesLoader TombstonesLoader) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
@@ -86,12 +86,13 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 
 	return &seriesStore{
 		store: store{
-			cfg:     cfg,
-			index:   index,
-			chunks:  chunks,
-			schema:  schema,
-			limits:  limits,
-			Fetcher: fetcher,
+			cfg:              cfg,
+			index:            index,
+			chunks:           chunks,
+			schema:           schema,
+			limits:           limits,
+			Fetcher:          fetcher,
+			tombstonesLoader: tombstonesLoader,
 		},
 		writeDedupeCache: writeDedupeCache,
 	}, nil
@@ -133,7 +134,7 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
-	return filteredChunks, nil
+	return c.store.applyTombstonesToChunks(userID, filteredChunks, from, through)
 }
 
 func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
@@ -246,7 +247,13 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
-	return labelNamesFromChunks(allChunks), nil
+
+	filteredChunks, err := c.store.applyTombstonesToChunks(userID, allChunks, from, through)
+	if err != nil {
+		level.Error(log).Log("msg", "applyTombstonesToChunks", "err", err)
+		return nil, err
+	}
+	return labelNamesFromChunks(filteredChunks), nil
 }
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))

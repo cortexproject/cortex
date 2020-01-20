@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	// DeleteRequestStatusReceived means no actions done on request yet
+	// DeleteRequestStatusReceived means no actions done on request yet, just doing query time filtering
 	DeleteRequestStatusReceived = "0"
-	// DeleteRequestStatusBuildingPlan means request is picked up for processing and building plans for it
+	// DeleteRequestStatusBuildingPlan means request is picked up for processing and building plans for it, still doing query time filtering
 	DeleteRequestStatusBuildingPlan = "1"
-	// DeleteRequestStatusDeleting means plans built already, running delete operations
+	// DeleteRequestStatusDeleting means plans built already, running delete operations and still doing query time filtering
 	DeleteRequestStatusDeleting = "2"
-	// DeleteRequestStatusProcessed means all requested data deleted
+	// DeleteRequestStatusProcessed means all requested data deleted, not considering this for query time filtering
 	DeleteRequestStatusProcessed = "3"
 )
 

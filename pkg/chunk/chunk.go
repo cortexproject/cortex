@@ -60,6 +60,8 @@ type Chunk struct {
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
+
+	deletedIntervals []model.Interval
 }
 
 // NewChunk creates a new chunk
@@ -324,14 +326,24 @@ func equalByKey(a, b Chunk) bool {
 
 // Samples returns all SamplePairs for the chunk.
 func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
-	it := c.Data.NewIterator(nil)
+	it := c.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
 }
 
+// NewIterator creates an iterator for chunk
+func (c *Chunk) NewIterator(itr prom_chunk.Iterator) prom_chunk.Iterator {
+	itr = c.Data.NewIterator(itr)
+	if len(c.deletedIntervals) != 0 {
+		itr = prom_chunk.NewDeletedChunkIterator(itr, c.deletedIntervals)
+	}
+
+	return itr
+}
+
 // Slice builds a new smaller chunk with data only from given time range
 func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
-	itr := c.Data.NewIterator(nil)
+	itr := c.NewIterator(nil)
 	if !itr.FindAtOrAfter(from) {
 		return nil, nil
 	}
@@ -363,4 +375,9 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 
 	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
 	return &nc, nil
+}
+
+// SetDeletedIntervals sets deleted intervals for a chunk
+func (c *Chunk) SetDeletedIntervals(deletedIntervals []model.Interval) {
+	c.deletedIntervals = deletedIntervals
 }

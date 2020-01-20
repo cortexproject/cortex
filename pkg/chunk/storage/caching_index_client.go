@@ -43,21 +43,23 @@ var (
 
 type cachingIndexClient struct {
 	chunk.IndexClient
-	cache    cache.Cache
-	validity time.Duration
-	limits   StoreLimits
+	cache            cache.Cache
+	validity         time.Duration
+	limits           StoreLimits
+	tombstonesLoader chunk.TombstonesLoader
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, tombstonesLoader chunk.TombstonesLoader) chunk.IndexClient {
 	if c == nil {
 		return client
 	}
 
 	return &cachingIndexClient{
-		IndexClient: client,
-		cache:       cache.NewSnappy(c),
-		validity:    validity,
-		limits:      limits,
+		IndexClient:      client,
+		cache:            cache.NewSnappy(c),
+		validity:         validity,
+		limits:           limits,
+		tombstonesLoader: tombstonesLoader,
 	}
 }
 

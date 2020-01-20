@@ -57,6 +57,7 @@ func TestCompositeStore(t *testing.T) {
 		}
 	}
 	cs := compositeStore{
+		tombstonesLoader: NewMockTombstonesLoader(),
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(100), mockStore(2)},
@@ -70,11 +71,12 @@ func TestCompositeStore(t *testing.T) {
 		want          []result
 	}{
 		// Test we have sensible results when there are no schema's defined
-		{compositeStore{}, 0, 1, []result{}},
+		{compositeStore{tombstonesLoader: NewMockTombstonesLoader()}, 0, 1, []result{}},
 
 		// Test we have sensible results when there is a single schema
 		{
 			compositeStore{
+				tombstonesLoader: NewMockTombstonesLoader(),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -88,6 +90,7 @@ func TestCompositeStore(t *testing.T) {
 		// Test we have sensible results for negative (ie pre 1970) times
 		{
 			compositeStore{
+				tombstonesLoader: NewMockTombstonesLoader(),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -97,6 +100,7 @@ func TestCompositeStore(t *testing.T) {
 		},
 		{
 			compositeStore{
+				tombstonesLoader: NewMockTombstonesLoader(),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -110,6 +114,7 @@ func TestCompositeStore(t *testing.T) {
 		// Test we have sensible results when there is two schemas
 		{
 			compositeStore{
+				tombstonesLoader: NewMockTombstonesLoader(),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 					{model.TimeFromUnix(100), mockStore(2)},
@@ -125,6 +130,7 @@ func TestCompositeStore(t *testing.T) {
 		// Test we get only one result when two schema start at same time
 		{
 			compositeStore{
+				tombstonesLoader: NewMockTombstonesLoader(),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 					{model.TimeFromUnix(10), mockStore(2)},
@@ -205,6 +211,7 @@ func TestCompositeStoreLabels(t *testing.T) {
 	t.Parallel()
 
 	cs := compositeStore{
+		tombstonesLoader: NewMockTombstonesLoader(),
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(20), mockStoreLabel{mockStore(1), []string{"b", "c", "e"}}},

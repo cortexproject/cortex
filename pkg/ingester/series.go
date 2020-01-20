@@ -158,7 +158,7 @@ func (s *memorySeries) head() *desc {
 	return s.chunkDescs[len(s.chunkDescs)-1]
 }
 
-func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
+func (s *memorySeries) samplesForRange(from, through model.Time, deletedInterval []model.Interval) ([]model.SamplePair, error) {
 	// Find first chunk with start time after "from".
 	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
 		return s.chunkDescs[i].FirstTime.After(from)
@@ -190,7 +190,13 @@ func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 	for idx := fromIdx; idx <= throughIdx; idx++ {
 		cd := s.chunkDescs[idx]
 		reuseIter = cd.C.NewIterator(reuseIter)
-		chValues, err := encoding.RangeValues(reuseIter, in)
+
+		itr := reuseIter
+		if len(deletedInterval) != 0 {
+			itr = encoding.NewDeletedChunkIterator(itr, deletedInterval)
+		}
+
+		chValues, err := encoding.RangeValues(itr, in)
 		if err != nil {
 			return nil, err
 		}
@@ -216,12 +222,13 @@ func (s *memorySeries) isStale() bool {
 }
 
 type desc struct {
-	C           encoding.Chunk // nil if chunk is evicted.
-	FirstTime   model.Time     // Timestamp of first sample. Populated at creation. Immutable.
-	LastTime    model.Time     // Timestamp of last sample. Populated at creation & on append.
-	LastUpdate  model.Time     // This server's local time on last change
-	flushReason flushReason    // If chunk is closed, holds the reason why.
-	flushed     bool           // set to true when flush succeeds
+	C                encoding.Chunk // nil if chunk is evicted.
+	FirstTime        model.Time     // Timestamp of first sample. Populated at creation. Immutable.
+	LastTime         model.Time     // Timestamp of last sample. Populated at creation & on append.
+	LastUpdate       model.Time     // This server's local time on last change
+	flushReason      flushReason    // If chunk is closed, holds the reason why.
+	flushed          bool           // set to true when flush succeeds
+	deletedIntervals []model.Interval
 }
 
 func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc {

@@ -160,19 +160,20 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
-	server        *server.Server
-	ring          *ring.Ring
-	overrides     *validation.Overrides
-	distributor   *distributor.Distributor
-	ingester      *ingester.Ingester
-	store         chunk.Store
-	deletesStore  chunk.DeleteStore
-	worker        frontend.Worker
-	frontend      *frontend.Frontend
-	tableManager  *chunk.TableManager
-	cache         cache.Cache
-	runtimeConfig *runtimeconfig.Manager
-	dataPurger    *purger.DataPurger
+	server           *server.Server
+	ring             *ring.Ring
+	overrides        *validation.Overrides
+	distributor      *distributor.Distributor
+	ingester         *ingester.Ingester
+	store            chunk.Store
+	deletesStore     chunk.DeleteStore
+	worker           frontend.Worker
+	frontend         *frontend.Frontend
+	tableManager     *chunk.TableManager
+	cache            cache.Cache
+	runtimeConfig    *runtimeconfig.Manager
+	tombstonesLoader chunk.TombstonesLoader
+	dataPurger       *purger.DataPurger
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

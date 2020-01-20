@@ -40,7 +40,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, chunk.NewMockTombstonesLoader())
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
@@ -71,7 +71,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, chunk.NewMockTombstonesLoader())
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
@@ -129,7 +129,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, chunk.NewMockTombstonesLoader())
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", Immutable: true},
 		{TableName: "table", HashValue: "bar", Immutable: true},
@@ -180,7 +180,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, chunk.NewMockTombstonesLoader())
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
@@ -218,7 +218,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, chunk.NewMockTombstonesLoader())
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},

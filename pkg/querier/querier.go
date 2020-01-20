@@ -33,7 +33,7 @@ type Config struct {
 	DefaultEvaluationInterval time.Duration
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
-	metricsRegisterer prometheus.Registerer
+	metricsRegisterer prometheus.Registerer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

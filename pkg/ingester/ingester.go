@@ -40,75 +40,6 @@ var (
 	recordPool sync.Pool
 )
 
-type ingesterMetrics struct {
-	flushQueueLength    prometheus.Gauge
-	ingestedSamples     prometheus.Counter
-	ingestedSamplesFail prometheus.Counter
-	queries             prometheus.Counter
-	queriedSamples      prometheus.Histogram
-	queriedSeries       prometheus.Histogram
-	queriedChunks       prometheus.Histogram
-	walReplayDuration   prometheus.Gauge
-}
-
-func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
-	m := &ingesterMetrics{
-		flushQueueLength: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_flush_queue_length",
-			Help: "The total number of series pending in the flush queue.",
-		}),
-		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_ingested_samples_total",
-			Help: "The total number of samples ingested.",
-		}),
-		ingestedSamplesFail: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_ingested_samples_failures_total",
-			Help: "The total number of samples that errored on ingestion.",
-		}),
-		queries: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_queries_total",
-			Help: "The total number of queries the ingester has handled.",
-		}),
-		queriedSamples: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "cortex_ingester_queried_samples",
-			Help: "The total number of samples returned from queries.",
-			// Could easily return 10m samples per query - 10*(8^(8-1)) = 20.9m.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 8),
-		}),
-		queriedSeries: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "cortex_ingester_queried_series",
-			Help: "The total number of series returned from queries.",
-			// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 6),
-		}),
-		queriedChunks: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "cortex_ingester_queried_chunks",
-			Help: "The total number of chunks returned from queries.",
-			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
-		}),
-		walReplayDuration: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_wal_replay_duration_seconds",
-			Help: "Time taken to replay the checkpoint and the WAL.",
-		}),
-	}
-
-	if r != nil {
-		r.MustRegister(
-			m.flushQueueLength,
-			m.ingestedSamples,
-			m.ingestedSamplesFail,
-			m.queries,
-			m.queriedSamples,
-			m.queriedSeries,
-			m.queriedChunks,
-			m.walReplayDuration,
-		)
-	}
-
-	return m
-}
-
 // Config for an Ingester.
 type Config struct {
 	WALConfig        WALConfig
@@ -257,7 +188,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, cfg)
+		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 	}
 
 	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
@@ -379,13 +310,13 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 				continue
 			}
 
-			return nil, err
+			return nil, wrapWithUser(err, userID)
 		}
 	}
 	defer client.ReuseSlice(req.Timeseries)
 
 	if lastPartialErr != nil {
-		return &client.WriteResponse{}, lastPartialErr.WrappedError()
+		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
 	}
 
 	if record != nil {
@@ -422,7 +353,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		if ve, ok := err.(*validationError); ok {
 			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
 		}
-		state = nil // don't want to unlock the fp if there is an error
+
+		// Reset the state so that the defer will not try to unlock the fpLocker
+		// in case of error, because that lock has already been released on error.
+		state = nil
 		return err
 	}
 
@@ -433,7 +367,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		slot := startOfCycle.Add(time.Duration(uint64(fp) % uint64(i.cfg.MaxChunkAge)))
 		// If adding this sample means the head chunk will span that point in time, close so it will get flushed
 		if series.head().FirstTime < slot && timestamp >= slot {
-			series.closeHead()
+			series.closeHead(reasonSpreadFlush)
 		}
 	}
 

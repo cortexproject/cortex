@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -53,18 +54,39 @@ type IAM struct {
 const (
 	defaultIAMRoleEndpoint      = "http://169.254.169.254"
 	defaultECSRoleEndpoint      = "http://169.254.170.2"
-	defaultIAMSecurityCredsPath = "/latest/meta-data/iam/security-credentials"
+	defaultIAMSecurityCredsPath = "/latest/meta-data/iam/security-credentials/"
 )
 
 // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
-func getEndpoint(endpoint string) (string, bool) {
+func getEndpoint(endpoint string) (string, bool, error) {
+	ecsFullURI := os.Getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI")
+	ecsURI := os.Getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")
+
 	if endpoint != "" {
-		return endpoint, os.Getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") != ""
+		return endpoint, ecsURI != "" || ecsFullURI != "", nil
 	}
-	if ecsURI := os.Getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"); ecsURI != "" {
-		return fmt.Sprintf("%s%s", defaultECSRoleEndpoint, ecsURI), true
+	if ecsFullURI != "" {
+		u, err := url.Parse(ecsFullURI)
+		if err != nil {
+			return "", false, err
+		}
+		host := u.Hostname()
+		if host == "" {
+			return "", false, fmt.Errorf("can't parse host from uri: %s", ecsFullURI)
+		}
+
+		if loopback, err := isLoopback(host); loopback {
+			return ecsFullURI, true, nil
+		} else if err != nil {
+			return "", false, err
+		} else {
+			return "", false, fmt.Errorf("host is not on a loopback address: %s", host)
+		}
 	}
-	return defaultIAMRoleEndpoint, false
+	if ecsURI != "" {
+		return fmt.Sprintf("%s%s", defaultECSRoleEndpoint, ecsURI), true, nil
+	}
+	return defaultIAMRoleEndpoint, false, nil
 }
 
 // NewIAM returns a pointer to a new Credentials object wrapping the IAM.
@@ -82,9 +104,14 @@ func NewIAM(endpoint string) *Credentials {
 // Error will be returned if the request fails, or unable to extract
 // the desired
 func (m *IAM) Retrieve() (Value, error) {
-	endpoint, isEcsTask := getEndpoint(m.endpoint)
 	var roleCreds ec2RoleCredRespBody
 	var err error
+
+	endpoint, isEcsTask, err := getEndpoint(m.endpoint)
+	if err != nil {
+		return Value{}, err
+	}
+
 	if isEcsTask {
 		roleCreds, err = getEcsTaskCredentials(m.Client, endpoint)
 	} else {
@@ -247,4 +274,19 @@ func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, 
 	}
 
 	return respCreds, nil
+}
+
+// isLoopback identifies if a host is on a loopback address
+func isLoopback(host string) (bool, error) {
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return false, err
+	}
+	for _, ip := range ips {
+		if !net.ParseIP(ip).IsLoopback() {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -65,20 +66,21 @@ type Config struct {
 	Ingester       ingester.Config          `yaml:"ingester,omitempty"`
 	Storage        storage.Config           `yaml:"storage,omitempty"`
 	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty"`
+	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig   validation.Limits        `yaml:"limits,omitempty"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty"`
+	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
 	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb"`
+	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
 
-	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
-	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
-	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
+	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
+	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -86,7 +88,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "target module (default All)")
+	f.Var(&c.Target, "target", "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -112,6 +114,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ConfigDB.RegisterFlags(f)
 	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
+	c.RuntimeConfig.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -146,16 +149,17 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
-	server       *server.Server
-	ring         *ring.Ring
-	overrides    *validation.Overrides
-	distributor  *distributor.Distributor
-	ingester     *ingester.Ingester
-	store        chunk.Store
-	worker       frontend.Worker
-	frontend     *frontend.Frontend
-	tableManager *chunk.TableManager
-	cache        cache.Cache
+	server        *server.Server
+	ring          *ring.Ring
+	overrides     *validation.Overrides
+	distributor   *distributor.Distributor
+	ingester      *ingester.Ingester
+	store         chunk.Store
+	worker        frontend.Worker
+	frontend      *frontend.Frontend
+	tableManager  *chunk.TableManager
+	cache         cache.Cache
+	runtimeConfig *runtimeconfig.Manager
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

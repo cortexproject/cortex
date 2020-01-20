@@ -19,7 +19,6 @@ package minio
 
 import (
 	"crypto/md5"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -31,6 +30,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/minio/sha256-simd"
 
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 )
@@ -223,6 +224,8 @@ var supportedHeaders = []string{
 	"content-disposition",
 	"content-language",
 	"x-amz-website-redirect-location",
+	"x-amz-object-lock-mode",
+	"x-amz-object-lock-retain-until-date",
 	"expires",
 	// Add more supported headers here.
 }

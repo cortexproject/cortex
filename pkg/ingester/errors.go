@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 )
@@ -49,6 +50,11 @@ func makeMetricLimitError(errorType string, labels labels.Labels, err error) err
 	}
 }
 
+func (e *validationError) WrapWithUser(userID string) *validationError {
+	e.err = wrapWithUser(e.err, userID)
+	return e
+}
+
 func (e *validationError) Error() string {
 	if e.err == nil {
 		return e.errorType
@@ -65,4 +71,8 @@ func (e *validationError) WrappedError() error {
 		Code: int32(e.code),
 		Body: []byte(e.Error()),
 	})
+}
+
+func wrapWithUser(err error, userID string) error {
+	return errors.Wrapf(err, "user=%s", userID)
 }

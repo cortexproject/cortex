@@ -99,7 +99,6 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 		var bs *store.BucketStore
 		var ok bool
 		if bs, ok = u.stores[user]; !ok {
-
 			level.Info(u.logger).Log("msg", "creating user bucket store", "user", user)
 
 			// Instance a new bucket used by this tenant's shipper. We're going
@@ -118,7 +117,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 
 			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
+			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, nil, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
 				MaxItemSizeBytes: maxItemSizeBytes,
 			})

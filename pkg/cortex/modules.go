@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -39,6 +41,7 @@ type moduleName int
 // The various modules that make up Cortex.
 const (
 	Ring moduleName = iota
+	RuntimeConfig
 	Overrides
 	Server
 	Distributor
@@ -57,6 +60,8 @@ func (m moduleName) String() string {
 	switch m {
 	case Ring:
 		return "ring"
+	case RuntimeConfig:
+		return "runtime-config"
 	case Overrides:
 		return "overrides"
 	case Server:
@@ -151,6 +156,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
@@ -160,14 +166,28 @@ func (t *Cortex) initRing(cfg *Config) (err error) {
 	return
 }
 
-func (t *Cortex) initOverrides(cfg *Config) (err error) {
-	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig)
+func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
+	if cfg.RuntimeConfig.LoadPath == "" {
+		cfg.RuntimeConfig.LoadPath = cfg.LimitsConfig.PerTenantOverrideConfig
+		cfg.RuntimeConfig.ReloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
+	}
+	cfg.RuntimeConfig.Loader = loadRuntimeConfig
+
+	// make sure to set default limits before we start loading configuration into memory
+	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
+
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig)
 	return err
 }
 
-func (t *Cortex) stopOverrides() error {
-	t.overrides.Stop()
+func (t *Cortex) stopRuntimeConfig() (err error) {
+	t.runtimeConfig.Stop()
 	return nil
+}
+
+func (t *Cortex) initOverrides(cfg *Config) (err error) {
+	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
+	return err
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
@@ -195,11 +215,6 @@ func (t *Cortex) stopDistributor() (err error) {
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
-	t.worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
-	if err != nil {
-		return
-	}
-
 	var store querier.ChunkStore
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
@@ -226,6 +241,8 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		querier.DummyRulesRetriever{},
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
+		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
+		&v1.PrometheusVersion{},
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
@@ -236,6 +253,20 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	subrouter.Path("/validate_expr").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.ValidateExprHandler)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
+
+	// Start the query frontend worker once the query engine and the store
+	// have been successfully initialized.
+	t.worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	if err != nil {
+		return
+	}
+
+	// Once the execution reaches this point, all synchronous initialization has been
+	// done and the querier is ready to serve queries, so we're just returning a 202.
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
 	return
 }
 
@@ -245,6 +276,7 @@ func (t *Cortex) stopQuerier() error {
 }
 
 func (t *Cortex) initIngester(cfg *Config) (err error) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -312,7 +344,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 func (t *Cortex) stopQueryFrontend() (err error) {
 	t.frontend.Close()
 	if t.cache != nil {
-		t.cache.Stop()
+		_ = t.cache.Stop()
 		t.cache = nil
 	}
 	return
@@ -434,14 +466,19 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopServer,
 	},
 
+	RuntimeConfig: {
+		init: (*Cortex).initRuntimeConfig,
+		stop: (*Cortex).stopRuntimeConfig,
+	},
+
 	Ring: {
-		deps: []moduleName{Server},
+		deps: []moduleName{Server, RuntimeConfig},
 		init: (*Cortex).initRing,
 	},
 
 	Overrides: {
+		deps: []moduleName{RuntimeConfig},
 		init: (*Cortex).initOverrides,
-		stop: (*Cortex).stopOverrides,
 	},
 
 	Distributor: {
@@ -457,7 +494,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server},
+		deps: []moduleName{Overrides, Store, Server, RuntimeConfig},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},

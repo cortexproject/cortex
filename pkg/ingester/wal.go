@@ -361,7 +361,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 func recoverFromWAL(ingester *Ingester) (err error) {
 	walDir := ingester.cfg.WALConfig.dir
 	// Use a local userStates, so we don't need to worry about locking.
-	userStates := newUserStates(ingester.limiter, ingester.cfg)
+	userStates := newUserStates(ingester.limiter, ingester.cfg, ingester.metrics)
 
 	defer func() {
 		if err == nil {

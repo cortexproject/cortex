@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -75,6 +76,11 @@ func New(uri, migrationsDir string) (DB, error) {
 	}
 
 	if migrationsDir != "" {
+		// Add file scheme if no scheme is present
+		if !strings.HasPrefix(migrationsDir, "file:") {
+			migrationsDir = "file:" + migrationsDir
+		}
+
 		m, err := migrate.New(migrationsDir, uri)
 		if err != nil {
 			return DB{}, errors.Wrap(err, "database migrations initialization failed")

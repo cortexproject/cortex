@@ -6,7 +6,6 @@ package grpc_prometheus
 import (
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/codes"
 )
 
@@ -31,40 +30,8 @@ func newClientReporter(m *ClientMetrics, rpcType grpcType, fullMethod string) *c
 	return r
 }
 
-// timer is a helper interface to time functions.
-type timer interface {
-	ObserveDuration() time.Duration
-}
-
-type noOpTimer struct {
-}
-
-func (noOpTimer) ObserveDuration() time.Duration {
-	return 0
-}
-
-var emptyTimer = noOpTimer{}
-
-func (r *clientReporter) ReceiveMessageTimer() timer {
-	if r.metrics.clientStreamRecvHistogramEnabled {
-		hist := r.metrics.clientStreamRecvHistogram.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName)
-		return prometheus.NewTimer(hist)
-	}
-
-	return emptyTimer
-}
-
 func (r *clientReporter) ReceivedMessage() {
 	r.metrics.clientStreamMsgReceived.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
-}
-
-func (r *clientReporter) SendMessageTimer() timer {
-	if r.metrics.clientStreamSendHistogramEnabled {
-		hist := r.metrics.clientStreamSendHistogram.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName)
-		return prometheus.NewTimer(hist)
-	}
-
-	return emptyTimer
 }
 
 func (r *clientReporter) SentMessage() {

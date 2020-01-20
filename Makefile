@@ -80,16 +80,16 @@ GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
+GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated \
+			-v $(shell pwd)/.pkg:/go/pkg:delegated \
+			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated
+
 exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		$(BUILD_IMAGE) $@;
+	@$(SUDO) time docker run $(RM) $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -97,10 +97,7 @@ configs-integration-test: build-image/$(UPTODATE)
 	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
+	$(SUDO) docker run $(RM) $(TTY) -i $(GOVOLUMES) \
 		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
@@ -123,11 +120,8 @@ protos: $(PROTO_GOS)
 	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
-	./tools/lint -notestpackage -novet -ignorespelling queriers -ignorespelling Queriers .
-
-	# -stdmethods=false disables checks for non-standard signatures for methods with familiar names.
-	# This is needed because the Prometheus storage interface requires a non-standard Seek() method.
-	go vet -stdmethods=false ./pkg/...
+	misspell -error docs
+	golangci-lint run --new-from-rev ed7c302fd968 --build-tags netgo --timeout=5m --enable golint --enable misspell --enable gofmt
 
 test:
 	./tools/test -netgo
@@ -193,6 +187,17 @@ prime-minikube: save-images
 			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
 		fi \
 	done
+
+# Generates the config file documentation.
+doc:
+	cp ./docs/configuration/config-file-reference.template ./docs/configuration/config-file-reference.md
+	go run ./tools/doc-generator/ >> ./docs/configuration/config-file-reference.md
+
+clean-doc:
+	rm -f ./docs/configuration/config-file-reference.md
+
+check-doc: clean-doc doc
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md
 
 web-serve:
 	cd website && hugo --config config.toml -v server

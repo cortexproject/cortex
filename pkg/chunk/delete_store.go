@@ -46,6 +46,7 @@ type DeleteStore interface {
 	GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status string) ([]DeleteRequest, error)
 	GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, userID, requestID string, newStatus string) error
+	RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 
@@ -124,6 +125,19 @@ func (ds *deleteStore) UpdateStatus(ctx context.Context, userID, requestID strin
 
 	rangeValue := encodeRangeKey([]byte(userID), []byte(requestID))
 	batch.Update(ds.cfg.RequestsTableName, "", rangeValue, []byte(newStatus))
+
+	return ds.indexClient.BatchWrite(ctx, batch)
+}
+
+// RemoveDeleteRequest removes a delete request and increments cache gen number
+func (ds *deleteStore) RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error {
+	// userID, requestID
+	rangeValue := encodeRangeKey([]byte(userID), []byte(requestID))
+
+	batch := ds.indexClient.NewWriteBatch()
+	batch.Delete(ds.cfg.RequestsTableName, "", rangeValue)
+	batch.Delete(ds.cfg.RequestsTableName, fmt.Sprintf("%s:%s", userID, requestID),
+		encodeRangeKey(encodeUint64Time(uint64(createdAt)), encodeUint64Time(uint64(startTime)), encodeUint64Time(uint64(endTime))))
 
 	return ds.indexClient.BatchWrite(ctx, batch)
 }

@@ -507,6 +507,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 	}
 
 	t.server.HTTP.Path("/delete_series").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
+	t.server.HTTP.Path("/cancel_delete_request").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler)))
 	t.server.HTTP.Path("/get_all_delete_requests").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
 
 	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store)

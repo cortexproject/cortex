@@ -90,6 +90,39 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 }
 
+// CancelDeleteRequestHandler handles delete request cancellation
+func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	params := r.URL.Query()
+	requestID := params.Get("request_id")
+
+	deleteRequest, err := dm.deleteStore.GetDeleteRequest(ctx, userID, requestID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if deleteRequest == nil {
+		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
+		return
+	}
+
+	if deleteRequest.Status != chunk.DeleteRequestStatusReceived {
+		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
+		return
+	}
+
+	if err := dm.deleteStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // GetAllDeleteRequestsHandler handles get all delete requests
 func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

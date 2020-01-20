@@ -295,6 +295,8 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 	var lastPartialErr *validationError
 
+	// NOTE: because we use `unsafe` in deserialisation, we must not
+	// retain anything from `req` past the call to ReuseSlice
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
@@ -319,6 +321,8 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	return &client.WriteResponse{}, nil
 }
 
+// NOTE: memory for `labels` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 

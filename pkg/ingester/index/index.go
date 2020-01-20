@@ -32,9 +32,11 @@ func New() *InvertedIndex {
 }
 
 // Add a fingerprint under the specified labels.
+// NOTE: memory for `labels` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (ii *InvertedIndex) Add(labels []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard := &ii.shards[util.HashFP(fp)%indexShards]
-	return shard.add(labels, fp)
+	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
 
 // Lookup all fingerprints for the provided matchers.
@@ -108,7 +110,9 @@ func copyString(s string) string {
 	return string([]byte(s))
 }
 
-// add metric to the index; return all the name/value pairs as strings from the index, sorted
+// add metric to the index; return all the name/value pairs as a fresh
+// sorted slice, referencing 'interned' strings from the index so that
+// no references are retained to the memory of `metric`.
 func (shard *indexShard) add(metric []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()

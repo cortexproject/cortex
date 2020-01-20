@@ -132,6 +132,8 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
+// NOTE: memory for `labels` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
 
 	state, ok := us.get(userID)
@@ -173,6 +175,8 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 	return state, fp, series, err
 }
 
+// NOTE: memory for `metric` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
@@ -198,6 +202,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 		return fp, nil, makeLimitError(perUserSeriesLimit, err)
 	}
 
+	// MetricNameFromLabelAdapters returns a copy of the string in `metric`
 	metricName, err := extract.MetricNameFromLabelAdapters(metric)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
@@ -214,7 +219,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
 
-	labels := u.index.Add(metric, fp)
+	labels := u.index.Add(metric, fp) // Add() returns 'interned' values so the original labels are not retained
 	series = newMemorySeries(labels)
 	u.fpToSeries.put(fp, series)
 

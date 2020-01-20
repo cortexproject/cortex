@@ -15,7 +15,7 @@ type tsdbBucketStoreMetrics struct {
 	regsMu sync.Mutex
 	regs   map[string]*prometheus.Registry
 
-	// exported metrics
+	// exported metrics, gathered from Thanos BucketStore
 	blockLoads            *prometheus.Desc
 	blockLoadFailures     *prometheus.Desc
 	blockDrops            *prometheus.Desc
@@ -30,6 +30,20 @@ type tsdbBucketStoreMetrics struct {
 	seriesMergeDuration   *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
 	chunkSizeBytes        *prometheus.Desc
+
+	// Metrics gathered from Thanos storecache.InMemoryIndexCache
+	cacheItemsEvicted          *prometheus.Desc
+	cacheItemsAdded            *prometheus.Desc
+	cacheRequests              *prometheus.Desc
+	cacheItemsOverflow         *prometheus.Desc
+	cacheHits                  *prometheus.Desc
+	cacheItemsCurrentCount     *prometheus.Desc
+	cacheItemsCurrentSize      *prometheus.Desc
+	cacheItemsTotalCurrentSize *prometheus.Desc
+
+	// Ignored:
+	// thanos_store_index_cache_max_size_bytes
+	// thanos_store_index_cache_max_item_size_bytes
 }
 
 func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
@@ -93,6 +107,40 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			"cortex_bucket_store_sent_chunk_size_bytes",
 			"TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
 			nil, nil),
+
+		// Cache
+		cacheItemsEvicted: prometheus.NewDesc(
+			"cortex_store_index_cache_items_evicted_total",
+			"TSDB: Total number of items that were evicted from the index cache.",
+			[]string{"item_type"}, nil),
+		cacheItemsAdded: prometheus.NewDesc(
+			"cortex_store_index_cache_items_added_total",
+			"TSDB: Total number of items that were added to the index cache.",
+			[]string{"item_type"}, nil),
+		cacheRequests: prometheus.NewDesc(
+			"cortex_store_index_cache_requests_total",
+			"TSDB: Total number of requests to the cache.",
+			[]string{"item_type"}, nil),
+		cacheItemsOverflow: prometheus.NewDesc(
+			"cortex_store_index_cache_items_overflowed_total",
+			"TSDB: Total number of items that could not be added to the cache due to being too big.",
+			[]string{"item_type"}, nil),
+		cacheHits: prometheus.NewDesc(
+			"cortex_store_index_cache_hits_total",
+			"TSDB: Total number of requests to the cache that were a hit.",
+			[]string{"item_type"}, nil),
+		cacheItemsCurrentCount: prometheus.NewDesc(
+			"cortex_store_index_cache_items",
+			"TSDB: Current number of items in the index cache.",
+			[]string{"item_type"}, nil),
+		cacheItemsCurrentSize: prometheus.NewDesc(
+			"cortex_store_index_cache_items_size_bytes",
+			"TSDB: Current byte size of items in the index cache.",
+			[]string{"item_type"}, nil),
+		cacheItemsTotalCurrentSize: prometheus.NewDesc(
+			"cortex_store_index_cache_total_size_bytes",
+			"TSDB: Current byte size of items (both value and key) in the index cache.",
+			[]string{"item_type"}, nil),
 	}
 }
 
@@ -129,6 +177,15 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesMergeDuration
 	out <- m.resultSeriesCount
 	out <- m.chunkSizeBytes
+
+	out <- m.cacheItemsEvicted
+	out <- m.cacheItemsAdded
+	out <- m.cacheRequests
+	out <- m.cacheItemsOverflow
+	out <- m.cacheHits
+	out <- m.cacheItemsCurrentCount
+	out <- m.cacheItemsCurrentSize
+	out <- m.cacheItemsTotalCurrentSize
 }
 
 func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -164,4 +221,14 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
 	data.SendSumOfHistograms(out, m.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
+
+	data.SendSumOfCountersWithLabels(out, m.cacheItemsEvicted, "thanos_store_index_cache_items_evicted_total", "item_type")
+	data.SendSumOfCountersWithLabels(out, m.cacheItemsAdded, "thanos_store_index_cache_items_added_total", "item_type")
+	data.SendSumOfCountersWithLabels(out, m.cacheRequests, "thanos_store_index_cache_requests_total", "item_type")
+	data.SendSumOfCountersWithLabels(out, m.cacheItemsOverflow, "thanos_store_index_cache_items_overflowed_total", "item_type")
+	data.SendSumOfCountersWithLabels(out, m.cacheHits, "thanos_store_index_cache_hits_total", "item_type")
+
+	data.SendSumOfGaugesWithLabels(out, m.cacheItemsCurrentCount, "thanos_store_index_cache_items", "item_type")
+	data.SendSumOfGaugesWithLabels(out, m.cacheItemsCurrentSize, "thanos_store_index_cache_items_size_bytes", "item_type")
+	data.SendSumOfGaugesWithLabels(out, m.cacheItemsTotalCurrentSize, "thanos_store_index_cache_total_size_bytes", "item_type")
 }

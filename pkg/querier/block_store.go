@@ -118,16 +118,17 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
+			reg := prometheus.NewRegistry()
+
 			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, nil, storecache.Opts{
+			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, reg, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
 				MaxItemSizeBytes: maxItemSizeBytes,
 			})
 			if err != nil {
 				return err
 			}
-			reg := prometheus.NewRegistry()
 			bs, err = store.NewBucketStore(
 				u.logger,
 				reg,

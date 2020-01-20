@@ -52,6 +52,35 @@ func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, d
 	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, result)
 }
 
+func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
+	type counterResult struct {
+		value       float64
+		labelValues []string
+	}
+
+	result := map[string]counterResult{}
+
+	for _, userMetrics := range d { // for each user
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[counter], labelNames)
+
+		for key, mlv := range metricsPerLabelValue {
+			for _, m := range mlv.metrics {
+				r := result[key]
+				if r.labelValues == nil {
+					r.labelValues = mlv.labelValues
+				}
+
+				r.value += m.GetCounter().GetValue()
+				result[key] = r
+			}
+		}
+	}
+
+	for _, cr := range result {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, cr.value, cr.labelValues...)
+	}
+}
+
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	for user, perMetric := range d {
 		v := sum(perMetric[counter], counterValue)
@@ -66,6 +95,35 @@ func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, des
 		result += sum(perMetric[gauge], gaugeValue)
 	}
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
+}
+
+func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
+	type gaugeResult struct {
+		value       float64
+		labelValues []string
+	}
+
+	result := map[string]gaugeResult{}
+
+	for _, userMetrics := range d { // for each user
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[counter], labelNames)
+
+		for key, mlv := range metricsPerLabelValue {
+			for _, m := range mlv.metrics {
+				r := result[key]
+				if r.labelValues == nil {
+					r.labelValues = mlv.labelValues
+				}
+
+				r.value += m.GetGauge().GetValue()
+				result[key] = r
+			}
+		}
+	}
+
+	for _, cr := range result {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, cr.value, cr.labelValues...)
+	}
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {

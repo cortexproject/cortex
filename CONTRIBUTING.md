@@ -14,6 +14,7 @@ a piece of work is finished it should:
 * Each commit should build towards the whole - don't leave in back-tracks and mistakes that you later corrected.
 * Have tests for new functionality or tests that would have caught the bug being fixed.
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
+* If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
 ## Developer Certificates of Origin (DCOs)
 

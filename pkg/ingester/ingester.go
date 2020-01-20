@@ -157,7 +157,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer),
+		metrics:      newIngesterMetrics(registerer, true),
 		limits:       limits,
 		chunkStore:   chunkStore,
 		quit:         make(chan struct{}),

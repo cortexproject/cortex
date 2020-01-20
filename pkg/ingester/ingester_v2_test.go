@@ -36,6 +36,8 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_ingested_samples_failures_total",
 		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
 	}
 	userID := "test"
 
@@ -73,6 +75,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -103,6 +111,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -133,6 +147,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -163,6 +183,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 	}
@@ -226,6 +252,8 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		"cortex_ingester_ingested_samples_failures_total",
 		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
 	}
 
 	registry := prometheus.NewRegistry()
@@ -278,6 +306,14 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		# HELP cortex_ingester_memory_series The current number of series in memory.
 		# TYPE cortex_ingester_memory_series gauge
 		cortex_ingester_memory_series 2
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="test-1"} 1
+		cortex_ingester_memory_series_created_total{user="test-2"} 1
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="test-1"} 0
+		cortex_ingester_memory_series_removed_total{user="test-2"} 0
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))

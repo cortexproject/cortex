@@ -422,7 +422,7 @@ loop:
 	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(context.Background(), LEAVING)
+	_ = i.changeState(context.Background(), LEAVING)
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.

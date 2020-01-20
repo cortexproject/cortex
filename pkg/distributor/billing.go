@@ -22,7 +22,7 @@ func (d *Distributor) emitBillingRecord(ctx context.Context, buf []byte, samples
 
 	now := time.Now().UTC()
 	hasher := sha256.New()
-	hasher.Write(buf)
+	_, _ = hasher.Write(buf)
 	hash := "sha256:" + base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 	amounts := billing.Amounts{
 		billing.Samples: samples,

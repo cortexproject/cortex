@@ -323,7 +323,7 @@ func (cfg *SchemaConfig) Load() error {
 // PrintYaml dumps the yaml to stdout, to aid in migration
 func (cfg SchemaConfig) PrintYaml() {
 	encoder := yaml.NewEncoder(os.Stdout)
-	encoder.Encode(cfg)
+	_ = encoder.Encode(cfg)
 }
 
 // Bucket describes a range of time with a tableName and hashKey

@@ -132,7 +132,7 @@ func encodeTime(t uint32) []byte {
 
 func decodeTime(bs []byte) uint32 {
 	buf := make([]byte, 4)
-	hex.Decode(buf, bs)
+	_, _ = hex.Decode(buf, bs)
 	return binary.BigEndian.Uint32(buf)
 }
 

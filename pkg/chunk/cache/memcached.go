@@ -135,7 +135,7 @@ func memcacheStatusCode(err error) string {
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	instr.CollectedRequest(ctx, "Memcache.Get", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
+	_ = instr.CollectedRequest(ctx, "Memcache.Get", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		if c.cfg.BatchSize == 0 {
 			found, bufs, missed = c.fetch(ctx, keys)
 			return nil
@@ -149,7 +149,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
+	_ = instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
@@ -248,7 +248,7 @@ func (c *Memcached) Stop() {
 // HashKey hashes key into something you can store in memcached.
 func HashKey(key string) string {
 	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
+	_, _ = hasher.Write([]byte(key)) // This'll never error.
 
 	// Hex because memcache errors for the bytes produced by the hash.
 	return hex.EncodeToString(hasher.Sum(nil))

@@ -48,7 +48,7 @@ func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, erro
 		cfgs map[string]configs.View
 		err  error
 	)
-	instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	_ = instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		cfgs, err = t.d.GetAllConfigs(ctx)
 		return err
 	})

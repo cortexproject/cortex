@@ -171,7 +171,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -225,7 +225,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
 		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
-		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+		_ = tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 	}
 
 	request := request{

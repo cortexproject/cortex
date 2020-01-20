@@ -17,7 +17,10 @@ const (
 
 func TestChunksPartialError(t *testing.T) {
 	fixture := dynamoDBFixture(0, 10, 20)
-	defer fixture.Teardown()
+	defer func() {
+		err := fixture.Teardown()
+		require.NoError(t, err)
+	}()
 	_, client, err := testutils.Setup(fixture, tableName)
 	require.NoError(t, err)
 

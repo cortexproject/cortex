@@ -180,7 +180,10 @@ func TestCompositeStore(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			have := []result{}
-			tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			err := tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong stores - %s", test.Diff(tc.want, have))
 			}

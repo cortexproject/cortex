@@ -711,7 +711,8 @@ func BenchmarkIndexCaching(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		store.Put(ctx, []Chunk{fooChunk1})
+		err := store.Put(ctx, []Chunk{fooChunk1})
+		require.NoError(b, err)
 	}
 }
 

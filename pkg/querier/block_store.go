@@ -89,7 +89,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	if err != nil {
 		return nil, err
 	}
-	go serv.Serve(l)
+	go serv.Serve(l) //nolint:errcheck
 
 	cc, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
 	if err != nil {

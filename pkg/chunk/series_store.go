@@ -483,7 +483,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 			return err
 		}
 	}
-	c.writeBackCache(ctx, chunks)
+	_ = c.writeBackCache(ctx, chunks)
 
 	bufs := make([][]byte, len(keysToCache))
 	c.writeDedupeCache.Store(ctx, keysToCache, bufs)

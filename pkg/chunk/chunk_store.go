@@ -125,7 +125,7 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	c.writeBackCache(ctx, chunks)
+	_ = c.writeBackCache(ctx, chunks)
 
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {

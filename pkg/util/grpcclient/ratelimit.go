@@ -15,7 +15,7 @@ func NewRateLimiter(cfg *Config) grpc.UnaryClientInterceptor {
 	}
 	limiter := rate.NewLimiter(rate.Limit(cfg.RateLimit), burst)
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		limiter.Wait(ctx)
+		_ = limiter.Wait(ctx)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }

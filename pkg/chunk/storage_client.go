@@ -31,6 +31,7 @@ type ObjectAndIndexClient interface {
 // WriteBatch represents a batch of writes.
 type WriteBatch interface {
 	Add(tableName, hashValue string, rangeValue []byte, value []byte)
+	Increment(tableName, hashValue string, rangeValue []byte, value int64)
 	Update(tableName, hashValue string, rangeValue []byte, value []byte)
 	Delete(tableName, hashValue string, rangeValue []byte)
 }

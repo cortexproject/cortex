@@ -726,6 +726,10 @@ func (b dynamoDBWriteBatch) Update(tableName, hashValue string, rangeValue []byt
 	panic("implement me")
 }
 
+func (b dynamoDBWriteBatch) Increment(tableName, hashValue string, rangeValue []byte, value int64) {
+	panic("implement me")
+}
+
 func (b dynamoDBWriteBatch) Len() int {
 	result := 0
 	for _, reqs := range b {

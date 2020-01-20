@@ -94,7 +94,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 			Fetcher:          fetcher,
 			tombstonesLoader: tombstonesLoader,
 		},
-		writeDedupeCache: writeDedupeCache,
+		writeDedupeCache: cache.NewCacheGenMiddleware(writeDedupeCache),
 	}, nil
 }
 

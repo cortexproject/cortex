@@ -246,7 +246,7 @@ func TestPartiton(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor)
+			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{})
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
@@ -276,7 +276,7 @@ func TestResultsCache(t *testing.T) {
 		},
 		fakeLimits{},
 		PrometheusCodec,
-		PrometheusResponseExtractor,
+		PrometheusResponseExtractor{},
 	)
 	require.NoError(t, err)
 
@@ -307,7 +307,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor{})
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -344,7 +344,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		},
 		fakeLimits{},
 		PrometheusCodec,
-		PrometheusResponseExtractor,
+		PrometheusResponseExtractor{},
 	)
 	require.NoError(t, err)
 	rc := rm.Wrap(nil).(*resultsCache)
@@ -380,23 +380,24 @@ func Test_generateKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		r        Request
-		interval time.Duration
-		want     string
+		genNumber string
+		name      string
+		r         Request
+		interval  time.Duration
+		want      string
 	}{
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
-		{"91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
-		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
+		{"", "0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, ":fake:foo{}:10:0"},
+		{"1", "<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "1:fake:foo{}:10:0"},
+		{"", "30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, ":fake:foo{}:10:1"},
+		{"", "91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, ":fake:foo{}:10:3"},
+		{"", "0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, ":fake:foo{}:10:0"},
+		{"", "<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, ":fake:foo{}:10:0"},
+		{"", "4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, ":fake:foo{}:10:4"},
+		{"5", "3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "5:fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := generateKey("fake", tt.r, tt.interval); got != tt.want {
+			if got := generateKey(tt.genNumber, "fake", tt.r, tt.interval); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})

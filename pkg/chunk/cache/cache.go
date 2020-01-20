@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+type contextKey int
+
+const cacheGenContextKey contextKey = 0
+
 // Cache byte arrays by key.
 //
 // NB we intentionally do not return errors in this interface - caching is best

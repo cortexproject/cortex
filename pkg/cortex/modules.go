@@ -16,6 +16,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -234,6 +235,7 @@ func (t *Cortex) stopDistributor() (err error) {
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	var store querier.ChunkStore
+	httpCacheGenNumberHeaderSetterMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(t.tombstonesLoader)
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		store, err = querier.NewBlockQuerier(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
@@ -266,7 +268,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	api.Register(promRouter)
 
 	subrouter := t.server.HTTP.PathPrefix("/api/prom").Subrouter()
-	subrouter.PathPrefix("/api/v1").Handler(t.httpAuthMiddleware.Wrap(promRouter))
+	subrouter.PathPrefix("/api/v1").Handler(t.httpAuthMiddleware.Wrap(httpCacheGenNumberHeaderSetterMiddleware.Wrap(promRouter)))
 	subrouter.Path("/read").Handler(t.httpAuthMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.ValidateExprHandler)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
@@ -358,7 +360,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 	if err != nil {
 		return
 	}
-	tripperware, cache, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	tripperware, cache, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor{})
 	if err != nil {
 		return err
 	}
@@ -417,7 +419,7 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	extraTables := []string{cfg.DeletesConfig.RequestsTableName, cfg.DeletesConfig.PlansTableName}
+	extraTables := []string{cfg.DeletesConfig.RequestsTableName, cfg.DeletesConfig.PlansTableName, cfg.DeletesConfig.CacheGenNumbersTableName}
 	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient,
 		bucketClient, extraTables)
 	if err != nil {
@@ -621,4 +623,26 @@ var modules = map[moduleName]module{
 	All: {
 		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
 	},
+}
+
+// middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
+func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader chunk.TombstonesLoader) middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			cacheGenNumber, err := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
+			next.ServeHTTP(w, r)
+		})
+	})
 }

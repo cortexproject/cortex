@@ -7,6 +7,9 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -25,6 +28,8 @@ type TombstonesAnalyzer interface {
 // TombstonesLoader keeps tombstones and cache gen numbers loaded in memory
 type TombstonesLoader interface {
 	GetPendingTombstones(userID string) (TombstonesAnalyzer, error)
+	GetStoreCacheGenNumber(userID string) (string, error)
+	GetResultsCacheGenNumber(userID string) (string, error)
 }
 
 // Store for chunks.
@@ -85,7 +90,7 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 
 func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
-		err := c.forStores(chunk.From, chunk.Through, func(from, through model.Time, store Store) error {
+		err := c.forStores(ctx, chunk.From, chunk.Through, func(ctx context.Context, from, through model.Time, store Store) error {
 			return store.PutOne(ctx, from, through, chunk)
 		})
 		if err != nil {
@@ -96,14 +101,14 @@ func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 }
 
 func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+	return c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(ctx, from, through, chunk)
 	})
 }
 
 func (c compositeStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
 	var results []Chunk
-	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		chunks, err := store.Get(ctx, userID, from, through, matchers...)
 		if err != nil {
 			return err
@@ -117,7 +122,7 @@ func (c compositeStore) Get(ctx context.Context, userID string, from, through mo
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
 	var result UniqueStrings
-	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName)
 		if err != nil {
 			return err
@@ -131,7 +136,7 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	var result UniqueStrings
-	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 		if err != nil {
 			return err
@@ -145,7 +150,7 @@ func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	chunkIDs := [][]Chunk{}
 	fetchers := []*Fetcher{}
-	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		ids, fetcher, err := store.GetChunkRefs(ctx, userID, from, through, matchers...)
 		if err != nil {
 			return err
@@ -160,14 +165,14 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 
 // DeleteLabels deletes series IDs from index in series store
 func (c CompositeStore) DeleteLabels(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+	return c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		return store.DeleteLabels(ctx, from, through, userID, metric)
 	})
 }
 
 // DeleteChunk removes a chunk and its reference from index
 func (c CompositeStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+	return c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
 		return store.DeleteChunk(ctx, from, through, userID, chunkID, metric, partiallyDeletedInterval)
 	})
 }
@@ -178,9 +183,15 @@ func (c compositeStore) Stop() {
 	}
 }
 
-func (c compositeStore) forStores(from, through model.Time, callback func(from, through model.Time, store Store) error) error {
+func (c compositeStore) forStores(ctx context.Context, from, through model.Time, callback func(ctx context.Context, from, through model.Time, store Store) error) error {
 	if len(c.stores) == 0 {
 		return nil
+	}
+
+	var err error
+	ctx, err = c.injectCacheGen(ctx)
+	if err != nil {
+		return err
 	}
 
 	// first, find the schema with the highest start _before or at_ from
@@ -221,7 +232,7 @@ func (c compositeStore) forStores(from, through model.Time, callback func(from, 
 		}
 
 		end := min(through, nextSchemaStarts-1)
-		err := callback(start, end, c.stores[i].Store)
+		err := callback(ctx, start, end, c.stores[i].Store)
 		if err != nil {
 			return err
 		}
@@ -230,4 +241,18 @@ func (c compositeStore) forStores(from, through model.Time, callback func(from, 
 	}
 
 	return nil
+}
+
+func (c compositeStore) injectCacheGen(ctx context.Context) (context.Context, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	cacheGen, err := c.tombstonesLoader.GetStoreCacheGenNumber(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return cache.InjectCacheGenNumber(ctx, cacheGen), nil
 }

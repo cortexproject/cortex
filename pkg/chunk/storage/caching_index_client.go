@@ -56,7 +56,7 @@ func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity tim
 
 	return &cachingIndexClient{
 		IndexClient:      client,
-		cache:            cache.NewSnappy(c),
+		cache:            cache.NewCacheGenMiddleware(cache.NewSnappy(c)),
 		validity:         validity,
 		limits:           limits,
 		tombstonesLoader: tombstonesLoader,

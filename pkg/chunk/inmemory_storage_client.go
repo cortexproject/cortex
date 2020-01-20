@@ -331,6 +331,10 @@ func (b *mockWriteBatch) Update(tableName, hashValue string, rangeValue []byte, 
 	panic("implement me")
 }
 
+func (b *mockWriteBatch) Increment(tableName, hashValue string, rangeValue []byte, value int64) {
+	panic("implement me")
+}
+
 func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
 	*b = append(*b, struct {
 		tableName, hashValue string

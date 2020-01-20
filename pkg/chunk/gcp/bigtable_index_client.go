@@ -138,8 +138,8 @@ func (s *storageClientColumnKey) Stop() {
 
 func (s *storageClientColumnKey) NewWriteBatch() chunk.WriteBatch {
 	return bigtableWriteBatch{
-		tables: map[string]map[string]*bigtable.Mutation{},
-		keysFn: s.keysFn,
+		tableMutations: map[string]map[string]*bigtable.Mutation{},
+		keysFn:         s.keysFn,
 	}
 }
 
@@ -147,8 +147,9 @@ func (s *storageClientColumnKey) NewWriteBatch() chunk.WriteBatch {
 type keysFn func(hashValue string, rangeValue []byte) (rowKey, columnKey string)
 
 type bigtableWriteBatch struct {
-	tables map[string]map[string]*bigtable.Mutation
-	keysFn keysFn
+	tableMutations     map[string]map[string]*bigtable.Mutation
+	tableReadModWrites map[string]map[string]*bigtable.ReadModifyWrite
+	keysFn             keysFn
 }
 
 func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
@@ -160,10 +161,10 @@ func (b bigtableWriteBatch) Update(tableName, hashValue string, rangeValue []byt
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	rows, ok := b.tables[tableName]
+	rows, ok := b.tableMutations[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
-		b.tables[tableName] = rows
+		b.tableMutations[tableName] = rows
 	}
 
 	rowKey, columnKey := b.keysFn(hashValue, rangeValue)
@@ -176,10 +177,26 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	mutation.Set(columnFamily, columnKey, 0, value)
 }
 
+func (b bigtableWriteBatch) Increment(tableName, hashValue string, rangeValue []byte, delta int64) {
+	rows, ok := b.tableReadModWrites[tableName]
+	if !ok {
+		rows = map[string]*bigtable.ReadModifyWrite{}
+		b.tableReadModWrites[tableName] = rows
+	}
+
+	rowKey, columnKey := b.keysFn(hashValue, rangeValue)
+	readModWrite, ok := rows[rowKey]
+	if !ok {
+		readModWrite = bigtable.NewReadModifyWrite()
+		rows[rowKey] = readModWrite
+	}
+	readModWrite.Increment(columnFamily, columnKey, delta)
+}
+
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 
-	for tableName, rows := range bigtableBatch.tables {
+	for tableName, rows := range bigtableBatch.tableMutations {
 		table := s.client.Open(tableName)
 		rowKeys := make([]string, 0, len(rows))
 		muts := make([]*bigtable.Mutation, 0, len(rows))
@@ -193,6 +210,17 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 			return err
 		}
 		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for tableName, rows := range bigtableBatch.tableReadModWrites {
+		table := s.client.Open(tableName)
+
+		for rowKey, readModWrite := range rows {
+			_, err := table.ApplyReadModifyWrite(ctx, rowKey, readModWrite)
 			if err != nil {
 				return err
 			}

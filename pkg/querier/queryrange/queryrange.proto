@@ -32,6 +32,7 @@ message PrometheusResponse {
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
   repeated PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  string CacheGenNumber = 6;
 }
 
 message PrometheusData {

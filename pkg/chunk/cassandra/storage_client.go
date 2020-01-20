@@ -158,6 +158,10 @@ func (b *writeBatch) Update(tableName, hashValue string, rangeValue []byte, valu
 	panic("implement me")
 }
 
+func (b *writeBatch) Increment(tableName, hashValue string, rangeValue []byte, value int64) {
+	panic("implement me")
+}
+
 // NewWriteBatch implement chunk.IndexClient.
 func (s *StorageClient) NewWriteBatch() chunk.WriteBatch {
 	return &writeBatch{}

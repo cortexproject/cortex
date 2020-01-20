@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"sync"
 	"time"
 
@@ -119,9 +120,10 @@ func (b *boltIndexClient) Stop() {
 
 func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	return &boltWriteBatch{
-		puts:    map[string]map[string][]byte{},
-		updates: map[string]map[string][]byte{},
-		deletes: map[string]map[string]struct{}{},
+		puts:       map[string]map[string][]byte{},
+		increments: map[string]map[string]int64{},
+		updates:    map[string]map[string][]byte{},
+		deletes:    map[string]map[string]struct{}{},
 	}
 }
 
@@ -167,6 +169,41 @@ func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 
 			for key, value := range kvps {
 				if err := b.Put([]byte(key), value); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	for table, kvps := range batch.(*boltWriteBatch).increments {
+		db, err := b.getDB(table)
+		if err != nil {
+			return err
+		}
+
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists(bucketName)
+			if err != nil {
+				return err
+			}
+
+			for key, value := range kvps {
+				nv := int64(0)
+				bv := b.Get([]byte(key))
+
+				if len(bv) != 0 {
+					nv, err = strconv.ParseInt(string(b.Get([]byte(key))), 10, 64)
+					if err != nil {
+						return err
+					}
+				}
+				nv += value
+
+				if err := b.Put([]byte(key), []byte(strconv.FormatInt(nv, 10))); err != nil {
 					return err
 				}
 			}
@@ -323,6 +360,17 @@ func (b *boltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 
 	key := hashValue + separator + string(rangeValue)
 	table[key] = value
+}
+
+func (b *boltWriteBatch) Increment(tableName, hashValue string, rangeValue []byte, delta int64) {
+	table, ok := b.increments[tableName]
+	if !ok {
+		table = map[string]int64{}
+		b.increments[tableName] = table
+	}
+
+	key := hashValue + separator + string(rangeValue)
+	table[key] = delta
 }
 
 type boltReadBatch struct {

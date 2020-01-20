@@ -28,15 +28,18 @@ type tombstonesLoader struct {
 	tombstones    map[string]*TombstonesSet
 	tombstonesMtx sync.RWMutex
 
-	deleteStore DeleteStore
-	quit        chan struct{}
+	cacheGenNumbers    map[string]*CacheGenNumbers
+	cacheGenNumbersMtx sync.RWMutex
+	deleteStore        DeleteStore
+	quit               chan struct{}
 }
 
 // NewTombstonesLoader creates a tombstonesLoader
 func NewTombstonesLoader(deleteStore DeleteStore) TombstonesLoader {
 	tl := tombstonesLoader{
-		tombstones:  map[string]*TombstonesSet{},
-		deleteStore: deleteStore,
+		tombstones:      map[string]*TombstonesSet{},
+		deleteStore:     deleteStore,
+		cacheGenNumbers: map[string]*CacheGenNumbers{},
 	}
 	go tl.loop()
 
@@ -64,22 +67,33 @@ func (tl *tombstonesLoader) loop() {
 }
 
 func (tl *tombstonesLoader) reloadTombstones() error {
-	// check for updates in loaded gen numbers
-	tl.tombstonesMtx.Lock()
+	updatedGenNumbers := make(map[string]*CacheGenNumbers)
+	tl.cacheGenNumbersMtx.RLock()
 
-	userIDs := make([]string, 0, len(tl.tombstones))
-	for userID := range tl.tombstones {
-		userIDs = append(userIDs, userID)
+	// check for updates in loaded gen numbers
+	for userID, oldGenNumbers := range tl.cacheGenNumbers {
+		newGenNumbers, err := tl.deleteStore.GetCacheGenerationNumbers(context.Background(), userID)
+		if err != nil {
+			return err
+		}
+
+		if *oldGenNumbers != *newGenNumbers {
+			updatedGenNumbers[userID] = newGenNumbers
+		}
 	}
 
-	tl.tombstonesMtx.Unlock()
+	tl.cacheGenNumbersMtx.RUnlock()
 
 	// for all the updated gen numbers, reload delete requests
-	for _, userID := range userIDs {
+	for userID, genNumbers := range updatedGenNumbers {
 		err := tl.loadPendingTombstones(userID)
 		if err != nil {
 			return err
 		}
+
+		tl.cacheGenNumbersMtx.Lock()
+		tl.cacheGenNumbers[userID] = genNumbers
+		tl.cacheGenNumbersMtx.Unlock()
 	}
 
 	return nil
@@ -196,6 +210,46 @@ func (ts TombstonesSet) HasTombstonesForInterval(from, to model.Time) bool {
 	}
 
 	return true
+}
+
+// GetStoreCacheGenNumber returns store cache gen number for a user
+func (tl *tombstonesLoader) GetStoreCacheGenNumber(userID string) (string, error) {
+	cacheGenNumbers, err := tl.getCacheGenNumbers(userID)
+	if err != nil {
+		return "", err
+	}
+
+	return cacheGenNumbers.store, nil
+}
+
+// GetResultsCacheGenNumber returns results cache gen number for a user
+func (tl *tombstonesLoader) GetResultsCacheGenNumber(userID string) (string, error) {
+	cacheGenNumbers, err := tl.getCacheGenNumbers(userID)
+	if err != nil {
+		return "", err
+	}
+
+	return cacheGenNumbers.results, nil
+}
+
+func (tl *tombstonesLoader) getCacheGenNumbers(userID string) (*CacheGenNumbers, error) {
+	tl.cacheGenNumbersMtx.RLock()
+	if genNumbers, isOK := tl.cacheGenNumbers[userID]; isOK {
+		tl.cacheGenNumbersMtx.RUnlock()
+		return genNumbers, nil
+	}
+
+	tl.cacheGenNumbersMtx.RUnlock()
+	genNumbers, err := tl.deleteStore.GetCacheGenerationNumbers(context.Background(), userID)
+	if err != nil {
+		return nil, err
+	}
+
+	tl.cacheGenNumbersMtx.Lock()
+	defer tl.cacheGenNumbersMtx.Unlock()
+
+	tl.cacheGenNumbers[userID] = genNumbers
+	return genNumbers, nil
 }
 
 // sorts and merges overlapping intervals

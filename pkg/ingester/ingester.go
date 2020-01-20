@@ -299,8 +299,11 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
+	// NOTE: because we use `unsafe` in deserialisation, we must not
+	// retain anything from `req` past the call to ReuseSlice
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
+			// append() copies the memory in `ts.Labels` except on the error path
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
 				continue
@@ -312,11 +315,13 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 				continue
 			}
 
+			// non-validation error: abandon this request
 			return nil, wrapWithUser(err, userID)
 		}
 	}
 
 	if lastPartialErr != nil {
+		// WrappedError turns the error into a string so it no longer references `req`
 		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
 	}
 
@@ -331,6 +336,8 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	return &client.WriteResponse{}, nil
 }
 
+// NOTE: memory for `labels` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
 	labels.removeBlanks()
 
@@ -349,6 +356,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		return fmt.Errorf("ingester stopping")
 	}
 
+	// getOrCreateSeries copies the memory for `labels`, except on the error path.
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels, record)
 	if err != nil {
 		if ve, ok := err.(*validationError); ok {

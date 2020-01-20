@@ -155,12 +155,17 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
+// NOTE: memory for `labels` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
 	state := us.getOrCreate(userID)
+	// WARNING: `err` may have a reference to unsafe memory in `labels`
 	fp, series, err := state.getSeries(labels, record)
 	return state, fp, series, err
 }
 
+// NOTE: memory for `metric` is unsafe; anything retained beyond the
+// life of this function must be copied
 func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
@@ -197,6 +202,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 		}
 	}
 
+	// MetricNameFromLabelAdapters returns a copy of the string in `metric`
 	metricName, err := extract.MetricNameFromLabelAdapters(metric)
 	if err != nil {
 		return nil, err
@@ -205,6 +211,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	if !recovery {
 		// Check if the per-metric limit has been exceeded
 		if err = u.canAddSeriesFor(string(metricName)); err != nil {
+			// WARNING: returns a reference to `metric`
 			return nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
 		}
 	}
@@ -219,7 +226,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 		})
 	}
 
-	labels := u.index.Add(metric, fp)
+	labels := u.index.Add(metric, fp) // Add() returns 'interned' values so the original labels are not retained
 	series := newMemorySeries(labels)
 	u.fpToSeries.put(fp, series)
 

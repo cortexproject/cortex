@@ -397,16 +397,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
-		samples := make([]client.Sample, 0, len(ts.Samples))
-		for _, s := range ts.Samples {
-			if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
-				lastPartialErr = err
-				continue
-			}
-			samples = append(samples, s)
-		}
-
 		keys = append(keys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)

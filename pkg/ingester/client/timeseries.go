@@ -265,7 +265,7 @@ func ReuseSlice(slice []PreallocTimeseries) {
 	for i := range slice {
 		ReuseTimeseries(slice[i].TimeSeries)
 	}
-	slicePool.Put(slice[:0])
+	slicePool.Put(slice[:0]) //nolint:staticcheck
 }
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.

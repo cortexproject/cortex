@@ -2,6 +2,7 @@ package grpcclient
 
 import (
 	"context"
+	"google.golang.org/grpc/status"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,7 +20,7 @@ func NewBackoffRetry(cfg util.BackoffConfig) grpc.UnaryClientInterceptor {
 				return nil
 			}
 
-			if grpc.Code(err) != codes.ResourceExhausted {
+			if status.Code(err) != codes.ResourceExhausted {
 				return err
 			}
 

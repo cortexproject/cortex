@@ -644,7 +644,7 @@ func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConn
 			if portToConnect > 0 {
 				_, err := kv.kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
 				if err != nil {
-					t.Fatalf("%s failed to join the cluster: %v", name, err)
+					t.Errorf("%s failed to join the cluster: %v", name, err)
 					return
 				}
 			}

@@ -79,6 +79,7 @@ func init() {
 			// only applied externally via ApplyConfig().
 			case <-webReload:
 			default:
+				continue
 			}
 		}
 	}()

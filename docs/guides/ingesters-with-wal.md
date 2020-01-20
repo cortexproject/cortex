@@ -9,7 +9,7 @@ Currently the ingesters without the TSDB stores all the data in the memory and i
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
-## Things to change
+## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [statefulset](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
 
@@ -17,13 +17,14 @@ To use WAL, there are some changes that needs to be made in the deployment.
     * `--ingester.wal-dir` to the directory where the WAL data should be stores and/or recovered from.
     * `--ingester.wal-enabled` to `true` which enables writing to WAL during ingestion.
     * `--ingester.checkpoint-enabled` to `true` to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.
-    * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
+    * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created. Default is `30m`, and depending on the number of series, it can be brought down to `15m` if there are less series per ingester (say 1M).
     * `--ingester.recover-from-wal` to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
         * If you are going to enable WAL, it is advisable to always set this to `true`.
+    * `--ingester.tokens-file-path` should be set to the filepath where the tokens should be stored. Why this is required is described below.
 
-## Stuff that is changed automatically when WAL is enabled
+## Changes in lifecycle when WAL is enabled
 
-1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there is no 1 ingester leaving and joining each at the same time, rather the same ingester is shut down and broght back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.
+1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and broght back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.
 
 2. As there are no transfers between ingesters, the tokens are stored and recovered from disk between rollout/restarts. This is [not a new thing](https://github.com/cortexproject/cortex/pull/1750) but it is effective when using statefulsets.
 
@@ -33,7 +34,7 @@ The ingester _deployment without WAL_ and _statefulset with WAL_ should be scale
 
 Let's take an example of 4 ingesters. The migration would look something like this:
 
-1. Bring up a 1 stateful ingester `ingester-0` and wait till it's ready (accepting read and write requests).
+1. Bring up one stateful ingester `ingester-0` and wait till it's ready (accepting read and write requests).
 2. Scale down old ingester deployment to 3 and wait till the leaving ingester flushes all the data to chunk store.
 3. Once that ingester has disappeared from `kc get pods ...`, add another stateful ingester and wait till it's ready. This assures not transfer. Now you have `ingester-0 ingester-1`.
 4. Repeat step 2 to reduce remove another ingester from old deployment.
@@ -44,7 +45,7 @@ Let's take an example of 4 ingesters. The migration would look something like th
 
 ### Scale up
 
-Scaling up is same as what you would do without WAL or statefulsets. Add 1 ingester at a time.
+Scaling up is same as what you would do without WAL or statefulsets. Nothing to change here.
 
 ### Scale down
 
@@ -53,7 +54,7 @@ Since Kubernetes doesn't differentiate between rollout and scale down when sendi
 There are 2 ways to do it, with the latter being a fallback option.
 
 **First option**
-Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-2 ingester-3`.
+Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
 
 Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/shutdown`](https://github.com/cortexproject/cortex/pull/1746) endpoint. This will flush the chunks and shut down the ingesters (while also removing itself from the ring).
 

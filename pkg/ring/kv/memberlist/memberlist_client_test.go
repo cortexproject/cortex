@@ -204,17 +204,18 @@ func TestBasicGetAndCas(t *testing.T) {
 	c := dataCodec{}
 
 	name := "Ing 1"
-	cfg := Config{
+	cfg := KVConfig{
 		TCPTransport: TCPTransportConfig{
 			BindAddrs: []string{"localhost"},
 		},
 	}
 
-	kv, err := NewMemberlistClient(cfg, c)
+	mkv, err := NewKV(cfg, c)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
-	defer kv.Stop()
+	defer mkv.Stop()
+	kv := NewClient(mkv)
 
 	const key = "test"
 
@@ -260,15 +261,16 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 
 	c := dataCodec{}
 
-	cfg := Config{
+	cfg := KVConfig{
 		TCPTransport: TCPTransportConfig{},
 	}
 
-	kv, err := NewMemberlistClient(cfg, c)
+	mkv, err := NewKV(cfg, c)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
-	defer kv.Stop()
+	defer mkv.Stop()
+	kv := NewClient(mkv)
 
 	testFN(t, kv)
 }
@@ -403,13 +405,14 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 func TestMultipleCAS(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := Config{}
+	cfg := KVConfig{}
 
-	kv, err := NewMemberlistClient(cfg, c)
+	mkv, err := NewKV(cfg, c)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
-	kv.maxCasRetries = 20
+	mkv.maxCasRetries = 20
+	kv := NewClient(mkv)
 	defer kv.Stop()
 
 	wg := &sync.WaitGroup{}
@@ -493,7 +496,7 @@ func TestMultipleClients(t *testing.T) {
 
 	for i := 0; i < members; i++ {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := Config{
+		cfg := KVConfig{
 			NodeName: id,
 
 			// some useful parameters when playing with higher number of members
@@ -511,17 +514,18 @@ func TestMultipleClients(t *testing.T) {
 			},
 		}
 
-		kv, err := NewMemberlistClient(cfg, c)
+		mkv, err := NewKV(cfg, c)
 		if err != nil {
-			t.Fatal(id, err)
+			t.Fatal(id, "Failed to setup KV client", err)
 		}
+		kv := NewClient(mkv)
 
 		clients = append(clients, kv)
 
 		go runClient(t, kv, id, key, port, start, stop)
 
 		// next KV will connect to this one
-		port = kv.GetListeningPort()
+		port = kv.kv.GetListeningPort()
 	}
 
 	println("Waiting before start")
@@ -637,7 +641,7 @@ func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConn
 
 			// let's join the first member
 			if portToConnect > 0 {
-				_, err := kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
+				_, err := kv.kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
 				if err != nil {
 					t.Fatalf("%s failed to join the cluster: %v", name, err)
 					return

@@ -20,14 +20,18 @@ import (
 var inmemoryStoreInit sync.Once
 var inmemoryStore Client
 
+var singletonKVStoreInit sync.Once
+var singletonKVStore *memberlist.KV
+var singletonKVStoreError error
+
 // StoreConfig is a configuration used for building single store client, either
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul     consul.Config     `yaml:"consul,omitempty"`
-	Etcd       etcd.Config       `yaml:"etcd,omitempty"`
-	Memberlist memberlist.Config `yaml:"memberlist,omitempty"`
-	Multi      MultiConfig       `yaml:"multi,omitempty"`
+	Consul     consul.Config       `yaml:"consul,omitempty"`
+	Etcd       etcd.Config         `yaml:"etcd,omitempty"`
+	Memberlist memberlist.KVConfig `yaml:"memberlist,omitempty"`
+	Multi      MultiConfig         `yaml:"multi,omitempty"`
 }
 
 // Config is config for a KVStore currently used by ring and HA tracker,
@@ -120,7 +124,15 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 
 	case "memberlist":
 		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
-		client, err = memberlist.NewMemberlistClient(cfg.Memberlist, codec)
+		singletonKVStoreInit.Do(func() {
+			singletonKVStore, singletonKVStoreError = memberlist.NewKV(cfg.Memberlist, codec)
+		})
+
+		kv, err := singletonKVStore, singletonKVStoreError
+		if err != nil {
+			return nil, err
+		}
+		client = memberlist.NewClient(kv)
 
 	case "multi":
 		client, err = buildMultiClient(cfg, codec)

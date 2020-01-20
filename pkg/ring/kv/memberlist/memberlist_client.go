@@ -27,8 +27,39 @@ const (
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 )
 
+type Client struct {
+	kv *KV // reference to singleton memberlist-based KV
+}
+
+func NewClient(kv *KV) *Client {
+	return &Client{
+		kv: kv,
+	}
+}
+
+func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+	return c.kv.Get(ctx, key)
+}
+
+func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return c.kv.CAS(ctx, key, f)
+}
+
+func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+	c.kv.WatchKey(ctx, key, f)
+}
+
+// WatchPrefix calls f whenever any value stored under prefix changes.
+func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+	c.kv.WatchPrefix(ctx, prefix, f)
+}
+
+func (c *Client) Stop() {
+	c.kv.Stop()
+}
+
 // Config for memberlist-based Client
-type Config struct {
+type KVConfig struct {
 	// Memberlist options.
 	NodeName         string        `yaml:"node_name"`
 	StreamTimeout    time.Duration `yaml:"stream_timeout"`
@@ -55,7 +86,7 @@ type Config struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
+func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	// "Defaults to hostname" -- memberlist sets it to hostname by default.
 	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", "", "Name of the node in memberlist cluster. Defaults to hostname.") // memberlist.DefaultLANConfig will put hostname here.
 	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 0, "The timeout for establishing a connection with a remote node, and for read/write operations. Uses memberlist LAN defaults if 0.")
@@ -71,9 +102,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
 
-// Client implements kv.Client interface by using memberlist gossiping library.
-type Client struct {
-	cfg        Config
+type KV struct {
+	cfg        KVConfig
 	memberlist *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
 	codec      codec.Codec
@@ -124,9 +154,6 @@ type valueDesc struct {
 
 	// version (local only) is used to keep track of what we're gossiping about, and invalidate old messages
 	version uint
-
-	// Codec used to write this value.
-	codecID string
 }
 
 var (
@@ -139,7 +166,7 @@ var (
 // NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
 // to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
 // client is created.
-func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
+func NewKV(cfg KVConfig, codec codec.Codec) (*KV, error) {
 	level.Warn(util.Logger).Log("msg", "Using memberlist-based KV store is EXPERIMENTAL and not tested in production")
 
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
@@ -179,7 +206,7 @@ func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
 	// As we don't use UDP for sending packets, we can use higher value here.
 	mlCfg.UDPBufferSize = 10 * 1024 * 1024
 
-	memberlistClient := &Client{
+	memberlistClient := &KV{
 		cfg:            cfg,
 		store:          make(map[string]valueDesc),
 		watchers:       make(map[string][]chan string),
@@ -225,19 +252,19 @@ func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
 }
 
 // GetListeningPort returns port used for listening for memberlist communication. Useful when BindPort is set to 0.
-func (m *Client) GetListeningPort() int {
+func (m *KV) GetListeningPort() int {
 	return int(m.memberlist.LocalNode().Port)
 }
 
 // JoinMembers joins the cluster with given members.
 // See https://godoc.org/github.com/hashicorp/memberlist#Memberlist.Join
-func (m *Client) JoinMembers(members []string) (int, error) {
+func (m *KV) JoinMembers(members []string) (int, error) {
 	return m.memberlist.Join(members)
 }
 
 // Stop tries to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
-func (m *Client) Stop() {
+func (m *KV) Stop() {
 	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")
 
 	// TODO: should we empty our broadcast queue before leaving? That would make sure that we have sent out everything we wanted.
@@ -257,13 +284,13 @@ func (m *Client) Stop() {
 
 // Get returns current value associated with given key.
 // No communication with other nodes in the cluster is done here. Part of kv.Client interface.
-func (m *Client) Get(ctx context.Context, key string) (interface{}, error) {
+func (m *KV) Get(ctx context.Context, key string) (interface{}, error) {
 	val, _, err := m.get(key)
 	return val, err
 }
 
 // Returns current value with removed tombstones.
-func (m *Client) get(key string) (out interface{}, version uint, err error) {
+func (m *KV) get(key string) (out interface{}, version uint, err error) {
 	m.storeMu.Lock()
 	v := m.store[key]
 	m.storeMu.Unlock()
@@ -291,7 +318,7 @@ func (m *Client) get(key string) (out interface{}, version uint, err error) {
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
 //
 // Part of kv.Client interface.
-func (m *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (m *KV) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	// keep one extra notification, to avoid missing notification if we're busy running the function
 	w := make(chan string, 1)
 
@@ -340,7 +367,7 @@ func (m *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
 //
 // Part of kv.Client interface.
-func (m *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (m *KV) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 	// we use bigger buffer here, since keys are interesting and we don't want to lose them.
 	w := make(chan string, 16)
 
@@ -396,7 +423,7 @@ func removeWatcherChannel(k string, w chan string, watchers map[string][]chan st
 	}
 }
 
-func (m *Client) notifyWatchers(key string) {
+func (m *KV) notifyWatchers(key string) {
 	m.watchersMu.Lock()
 	defer m.watchersMu.Unlock()
 
@@ -439,7 +466,7 @@ func (m *Client) notifyWatchers(key string) {
 // KV store, and change is broadcast to cluster peers. Merge function is called with CAS flag on, so that it can
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
-func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m *KV) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	if len(key) > maxKeyLength {
 		return fmt.Errorf("key too long: %d", len(key))
 	}
@@ -495,7 +522,7 @@ outer:
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
 // returns errNoChangeDetected if merge failed to detect change in f's output.
-func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
+func (m *KV) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
 	val, ver, err := m.get(key)
 	if err != nil {
 		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)
@@ -536,7 +563,7 @@ func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{
 	return change, newver, retry, nil
 }
 
-func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {
+func (m *KV) broadcastNewValue(key string, change Mergeable, version uint) {
 	data, err := m.codec.Encode(change)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to encode ring", "err", err)
@@ -563,7 +590,7 @@ func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {
 }
 
 // NodeMeta is method from Memberlist Delegate interface
-func (m *Client) NodeMeta(limit int) []byte {
+func (m *KV) NodeMeta(limit int) []byte {
 	// we can send local state from here (512 bytes only)
 	// if state is updated, we need to tell memberlist to distribute it.
 	return nil
@@ -571,7 +598,7 @@ func (m *Client) NodeMeta(limit int) []byte {
 
 // NotifyMsg is method from Memberlist Delegate interface
 // Called when single message is received, i.e. what our broadcastNewValue has sent.
-func (m *Client) NotifyMsg(msg []byte) {
+func (m *KV) NotifyMsg(msg []byte) {
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
@@ -607,7 +634,7 @@ func (m *Client) NotifyMsg(msg []byte) {
 	}
 }
 
-func (m *Client) queueBroadcast(key string, content []string, version uint, message []byte) {
+func (m *KV) queueBroadcast(key string, content []string, version uint, message []byte) {
 	l := len(message)
 
 	b := ringBroadcast{
@@ -626,7 +653,7 @@ func (m *Client) queueBroadcast(key string, content []string, version uint, mess
 
 // GetBroadcasts is method from Memberlist Delegate interface
 // It returns all pending broadcasts (within the size limit)
-func (m *Client) GetBroadcasts(overhead, limit int) [][]byte {
+func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
 	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
 
@@ -635,7 +662,7 @@ func (m *Client) GetBroadcasts(overhead, limit int) [][]byte {
 // This is "pull" part of push/pull sync (either periodic, or when new node joins the cluster).
 // Here we dump our entire state -- all keys and their values. There is no limit on message size here,
 // as Memberlist uses 'stream' operations for transferring this state.
-func (m *Client) LocalState(join bool) []byte {
+func (m *KV) LocalState(join bool) []byte {
 	m.numberOfPulls.Inc()
 
 	m.storeMu.Lock()
@@ -676,7 +703,7 @@ func (m *Client) LocalState(join bool) []byte {
 // MergeRemoteState is method from Memberlist Delegate interface
 //
 // This is 'push' part of push/pull sync. We merge incoming KV store (all keys and values) with ours.
-func (m *Client) MergeRemoteState(stateMsg []byte, join bool) {
+func (m *KV) MergeRemoteState(stateMsg []byte, join bool) {
 	m.numberOfPushes.Inc()
 	m.totalSizeOfPushes.Add(float64(len(stateMsg)))
 
@@ -742,7 +769,7 @@ func (m *Client) MergeRemoteState(stateMsg []byte, join bool) {
 	}
 }
 
-func (m *Client) mergeBytesValueForKey(key string, incomingData []byte) (Mergeable, uint, error) {
+func (m *KV) mergeBytesValueForKey(key string, incomingData []byte) (Mergeable, uint, error) {
 	decodedValue, err := m.codec.Decode(incomingData)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to decode value: %v", err)
@@ -760,7 +787,7 @@ func (m *Client) mergeBytesValueForKey(key string, incomingData []byte) (Mergeab
 // cluster members to update their state, and new version of the value.
 // If CAS version is specified, then merging will fail if state has changed already, and errVersionMismatch is reported.
 // If no modification occurred, new version is 0.
-func (m *Client) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint) (Mergeable, uint, error) {
+func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint) (Mergeable, uint, error) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 

@@ -46,7 +46,7 @@ type TSDBState struct {
 	// transferring to a joining ingester
 	transferOnce sync.Once
 
-	shipperMetrics *shipperMetrics
+	tsdbMetrics *tsdbMetrics
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -59,15 +59,15 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer),
+		metrics:      newIngesterMetrics(registerer, false),
 		limits:       limits,
 		chunkStore:   nil,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
-			dbs:            make(map[string]*tsdb.DB),
-			bucket:         bucketClient,
-			shipperMetrics: newShipperMetrics(registerer),
+			dbs:         make(map[string]*tsdb.DB),
+			bucket:      bucketClient,
+			tsdbMetrics: newTSDBMetrics(registerer),
 		},
 	}
 
@@ -419,10 +419,12 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
+	tsdbPromReg := prometheus.NewRegistry()
+
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
 	// Create a new user database
-	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+	db, err := tsdb.Open(udir, util.Logger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 		NoLockfile:        true,
@@ -443,7 +445,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, i.TSDBState.shipperMetrics.newRegistryForUser(userID), udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		s := shipper.New(util.Logger, tsdbPromReg, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
 		i.done.Add(1)
 		go func() {
 			defer i.done.Done()
@@ -458,6 +460,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 		}()
 	}
 
+	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
 	return db, nil
 }
 

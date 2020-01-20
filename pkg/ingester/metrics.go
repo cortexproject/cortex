@@ -9,6 +9,14 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
+const (
+	memSeriesCreatedTotalName = "cortex_ingester_memory_series_created_total"
+	memSeriesCreatedTotalHelp = "The total number of series that were created per user."
+
+	memSeriesRemovedTotalName = "cortex_ingester_memory_series_removed_total"
+	memSeriesRemovedTotalHelp = "The total number of series that were removed per user."
+)
+
 type ingesterMetrics struct {
 	flushQueueLength      prometheus.Gauge
 	ingestedSamples       prometheus.Counter
@@ -23,7 +31,7 @@ type ingesterMetrics struct {
 	memSeriesRemovedTotal *prometheus.CounterVec
 }
 
-func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
 	m := &ingesterMetrics{
 		flushQueueLength: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -68,12 +76,12 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Help: "The current number of users in memory.",
 		}),
 		memSeriesCreatedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_memory_series_created_total",
-			Help: "The total number of series that were created per user.",
+			Name: memSeriesCreatedTotalName,
+			Help: memSeriesCreatedTotalHelp,
 		}, []string{"user"}),
 		memSeriesRemovedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_memory_series_removed_total",
-			Help: "The total number of series that were removed per user.",
+			Name: memSeriesRemovedTotalName,
+			Help: memSeriesRemovedTotalHelp,
 		}, []string{"user"}),
 	}
 
@@ -88,28 +96,42 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedChunks,
 			m.memSeries,
 			m.memUsers,
-			m.memSeriesCreatedTotal,
-			m.memSeriesRemovedTotal,
 		)
+
+		if registerMetricsConflictingWithTSDB {
+			r.MustRegister(
+				m.memSeriesCreatedTotal,
+				m.memSeriesRemovedTotal,
+			)
+		}
 	}
 
 	return m
 }
 
-// TSDB shipper metrics. We aggregate metrics from individual TSDB shippers into
-// a single set of counters, which are exposed as Cortex metrics.
-type shipperMetrics struct {
+// TSDB metrics. Each tenant has its own registry, that TSDB code uses.
+type tsdbMetrics struct {
+	// We aggregate metrics from individual TSDB registries into
+	// a single set of counters, which are exposed as Cortex metrics.
 	dirSyncs        *prometheus.Desc // sum(thanos_shipper_dir_syncs_total)
 	dirSyncFailures *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
 	uploads         *prometheus.Desc // sum(thanos_shipper_uploads_total)
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
 
+	// These two metrics replace metrics in ingesterMetrics, as we count them differently
+	memSeriesCreatedTotal *prometheus.Desc
+	memSeriesRemovedTotal *prometheus.Desc
+
+	// These maps drive the collection output. Key = original metric name to group.
+	sumCountersGlobally map[string]*prometheus.Desc
+	sumCountersPerUser  map[string]*prometheus.Desc
+
 	regsMu sync.RWMutex                    // custom mutex for shipper registry, to avoid blocking main user state mutex on collection
-	regs   map[string]*prometheus.Registry // One prometheus registry (used by shipper) per tenant
+	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
 }
 
-func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
-	m := &shipperMetrics{
+func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
+	m := &tsdbMetrics{
 		regs: make(map[string]*prometheus.Registry),
 
 		dirSyncs: prometheus.NewDesc(
@@ -128,6 +150,21 @@ func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
 			"cortex_ingester_shipper_upload_failures_total",
 			"TSDB: Total number of failed object uploads",
 			nil, nil),
+
+		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
+		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
+	}
+
+	m.sumCountersGlobally = map[string]*prometheus.Desc{
+		"thanos_shipper_dir_syncs_total":         m.dirSyncs,
+		"thanos_shipper_dir_sync_failures_total": m.dirSyncFailures,
+		"thanos_shipper_uploads_total":           m.uploads,
+		"thanos_shipper_upload_failures_total":   m.uploadFailures,
+	}
+
+	m.sumCountersPerUser = map[string]*prometheus.Desc{
+		"prometheus_tsdb_head_series_created_total": m.memSeriesCreatedTotal,
+		"prometheus_tsdb_head_series_removed_total": m.memSeriesRemovedTotal,
 	}
 
 	if r != nil {
@@ -136,17 +173,19 @@ func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
 	return m
 }
 
-func (sm *shipperMetrics) Describe(out chan<- *prometheus.Desc) {
+func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.dirSyncs
 	out <- sm.dirSyncFailures
 	out <- sm.uploads
 	out <- sm.uploadFailures
+	out <- sm.memSeriesCreatedTotal
+	out <- sm.memSeriesRemovedTotal
 }
 
-func (sm *shipperMetrics) Collect(out chan<- prometheus.Metric) {
-	gathered := make(map[string][]*dto.MetricFamily)
+func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
+	regs := sm.registries()
+	data := gatheredMetricsPerUser{}
 
-	regs := sm.shipperRegistries()
 	for userID, r := range regs {
 		m, err := r.Gather()
 		if err != nil {
@@ -154,33 +193,38 @@ func (sm *shipperMetrics) Collect(out chan<- prometheus.Metric) {
 			continue
 		}
 
-		addToGatheredMap(gathered, m)
+		data.addGatheredDataForUser(userID, m)
 	}
 
 	// OK, we have it all. Let's build results.
-	out <- prometheus.MustNewConstMetric(sm.dirSyncs, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_dir_syncs_total"]))
-	out <- prometheus.MustNewConstMetric(sm.dirSyncFailures, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_dir_sync_failures_total"]))
-	out <- prometheus.MustNewConstMetric(sm.uploads, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_uploads_total"]))
-	out <- prometheus.MustNewConstMetric(sm.uploadFailures, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_upload_failures_total"]))
+	for metric, desc := range sm.sumCountersGlobally {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, data.sumCountersAcrossAllUsers(metric))
+	}
+
+	for metric, desc := range sm.sumCountersPerUser {
+		userValues := data.sumCountersPerUser(metric)
+		for user, val := range userValues {
+			out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, user)
+		}
+	}
 }
 
-func (sm *shipperMetrics) shipperRegistries() []*prometheus.Registry {
+// make a copy of the map, so that metrics can be gathered while the new registry is being added.
+func (sm *tsdbMetrics) registries() map[string]*prometheus.Registry {
 	sm.regsMu.RLock()
 	defer sm.regsMu.RUnlock()
 
-	regs := make([]*prometheus.Registry, 0, len(sm.regs))
-	for _, r := range sm.regs {
-		regs = append(regs, r)
+	regs := make(map[string]*prometheus.Registry, len(sm.regs))
+	for u, r := range sm.regs {
+		regs[u] = r
 	}
 	return regs
 }
 
-func (sm *shipperMetrics) newRegistryForUser(userID string) prometheus.Registerer {
-	reg := prometheus.NewRegistry()
+func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
 	sm.regsMu.Lock()
-	sm.regs[userID] = reg
+	sm.regs[userID] = registry
 	sm.regsMu.Unlock()
-	return reg
 }
 
 func sumCounters(mfs []*dto.MetricFamily) float64 {
@@ -201,11 +245,37 @@ func sumCounters(mfs []*dto.MetricFamily) float64 {
 	return result
 }
 
-func addToGatheredMap(all map[string][]*dto.MetricFamily, mfs []*dto.MetricFamily) {
-	for _, m := range mfs {
+// first key = userID, second key = metric name. Value = slice of gathered values with the same metric name.
+type gatheredMetricsPerUser map[string]map[string][]*dto.MetricFamily
+
+func (d gatheredMetricsPerUser) addGatheredDataForUser(userID string, metrics []*dto.MetricFamily) {
+	// first, create new map which maps metric names to a slice of MetricFamily instances.
+	// That makes it easier to do searches later.
+	perMetricName := map[string][]*dto.MetricFamily{}
+
+	for _, m := range metrics {
 		if m.Name == nil {
 			continue
 		}
-		all[*m.Name] = append(all[*m.Name], m)
+		perMetricName[*m.Name] = append(perMetricName[*m.Name], m)
 	}
+
+	d[userID] = perMetricName
+}
+
+func (d gatheredMetricsPerUser) sumCountersAcrossAllUsers(counter string) float64 {
+	result := float64(0)
+	for _, perMetric := range d {
+		result += sumCounters(perMetric[counter])
+	}
+	return result
+}
+
+func (d gatheredMetricsPerUser) sumCountersPerUser(counter string) map[string]float64 {
+	result := map[string]float64{}
+	for user, perMetric := range d {
+		v := sumCounters(perMetric[counter])
+		result[user] = v
+	}
+	return result
 }

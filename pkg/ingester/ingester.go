@@ -97,7 +97,7 @@ type Ingester struct {
 	cfg          Config
 	clientConfig client.Config
 
-	metrics *ingesterMetrics
+	metrics *Metrics
 
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
@@ -108,7 +108,7 @@ type Ingester struct {
 	done sync.WaitGroup
 
 	userStatesMtx sync.RWMutex // protects userStates and stopped
-	userStates    *userStates
+	userStates    *UserStates
 	stopped       bool // protected by userStatesMtx
 
 	// One queue per flush thread.  Fingerprint is used to
@@ -157,7 +157,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
+		metrics:      NewIngesterMetrics(registerer, true),
 		limits:       limits,
 		chunkStore:   chunkStore,
 		quit:         make(chan struct{}),
@@ -176,22 +176,31 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	if cfg.WALConfig.recover {
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
+
+		// Use a local userStates, so we don't need to worry about locking.
+		userStates := NewUserStates(i.limiter, i.cfg, i.metrics)
+
 		start := time.Now()
-		if err := recoverFromWAL(i); err != nil {
+		if err := RecoverFromWAL(i.cfg.WALConfig.dir, userStates); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return nil, err
 		}
 		elapsed := time.Since(start)
+
+		i.userStatesMtx.Lock()
+		i.userStates = userStates
+		i.userStatesMtx.Unlock()
+
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+		i.userStates = NewUserStates(i.limiter, cfg, i.metrics)
 	}
 
-	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
+	i.wal, err = newWAL(cfg.WALConfig, i.userStates.Copy)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +344,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	labels.removeBlanks()
 
 	var (
-		state *userState
+		state *UserState
 		fp    model.Fingerprint
 	)
 	i.userStatesMtx.RLock()
@@ -437,7 +446,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *MemorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
@@ -500,8 +509,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
-	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		chunks := make([]*desc, 0, len(series.chunkDescs))
+	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *MemorySeries) error {
+		chunks := make([]*Desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
 				chunks = append(chunks, chunk.slice(from, through))
@@ -611,7 +620,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	lss := map[model.Fingerprint]labels.Labels{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *MemorySeries) error {
 			if _, ok := lss[fp]; !ok {
 				lss[fp] = series.metric
 			}
@@ -664,7 +673,7 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	users := i.userStates.cp()
+	users := i.userStates.Copy()
 
 	response := &client.UsersStatsResponse{
 		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),

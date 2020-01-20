@@ -22,16 +22,16 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-// userStates holds the userState object for all users (tenants),
+// UserStates holds the userState object for all users (tenants),
 // each one containing all the in-memory series for a given user.
-type userStates struct {
+type UserStates struct {
 	states  sync.Map
 	limiter *SeriesLimiter
 	cfg     Config
-	metrics *ingesterMetrics
+	metrics *Metrics
 }
 
-type userState struct {
+type UserState struct {
 	limiter             *SeriesLimiter
 	userID              string
 	fpLocker            *fingerprintLocker
@@ -62,51 +62,41 @@ type metricCounterShard struct {
 	m   map[string]int
 }
 
-func newUserStates(limiter *SeriesLimiter, cfg Config, metrics *ingesterMetrics) *userStates {
-	return &userStates{
+func NewUserStates(limiter *SeriesLimiter, cfg Config, metrics *Metrics) *UserStates {
+	return &UserStates{
 		limiter: limiter,
 		cfg:     cfg,
 		metrics: metrics,
 	}
 }
 
-func (us *userStates) cp() map[string]*userState {
-	states := map[string]*userState{}
+func (us *UserStates) Copy() map[string]*UserState {
+	states := map[string]*UserState{}
 	us.states.Range(func(key, value interface{}) bool {
-		states[key.(string)] = value.(*userState)
+		states[key.(string)] = value.(*UserState)
 		return true
 	})
 	return states
 }
 
-func (us *userStates) gc() {
+func (us *UserStates) updateRates() {
 	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
-		if state.fpToSeries.length() == 0 {
-			us.states.Delete(key)
-		}
-		return true
-	})
-}
-
-func (us *userStates) updateRates() {
-	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
+		state := value.(*UserState)
 		state.ingestedAPISamples.tick()
 		state.ingestedRuleSamples.tick()
 		return true
 	})
 }
 
-func (us *userStates) get(userID string) (*userState, bool) {
+func (us *UserStates) get(userID string) (*UserState, bool) {
 	state, ok := us.states.Load(userID)
 	if !ok {
 		return nil, ok
 	}
-	return state.(*userState), ok
+	return state.(*UserState), ok
 }
 
-func (us *userStates) getOrCreate(userID string) *userState {
+func (us *UserStates) getOrCreate(userID string) *UserState {
 	state, ok := us.get(userID)
 	if !ok {
 
@@ -120,7 +110,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 		// Speculatively create a userState object and try to store it
 		// in the map.  Another goroutine may have got there before
 		// us, in which case this userState will be discarded
-		state = &userState{
+		state = &UserState{
 			userID:              userID,
 			limiter:             us.limiter,
 			fpToSeries:          newSeriesMap(),
@@ -140,13 +130,13 @@ func (us *userStates) getOrCreate(userID string) *userState {
 		if !ok {
 			us.metrics.memUsers.Inc()
 		}
-		state = stored.(*userState)
+		state = stored.(*UserState)
 	}
 
 	return state
 }
 
-func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
+func (us *UserStates) getViaContext(ctx context.Context) (*UserState, bool, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("no user id")
@@ -155,13 +145,13 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *UserStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*UserState, model.Fingerprint, *MemorySeries, error) {
 	state := us.getOrCreate(userID)
 	fp, series, err := state.getSeries(labels, record)
 	return state, fp, series, err
 }
 
-func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
+func (u *UserState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *MemorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -184,7 +174,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 	return fp, series, nil
 }
 
-func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
+func (u *UserState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*MemorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
@@ -226,7 +216,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	return series, nil
 }
 
-func (u *userState) canAddSeriesFor(metric string) error {
+func (u *UserState) canAddSeriesFor(metric string) error {
 	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
@@ -240,7 +230,7 @@ func (u *userState) canAddSeriesFor(metric string) error {
 	return nil
 }
 
-func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
+func (u *UserState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	u.fpToSeries.del(fp)
 	u.index.Delete(labels.Labels(metric), fp)
 
@@ -272,8 +262,8 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 // - The `send` callback is called at certain intervals specified by batchSize
 //   with no locks held, and is intended to be used by the caller to send the
 //   built batches.
-func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
-	add func(context.Context, model.Fingerprint, *memorySeries) error,
+func (u *UserState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
+	add func(context.Context, model.Fingerprint, *MemorySeries) error,
 	send func(context.Context) error, batchSize int,
 ) error {
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
@@ -327,4 +317,15 @@ outer:
 		return send(ctx)
 	}
 	return nil
+}
+
+// IterateSeries returns a channel that produces all mappings in the seriesMap. The
+// channel will be closed once all fingerprints have been received. Not
+// consuming all fingerprints from the channel will leak a goroutine. The
+// semantics of concurrent modification of seriesMap is the similar as the one
+// for iterating over a map with a 'range' clause. However, if the next element
+// in iteration order is removed after the current element has been received
+// from the channel, it will still be produced by the channel.
+func (u *UserState) IterateSeries() <-chan FingerprintSeriesPair {
+	return u.fpToSeries.Iter()
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -47,6 +48,7 @@ const (
 	Server
 	Distributor
 	Ingester
+	Flusher
 	Querier
 	QueryFrontend
 	Store
@@ -74,6 +76,8 @@ func (m moduleName) String() string {
 		return "store"
 	case Ingester:
 		return "ingester"
+	case Flusher:
+		return "flusher"
 	case Querier:
 		return "querier"
 	case QueryFrontend:
@@ -115,6 +119,9 @@ func (m *moduleName) Set(s string) error {
 	case "ingester":
 		*m = Ingester
 		return nil
+	case "flusher":
+		*m = Flusher
+		return nil
 	case "querier":
 		*m = Querier
 		return nil
@@ -154,6 +161,15 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	return m.Set(s)
+}
+
+func (m moduleName) IsJob() bool {
+	switch m {
+	case Flusher:
+		return true
+	}
+
+	return false
 }
 
 func (t *Cortex) initServer(cfg *Config) (err error) {
@@ -309,6 +325,28 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 func (t *Cortex) stopIngester() error {
 	t.ingester.Shutdown()
 	return nil
+}
+
+func (t *Cortex) initFlusher(cfg *Config) (err error) {
+	// By the end of this call, the chunks should be recovered
+	// from the WAL and flushed.
+	t.flusher, err = flusher.New(
+		cfg.Flusher,
+		cfg.Ingester,
+		cfg.IngesterClient,
+		t.store,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return
+	}
+
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.flusher.ReadinessHandler))
+	return
+}
+
+func (t *Cortex) stopFlusher() error {
+	return t.flusher.Close()
 }
 
 func (t *Cortex) initStore(cfg *Config) (err error) {
@@ -518,6 +556,12 @@ var modules = map[moduleName]module{
 		deps: []moduleName{Overrides, Store, Server, RuntimeConfig},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
+	},
+
+	Flusher: {
+		deps: []moduleName{Store, Server},
+		init: (*Cortex).initFlusher,
+		stop: (*Cortex).stopFlusher,
 	},
 
 	Querier: {

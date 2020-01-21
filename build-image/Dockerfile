@@ -20,6 +20,12 @@ RUN GO111MODULE=on go get -tags netgo \
 		github.com/gogo/protobuf/gogoproto@v1.2.1 && \
 	rm -rf /go/pkg /go/src
 
+ENV KUBEVAL_VERSION=0.14.0
+RUN curl -Ls https://github.com/instrumenta/kubeval/releases/download/${KUBEVAL_VERSION}/kubeval-linux-amd64.tar.gz -o /tmp/kubeval-linux-amd64.tar.gz && \
+	tar -xf /tmp/kubeval-linux-amd64.tar.gz -C /tmp && \
+	cp /tmp/kubeval /usr/local/bin && \
+	rm -f /tmp/kubeval*
+
 ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /
 ENV GOCACHE=/go/cache

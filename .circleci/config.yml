@@ -3,7 +3,7 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: quay.io/cortexproject/build-image:update-lint-ae47f740a
+    - image: quay.io/cortexproject/build-image:validate-k8s-specs-7c217ee7
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:

@@ -128,45 +128,45 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_querier_bucket_store_series_result_series_count 6
 
-			# HELP cortex_store_index_cache_items_evicted_total TSDB: Total number of items that were evicted from the index cache.
-			# TYPE cortex_store_index_cache_items_evicted_total counter
-			cortex_store_index_cache_items_evicted_total{item_type="Postings"} 1125950
-			cortex_store_index_cache_items_evicted_total{item_type="Series"} 1148469
+			# HELP cortex_querier_blocks_index_cache_items_evicted_total TSDB: Total number of items that were evicted from the index cache.
+			# TYPE cortex_querier_blocks_index_cache_items_evicted_total counter
+			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Postings"} 1125950
+			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Series"} 1148469
 
-			# HELP cortex_store_index_cache_requests_total TSDB: Total number of requests to the cache.
-			# TYPE cortex_store_index_cache_requests_total counter
-			cortex_store_index_cache_requests_total{item_type="Postings"} 1170988
-			cortex_store_index_cache_requests_total{item_type="Series"} 1193507
+			# HELP cortex_querier_blocks_index_cache_requests_total TSDB: Total number of requests to the cache.
+			# TYPE cortex_querier_blocks_index_cache_requests_total counter
+			cortex_querier_blocks_index_cache_requests_total{item_type="Postings"} 1170988
+			cortex_querier_blocks_index_cache_requests_total{item_type="Series"} 1193507
 
-			# HELP cortex_store_index_cache_hits_total TSDB: Total number of requests to the cache that were a hit.
-			# TYPE cortex_store_index_cache_hits_total counter
-			cortex_store_index_cache_hits_total{item_type="Postings"} 1216026
-			cortex_store_index_cache_hits_total{item_type="Series"} 1238545
+			# HELP cortex_querier_blocks_index_cache_hits_total TSDB: Total number of requests to the cache that were a hit.
+			# TYPE cortex_querier_blocks_index_cache_hits_total counter
+			cortex_querier_blocks_index_cache_hits_total{item_type="Postings"} 1216026
+			cortex_querier_blocks_index_cache_hits_total{item_type="Series"} 1238545
 
-			# HELP cortex_store_index_cache_items_added_total TSDB: Total number of items that were added to the index cache.
-			# TYPE cortex_store_index_cache_items_added_total counter
-			cortex_store_index_cache_items_added_total{item_type="Postings"} 1261064
-			cortex_store_index_cache_items_added_total{item_type="Series"} 1283583
+			# HELP cortex_querier_blocks_index_cache_items_added_total TSDB: Total number of items that were added to the index cache.
+			# TYPE cortex_querier_blocks_index_cache_items_added_total counter
+			cortex_querier_blocks_index_cache_items_added_total{item_type="Postings"} 1261064
+			cortex_querier_blocks_index_cache_items_added_total{item_type="Series"} 1283583
 
-			# HELP cortex_store_index_cache_items TSDB: Current number of items in the index cache.
-			# TYPE cortex_store_index_cache_items gauge
-			cortex_store_index_cache_items{item_type="Postings"} 1306102
-			cortex_store_index_cache_items{item_type="Series"} 1328621
+			# HELP cortex_querier_blocks_index_cache_items TSDB: Current number of items in the index cache.
+			# TYPE cortex_querier_blocks_index_cache_items gauge
+			cortex_querier_blocks_index_cache_items{item_type="Postings"} 1306102
+			cortex_querier_blocks_index_cache_items{item_type="Series"} 1328621
 
-			# HELP cortex_store_index_cache_items_size_bytes TSDB: Current byte size of items in the index cache.
-			# TYPE cortex_store_index_cache_items_size_bytes gauge
-			cortex_store_index_cache_items_size_bytes{item_type="Postings"} 1351140
-			cortex_store_index_cache_items_size_bytes{item_type="Series"} 1373659
+			# HELP cortex_querier_blocks_index_cache_items_size_bytes TSDB: Current byte size of items in the index cache.
+			# TYPE cortex_querier_blocks_index_cache_items_size_bytes gauge
+			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Postings"} 1351140
+			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Series"} 1373659
 
-			# HELP cortex_store_index_cache_total_size_bytes TSDB: Current byte size of items (both value and key) in the index cache.
-			# TYPE cortex_store_index_cache_total_size_bytes gauge
-			cortex_store_index_cache_total_size_bytes{item_type="Postings"} 1396178
-			cortex_store_index_cache_total_size_bytes{item_type="Series"} 1418697
+			# HELP cortex_querier_blocks_index_cache_total_size_bytes TSDB: Current byte size of items (both value and key) in the index cache.
+			# TYPE cortex_querier_blocks_index_cache_total_size_bytes gauge
+			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Postings"} 1396178
+			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Series"} 1418697
 
-			# HELP cortex_store_index_cache_items_overflowed_total TSDB: Total number of items that could not be added to the cache due to being too big.
-			# TYPE cortex_store_index_cache_items_overflowed_total counter
-			cortex_store_index_cache_items_overflowed_total{item_type="Postings"} 1441216
-			cortex_store_index_cache_items_overflowed_total{item_type="Series"} 1463735
+			# HELP cortex_querier_blocks_index_cache_items_overflowed_total TSDB: Total number of items that could not be added to the cache due to being too big.
+			# TYPE cortex_querier_blocks_index_cache_items_overflowed_total counter
+			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Postings"} 1441216
+			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Series"} 1463735
 
 `))
 	require.NoError(t, err)

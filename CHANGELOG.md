@@ -34,7 +34,7 @@ instructions below to upgrade your Postgres.
   * `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_ingester_shipper_dir_syncs_total`, `cortex_ingester_shipper_dir_sync_failures_total`, `cortex_ingester_shipper_uploads_total` and `cortex_ingester_shipper_upload_failures_total` metrics from TSDB shipper component. #1983
 * [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store (many metrics to list, but all have `cortex_querier_bucket_store_` prefix). #1996 
-* [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos in memory index cache (many metrics to list, but all have `cortex_store_index_cache_` prefix). #1996 
+* [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos in memory index cache (many metrics to list, but all have `cortex_querier_blocks_index_cache_` prefix). #1996 
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922

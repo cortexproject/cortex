@@ -104,35 +104,35 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 
 		// Cache
 		cacheItemsEvicted: prometheus.NewDesc(
-			"cortex_store_index_cache_items_evicted_total",
+			"cortex_querier_blocks_index_cache_items_evicted_total",
 			"TSDB: Total number of items that were evicted from the index cache.",
 			[]string{"item_type"}, nil),
 		cacheItemsAdded: prometheus.NewDesc(
-			"cortex_store_index_cache_items_added_total",
+			"cortex_querier_blocks_index_cache_items_added_total",
 			"TSDB: Total number of items that were added to the index cache.",
 			[]string{"item_type"}, nil),
 		cacheRequests: prometheus.NewDesc(
-			"cortex_store_index_cache_requests_total",
+			"cortex_querier_blocks_index_cache_requests_total",
 			"TSDB: Total number of requests to the cache.",
 			[]string{"item_type"}, nil),
 		cacheItemsOverflow: prometheus.NewDesc(
-			"cortex_store_index_cache_items_overflowed_total",
+			"cortex_querier_blocks_index_cache_items_overflowed_total",
 			"TSDB: Total number of items that could not be added to the cache due to being too big.",
 			[]string{"item_type"}, nil),
 		cacheHits: prometheus.NewDesc(
-			"cortex_store_index_cache_hits_total",
+			"cortex_querier_blocks_index_cache_hits_total",
 			"TSDB: Total number of requests to the cache that were a hit.",
 			[]string{"item_type"}, nil),
 		cacheItemsCurrentCount: prometheus.NewDesc(
-			"cortex_store_index_cache_items",
+			"cortex_querier_blocks_index_cache_items",
 			"TSDB: Current number of items in the index cache.",
 			[]string{"item_type"}, nil),
 		cacheItemsCurrentSize: prometheus.NewDesc(
-			"cortex_store_index_cache_items_size_bytes",
+			"cortex_querier_blocks_index_cache_items_size_bytes",
 			"TSDB: Current byte size of items in the index cache.",
 			[]string{"item_type"}, nil),
 		cacheItemsTotalCurrentSize: prometheus.NewDesc(
-			"cortex_store_index_cache_total_size_bytes",
+			"cortex_querier_blocks_index_cache_total_size_bytes",
 			"TSDB: Current byte size of items (both value and key) in the index cache.",
 			[]string{"item_type"}, nil),
 	}

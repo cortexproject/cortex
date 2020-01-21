@@ -57,6 +57,15 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 			labelValues: []string{"12", "22"},
 			metrics:     []*dto.Metric{m6}},
 	}, out)
+
+	// no labels -- returns all metrics in single key. this isn't very efficient, and there are other functions
+	// (without labels) to handle this better, but it still works.
+	out2 := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, nil)
+	require.Equal(t, map[string]metricsWithLabels{
+		getLabelsString(nil): {
+			labelValues: []string{},
+			metrics:     []*dto.Metric{m1, m2, m3, m4, m5, m6}},
+	}, out2)
 }
 
 func makeLabels(namesAndValues ...string) []*dto.LabelPair {

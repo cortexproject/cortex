@@ -7,6 +7,9 @@ If you are running with a high `-ruler.num-workers` and if you're not able to ex
 Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full
 instructions below to upgrade your Postgres.
 
+* [CHANGE] Remove unnecessary configs/flags from the ruler ring config to align with the pattern used in the distributor ring. #1987
+    * Ruler ring related flags are now all prefixed with `ruler.ring.` as opposed to just `ruler.`
+    * Changed the default value for `-ruler.ring.prefix` from `collectors/` to `rulers/` in order to not clash with other keys (ie. ring) stored in the same key-value store.
 * [CHANGE] The frontend component now does not cache results if it finds a `Cache-Control` header and if one of its values is `no-store`. #1974
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
   * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`

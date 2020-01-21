@@ -66,29 +66,7 @@ func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, d
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
-	type counterResult struct {
-		value       float64
-		labelValues []string
-	}
-
-	result := map[string]counterResult{}
-
-	for _, userMetrics := range d { // for each user
-		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[counter], labelNames)
-
-		for key, mlv := range metricsPerLabelValue {
-			for _, m := range mlv.metrics {
-				r := result[key]
-				if r.labelValues == nil {
-					r.labelValues = mlv.labelValues
-				}
-
-				r.value += m.GetCounter().GetValue()
-				result[key] = r
-			}
-		}
-	}
-
+	result := d.sumOfSingleValuesWithLabels(counter, counterValue, labelNames)
 	for _, cr := range result {
 		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, cr.value, cr.labelValues...)
 	}
@@ -110,16 +88,23 @@ func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, des
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
-func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
-	type gaugeResult struct {
-		value       float64
-		labelValues []string
+func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string, labelNames ...string) {
+	result := d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames)
+	for _, cr := range result {
+		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, cr.value, cr.labelValues...)
 	}
+}
 
-	result := map[string]gaugeResult{}
+type singleResult struct {
+	value       float64
+	labelValues []string
+}
 
-	for _, userMetrics := range d { // for each user
-		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[counter], labelNames)
+func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) map[string]singleResult {
+	result := map[string]singleResult{}
+
+	for _, userMetrics := range d {
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[metric], labelNames)
 
 		for key, mlv := range metricsPerLabelValue {
 			for _, m := range mlv.metrics {
@@ -128,15 +113,13 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.M
 					r.labelValues = mlv.labelValues
 				}
 
-				r.value += m.GetGauge().GetValue()
+				r.value += fn(m)
 				result[key] = r
 			}
 		}
 	}
 
-	for _, cr := range result {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, cr.value, cr.labelValues...)
-	}
+	return result
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
@@ -146,7 +129,7 @@ func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, 
 		quantiles   map[float64]float64
 	)
 
-	for _, userMetrics := range d { // for each user
+	for _, userMetrics := range d {
 		for _, m := range userMetrics[summaryName].GetMetric() {
 			summary := m.GetSummary()
 			sampleCount += summary.GetSampleCount()
@@ -168,7 +151,7 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 
 	result := map[string]summaryResult{}
 
-	for _, userMetrics := range d { // for each user
+	for _, userMetrics := range d {
 		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[summaryName], labelNames)
 
 		for key, mwl := range metricsPerLabelValue {
@@ -200,7 +183,7 @@ func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric,
 		buckets     map[float64]uint64
 	)
 
-	for _, userMetrics := range d { // for each user
+	for _, userMetrics := range d {
 		for _, m := range userMetrics[histogramName].GetMetric() {
 			histo := m.GetHistogram()
 			sampleCount += histo.GetSampleCount()
@@ -298,9 +281,11 @@ func getLabelsString(labelValues []string) string {
 	return buf.String()
 }
 
+// sum returns sum of values from all metrics from same metric family (= series with the same metric name, but different labels)
+// Supplied function extracts value.
 func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	result := float64(0)
-	for _, m := range mf.Metric {
+	for _, m := range mf.GetMetric() {
 		result += fn(m)
 	}
 	return result

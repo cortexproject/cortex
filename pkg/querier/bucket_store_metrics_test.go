@@ -166,17 +166,17 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 			cortex_store_index_cache_items_added_total{item_type="Series"} 1283583
 
 			# HELP cortex_store_index_cache_items TSDB: Current number of items in the index cache.
-			# TYPE cortex_store_index_cache_items counter
+			# TYPE cortex_store_index_cache_items gauge
 			cortex_store_index_cache_items{item_type="Postings"} 1306102
 			cortex_store_index_cache_items{item_type="Series"} 1328621
 
 			# HELP cortex_store_index_cache_items_size_bytes TSDB: Current byte size of items in the index cache.
-			# TYPE cortex_store_index_cache_items_size_bytes counter
+			# TYPE cortex_store_index_cache_items_size_bytes gauge
 			cortex_store_index_cache_items_size_bytes{item_type="Postings"} 1351140
 			cortex_store_index_cache_items_size_bytes{item_type="Series"} 1373659
 
 			# HELP cortex_store_index_cache_total_size_bytes TSDB: Current byte size of items (both value and key) in the index cache.
-			# TYPE cortex_store_index_cache_total_size_bytes counter
+			# TYPE cortex_store_index_cache_total_size_bytes gauge
 			cortex_store_index_cache_total_size_bytes{item_type="Postings"} 1396178
 			cortex_store_index_cache_total_size_bytes{item_type="Series"} 1418697
 

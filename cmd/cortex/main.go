@@ -115,7 +115,19 @@ func parseConfigFileParameter() string {
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(ioutil.Discard)
 	fs.StringVar(&configFile, configFileOption, "", "") // usage not used in this function.
-	_ = fs.Parse(os.Args[1:])
+
+	// Try to find -config.file option in the flags. As Parsing stops on the first error, eg. unknown flag, we simply
+	// try remaining parameters until we find config flag, or there are no params left.
+	// (ContinueOnError just means that flag.Parse doesn't call panic or os.Exit, but it returns error, which we ignore)
+	args := os.Args[1:]
+	for len(args) > 0 {
+		_ = fs.Parse(args)
+		if configFile != "" {
+			// found (!)
+			break
+		}
+		args = args[1:]
+	}
 
 	return configFile
 }

@@ -39,14 +39,16 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Regis
 		}),
 	}
 
-	r.MustRegister(b.syncTimes)
-
 	us, err := NewUserStore(cfg, logLevel, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 	b.us = us
-	r.MustRegister(us.tsdbMetrics)
+
+	if r != nil {
+		r.MustRegister(b.syncTimes)
+		r.MustRegister(us.tsdbMetrics)
+	}
 
 	level.Info(util.Logger).Log("msg", "synchronizing TSDB blocks for all users")
 	if err := us.InitialSync(context.Background()); err != nil {

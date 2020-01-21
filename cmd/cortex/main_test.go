@@ -70,11 +70,12 @@ func TestFlagParsing(t *testing.T) {
 }
 
 func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, stderrMessage []byte) {
-	oldArgs, oldStdout, oldStderr := os.Args, os.Stdout, os.Stderr
+	oldArgs, oldStdout, oldStderr, oldTestMode := os.Args, os.Stdout, os.Stderr, testMode
 	defer func() {
 		os.Stdout = oldStdout
 		os.Stderr = oldStderr
 		os.Args = oldArgs
+		testMode = oldTestMode
 	}()
 
 	if yaml != "" {

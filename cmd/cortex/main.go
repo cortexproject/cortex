@@ -59,10 +59,6 @@ func main() {
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
 
-	if mutexProfileFraction > 0 {
-		runtime.SetMutexProfileFraction(mutexProfileFraction)
-	}
-
 	if testMode {
 		// Don't exit on error in test mode. Just parse parameters, dump config and stop.
 		flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
@@ -72,6 +68,10 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if mutexProfileFraction > 0 {
+		runtime.SetMutexProfileFraction(mutexProfileFraction)
+	}
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

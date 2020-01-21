@@ -633,6 +633,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 
 	codec := m.GetCodec(kvPair.GetCodec())
 	if codec == nil {
+		m.numberOfInvalidReceivedMessages.Inc()
 		level.Error(util.Logger).Log("msg", "failed to decode received value, unknown codec", "codec", kvPair.GetCodec())
 		return
 	}

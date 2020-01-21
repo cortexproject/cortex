@@ -287,7 +287,17 @@ minutes to finish scaling. In the config above they are set.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ondemand-throughput-mode&lt;/code&gt; tells AWS to charge for what you use, as
 opposed to continuous provisioning. This mode is cost-effective for
 older data, which is never written and only read sporadically.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
+&lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
+&lt;p&gt;One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p&gt;
+&lt;h2 id=&#34;config&#34;&gt;Config&lt;/h2&gt;
+&lt;p&gt;In order to enable sharding in the ruler the following flag needs to be set:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; -ruler.enable-sharding=true
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
 &lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
 &lt;p&gt;You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
 &lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p&gt;

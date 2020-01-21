@@ -679,90 +679,58 @@ alertmanagerurl:
 # CLI flag: -ruler.search-pending-for
 [searchpendingfor: <duration> | default = 5m0s]
 
-lifecyclerconfig:
-  ring:
-    kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, multi, memberlist (experimental).
-      # CLI flag: -ruler.store
-      [store: <string> | default = "consul"]
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, multi, memberlist (experimental).
+    # CLI flag: -ruler.ring.store
+    [store: <string> | default = "consul"]
 
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -ruler.prefix
-      [prefix: <string> | default = "collectors/"]
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ruler.ring.prefix
+    [prefix: <string> | default = "rulers/"]
 
-      # The consul_config configures the consul client.
-      # The CLI flags prefix for this block config is: ruler
-      [consul: <consul_config>]
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [consul: <consul_config>]
 
-      # The etcd_config configures the etcd client.
-      # The CLI flags prefix for this block config is: ruler
-      [etcd: <etcd_config>]
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [etcd: <etcd_config>]
 
-      # The memberlist_config configures the Gossip memberlist.
-      # The CLI flags prefix for this block config is: ruler
-      [memberlist: <memberlist_config>]
+    # The memberlist_config configures the Gossip memberlist.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [memberlist: <memberlist_config>]
 
-      multi:
-        # Primary backend storage used by multi-client.
-        # CLI flag: -ruler.multi.primary
-        [primary: <string> | default = ""]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.primary
+      [primary: <string> | default = ""]
 
-        # Secondary backend storage used by multi-client.
-        # CLI flag: -ruler.multi.secondary
-        [secondary: <string> | default = ""]
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.secondary
+      [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
-        # CLI flag: -ruler.multi.mirror-enabled
-        [mirror_enabled: <boolean> | default = false]
+      # Mirror writes to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
-        # CLI flag: -ruler.multi.mirror-timeout
-        [mirror_timeout: <duration> | default = 2s]
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
-    # The heartbeat timeout after which ingesters are skipped for reads/writes.
-    # CLI flag: -ruler.ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m0s]
-
-    # The number of ingesters to write to and read from.
-    # CLI flag: -ruler.distributor.replication-factor
-    [replication_factor: <int> | default = 3]
-
-  # Number of tokens for each ingester.
-  # CLI flag: -ruler.num-tokens
-  [num_tokens: <int> | default = 128]
-
-  # Period at which to heartbeat to consul.
-  # CLI flag: -ruler.heartbeat-period
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
-  # Observe tokens after generating to resolve collisions. Useful when using
-  # gossiping ring.
-  # CLI flag: -ruler.observe-period
-  [observe_period: <duration> | default = 0s]
+  # The heartbeat timeout after which rulers are considered unhealthy within the
+  # ring.
+  # CLI flag: -ruler.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m0s]
 
-  # Period to wait for a claim from another member; will join automatically
-  # after this.
-  # CLI flag: -ruler.join-after
-  [join_after: <duration> | default = 0s]
-
-  # Minimum duration to wait before becoming ready. This is to work around race
-  # conditions with ingesters exiting and updating the ring.
-  # CLI flag: -ruler.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m0s]
-
-  # Name of network interface to read address from.
-  # CLI flag: -ruler.lifecycler.interface
-  [interface_names: <list of string> | default = [eth0 en0]]
-
-  # Duration to sleep for before exiting, to ensure metrics are scraped.
-  # CLI flag: -ruler.final-sleep
-  [final_sleep: <duration> | default = 30s]
-
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
-  # CLI flag: -ruler.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
+  # Number of tokens for each ingester.
+  # CLI flag: -ruler.ring.num-tokens
+  [num_tokens: <int> | default = 128]
 
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period

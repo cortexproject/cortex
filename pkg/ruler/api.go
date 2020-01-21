@@ -33,7 +33,7 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 	}
 }
 
-// In order to reimplent the prometheus rules API, a large amount of code was copied over
+// In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not pass a context to
 // the rule retrieval function.
 // https://github.com/prometheus/prometheus/blob/2aacd807b3ec6ddd90ae55f3a42f4cffed561ea9/web/api/v1/api.go#L108

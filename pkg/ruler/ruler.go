@@ -67,7 +67,7 @@ type Config struct {
 	Ring             RingConfig
 	FlushCheckPeriod time.Duration
 
-	EnableAPI bool
+	EnableAPI bool `yaml:"enable_api"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -455,44 +455,14 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
-	rgs, err := r.getRules(userID)
-	if err != nil {
-		return nil, err
-	}
-
 	if r.cfg.EnableSharding {
-		rulers, err := r.ring.GetAll()
-		if err != nil {
-			return nil, err
-		}
-
-		ctx, err = user.InjectIntoGRPCRequest(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
-		}
-
-		for _, rlr := range rulers.Ingesters {
-			// Don't retrieve rules using GRPC from the same ingester
-			if rlr.GetAddr() == r.lifecycler.Addr {
-				continue
-			}
-			conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())
-			if err != nil {
-				return nil, err
-			}
-			cc := NewRulerClient(conn)
-			newGrps, err := cc.Rules(ctx, nil)
-			if err != nil {
-				return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
-			}
-			rgs = append(rgs, newGrps.Groups...)
-		}
+		return r.getShardedRules(ctx, userID)
 	}
 
-	return rgs, nil
+	return r.getLocalRules(userID)
 }
 
-func (r *Ruler) getRules(userID string) ([]*rules.RuleGroupDesc, error) {
+func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	groupDescs := []*rules.RuleGroupDesc{}
 
 	var groups []*promRules.Group
@@ -565,6 +535,35 @@ func (r *Ruler) getRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	return groupDescs, nil
 }
 
+func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
+	rulers, err := r.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, err = user.InjectIntoGRPCRequest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
+	}
+
+	rgs := []*rules.RuleGroupDesc{}
+
+	for _, rlr := range rulers.Ingesters {
+		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())
+		if err != nil {
+			return nil, err
+		}
+		cc := NewRulerClient(conn)
+		newGrps, err := cc.Rules(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
+		}
+		rgs = append(rgs, newGrps.Groups...)
+	}
+
+	return rgs, nil
+}
+
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -572,7 +571,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getRules(userID)
+	groupDescs, err := r.getLocalRules(userID)
 	if err != nil {
 		return nil, err
 	}

@@ -25,7 +25,7 @@ func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Re
 		}
 
 		if err != nil {
-			level.Warn(Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
+			level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", userID, "err", err)
 			continue
 		}
 	}

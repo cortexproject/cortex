@@ -88,9 +88,6 @@ type Client interface {
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
-
-	// If client needs to do some cleanup, it can do it here.
-	Stop()
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,

@@ -409,8 +409,9 @@ func TestMultipleCAS(t *testing.T) {
 		t.Fatal("Failed to setup KV client", err)
 	}
 	mkv.maxCasRetries = 20
+	defer mkv.Stop()
+
 	kv := NewClient(mkv, c)
-	defer kv.Stop()
 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
@@ -627,7 +628,7 @@ func getTimestamps(members map[string]member) (min int64, max int64, avg int64) 
 
 func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConnect int, start <-chan struct{}, stop <-chan struct{}) {
 	// stop gossipping about the ring(s)
-	defer kv.Stop()
+	defer kv.kv.Stop()
 
 	for {
 		select {

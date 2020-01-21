@@ -351,12 +351,3 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		}
 	}
 }
-
-// Stop the multiClient and all configured clients.
-func (m *MultiClient) Stop() {
-	m.cancel()
-
-	for _, kv := range m.clients {
-		kv.client.Stop()
-	}
-}

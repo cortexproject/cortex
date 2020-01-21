@@ -60,10 +60,6 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	c.kv.WatchPrefix(ctx, prefix, c.codec, f)
 }
 
-func (c *Client) Stop() {
-	c.kv.Stop()
-}
-
 // Config for memberlist-based Client
 type KVConfig struct {
 	// Memberlist options.

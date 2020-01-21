@@ -181,8 +181,6 @@ func (r *Ring) loop(ctx context.Context) {
 		r.ringTokens = ringTokens
 		return true
 	})
-
-	r.KVClient.Stop()
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.

@@ -205,14 +205,15 @@ func TestBasicGetAndCas(t *testing.T) {
 		TCPTransport: TCPTransportConfig{
 			BindAddrs: []string{"localhost"},
 		},
+		Codecs: []codec.Codec{c},
 	}
 
 	mkv, err := NewKV(cfg)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
-	}
+	require.NoError(t, err)
 	defer mkv.Stop()
-	kv := NewClient(mkv, c)
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	const key = "test"
 
@@ -260,14 +261,15 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 
 	cfg := KVConfig{
 		TCPTransport: TCPTransportConfig{},
+		Codecs:       []codec.Codec{c},
 	}
 
 	mkv, err := NewKV(cfg)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
-	}
+	require.NoError(t, err)
 	defer mkv.Stop()
-	kv := NewClient(mkv, c)
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	testFN(t, kv)
 }
@@ -402,16 +404,17 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 func TestMultipleCAS(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{}
+	cfg := KVConfig{
+		Codecs: []codec.Codec{c},
+	}
 
 	mkv, err := NewKV(cfg)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
-	}
+	require.NoError(t, err)
 	mkv.maxCasRetries = 20
 	defer mkv.Stop()
 
-	kv := NewClient(mkv, c)
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
@@ -508,13 +511,15 @@ func TestMultipleClients(t *testing.T) {
 				BindAddrs: []string{"localhost"},
 				BindPort:  0, // randomize ports
 			},
+
+			Codecs: []codec.Codec{c},
 		}
 
 		mkv, err := NewKV(cfg)
-		if err != nil {
-			t.Fatal(id, "Failed to setup KV client", err)
-		}
-		kv := NewClient(mkv, c)
+		require.NoError(t, err)
+
+		kv, err := NewClient(mkv, c)
+		require.NoError(t, err)
 
 		clients = append(clients, kv)
 
@@ -730,14 +735,22 @@ func TestMultipleCodecs(t *testing.T) {
 			BindAddrs: []string{"localhost"},
 			BindPort:  0, // randomize
 		},
+
+		Codecs: []codec.Codec{
+			dataCodec{},
+			distributedCounterCodec{},
+		},
 	}
 
 	mkv1, err := NewKV(cfg)
 	require.NoError(t, err)
 	defer mkv1.Stop()
 
-	kv1 := NewClient(mkv1, dataCodec{})
-	kv2 := NewClient(mkv1, distributedCounterCodec{})
+	kv1, err := NewClient(mkv1, dataCodec{})
+	require.NoError(t, err)
+
+	kv2, err := NewClient(mkv1, distributedCounterCodec{})
+	require.NoError(t, err)
 
 	err = kv1.CAS(context.Background(), "data", func(in interface{}) (out interface{}, retry bool, err error) {
 		var d *data = nil
@@ -775,10 +788,6 @@ func TestMultipleCodecs(t *testing.T) {
 	mkv2, err := NewKV(cfg)
 	require.NoError(t, err)
 	defer mkv2.Stop()
-
-	// We need to register codec to second KV. Normally client does that, but we don't have any client for second KV.
-	mkv2.RegisterCodec(dataCodec{})
-	mkv2.RegisterCodec(distributedCounterCodec{})
 
 	// Join second KV to first one. That will also trigger state transfer.
 	_, err = mkv2.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", mkv1.GetListeningPort())})

@@ -30,13 +30,16 @@ type Client struct {
 	codec codec.Codec
 }
 
-func NewClient(kv *KV, codec codec.Codec) *Client {
-	kv.RegisterCodec(codec)
+func NewClient(kv *KV, codec codec.Codec) (*Client, error) {
+	c := kv.GetCodec(codec.CodecID())
+	if c == nil {
+		return nil, fmt.Errorf("codec not registered in KV: %s", codec.CodecID())
+	}
 
 	return &Client{
 		kv:    kv,
 		codec: codec,
-	}
+	}, nil
 }
 
 // Get is part of kv.Client interface.
@@ -85,6 +88,9 @@ type KVConfig struct {
 	// Where to put custom metrics. Metrics are not registered, if this is nil.
 	MetricsRegisterer prometheus.Registerer `yaml:"-"`
 	MetricsNamespace  string                `yaml:"-"`
+
+	// Codecs to register. Codecs need to be registered before joining other members.
+	Codecs []codec.Codec
 }
 
 // RegisterFlags registers flags.
@@ -114,8 +120,7 @@ type KV struct {
 	store   map[string]valueDesc
 
 	// Codec registry
-	codecsMu sync.RWMutex
-	codecs   map[string]codec.Codec
+	codecs map[string]codec.Codec
 
 	// Key watchers
 	watchersMu     sync.Mutex
@@ -241,6 +246,10 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	// Almost ready...
 	memberlistClient.createAndRegisterMetrics()
 
+	for _, c := range cfg.Codecs {
+		memberlistClient.codecs[c.CodecID()] = c
+	}
+
 	// Join the cluster
 	if len(cfg.JoinMembers) > 0 {
 		reached, err := memberlistClient.JoinMembers(cfg.JoinMembers)
@@ -259,28 +268,8 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	return memberlistClient, nil
 }
 
-// Registers codec to the map of codecs.
-//
-// We ignore duplicates -- we assume, that they all refer to the same codec.
-// Unfortunately, we cannot verify that. There may be multiple instances of the same codec,
-// so identity check doesn't work.
-func (m *KV) RegisterCodec(codec codec.Codec) {
-	// should never happen in a tested code.
-	if codec.CodecID() == "" {
-		panic("invalid codec ID")
-	}
-
-	m.codecsMu.Lock()
-	defer m.codecsMu.Unlock()
-
-	m.codecs[codec.CodecID()] = codec
-}
-
 // GetCodec returns codec for given ID or nil.
 func (m *KV) GetCodec(codecID string) codec.Codec {
-	m.codecsMu.RLock()
-	defer m.codecsMu.RUnlock()
-
 	return m.codecs[codecID]
 }
 
@@ -773,8 +762,8 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 
 		codec := m.GetCodec(kvPair.GetCodec())
 		if codec == nil {
-			err = fmt.Errorf("unknown codec: %s", kvPair.GetCodec())
-			break
+			level.Error(util.Logger).Log("msg", "failed to parse remote state: unknown codec for key", "codec", kvPair.GetCodec(), "key", kvPair.GetKey())
+			continue
 		}
 
 		// we have both key and value, try to merge it with our state

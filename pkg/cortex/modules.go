@@ -31,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -517,6 +518,9 @@ func (t *Cortex) stopCompactor() error {
 
 func (t *Cortex) initMemberlistKV(cfg *Config) (err error) {
 	cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+	}
 	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
 	return nil
 }

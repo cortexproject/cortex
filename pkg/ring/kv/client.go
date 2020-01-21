@@ -118,7 +118,7 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		if err != nil {
 			return nil, err
 		}
-		client = memberlist.NewClient(kv, codec)
+		client, err = memberlist.NewClient(kv, codec)
 
 	case "multi":
 		client, err = buildMultiClient(cfg, codec)

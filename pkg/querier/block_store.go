@@ -368,7 +368,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		u.cfg.BucketStore.MetaSyncConcurrency,
 		userBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
-		nil, // TODO(pracucci) need to register metrics here too
+		reg,
 		// No filters
 	)
 	if err != nil {

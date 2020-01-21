@@ -3494,6 +3494,7 @@ a piece of work is finished it should:&lt;/p&gt;
 &lt;li&gt;Each commit should build towards the whole - don&amp;rsquo;t leave in back-tracks and mistakes that you later corrected.&lt;/li&gt;
 &lt;li&gt;Have tests for new functionality or tests that would have caught the bug being fixed.&lt;/li&gt;
 &lt;li&gt;Include a CHANGELOG message if users of Cortex need to hear about what you did.&lt;/li&gt;
+&lt;li&gt;If you have made any changes to flags or config, run &lt;code&gt;make doc&lt;/code&gt; and commit the changed files to update the config file documentation.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;developer-certificates-of-origin-dcos&#34;&gt;Developer Certificates of Origin (DCOs)&lt;/h2&gt;
 &lt;p&gt;Before submitting your work in a pull request, make sure that &lt;em&gt;all&lt;/em&gt; commits are signed off with a &lt;strong&gt;Developer Certificate of Origin&lt;/strong&gt; (DCO). Here&amp;rsquo;s an example:&lt;/p&gt;

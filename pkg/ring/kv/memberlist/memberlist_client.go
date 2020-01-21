@@ -26,11 +26,13 @@ const (
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 )
 
+// Client implements kv.Client interface, by using memberlist.KV
 type Client struct {
 	kv    *KV // reference to singleton memberlist-based KV
 	codec codec.Codec
 }
 
+// NewClient creates new client instance. Supplied codec must already be registered in KV.
 func NewClient(kv *KV, codec codec.Codec) (*Client, error) {
 	c := kv.GetCodec(codec.CodecID())
 	if c == nil {

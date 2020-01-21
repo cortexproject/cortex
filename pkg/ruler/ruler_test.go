@@ -30,12 +30,12 @@ func defaultRulerConfig() Config {
 		},
 	}
 	flagext.DefaultValues(&cfg)
-	flagext.DefaultValues(&cfg.RulerRing)
-	cfg.RulerRing.KVStore.Mock = consul
-	cfg.RulerRing.NumTokens = 1
-	cfg.RulerRing.ListenPort = 0
-	cfg.RulerRing.InstanceAddr = "localhost"
-	cfg.RulerRing.InstanceID = "localhost"
+	flagext.DefaultValues(&cfg.Ring)
+	cfg.Ring.KVStore.Mock = consul
+	cfg.Ring.NumTokens = 1
+	cfg.Ring.ListenPort = 0
+	cfg.Ring.InstanceAddr = "localhost"
+	cfg.Ring.InstanceID = "localhost"
 	return cfg
 }
 

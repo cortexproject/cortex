@@ -405,7 +405,7 @@ func (t *Cortex) stopTableManager() error {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
-	cfg.Ruler.RulerRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)

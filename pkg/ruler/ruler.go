@@ -61,14 +61,14 @@ type Config struct {
 
 	EnableSharding   bool // Enable sharding rule groups
 	SearchPendingFor time.Duration
-	RulerRing        RingConfig
+	Ring             RingConfig
 	FlushCheckPeriod time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.RegisterFlags(f)
-	cfg.RulerRing.RegisterFlags(f)
+	cfg.Ring.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")
@@ -149,7 +149,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
 	if cfg.EnableSharding {
-		lifecyclerCfg := cfg.RulerRing.ToLifecyclerConfig()
+		lifecyclerCfg := cfg.Ring.ToLifecyclerConfig()
 		ruler.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, ruler, "ruler", ring.RulerRingKey, true)
 		if err != nil {
 			return nil, err

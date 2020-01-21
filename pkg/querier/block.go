@@ -46,8 +46,7 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Regis
 	b.us = us
 
 	if r != nil {
-		r.MustRegister(b.syncTimes)
-		r.MustRegister(us.tsdbMetrics)
+		r.MustRegister(b.syncTimes, us.tsdbMetrics)
 	}
 
 	level.Info(util.Logger).Log("msg", "synchronizing TSDB blocks for all users")

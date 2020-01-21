@@ -40,6 +40,12 @@ func TestFlagParsing(t *testing.T) {
 			stderrMessage: "-unknown.flag",
 		},
 
+		"new flag, with config": {
+			arguments:     []string{"-mem-ballast-size-bytes=100000"},
+			yaml:          "target: ingester",
+			stdoutMessage: "target: ingester",
+		},
+
 		"config with wrong argument override": {
 			yaml:          "target: ingester",
 			arguments:     []string{"-target=unknown"},
@@ -90,7 +96,7 @@ func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, st
 		_, err = tempFile.WriteString(yaml)
 		require.NoError(t, err)
 
-		arguments = append([]string{"-" + configFileOption, tempFile.Name()}, arguments...)
+		arguments = append(arguments, "-"+configFileOption, tempFile.Name())
 	}
 
 	arguments = append([]string{"./cortex"}, arguments...)

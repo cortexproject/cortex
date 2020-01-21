@@ -46,7 +46,7 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 
 	out := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, labels)
 
-	// m1 is not returned at all, as it doesn't habe both required labels.
+	// m1 is not returned at all, as it doesn't have both required labels.
 	require.Equal(t, map[string]metricsWithLabels{
 		getLabelsString([]string{"10", "20"}): {
 			labelValues: []string{"10", "20"},

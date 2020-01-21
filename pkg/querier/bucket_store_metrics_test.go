@@ -22,128 +22,128 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_bucket_store_blocks_loaded TSDB: Number of currently loaded blocks.
-			# TYPE cortex_bucket_store_blocks_loaded gauge
-			cortex_bucket_store_blocks_loaded 22519
+			# HELP cortex_querier_bucket_store_blocks_loaded TSDB: Number of currently loaded blocks.
+			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
+			cortex_querier_bucket_store_blocks_loaded 22519
 
-			# HELP cortex_bucket_store_block_loads_total TSDB: Total number of remote block loading attempts.
-			# TYPE cortex_bucket_store_block_loads_total counter
-			cortex_bucket_store_block_loads_total 45038
+			# HELP cortex_querier_bucket_store_block_loads_total TSDB: Total number of remote block loading attempts.
+			# TYPE cortex_querier_bucket_store_block_loads_total counter
+			cortex_querier_bucket_store_block_loads_total 45038
 
-			# HELP cortex_bucket_store_block_load_failures_total TSDB: Total number of failed remote block loading attempts.
-			# TYPE cortex_bucket_store_block_load_failures_total counter
-			cortex_bucket_store_block_load_failures_total 67557
+			# HELP cortex_querier_bucket_store_block_load_failures_total TSDB: Total number of failed remote block loading attempts.
+			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
+			cortex_querier_bucket_store_block_load_failures_total 67557
 
-			# HELP cortex_bucket_store_block_drops_total TSDB: Total number of local blocks that were dropped.
-			# TYPE cortex_bucket_store_block_drops_total counter
-			cortex_bucket_store_block_drops_total 90076
+			# HELP cortex_querier_bucket_store_block_drops_total TSDB: Total number of local blocks that were dropped.
+			# TYPE cortex_querier_bucket_store_block_drops_total counter
+			cortex_querier_bucket_store_block_drops_total 90076
 
-			# HELP cortex_bucket_store_block_drop_failures_total TSDB: Total number of local blocks that failed to be dropped.
-			# TYPE cortex_bucket_store_block_drop_failures_total counter
-			cortex_bucket_store_block_drop_failures_total 112595
+			# HELP cortex_querier_bucket_store_block_drop_failures_total TSDB: Total number of local blocks that failed to be dropped.
+			# TYPE cortex_querier_bucket_store_block_drop_failures_total counter
+			cortex_querier_bucket_store_block_drop_failures_total 112595
 
-			# HELP cortex_bucket_store_sent_chunk_size_bytes TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.
-			# TYPE cortex_bucket_store_sent_chunk_size_bytes histogram
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="32"} 0
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="256"} 0
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="512"} 0
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="1024"} 0
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="32768"} 0
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="262144"} 4
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="524288"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="1.048576e+06"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="3.3554432e+07"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="2.68435456e+08"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="5.36870912e+08"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_bucket{le="+Inf"} 6
-			cortex_bucket_store_sent_chunk_size_bytes_sum 1.328621e+06
-			cortex_bucket_store_sent_chunk_size_bytes_count 6
+			# HELP cortex_querier_bucket_store_sent_chunk_size_bytes TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.
+			# TYPE cortex_querier_bucket_store_sent_chunk_size_bytes histogram
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="32"} 0
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="256"} 0
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="512"} 0
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="1024"} 0
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="32768"} 0
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="262144"} 4
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="524288"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="1.048576e+06"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="3.3554432e+07"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="2.68435456e+08"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="5.36870912e+08"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="+Inf"} 6
+			cortex_querier_bucket_store_sent_chunk_size_bytes_sum 1.328621e+06
+			cortex_querier_bucket_store_sent_chunk_size_bytes_count 6
 
-			# HELP cortex_bucket_store_series_blocks_queried TSDB: Number of blocks in a bucket store that were touched to satisfy a query.
-			# TYPE cortex_bucket_store_series_blocks_queried summary
-			cortex_bucket_store_series_blocks_queried_sum 1.283583e+06
-			cortex_bucket_store_series_blocks_queried_count 9
+			# HELP cortex_querier_bucket_store_series_blocks_queried TSDB: Number of blocks in a bucket store that were touched to satisfy a query.
+			# TYPE cortex_querier_bucket_store_series_blocks_queried summary
+			cortex_querier_bucket_store_series_blocks_queried_sum 1.283583e+06
+			cortex_querier_bucket_store_series_blocks_queried_count 9
 
-			# HELP cortex_bucket_store_series_data_fetched TSDB: How many items of a data type in a block were fetched for a single series request.
-			# TYPE cortex_bucket_store_series_data_fetched summary
-			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
-			cortex_bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
-			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-b"} 225190
-			cortex_bucket_store_series_data_fetched_count{data_type="fetched-b"} 3
-			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
-			cortex_bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
+			# HELP cortex_querier_bucket_store_series_data_fetched TSDB: How many items of a data type in a block were fetched for a single series request.
+			# TYPE cortex_querier_bucket_store_series_data_fetched summary
+			cortex_querier_bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
+			cortex_querier_bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
+			cortex_querier_bucket_store_series_data_fetched_sum{data_type="fetched-b"} 225190
+			cortex_querier_bucket_store_series_data_fetched_count{data_type="fetched-b"} 3
+			cortex_querier_bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
+			cortex_querier_bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
 
-			# HELP cortex_bucket_store_series_data_size_fetched_bytes TSDB: Size of all items of a data type in a block were fetched for a single series request.
-			# TYPE cortex_bucket_store_series_data_size_fetched_bytes summary
-			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
-			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
-			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-b"} 360304
-			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-b"} 3
-			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
-			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
+			# HELP cortex_querier_bucket_store_series_data_size_fetched_bytes TSDB: Size of all items of a data type in a block were fetched for a single series request.
+			# TYPE cortex_querier_bucket_store_series_data_size_fetched_bytes summary
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-b"} 360304
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-b"} 3
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
+			cortex_querier_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
 
-			# HELP cortex_bucket_store_series_data_size_touched_bytes TSDB: Size of all items of a data type in a block were touched for a single series request.
-			# TYPE cortex_bucket_store_series_data_size_touched_bytes summary
-			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
-			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
-			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-b"} 292747
-			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-b"} 3
-			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
-			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
+			# HELP cortex_querier_bucket_store_series_data_size_touched_bytes TSDB: Size of all items of a data type in a block were touched for a single series request.
+			# TYPE cortex_querier_bucket_store_series_data_size_touched_bytes summary
+			cortex_querier_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
+			cortex_querier_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
+			cortex_querier_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-b"} 292747
+			cortex_querier_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-b"} 3
+			cortex_querier_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
+			cortex_querier_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
 
-			# HELP cortex_bucket_store_series_data_touched TSDB: How many items of a data type in a block were touched for a single series request.
-			# TYPE cortex_bucket_store_series_data_touched summary
-			cortex_bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
-			cortex_bucket_store_series_data_touched_count{data_type="touched-a"} 3
-			cortex_bucket_store_series_data_touched_sum{data_type="touched-b"} 157633
-			cortex_bucket_store_series_data_touched_count{data_type="touched-b"} 3
-			cortex_bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
-			cortex_bucket_store_series_data_touched_count{data_type="touched-c"} 3
+			# HELP cortex_querier_bucket_store_series_data_touched TSDB: How many items of a data type in a block were touched for a single series request.
+			# TYPE cortex_querier_bucket_store_series_data_touched summary
+			cortex_querier_bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
+			cortex_querier_bucket_store_series_data_touched_count{data_type="touched-a"} 3
+			cortex_querier_bucket_store_series_data_touched_sum{data_type="touched-b"} 157633
+			cortex_querier_bucket_store_series_data_touched_count{data_type="touched-b"} 3
+			cortex_querier_bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
+			cortex_querier_bucket_store_series_data_touched_count{data_type="touched-c"} 3
 
-			# HELP cortex_bucket_store_series_get_all_duration_seconds TSDB: Time it takes until all per-block prepares and preloads for a query are finished.
-			# TYPE cortex_bucket_store_series_get_all_duration_seconds histogram
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.001"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.01"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.1"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.3"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.6"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="1"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="3"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="6"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="9"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="20"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="30"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="60"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="90"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="120"} 0
-			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="+Inf"} 9
-			cortex_bucket_store_series_get_all_duration_seconds_sum 1.486254e+06
-			cortex_bucket_store_series_get_all_duration_seconds_count 9
+			# HELP cortex_querier_bucket_store_series_get_all_duration_seconds TSDB: Time it takes until all per-block prepares and preloads for a query are finished.
+			# TYPE cortex_querier_bucket_store_series_get_all_duration_seconds histogram
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.001"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.01"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.1"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.3"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.6"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="1"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="3"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="6"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="9"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="20"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="30"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="60"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="90"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="120"} 0
+			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="+Inf"} 9
+			cortex_querier_bucket_store_series_get_all_duration_seconds_sum 1.486254e+06
+			cortex_querier_bucket_store_series_get_all_duration_seconds_count 9
 
-			# HELP cortex_bucket_store_series_merge_duration_seconds TSDB: Time it takes to merge sub-results from all queried blocks into a single result.
-			# TYPE cortex_bucket_store_series_merge_duration_seconds histogram
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.001"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.01"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.1"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.3"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.6"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="1"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="3"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="6"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="9"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="20"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="30"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="60"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="90"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="120"} 0
-			cortex_bucket_store_series_merge_duration_seconds_bucket{le="+Inf"} 9
-			cortex_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
-			cortex_bucket_store_series_merge_duration_seconds_count 9
+			# HELP cortex_querier_bucket_store_series_merge_duration_seconds TSDB: Time it takes to merge sub-results from all queried blocks into a single result.
+			# TYPE cortex_querier_bucket_store_series_merge_duration_seconds histogram
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.001"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.01"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.1"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.3"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.6"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="1"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="3"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="6"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="9"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="20"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="30"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="60"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="90"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="120"} 0
+			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="+Inf"} 9
+			cortex_querier_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
+			cortex_querier_bucket_store_series_merge_duration_seconds_count 9
 
-			# HELP cortex_bucket_store_series_result_series Number of series observed in the final result of a query.
-			# TYPE cortex_bucket_store_series_result_series summary
-			cortex_bucket_store_series_result_series_sum 1.238545e+06
-			cortex_bucket_store_series_result_series_count 6
+			# HELP cortex_querier_bucket_store_series_result_series Number of series observed in the final result of a query.
+			# TYPE cortex_querier_bucket_store_series_result_series summary
+			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
+			cortex_querier_bucket_store_series_result_series_count 6
 
 			# HELP cortex_store_index_cache_items_evicted_total TSDB: Total number of items that were evicted from the index cache.
 			# TYPE cortex_store_index_cache_items_evicted_total counter

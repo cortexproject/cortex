@@ -50,60 +50,60 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 		regs: map[string]*prometheus.Registry{},
 
 		blockLoads: prometheus.NewDesc(
-			"cortex_bucket_store_block_loads_total",
+			"cortex_querier_bucket_store_block_loads_total",
 			"TSDB: Total number of remote block loading attempts.",
 			nil, nil),
 		blockLoadFailures: prometheus.NewDesc(
-			"cortex_bucket_store_block_load_failures_total",
+			"cortex_querier_bucket_store_block_load_failures_total",
 			"TSDB: Total number of failed remote block loading attempts.",
 			nil, nil),
 		blockDrops: prometheus.NewDesc(
-			"cortex_bucket_store_block_drops_total",
+			"cortex_querier_bucket_store_block_drops_total",
 			"TSDB: Total number of local blocks that were dropped.",
 			nil, nil),
 		blockDropFailures: prometheus.NewDesc(
-			"cortex_bucket_store_block_drop_failures_total",
+			"cortex_querier_bucket_store_block_drop_failures_total",
 			"TSDB: Total number of local blocks that failed to be dropped.",
 			nil, nil),
 		blocksLoaded: prometheus.NewDesc(
-			"cortex_bucket_store_blocks_loaded",
+			"cortex_querier_bucket_store_blocks_loaded",
 			"TSDB: Number of currently loaded blocks.",
 			nil, nil),
 		seriesDataTouched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_touched",
+			"cortex_querier_bucket_store_series_data_touched",
 			"TSDB: How many items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataFetched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_fetched",
+			"cortex_querier_bucket_store_series_data_fetched",
 			"TSDB: How many items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeTouched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_size_touched_bytes",
+			"cortex_querier_bucket_store_series_data_size_touched_bytes",
 			"TSDB: Size of all items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeFetched: prometheus.NewDesc(
-			"cortex_bucket_store_series_data_size_fetched_bytes",
+			"cortex_querier_bucket_store_series_data_size_fetched_bytes",
 			"TSDB: Size of all items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesBlocksQueried: prometheus.NewDesc(
-			"cortex_bucket_store_series_blocks_queried",
+			"cortex_querier_bucket_store_series_blocks_queried",
 			"TSDB: Number of blocks in a bucket store that were touched to satisfy a query.",
 			nil, nil),
 
 		seriesGetAllDuration: prometheus.NewDesc(
-			"cortex_bucket_store_series_get_all_duration_seconds",
+			"cortex_querier_bucket_store_series_get_all_duration_seconds",
 			"TSDB: Time it takes until all per-block prepares and preloads for a query are finished.",
 			nil, nil),
 		seriesMergeDuration: prometheus.NewDesc(
-			"cortex_bucket_store_series_merge_duration_seconds",
+			"cortex_querier_bucket_store_series_merge_duration_seconds",
 			"TSDB: Time it takes to merge sub-results from all queried blocks into a single result.",
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
-			"cortex_bucket_store_series_result_series",
+			"cortex_querier_bucket_store_series_result_series",
 			"Number of series observed in the final result of a query.",
 			nil, nil),
 		chunkSizeBytes: prometheus.NewDesc(
-			"cortex_bucket_store_sent_chunk_size_bytes",
+			"cortex_querier_bucket_store_sent_chunk_size_bytes",
 			"TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
 			nil, nil),
 

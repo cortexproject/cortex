@@ -125,14 +125,14 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 	case "memberlist":
 		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
 		singletonKVStoreInit.Do(func() {
-			singletonKVStore, singletonKVStoreError = memberlist.NewKV(cfg.Memberlist, codec)
+			singletonKVStore, singletonKVStoreError = memberlist.NewKV(cfg.Memberlist)
 		})
 
 		kv, err := singletonKVStore, singletonKVStoreError
 		if err != nil {
 			return nil, err
 		}
-		client = memberlist.NewClient(kv)
+		client = memberlist.NewClient(kv, codec)
 
 	case "multi":
 		client, err = buildMultiClient(cfg, codec)

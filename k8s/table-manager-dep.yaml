@@ -1,10 +1,13 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: table-manager
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: table-manager
   template:
     metadata:
       labels:

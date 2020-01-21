@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -20,18 +18,15 @@ import (
 var inmemoryStoreInit sync.Once
 var inmemoryStore Client
 
-var singletonKVStoreInit sync.Once
-var singletonKVStore *memberlist.KV
-var singletonKVStoreError error
-
 // StoreConfig is a configuration used for building single store client, either
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul     consul.Config       `yaml:"consul,omitempty"`
-	Etcd       etcd.Config         `yaml:"etcd,omitempty"`
-	Memberlist memberlist.KVConfig `yaml:"memberlist,omitempty"`
-	Multi      MultiConfig         `yaml:"multi,omitempty"`
+	Consul consul.Config `yaml:"consul,omitempty"`
+	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
+	Multi  MultiConfig   `yaml:"multi,omitempty"`
+
+	MemberlistKV func() (*memberlist.KV, error)
 }
 
 // Config is config for a KVStore currently used by ring and HA tracker,
@@ -57,7 +52,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 	cfg.Consul.RegisterFlags(f, flagsPrefix)
 	cfg.Etcd.RegisterFlagsWithPrefix(f, flagsPrefix)
 	cfg.Multi.RegisterFlagsWithPrefix(f, flagsPrefix)
-	cfg.Memberlist.RegisterFlags(f, flagsPrefix)
 
 	if flagsPrefix == "" {
 		flagsPrefix = "ring."
@@ -120,12 +114,7 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		client = inmemoryStore
 
 	case "memberlist":
-		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
-		singletonKVStoreInit.Do(func() {
-			singletonKVStore, singletonKVStoreError = memberlist.NewKV(cfg.Memberlist)
-		})
-
-		kv, err := singletonKVStore, singletonKVStoreError
+		kv, err := cfg.MemberlistKV()
 		if err != nil {
 			return nil, err
 		}

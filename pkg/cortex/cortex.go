@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -84,6 +85,7 @@ type Config struct {
 	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
+	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist_kv"`
 }
 
 // RegisterFlags registers flag.
@@ -119,6 +121,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
+	c.MemberlistKV.RegisterFlags(f, "")
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -171,11 +174,12 @@ type Cortex struct {
 	cache         cache.Cache
 	runtimeConfig *runtimeconfig.Manager
 
-	ruler        *ruler.Ruler
-	configAPI    *api.API
-	configDB     db.DB
-	alertmanager *alertmanager.MultitenantAlertmanager
-	compactor    *compactor.Compactor
+	ruler             *ruler.Ruler
+	configAPI         *api.API
+	configDB          db.DB
+	alertmanager      *alertmanager.MultitenantAlertmanager
+	compactor         *compactor.Compactor
+	memberlistKVState *memberlistKVState
 
 	// The chunk store that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

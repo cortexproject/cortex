@@ -521,6 +521,7 @@ github.com/stretchr/testify/require
 # github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/metadata
+github.com/thanos-io/thanos/pkg/compact
 github.com/thanos-io/thanos/pkg/compact/downsample
 github.com/thanos-io/thanos/pkg/component
 github.com/thanos-io/thanos/pkg/extprom

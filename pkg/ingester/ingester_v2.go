@@ -53,7 +53,7 @@ type TSDBState struct {
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
 	i := &Ingester{
@@ -426,7 +426,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	// Create a new user database
 	db, err := tsdb.Open(udir, util.Logger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMilliseconds(),
 		NoLockfile:        true,
 	})
 	if err != nil {
@@ -445,7 +445,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, tsdbPromReg, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		s := shipper.New(util.Logger, tsdbPromReg, udir, cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket), func() labels.Labels { return l }, metadata.ReceiveSource)
 		i.done.Add(1)
 		go func() {
 			defer i.done.Done()

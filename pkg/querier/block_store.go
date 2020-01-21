@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -337,12 +336,6 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 
 	level.Info(u.logger).Log("msg", "creating user bucket store", "user", userID)
 
-	// Bucket with the user wrapper
-	userBkt := &ingester.Bucket{
-		UserID: userID,
-		Bucket: u.bucket,
-	}
-
 	reg := prometheus.NewRegistry()
 	indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 	maxItemSizeBytes := indexCacheSizeBytes / 2
@@ -357,7 +350,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	bs, err = store.NewBucketStore(
 		u.logger,
 		reg,
-		userBkt,
+		tsdb.NewUserBucketClient(userID, u.bucket),
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
 		indexCache,
 		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),

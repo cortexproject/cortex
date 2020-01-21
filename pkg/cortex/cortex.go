@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
@@ -75,6 +76,7 @@ type Config struct {
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
+	Compactor      compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
@@ -109,6 +111,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
 	c.TSDB.RegisterFlags(f)
+	c.Compactor.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
@@ -165,6 +168,7 @@ type Cortex struct {
 	configAPI    *api.API
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
+	compactor    *compactor.Compactor
 }
 
 // New makes a new Cortex.

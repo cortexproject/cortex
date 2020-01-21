@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestName(t *testing.T) {
+func TestFlagParsing(t *testing.T) {
 	for name, tc := range map[string]struct {
 		arguments     []string
 		yaml          string

@@ -90,7 +90,7 @@ type KVConfig struct {
 	MetricsNamespace  string                `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
-	Codecs []codec.Codec
+	Codecs []codec.Codec `yaml:"-"`
 }
 
 // RegisterFlags registers flags.

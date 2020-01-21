@@ -28,7 +28,6 @@ type tsdbBucketStoreMetrics struct {
 	seriesGetAllDuration  *prometheus.Desc
 	seriesMergeDuration   *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
-	chunkSizeBytes        *prometheus.Desc
 
 	// Metrics gathered from Thanos storecache.InMemoryIndexCache
 	cacheItemsEvicted          *prometheus.Desc
@@ -102,10 +101,6 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			"cortex_querier_bucket_store_series_result_series",
 			"Number of series observed in the final result of a query.",
 			nil, nil),
-		chunkSizeBytes: prometheus.NewDesc(
-			"cortex_querier_bucket_store_sent_chunk_size_bytes",
-			"TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
-			nil, nil),
 
 		// Cache
 		cacheItemsEvicted: prometheus.NewDesc(
@@ -175,7 +170,6 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesGetAllDuration
 	out <- m.seriesMergeDuration
 	out <- m.resultSeriesCount
-	out <- m.chunkSizeBytes
 
 	out <- m.cacheItemsEvicted
 	out <- m.cacheItemsAdded
@@ -206,7 +200,6 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
-	data.SendSumOfHistograms(out, m.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
 
 	data.SendSumOfCountersWithLabels(out, m.cacheItemsEvicted, "thanos_store_index_cache_items_evicted_total", "item_type")
 	data.SendSumOfCountersWithLabels(out, m.cacheItemsAdded, "thanos_store_index_cache_items_added_total", "item_type")

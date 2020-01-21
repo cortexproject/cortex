@@ -42,23 +42,6 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_querier_bucket_store_block_drop_failures_total counter
 			cortex_querier_bucket_store_block_drop_failures_total 112595
 
-			# HELP cortex_querier_bucket_store_sent_chunk_size_bytes TSDB: Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.
-			# TYPE cortex_querier_bucket_store_sent_chunk_size_bytes histogram
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="32"} 0
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="256"} 0
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="512"} 0
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="1024"} 0
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="32768"} 0
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="262144"} 4
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="524288"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="1.048576e+06"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="3.3554432e+07"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="2.68435456e+08"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="5.36870912e+08"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_bucket{le="+Inf"} 6
-			cortex_querier_bucket_store_sent_chunk_size_bytes_sum 1.328621e+06
-			cortex_querier_bucket_store_sent_chunk_size_bytes_count 6
-
 			# HELP cortex_querier_bucket_store_series_blocks_queried TSDB: Number of blocks in a bucket store that were touched to satisfy a query.
 			# TYPE cortex_querier_bucket_store_series_blocks_queried summary
 			cortex_querier_bucket_store_series_blocks_queried_sum 1.283583e+06

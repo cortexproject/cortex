@@ -10,22 +10,13 @@ import (
 )
 
 func TestTSDBMetrics(t *testing.T) {
-	mainReg := prometheus.NewRegistry()
+	mainReg := prometheus.NewPedanticRegistry()
 
 	tsdbMetrics := newTSDBMetrics(mainReg)
 
 	tsdbMetrics.setRegistryForUser("user1", populateTSDBMetrics(12345))
 	tsdbMetrics.setRegistryForUser("user2", populateTSDBMetrics(85787))
 	tsdbMetrics.setRegistryForUser("user3", populateTSDBMetrics(999))
-
-	metricNames := []string{
-		"cortex_ingester_shipper_dir_syncs_total",
-		"cortex_ingester_shipper_dir_sync_failures_total",
-		"cortex_ingester_shipper_uploads_total",
-		"cortex_ingester_shipper_upload_failures_total",
-		"cortex_ingester_memory_series_created_total",
-		"cortex_ingester_memory_series_removed_total",
-	}
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total dir sync attempts
@@ -61,7 +52,7 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_memory_series_removed_total{user="user1"} 74070
 			cortex_ingester_memory_series_removed_total{user="user2"} 514722
 			cortex_ingester_memory_series_removed_total{user="user3"} 5994
-	`), metricNames...)
+	`))
 	require.NoError(t, err)
 }
 

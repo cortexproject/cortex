@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
@@ -24,12 +25,13 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger   log.Logger
-	cfg      tsdb.Config
-	bucket   objstore.BucketReader
-	stores   map[string]*store.BucketStore
-	client   storepb.StoreClient
-	logLevel logging.Level
+	logger      log.Logger
+	cfg         tsdb.Config
+	bucket      objstore.BucketReader
+	stores      map[string]*store.BucketStore
+	client      storepb.StoreClient
+	logLevel    logging.Level
+	tsdbMetrics *tsdbBucketStoreMetrics
 }
 
 // NewUserStore returns a new UserStore
@@ -40,11 +42,12 @@ func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*
 	}
 
 	u := &UserStore{
-		logger:   logger,
-		cfg:      cfg,
-		bucket:   bkt,
-		stores:   make(map[string]*store.BucketStore),
-		logLevel: logLevel,
+		logger:      logger,
+		cfg:         cfg,
+		bucket:      bkt,
+		stores:      map[string]*store.BucketStore{},
+		logLevel:    logLevel,
+		tsdbMetrics: newTSDBBucketStoreMetrics(),
 	}
 
 	serv := grpc.NewServer()
@@ -115,9 +118,11 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
+			reg := prometheus.NewRegistry()
+
 			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, nil, storecache.Opts{
+			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, reg, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
 				MaxItemSizeBytes: maxItemSizeBytes,
 			})
@@ -126,7 +131,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 			bs, err = store.NewBucketStore(
 				u.logger,
-				nil,
+				reg,
 				userBkt,
 				filepath.Join(u.cfg.BucketStore.SyncDir, user),
 				indexCache,
@@ -147,6 +152,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 
 			u.stores[user] = bs
+			u.tsdbMetrics.addUserRegistry(user, reg)
 		}
 
 		wg.Add(1)

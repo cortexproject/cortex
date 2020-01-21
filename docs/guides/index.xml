@@ -344,7 +344,60 @@ complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;You can see the current state of the ring via http browser request to
-&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/guides/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-with-wal/</guid><description>
+&lt;p&gt;Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.&lt;/p&gt;
+&lt;p&gt;To use WAL, there are some changes that needs to be made in the deployment.&lt;/p&gt;
+&lt;h2 id=&#34;changes-to-deployment&#34;&gt;Changes to deployment&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on &lt;a href=&#34;https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/&#34;&gt;statefulset&lt;/a&gt; with fixed volumes.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Following flags needs to be set&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;--ingester.wal-dir&lt;/code&gt; to the directory where the WAL data should be stores and/or recovered from. Note that this should be on the mounted volume.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.wal-enabled&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; which enables writing to WAL during ingestion.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.checkpoint-enabled&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.checkpoint-duration&lt;/code&gt; to the interval at which checkpoints should be created. Default is &lt;code&gt;30m&lt;/code&gt;, and depending on the number of series, it can be brought down to &lt;code&gt;15m&lt;/code&gt; if there are less series per ingester (say 1M).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.recover-from-wal&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to &lt;code&gt;true&lt;/code&gt;. The WAL dir needs to be set for this.
+&lt;ul&gt;
+&lt;li&gt;If you are going to enable WAL, it is advisable to always set this to &lt;code&gt;true&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.tokens-file-path&lt;/code&gt; should be set to the filepath where the tokens should be stored. Note that this should be on the mounted volume. Why this is required is described below.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;changes-in-lifecycle-when-wal-is-enabled&#34;&gt;Changes in lifecycle when WAL is enabled&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;As there are no transfers between ingesters, the tokens are stored and recovered from disk between rollout/restarts. This is &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1750&#34;&gt;not a new thing&lt;/a&gt; but it is effective when using statefulsets.&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;migrating-from-stateless-deployments&#34;&gt;Migrating from stateless deployments&lt;/h2&gt;
+&lt;p&gt;The ingester &lt;em&gt;deployment without WAL&lt;/em&gt; and &lt;em&gt;statefulset with WAL&lt;/em&gt; should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s take an example of 4 ingesters. The migration would look something like this:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Bring up one stateful ingester &lt;code&gt;ingester-0&lt;/code&gt; and wait till it&amp;rsquo;s ready (accepting read and write requests).&lt;/li&gt;
+&lt;li&gt;Scale down old ingester deployment to 3 and wait till the leaving ingester flushes all the data to chunk store.&lt;/li&gt;
+&lt;li&gt;Once that ingester has disappeared from &lt;code&gt;kc get pods ...&lt;/code&gt;, add another stateful ingester and wait till it&amp;rsquo;s ready. This assures not transfer. Now you have &lt;code&gt;ingester-0 ingester-1&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Repeat step 2 to reduce remove another ingester from old deployment.&lt;/li&gt;
+&lt;li&gt;Repeat step 3 to add another stateful ingester. Now you have &lt;code&gt;ingester-0 ingester-1 ingester-2&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Repeat step 4 and 5, and now you will finally have &lt;code&gt;ingester-0 ingester-1 ingester-2 ingester-3&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;how-to-scale-up-down&#34;&gt;How to scale up/down&lt;/h2&gt;
+&lt;h3 id=&#34;scale-up&#34;&gt;Scale up&lt;/h3&gt;
+&lt;p&gt;Scaling up is same as what you would do without WAL or statefulsets. Nothing to change here.&lt;/p&gt;
+&lt;h3 id=&#34;scale-down&#34;&gt;Scale down&lt;/h3&gt;
+&lt;p&gt;Since Kubernetes doesn&amp;rsquo;t differentiate between rollout and scale down when sending a signal, the flushing of chunks is disabled by default. Hence the only thing to take care during scale down is flushing of chunks.&lt;/p&gt;
+&lt;p&gt;There are 2 ways to do it, with the latter being a fallback option.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;First option&lt;/strong&gt;
+Consider you have 4 ingesters &lt;code&gt;ingester-0 ingester-1 ingester-2 ingester-3&lt;/code&gt; and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are &lt;code&gt;ingester-3&lt;/code&gt; and then &lt;code&gt;ingester-2&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1746&#34;&gt;&lt;code&gt;/shutdown&lt;/code&gt;&lt;/a&gt; endpoint. This will flush the chunks and shut down the ingesters (while also removing itself from the ring).&lt;/p&gt;
+&lt;p&gt;After hitting the endpoint for &lt;code&gt;ingester-2 ingester-3&lt;/code&gt;, scale down the ingesters to 2.&lt;/p&gt;
+&lt;p&gt;PS: Given you have to scale down 1 ingester at a time, you can pipeline the shutdown and scaledown process instead of hitting shutdown endpoint for all to-be-scaled-down ingesters at the same time.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Fallback option&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;There is a &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1747&#34;&gt;flush mode ingester&lt;/a&gt; in progress, and with recent discussions there will be a separate target called flusher in it&amp;rsquo;s place.&lt;/p&gt;
+&lt;p&gt;You can run it as a kubernetes job which will
+* Attach to the volume of the scaled down ingester
+* Recover from the WAL
+* And flush all the chunks.&lt;/p&gt;
+&lt;p&gt;This job is to be run for all the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;
+&lt;p&gt;More info about the flusher target will be added once it&amp;rsquo;s upstream.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
 &lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p&gt;

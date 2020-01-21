@@ -21,7 +21,7 @@ services:
   distributor:
     build:
       context:    .
-      dockerfile: Dockerfile
+      dockerfile: dev.dockerfile
     image: cortex
     command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
     depends_on:
@@ -33,7 +33,7 @@ services:
   ingester-1:
     build:
       context:    .
-      dockerfile: Dockerfile
+      dockerfile: dev.dockerfile
     image: cortex
     command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
     depends_on:
@@ -47,7 +47,7 @@ services:
   ingester-2:
     build:
       context:    .
-      dockerfile: Dockerfile
+      dockerfile: dev.dockerfile
     image: cortex
     command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
     depends_on:
@@ -61,7 +61,7 @@ services:
   querier:
     build:
       context:    .
-      dockerfile: Dockerfile
+      dockerfile: dev.dockerfile
     image: cortex
     command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
     depends_on:

@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -210,12 +207,12 @@ func TestBasicGetAndCas(t *testing.T) {
 		},
 	}
 
-	mkv, err := NewKV(cfg, c)
+	mkv, err := NewKV(cfg)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
 	defer mkv.Stop()
-	kv := NewClient(mkv)
+	kv := NewClient(mkv, c)
 
 	const key = "test"
 
@@ -265,12 +262,12 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 		TCPTransport: TCPTransportConfig{},
 	}
 
-	mkv, err := NewKV(cfg, c)
+	mkv, err := NewKV(cfg)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
 	defer mkv.Stop()
-	kv := NewClient(mkv)
+	kv := NewClient(mkv, c)
 
 	testFN(t, kv)
 }
@@ -407,12 +404,12 @@ func TestMultipleCAS(t *testing.T) {
 
 	cfg := KVConfig{}
 
-	mkv, err := NewKV(cfg, c)
+	mkv, err := NewKV(cfg)
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
 	mkv.maxCasRetries = 20
-	kv := NewClient(mkv)
+	kv := NewClient(mkv, c)
 	defer kv.Stop()
 
 	wg := &sync.WaitGroup{}
@@ -481,8 +478,6 @@ func TestMultipleCAS(t *testing.T) {
 
 func TestMultipleClients(t *testing.T) {
 	c := dataCodec{}
-	l := log.NewLogfmtLogger(os.Stdout)
-	l = level.NewFilter(l, level.AllowInfo())
 
 	const members = 10
 	const key = "ring"
@@ -514,11 +509,11 @@ func TestMultipleClients(t *testing.T) {
 			},
 		}
 
-		mkv, err := NewKV(cfg, c)
+		mkv, err := NewKV(cfg)
 		if err != nil {
 			t.Fatal(id, "Failed to setup KV client", err)
 		}
-		kv := NewClient(mkv)
+		kv := NewClient(mkv, c)
 
 		clients = append(clients, kv)
 

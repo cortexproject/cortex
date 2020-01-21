@@ -26,30 +26,38 @@ const (
 )
 
 type Client struct {
-	kv *KV // reference to singleton memberlist-based KV
+	kv    *KV // reference to singleton memberlist-based KV
+	codec codec.Codec
 }
 
-func NewClient(kv *KV) *Client {
+func NewClient(kv *KV, codec codec.Codec) *Client {
+	kv.RegisterCodec(codec)
+
 	return &Client{
-		kv: kv,
+		kv:    kv,
+		codec: codec,
 	}
 }
 
+// Get is part of kv.Client interface.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
-	return c.kv.Get(ctx, key)
+	return c.kv.Get(key, c.codec)
 }
 
+// CAS is part of kv.Client interface
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return c.kv.CAS(ctx, key, f)
+	return c.kv.CAS(ctx, key, c.codec, f)
 }
 
+// WatchKey is part of kv.Client interface.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	c.kv.WatchKey(ctx, key, f)
+	c.kv.WatchKey(ctx, key, c.codec, f)
 }
 
 // WatchPrefix calls f whenever any value stored under prefix changes.
+// Part of kv.Client interface.
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
-	c.kv.WatchPrefix(ctx, prefix, f)
+	c.kv.WatchPrefix(ctx, prefix, c.codec, f)
 }
 
 func (c *Client) Stop() {
@@ -104,11 +112,14 @@ type KV struct {
 	cfg        KVConfig
 	memberlist *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
-	codec      codec.Codec
 
 	// KV Store.
 	storeMu sync.Mutex
 	store   map[string]valueDesc
+
+	// Codec registry
+	codecsMu sync.RWMutex
+	codecs   map[string]codec.Codec
 
 	// Key watchers
 	watchersMu     sync.Mutex
@@ -152,6 +163,9 @@ type valueDesc struct {
 
 	// version (local only) is used to keep track of what we're gossiping about, and invalidate old messages
 	version uint
+
+	// ID of codec used to write this value. Only used when sending full state.
+	codecID string
 }
 
 var (
@@ -164,7 +178,7 @@ var (
 // NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
 // to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
 // client is created.
-func NewKV(cfg KVConfig, codec codec.Codec) (*KV, error) {
+func NewKV(cfg KVConfig) (*KV, error) {
 	level.Warn(util.Logger).Log("msg", "Using memberlist-based KV store is EXPERIMENTAL and not tested in production")
 
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
@@ -207,9 +221,9 @@ func NewKV(cfg KVConfig, codec codec.Codec) (*KV, error) {
 	memberlistClient := &KV{
 		cfg:            cfg,
 		store:          make(map[string]valueDesc),
+		codecs:         make(map[string]codec.Codec),
 		watchers:       make(map[string][]chan string),
 		prefixWatchers: make(map[string][]chan string),
-		codec:          codec,
 		shutdown:       make(chan struct{}),
 		maxCasRetries:  maxCasRetries,
 	}
@@ -249,6 +263,31 @@ func NewKV(cfg KVConfig, codec codec.Codec) (*KV, error) {
 	return memberlistClient, nil
 }
 
+// Registers codec to the map of codecs.
+//
+// We ignore duplicates -- we assume, that they all refer to the same codec.
+// Unfortunately, we cannot verify that. There may be multiple instances of the same codec,
+// so identity check doesn't work.
+func (m *KV) RegisterCodec(codec codec.Codec) {
+	// should never happen in a tested code.
+	if codec.CodecID() == "" {
+		panic("invalid codec ID")
+	}
+
+	m.codecsMu.Lock()
+	defer m.codecsMu.Unlock()
+
+	m.codecs[codec.CodecID()] = codec
+}
+
+// GetCodec returns codec for given ID or nil.
+func (m *KV) GetCodec(codecID string) codec.Codec {
+	m.codecsMu.RLock()
+	defer m.codecsMu.RUnlock()
+
+	return m.codecs[codecID]
+}
+
 // GetListeningPort returns port used for listening for memberlist communication. Useful when BindPort is set to 0.
 func (m *KV) GetListeningPort() int {
 	return int(m.memberlist.LocalNode().Port)
@@ -281,21 +320,21 @@ func (m *KV) Stop() {
 }
 
 // Get returns current value associated with given key.
-// No communication with other nodes in the cluster is done here. Part of kv.Client interface.
-func (m *KV) Get(ctx context.Context, key string) (interface{}, error) {
-	val, _, err := m.get(key)
+// No communication with other nodes in the cluster is done here.
+func (m *KV) Get(key string, codec codec.Codec) (interface{}, error) {
+	val, _, err := m.get(key, codec)
 	return val, err
 }
 
 // Returns current value with removed tombstones.
-func (m *KV) get(key string) (out interface{}, version uint, err error) {
+func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, err error) {
 	m.storeMu.Lock()
 	v := m.store[key]
 	m.storeMu.Unlock()
 
 	out = nil
 	if v.value != nil {
-		out, err = m.codec.Decode(v.value)
+		out, err = codec.Decode(v.value)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -314,9 +353,7 @@ func (m *KV) get(key string) (out interface{}, version uint, err error) {
 // latest value. Notifications that arrive while 'f' is running are coalesced into one subsequent 'f' call.
 //
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
-//
-// Part of kv.Client interface.
-func (m *KV) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func(interface{}) bool) {
 	// keep one extra notification, to avoid missing notification if we're busy running the function
 	w := make(chan string, 1)
 
@@ -337,7 +374,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, f func(interface{}) bool)
 		select {
 		case <-w:
 			// value changed
-			val, _, err := m.get(key)
+			val, _, err := m.get(key, codec)
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
@@ -363,9 +400,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, f func(interface{}) bool)
 // some notifications may be lost.
 //
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
-//
-// Part of kv.Client interface.
-func (m *KV) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, f func(string, interface{}) bool) {
 	// we use bigger buffer here, since keys are interesting and we don't want to lose them.
 	w := make(chan string, 16)
 
@@ -385,7 +420,7 @@ func (m *KV) WatchPrefix(ctx context.Context, prefix string, f func(string, inte
 	for {
 		select {
 		case key := <-w:
-			val, _, err := m.get(key)
+			val, _, err := m.get(key, codec)
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
@@ -455,7 +490,7 @@ func (m *KV) notifyWatchers(key string) {
 	}
 }
 
-// CAS is part of kv.Client implementation.
+// CAS implements Compare-And-Set/Swap operation.
 //
 // CAS expects that value returned by 'f' function implements Mergeable interface. If it doesn't, CAS fails immediately.
 //
@@ -464,7 +499,7 @@ func (m *KV) notifyWatchers(key string) {
 // KV store, and change is broadcast to cluster peers. Merge function is called with CAS flag on, so that it can
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
-func (m *KV) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var lastError error = nil
 
 outer:
@@ -485,7 +520,7 @@ outer:
 			}
 		}
 
-		change, newver, retry, err := m.trySingleCas(key, f)
+		change, newver, retry, err := m.trySingleCas(key, codec, f)
 		if err != nil {
 			level.Debug(util.Logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
@@ -499,7 +534,7 @@ outer:
 		if change != nil {
 			m.casSuccesses.Inc()
 			m.notifyWatchers(key)
-			m.broadcastNewValue(key, change, newver)
+			m.broadcastNewValue(key, change, newver, codec)
 		}
 
 		return nil
@@ -516,8 +551,8 @@ outer:
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
 // returns errNoChangeDetected if merge failed to detect change in f's output.
-func (m *KV) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
-	val, ver, err := m.get(key)
+func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
+	val, ver, err := m.get(key, codec)
 	if err != nil {
 		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)
 	}
@@ -540,7 +575,7 @@ func (m *KV) trySingleCas(key string, f func(in interface{}) (out interface{}, r
 
 	// To support detection of removed items from value, we will only allow CAS operation to
 	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-	change, newver, err := m.mergeValueForKey(key, r, ver)
+	change, newver, err := m.mergeValueForKey(key, r, ver, codec)
 	if err == errVersionMismatch {
 		return nil, 0, retry, err
 	}
@@ -557,14 +592,14 @@ func (m *KV) trySingleCas(key string, f func(in interface{}) (out interface{}, r
 	return change, newver, retry, nil
 }
 
-func (m *KV) broadcastNewValue(key string, change Mergeable, version uint) {
-	data, err := m.codec.Encode(change)
+func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec) {
+	data, err := codec.Encode(change)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to encode change", "err", err)
 		return
 	}
 
-	kvPair := KeyValuePair{Key: key, Value: data}
+	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
 	pairData, err := kvPair.Marshal()
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to serialize KV pair", "err", err)
@@ -611,8 +646,14 @@ func (m *KV) NotifyMsg(msg []byte) {
 		return
 	}
 
+	codec := m.GetCodec(kvPair.GetCodec())
+	if codec == nil {
+		level.Error(util.Logger).Log("msg", "failed to decode received value, unknown codec", "codec", kvPair.GetCodec())
+		return
+	}
+
 	// we have a ring update! Let's merge it with our version of the ring for given key
-	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value)
+	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 	} else if version > 0 {
@@ -675,6 +716,7 @@ func (m *KV) LocalState(join bool) []byte {
 		kvPair.Reset()
 		kvPair.Key = key
 		kvPair.Value = val.value
+		kvPair.Codec = val.codecID
 
 		ser, err := kvPair.Marshal()
 		if err != nil {
@@ -733,13 +775,19 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 
 		data = data[kvPairLength:]
 
+		codec := m.GetCodec(kvPair.GetCodec())
+		if codec == nil {
+			err = fmt.Errorf("unknown codec: %s", kvPair.GetCodec())
+			break
+		}
+
 		// we have both key and value, try to merge it with our state
-		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value)
+		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 		} else if newver > 0 {
 			m.notifyWatchers(kvPair.Key)
-			m.broadcastNewValue(kvPair.Key, change, newver)
+			m.broadcastNewValue(kvPair.Key, change, newver, codec)
 		}
 	}
 
@@ -748,8 +796,8 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 	}
 }
 
-func (m *KV) mergeBytesValueForKey(key string, incomingData []byte) (Mergeable, uint, error) {
-	decodedValue, err := m.codec.Decode(incomingData)
+func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.Codec) (Mergeable, uint, error) {
+	decodedValue, err := codec.Decode(incomingData)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to decode value: %v", err)
 	}
@@ -759,14 +807,14 @@ func (m *KV) mergeBytesValueForKey(key string, incomingData []byte) (Mergeable, 
 		return nil, 0, fmt.Errorf("expected Mergeable, got: %T", decodedValue)
 	}
 
-	return m.mergeValueForKey(key, incomingValue, 0)
+	return m.mergeValueForKey(key, incomingValue, 0, codec)
 }
 
 // Merges incoming value with value we have in our store. Returns "a change" that can be sent to other
 // cluster members to update their state, and new version of the value.
 // If CAS version is specified, then merging will fail if state has changed already, and errVersionMismatch is reported.
 // If no modification occurred, new version is 0.
-func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint) (Mergeable, uint, error) {
+func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint, codec codec.Codec) (Mergeable, uint, error) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
@@ -775,7 +823,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
 	}
-	result, change, err := computeNewValue(incomingValue, curr.value, m.codec, casVersion > 0)
+	result, change, err := computeNewValue(incomingValue, curr.value, codec, casVersion > 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -790,7 +838,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		result.RemoveTombstones(limit)
 	}
 
-	encoded, err := m.codec.Encode(result)
+	encoded, err := codec.Encode(result)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to encode merged result: %v", err)
 	}
@@ -799,6 +847,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	m.store[key] = valueDesc{
 		value:   encoded,
 		version: newVersion,
+		codecID: codec.CodecID(),
 	}
 
 	return change, newVersion, nil

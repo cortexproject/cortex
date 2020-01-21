@@ -16,4 +16,7 @@ message KeyValueStore {
 message KeyValuePair {
     string key = 1;
     bytes value = 2;
+
+    // ID of the codec used to write the value
+    string codec = 3;
 }

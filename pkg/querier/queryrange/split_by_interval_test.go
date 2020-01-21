@@ -266,8 +266,7 @@ func TestSplitByDay(t *testing.T) {
 				middleware.AuthenticateUser.Wrap(
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						atomic.AddInt32(&actualCount, 1)
-						_, err = w.Write([]byte(responseBody))
-						require.NoError(t, err)
+						_, _ = w.Write([]byte(responseBody))
 					}),
 				),
 			)

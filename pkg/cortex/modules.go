@@ -137,6 +137,10 @@ func (m *moduleName) Set(s string) error {
 	}
 }
 
+func (m moduleName) MarshalYAML() (interface{}, error) {
+	return m.String(), nil
+}
+
 func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {

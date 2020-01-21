@@ -26,7 +26,7 @@ type StoreConfig struct {
 	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
 	Multi  MultiConfig   `yaml:"multi,omitempty"`
 
-	MemberlistKV func() (*memberlist.KV, error)
+	MemberlistKV func() (*memberlist.KV, error) `yaml:"-"`
 }
 
 // Config is config for a KVStore currently used by ring and HA tracker,

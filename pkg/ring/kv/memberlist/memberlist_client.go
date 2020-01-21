@@ -66,7 +66,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	c.kv.WatchPrefix(ctx, prefix, c.codec, f)
 }
 
-// Config for memberlist-based Client
+// KVConfig is a config for memberlist.KV
 type KVConfig struct {
 	// Memberlist options.
 	NodeName         string        `yaml:"node_name"`
@@ -113,6 +113,8 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
 
+// KV implements Key-Value store on top of memberlist library. KV store has API similar to kv.Client,
+// except methods also need explicit codec for each operation.
 type KV struct {
 	cfg        KVConfig
 	memberlist *memberlist.Memberlist

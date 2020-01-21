@@ -201,7 +201,7 @@ func benchmarkMetricsCollection(b *testing.B, users int) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mainReg.Gather()
+		_, _ = mainReg.Gather()
 	}
 }
 

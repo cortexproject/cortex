@@ -6,11 +6,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
+// This struct holds state of initialization of memberlist.KV instance.
 type memberlistKVState struct {
-	cfg  *memberlist.KVConfig
+	// config used for initialization
+	cfg *memberlist.KVConfig
+
+	// init function, to avoid multiple initializations.
 	init sync.Once
-	kv   *memberlist.KV
-	err  error
+
+	// state
+	kv  *memberlist.KV
+	err error
 }
 
 func newMemberlistKVState(cfg *memberlist.KVConfig) *memberlistKVState {

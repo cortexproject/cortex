@@ -660,3 +660,140 @@ func generateTokens(numTokens int) []uint32 {
 	}
 	return tokens
 }
+
+type distributedCounter map[string]int
+
+func (dc distributedCounter) Merge(mergeable Mergeable, localCAS bool) (Mergeable, error) {
+	if mergeable == nil {
+		return nil, nil
+	}
+
+	odc, ok := mergeable.(distributedCounter)
+	if !ok || odc == nil {
+		return nil, fmt.Errorf("invalid thing to merge: %T", mergeable)
+	}
+
+	updated := distributedCounter{}
+
+	for k, v := range odc {
+		if v > dc[k] {
+			dc[k] = v
+			updated[k] = v
+		}
+	}
+
+	if len(updated) == 0 {
+		return nil, nil
+	}
+	return updated, nil
+}
+
+func (dc distributedCounter) MergeContent() []string {
+	// return list of keys
+	out := []string(nil)
+	for k := range dc {
+		out = append(out, k)
+	}
+	return out
+}
+
+func (dc distributedCounter) RemoveTombstones(limit time.Time) {
+	// nothing to do
+}
+
+type distributedCounterCodec struct{}
+
+func (d distributedCounterCodec) CodecID() string {
+	return "distributedCounter"
+}
+
+func (d distributedCounterCodec) Decode(b []byte) (interface{}, error) {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	out := &distributedCounter{}
+	err := dec.Decode(out)
+	return *out, err
+}
+
+func (d distributedCounterCodec) Encode(val interface{}) ([]byte, error) {
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(val)
+	return buf.Bytes(), err
+}
+
+var _ codec.Codec = &distributedCounterCodec{}
+
+func TestMultipleCodecs(t *testing.T) {
+	cfg := KVConfig{
+		TCPTransport: TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0, // randomize
+		},
+	}
+
+	mkv1, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv1.Stop()
+
+	kv1 := NewClient(mkv1, dataCodec{})
+	kv2 := NewClient(mkv1, distributedCounterCodec{})
+
+	err = kv1.CAS(context.Background(), "data", func(in interface{}) (out interface{}, retry bool, err error) {
+		var d *data = nil
+		if in != nil {
+			d = in.(*data)
+		}
+		if d == nil {
+			d = &data{}
+		}
+		if d.Members == nil {
+			d.Members = map[string]member{}
+		}
+		d.Members["test"] = member{
+			Timestamp: time.Now().Unix(),
+			State:     ACTIVE,
+		}
+		return d, true, nil
+	})
+	require.NoError(t, err)
+
+	err = kv2.CAS(context.Background(), "counter", func(in interface{}) (out interface{}, retry bool, err error) {
+		var dc distributedCounter = nil
+		if in != nil {
+			dc = in.(distributedCounter)
+		}
+		if dc == nil {
+			dc = distributedCounter{}
+		}
+		dc["test"] = 5
+		return dc, true, err
+	})
+	require.NoError(t, err)
+
+	// We will read values from second KV, which will join the first one
+	mkv2, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv2.Stop()
+
+	// We need to register codec to second KV. Normally client does that, but we don't have any client for second KV.
+	mkv2.RegisterCodec(dataCodec{})
+	mkv2.RegisterCodec(distributedCounterCodec{})
+
+	// Join second KV to first one. That will also trigger state transfer.
+	_, err = mkv2.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", mkv1.GetListeningPort())})
+	require.NoError(t, err)
+
+	// Now read both values from second KV. It should have both values by now.
+
+	// fetch directly from single KV, to see that both are stored in the same one
+	val, err := mkv2.Get("data", dataCodec{})
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.NotZero(t, val.(*data).Members["test"].Timestamp)
+	require.Equal(t, ACTIVE, val.(*data).Members["test"].State)
+
+	val, err = mkv2.Get("counter", distributedCounterCodec{})
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.Equal(t, 5, val.(distributedCounter)["test"])
+}

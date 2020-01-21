@@ -63,7 +63,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		limits:       limits,
 		chunkStore:   nil,
 		quit:         make(chan struct{}),
-
+		wal:          &noopWAL{},
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*tsdb.DB),
 			bucket:      bucketClient,
@@ -81,7 +81,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.numSeriesInTSDB))
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
 	if err != nil {
 		return nil, err
 	}

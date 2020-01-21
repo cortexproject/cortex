@@ -35,8 +35,14 @@ const (
 	queryStreamBatchSize = 128
 )
 
+var (
+	// This is initialised if the WAL is enabled and the records are fetched from this pool.
+	recordPool sync.Pool
+)
+
 // Config for an Ingester.
 type Config struct {
+	WALConfig        WALConfig
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
@@ -70,6 +76,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.WALConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -109,6 +116,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// This should never be nil.
+	wal WAL
+
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
 
@@ -131,6 +141,19 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
+	if cfg.WALConfig.walEnabled {
+		// If WAL is enabled, we don't transfer out the data to any ingester.
+		// Either the next ingester which takes it's place should recover from WAL
+		// or the data has to be flushed during scaledown.
+		cfg.MaxTransferRetries = 0
+
+		recordPool = sync.Pool{
+			New: func() interface{} {
+				return &Record{}
+			},
+		}
+	}
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
@@ -142,14 +165,36 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
+	// During WAL recovery, it will create new user states which requires the limiter.
+	// Hence initialise the limiter before creating the WAL.
+	// The '!cfg.WALConfig.walEnabled' argument says don't flush on shutdown if the WAL is enabled.
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.walEnabled)
 	if err != nil {
 		return nil, err
 	}
-
-	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+
+	if cfg.WALConfig.recover {
+		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		start := time.Now()
+		if err := recoverFromWAL(i); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+			return nil, err
+		}
+		elapsed := time.Since(start)
+		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		i.metrics.walReplayDuration.Set(elapsed.Seconds())
+	}
+
+	// If the WAL recover happened, then the userStates would already be set.
+	if i.userStates == nil {
+		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+	}
+
+	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
@@ -200,6 +245,8 @@ func (i *Ingester) Shutdown() {
 		close(i.quit)
 		i.done.Wait()
 
+		i.wal.Stop()
+
 		// Next initiate our graceful exit from the ring.
 		i.lifecycler.Shutdown()
 	}
@@ -209,7 +256,11 @@ func (i *Ingester) Shutdown() {
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	originalState := i.lifecycler.FlushOnShutdown()
+	// We want to flush the chunks if transfer fails irrespective of original flag.
+	i.lifecycler.SetFlushOnShutdown(true)
 	i.Shutdown()
+	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -232,11 +283,25 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
+
 	var lastPartialErr *validationError
+	var record *Record
+	if i.cfg.WALConfig.walEnabled {
+		record = recordPool.Get().(*Record)
+		record.UserId = userID
+		// Assuming there is not much churn in most cases, there is no use
+		// keeping the record.Labels slice hanging around.
+		record.Labels = nil
+		if cap(record.Samples) < len(req.Timeseries) {
+			record.Samples = make([]Sample, 0, len(req.Timeseries))
+		} else {
+			record.Samples = record.Samples[:0]
+		}
+	}
 
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
+			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
 				continue
 			}
@@ -254,10 +319,19 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	if lastPartialErr != nil {
 		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
 	}
+
+	if record != nil {
+		// Log the record only if there was no error in ingestion.
+		if err := i.wal.Log(record); err != nil {
+			return nil, err
+		}
+		recordPool.Put(record)
+	}
+
 	return &client.WriteResponse{}, nil
 }
 
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
 	labels.removeBlanks()
 
 	var (
@@ -274,7 +348,8 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
 	}
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
+
+	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels, record)
 	if err != nil {
 		if ve, ok := err.(*validationError); ok {
 			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
@@ -308,6 +383,14 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 			}
 		}
 		return err
+	}
+
+	if record != nil {
+		record.Samples = append(record.Samples, Sample{
+			Fingerprint: uint64(fp),
+			Timestamp:   uint64(timestamp),
+			Value:       float64(value),
+		})
 	}
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
@@ -430,7 +513,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numSeries++
-		wireChunks, err := toWireChunks(chunks)
+		wireChunks, err := toWireChunks(chunks, nil)
 		if err != nil {
 			return err
 		}

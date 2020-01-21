@@ -107,7 +107,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	var lifecyclerConfig2 = testLifecyclerConfig(ringConfig, "ing2")
 	lifecyclerConfig2.JoinAfter = 100 * time.Second
 
-	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey)
+	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 
@@ -145,7 +145,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", IngesterRingKey)
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
@@ -161,7 +161,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey)
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
@@ -185,7 +185,7 @@ func TestLifecycler_NilFlushTransferer(t *testing.T) {
 	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
 
 	// Create a lifecycler with nil FlushTransferer to make sure it operates correctly
-	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey)
+	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	lifecycler.Start()
 
@@ -208,12 +208,12 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "instance-1")
 	lifecyclerConfig2 := testLifecyclerConfig(ringConfig, "instance-2")
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1")
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1", true)
 	require.NoError(t, err)
 	lifecycler1.Start()
 	defer lifecycler1.Shutdown()
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2")
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2", true)
 	require.NoError(t, err)
 	lifecycler2.Start()
 	defer lifecycler2.Shutdown()
@@ -249,7 +249,7 @@ func TestRingRestart(t *testing.T) {
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
-	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey)
+	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l1.Start()
 
@@ -263,7 +263,7 @@ func TestRingRestart(t *testing.T) {
 	token := l1.tokens[0]
 
 	// Add a second ingester with the same settings, so it will think it has restarted
-	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey)
+	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 
@@ -328,11 +328,11 @@ func TestCheckReady(t *testing.T) {
 	defer r.Stop()
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey)
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	l1.Start()
 	require.NoError(t, err)
 
-	l1.setTokens([]uint32{1})
+	l1.setTokens(Tokens([]uint32{1}))
 
 	// Delete the ring key before checking ready
 	err = l1.CheckReady(context.Background())
@@ -366,7 +366,7 @@ func TestTokensOnDisk(t *testing.T) {
 	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
 
 	// Start first ingester.
-	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey)
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l1.Start()
 	// Check this ingester joined, is active, and has 512 token.
@@ -389,7 +389,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"
-	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey)
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 	defer l2.Shutdown()
@@ -458,7 +458,7 @@ func TestJoinInLeavingState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey)
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	l1.Start()
 	require.NoError(t, err)
 

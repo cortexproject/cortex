@@ -119,6 +119,9 @@ type Lifecycler struct {
 	RingName string
 	RingKey  string
 
+	// Whether to flush if transfer fails on shutdown.
+	flushOnShutdown bool
+
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
 	stateMtx sync.RWMutex
@@ -136,7 +139,8 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
+
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -166,10 +170,11 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		Addr:     fmt.Sprintf("%s:%d", addr, port),
-		ID:       cfg.ID,
-		RingName: ringName,
-		RingKey:  ringKey,
+		Addr:            fmt.Sprintf("%s:%d", addr, port),
+		ID:              cfg.ID,
+		RingName:        ringName,
+		RingKey:         ringKey,
+		flushOnShutdown: flushOnShutdown,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
@@ -694,8 +699,19 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.countersLock.Unlock()
 }
 
+// FlushOnShutdown returns if flushing is enabled if transfer fails on a shutdown.
+func (i *Lifecycler) FlushOnShutdown() bool {
+	return i.flushOnShutdown
+}
+
+// SetFlushOnShutdown enables/disables flush on shutdown if transfer fails.
+// Passing 'true' enables it, and 'false' disabled it.
+func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
+	i.flushOnShutdown = flushOnShutdown
+}
+
 func (i *Lifecycler) processShutdown(ctx context.Context) {
-	flushRequired := true
+	flushRequired := i.flushOnShutdown
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
 		if err == ErrTransferDisabled {

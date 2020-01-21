@@ -27,6 +27,7 @@ type ingesterMetrics struct {
 	memUsers              prometheus.Gauge
 	memSeriesCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal *prometheus.CounterVec
+	walReplayDuration     prometheus.Gauge
 }
 
 func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -81,6 +82,10 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			Name: memSeriesRemovedTotalName,
 			Help: memSeriesRemovedTotalHelp,
 		}, []string{"user"}),
+		walReplayDuration: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_wal_replay_duration_seconds",
+			Help: "Time taken to replay the checkpoint and the WAL.",
+		}),
 	}
 
 	if r != nil {
@@ -94,6 +99,7 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			m.queriedChunks,
 			m.memSeries,
 			m.memUsers,
+			m.walReplayDuration,
 		)
 
 		if registerMetricsConflictingWithTSDB {

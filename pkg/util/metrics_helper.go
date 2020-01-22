@@ -115,7 +115,7 @@ func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Re
 	for userID, r := range regs {
 		m, err := r.Gather()
 		if err == nil {
-			var mfm MetricFamilyMap = nil
+			var mfm MetricFamilyMap // := would shadow err from outer block, and single err check will not work
 			mfm, err = NewMetricFamilyMap(m)
 			if err == nil {
 				data[userID] = mfm

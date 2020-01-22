@@ -193,6 +193,9 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 }
 
 func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint, immediate bool) flushReason {
+	if len(series.chunkDescs) == 0 {
+		return noFlush
+	}
 	if immediate {
 		return reasonImmediate
 	}
@@ -203,12 +206,9 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 			return series.chunkDescs[0].flushReason
 		}
 		return reasonMultipleChunksInSeries
-	} else if len(series.chunkDescs) > 0 {
-		// Otherwise look in more detail at the first chunk
-		return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
 	}
-
-	return noFlush
+	// Otherwise look in more detail at the first chunk
+	return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
 }
 
 func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint, lastValueIsStale bool) flushReason {

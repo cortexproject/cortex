@@ -290,11 +290,14 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		return nil
 	}
 
-	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
+	// shouldFlushSeries() has told us we have at least one chunk
 	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp, series.isStale()) != noFlush) {
+	if immediate {
 		series.closeHead(reasonImmediate)
+	} else if chunkReason := i.shouldFlushChunk(series.head(), fp, series.isStale()); chunkReason != noFlush {
+		series.closeHead(chunkReason)
 	} else {
+		// The head chunk doesn't need flushing; step back by one.
 		chunks = chunks[:len(chunks)-1]
 	}
 

@@ -739,7 +739,7 @@ ring:
 
 # Enable the ruler api
 # CLI flag: -experimental.ruler.enable-api
-[enableapi: <boolean> | default = false]
+[enable_api: <boolean> | default = false]
 ```
 
 ## `alertmanager_config`

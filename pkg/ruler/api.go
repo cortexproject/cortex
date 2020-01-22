@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/gorilla/mux"
-	"github.com/weaveworks/common/user"
 )
 
 // RegisterRoutes registers the configs API HTTP routes with the provided Router.
@@ -33,6 +34,19 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 	}
 }
 
+type errorType string
+
+const (
+	errorNone        errorType = ""
+	errorTimeout     errorType = "timeout"
+	errorCanceled    errorType = "canceled"
+	errorExec        errorType = "execution"
+	errorBadData     errorType = "bad_data"
+	errorInternal    errorType = "internal"
+	errorUnavailable errorType = "unavailable"
+	errorNotFound    errorType = "not_found"
+)
+
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not pass a context to
 // the rule retrieval function.
@@ -42,7 +56,7 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 type response struct {
 	Status    string      `json:"status"`
 	Data      interface{} `json:"data,omitempty"`
-	ErrorType string      `json:"errorType,omitempty"`
+	ErrorType errorType   `json:"errorType,omitempty"`
 	Error     string      `json:"error,omitempty"`
 }
 
@@ -103,12 +117,33 @@ type recordingRule struct {
 	Type string `json:"type"`
 }
 
+func respondError(logger log.Logger, w http.ResponseWriter, msg string, errType errorType) {
+	b, err := json.Marshal(&response{
+		Status:    "error",
+		ErrorType: errType,
+		Error:     msg,
+		Data:      nil,
+	})
+
+	if err != nil {
+		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusInternalServerError)
+	if n, err := w.Write(b); err != nil {
+		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
+	return
+}
+
 func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		respondError(logger, w, "no valid org id found", errorInternal)
 		return
 	}
 
@@ -116,23 +151,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		b, err := json.Marshal(&response{
-			Status:    "error",
-			ErrorType: "internal",
-			Error:     err.Error(),
-			Data:      nil,
-		})
-
-		if err != nil {
-			level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-		if n, err := w.Write(b); err != nil {
-			level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
-		}
+		respondError(logger, w, err.Error(), errorInternal)
 		return
 	}
 
@@ -190,6 +209,8 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		respondError(logger, w, "unable to marshal the requested data", errorBadData)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -203,7 +224,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		respondError(logger, w, "no valid org id found", errorInternal)
 		return
 	}
 
@@ -211,23 +232,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		b, err := json.Marshal(&response{
-			Status:    "error",
-			ErrorType: "internal",
-			Error:     err.Error(),
-			Data:      nil,
-		})
-
-		if err != nil {
-			level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-		if n, err := w.Write(b); err != nil {
-			level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
-		}
+		respondError(logger, w, err.Error(), "internal")
 		return
 	}
 
@@ -255,6 +260,8 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		respondError(logger, w, "unable to marshal the requested data", errorBadData)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

@@ -33,7 +33,6 @@ func defaultRulerConfig() Config {
 		StoreConfig: RuleStoreConfig{
 			mock: newMockRuleStore(),
 		},
-		registry: prometheus.NewRegistry(),
 	}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.Ring)
@@ -55,7 +54,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		Timeout:       2 * time.Minute,
 	})
 	queryable := querier.NewQueryable(nil, nil, nil, querier.Config{})
-	ruler, err := NewRuler(cfg, engine, queryable, nil)
+	ruler, err := NewRuler(cfg, engine, queryable, nil, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}

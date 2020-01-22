@@ -68,9 +68,6 @@ type Config struct {
 	FlushCheckPeriod time.Duration
 
 	EnableAPI bool `yaml:"enable_api"`
-
-	// used to avoid duplicate registration in tests
-	registry prometheus.Registerer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -126,10 +123,12 @@ type Ruler struct {
 
 	done       chan struct{}
 	terminated chan struct{}
+
+	registry prometheus.Registerer
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor, reg prometheus.Registerer) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -153,6 +152,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		userManagers: map[string]*promRules.Manager{},
 		done:         make(chan struct{}),
 		terminated:   make(chan struct{}),
+		registry:     reg,
 	}
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
@@ -438,13 +438,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		return nil, err
 	}
 
-	reg := prometheus.DefaultRegisterer
-	if r.cfg.registry != nil {
-		reg = r.cfg.registry
-	}
-
 	// Wrap registerer with userID and cortex_ prefix
-	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
+	reg := prometheus.WrapRegistererWithPrefix("cortex_", r.registry)
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, reg)
 
 	opts := &promRules.ManagerOptions{

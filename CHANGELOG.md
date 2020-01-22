@@ -55,6 +55,7 @@ instructions below to upgrade your Postgres.
 * [BUGFIX] TSDB: Fixed `cortex_ingester_queried_samples` and `cortex_ingester_queried_series` metrics when using block storage. #1981
 * [BUGFIX] TSDB: Fixed `cortex_ingester_memory_series` and `cortex_ingester_memory_users` metrics when using with the experimental TSDB blocks storage. #1982
 * [BUGFIX] TSDB: Fixed `cortex_ingester_memory_series_created_total` and `cortex_ingester_memory_series_removed_total` metrics when using TSDB blocks storage. #1990
+* [BUGFIX] Table Manager: Fixed calculation of expected tables and creation of tables from next active schema considering grace period. #1976
 
 ### Upgrading Postgres (if you're using configs service)
 

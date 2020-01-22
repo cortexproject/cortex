@@ -12,8 +12,8 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | v0.2.0         | 2019-08-28                                 | Goutham Veeramachaneni (Github: @gouthamve) |
 | v0.3.0         | 2019-10-09                                 | Bryan Boreham (@bboreham)                   |
 | v0.4.0         | 2019-11-13                                 | Tom Wilkie (@tomwilkie)                     |
-| v0.5.0         | 2020-01-08                                 | _Abandoned_                                   |
-| v0.6.0         | 2020-01-20                                 | **searching for a volunteer**                   |
+| v0.5.0         | 2020-01-08                                 | _Abandoned_                                 |
+| v0.6.0         | 2020-01-22                                 | Marco Pracucci (@pracucci)                  |
 
 ## Release shepherd responsibilities
 
@@ -58,6 +58,8 @@ Entries in the `CHANGELOG.md` are meant to be in this order:
 * `[FEATURE]`
 * `[ENHANCEMENT]`
 * `[BUGFIX]`
+
+To quickly look for the list of PR missing a reference in the `CHANGELOG.md` you can run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master`.
 
 ### Draft the new release
 

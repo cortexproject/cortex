@@ -10,18 +10,100 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
+type SingleValueWithLabels struct {
+	Value       float64
+	LabelValues []string
+}
+
+type SingleValueWithLabelsMap map[string]SingleValueWithLabels
+
+func (m SingleValueWithLabelsMap) aggregateFn(labelsKey string, labelValues []string, value float64) {
+	r := m[labelsKey]
+	if r.LabelValues == nil {
+		r.LabelValues = labelValues
+	}
+
+	r.Value += value
+	m[labelsKey] = r
+}
+
+func (m SingleValueWithLabelsMap) WriteToMetricChannel(out chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType) {
+	for _, cr := range m {
+		out <- prometheus.MustNewConstMetric(desc, valueType, cr.Value, cr.LabelValues...)
+	}
+}
+
+// MetricFamilyMap is a map of metric names to their family (metrics with same name, but different labels)
+// Keeping map of metric name to its family makes it easier to do searches later.
+type MetricFamilyMap map[string]*dto.MetricFamily
+
+// NewMetricFamilyMap sorts output from Gatherer.Gather method into a map.
+// Gatherer.Gather specifies that there metric families are uniquely named, and we use that fact here.
+// If they are not, this method returns error.
+func NewMetricFamilyMap(metrics []*dto.MetricFamily) (MetricFamilyMap, error) {
+	perMetricName := MetricFamilyMap{}
+
+	for _, m := range metrics {
+		name := m.GetName()
+		// these errors should never happen when passing Gatherer.Gather() output.
+		if name == "" {
+			return nil, errors.New("empty name for metric family")
+		}
+		if perMetricName[name] != nil {
+			return nil, fmt.Errorf("non-unique name for metric family: %q", name)
+		}
+
+		perMetricName[name] = m
+	}
+
+	return perMetricName, nil
+}
+
+func (mfm MetricFamilyMap) SumCounters(name string) float64 {
+	return sum(mfm[name], counterValue)
+}
+
+func (mfm MetricFamilyMap) SumCountersWithLabels(name string, labelNames ...string) SingleValueWithLabelsMap {
+	result := SingleValueWithLabelsMap{}
+	mfm.sumOfSingleValuesWithLabels(name, labelNames, counterValue, result.aggregateFn)
+	return result
+}
+
+func (mfm MetricFamilyMap) SumGauges(name string) float64 {
+	return sum(mfm[name], gaugeValue)
+}
+
+func (mfm MetricFamilyMap) SumGaugesWithLabels(name string, labelNames ...string) map[string]SingleValueWithLabels {
+	result := SingleValueWithLabelsMap{}
+	mfm.sumOfSingleValuesWithLabels(name, labelNames, gaugeValue, result.aggregateFn)
+	return result
+}
+
+func (mfm MetricFamilyMap) sumOfSingleValuesWithLabels(metric string, labelNames []string, extractFn func(*dto.Metric) float64, aggregateFn func(labelsKey string, labelValues []string, value float64)) {
+	metricsPerLabelValue := getMetricsWithLabelNames(mfm[metric], labelNames)
+
+	for key, mlv := range metricsPerLabelValue {
+		for _, m := range mlv.metrics {
+			val := extractFn(m)
+			aggregateFn(key, mlv.labelValues, val)
+		}
+	}
+}
+
 // MetricFamiliesPerUser is a collection of metrics gathered via calling Gatherer.Gather() method on different
 // gatherers, one per user.
-// First key = userID, second key = metric name.
-// Value = slice of gathered values with the same metric name.
-type MetricFamiliesPerUser map[string]map[string]*dto.MetricFamily
+type MetricFamiliesPerUser map[string]MetricFamilyMap
 
 func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Registry) MetricFamiliesPerUser {
 	data := MetricFamiliesPerUser{}
 	for userID, r := range regs {
 		m, err := r.Gather()
 		if err == nil {
-			err = data.AddGatheredDataForUser(userID, m)
+			var mfm MetricFamilyMap = nil
+			mfm, err = NewMetricFamilyMap(m)
+			if err == nil {
+				data[userID] = mfm
+			}
 		}
 
 		if err != nil {
@@ -32,49 +114,21 @@ func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Re
 	return data
 }
 
-// AddGatheredDataForUser adds user-specific output of Gatherer.Gather method.
-// Gatherer.Gather specifies that there metric families are uniquely named, and we use that fact here.
-// If they are not, this method returns error.
-func (d MetricFamiliesPerUser) AddGatheredDataForUser(userID string, metrics []*dto.MetricFamily) error {
-	// Keeping map of metric name to its family makes it easier to do searches later.
-	perMetricName := map[string]*dto.MetricFamily{}
-
-	for _, m := range metrics {
-		name := m.GetName()
-		// these errors should never happen when passing Gatherer.Gather() output.
-		if name == "" {
-			return errors.New("empty name for metric family")
-		}
-		if perMetricName[name] != nil {
-			return fmt.Errorf("non-unique name for metric family: %q", name)
-		}
-
-		perMetricName[name] = m
-	}
-
-	d[userID] = perMetricName
-	return nil
-}
-
 func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	result := float64(0)
-	for _, perMetric := range d {
-		result += sum(perMetric[counter], counterValue)
+	for _, perUser := range d {
+		result += perUser.SumCounters(counter)
 	}
-
 	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, result)
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
-	result := d.sumOfSingleValuesWithLabels(counter, counterValue, labelNames)
-	for _, cr := range result {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, cr.value, cr.labelValues...)
-	}
+	d.sumOfSingleValuesWithLabels(counter, counterValue, labelNames).WriteToMetricChannel(out, desc, prometheus.CounterValue)
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	for user, perMetric := range d {
-		v := sum(perMetric[counter], counterValue)
+		v := perMetric.SumCounters(counter)
 
 		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, v, user)
 	}
@@ -83,42 +137,20 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Me
 func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
 	result := float64(0)
 	for _, perMetric := range d {
-		result += sum(perMetric[gauge], gaugeValue)
+		result += perMetric.SumGauges(gauge)
 	}
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
 func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string, labelNames ...string) {
-	result := d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames)
-	for _, cr := range result {
-		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, cr.value, cr.labelValues...)
-	}
+	d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames).WriteToMetricChannel(out, desc, prometheus.GaugeValue)
 }
 
-type singleResult struct {
-	value       float64
-	labelValues []string
-}
-
-func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) map[string]singleResult {
-	result := map[string]singleResult{}
-
+func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) SingleValueWithLabelsMap {
+	result := SingleValueWithLabelsMap{}
 	for _, userMetrics := range d {
-		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[metric], labelNames)
-
-		for key, mlv := range metricsPerLabelValue {
-			for _, m := range mlv.metrics {
-				r := result[key]
-				if r.labelValues == nil {
-					r.labelValues = mlv.labelValues
-				}
-
-				r.value += fn(m)
-				result[key] = r
-			}
-		}
+		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, fn, result.aggregateFn)
 	}
-
 	return result
 }
 

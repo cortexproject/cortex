@@ -76,6 +76,9 @@ type Compactor struct {
 	compactionRunsStarted   prometheus.Counter
 	compactionRunsCompleted prometheus.Counter
 	compactionRunsFailed    prometheus.Counter
+
+	// TSDB syncer metrics
+	syncerMetrics *syncerMetrics
 }
 
 // NewCompactor makes a new Compactor.
@@ -127,6 +130,7 @@ func newCompactor(
 			Name: "cortex_compactor_runs_failed_total",
 			Help: "Total number of compaction runs failed.",
 		}),
+		syncerMetrics: newSyncerMetrics(registerer),
 	}
 
 	// Register metrics.
@@ -220,9 +224,12 @@ func (c *Compactor) compactUsers(ctx context.Context) bool {
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	bucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
 
+	reg := prometheus.NewRegistry()
+	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
+
 	syncer, err := compact.NewSyncer(
 		c.logger,
-		nil, // TODO(pracucci) we should pass the prometheus registerer, but we would need to inject the user label to each metric, otherwise we have clashing metrics
+		reg,
 		bucket,
 		c.compactorCfg.ConsistencyDelay,
 		c.compactorCfg.BlockSyncConcurrency,
@@ -260,4 +267,131 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 	})
 
 	return users, err
+}
+
+// Copied from Thanos, pkg/compact/compact.go
+type syncerMetrics struct {
+	syncMetas                 prometheus.Counter
+	syncMetaFailures          prometheus.Counter
+	syncMetaDuration          prometheus.Histogram
+	garbageCollectedBlocks    prometheus.Counter
+	garbageCollections        prometheus.Counter
+	garbageCollectionFailures prometheus.Counter
+	garbageCollectionDuration prometheus.Histogram
+	compactions               *prometheus.CounterVec
+	compactionRunsStarted     *prometheus.CounterVec
+	compactionRunsCompleted   *prometheus.CounterVec
+	compactionFailures        *prometheus.CounterVec
+	verticalCompactions       *prometheus.CounterVec
+}
+
+// Copied (and modified with Cortex prefix) from Thanos, pkg/compact/compact.go
+func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
+	var m syncerMetrics
+
+	m.syncMetas = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_sync_meta_total",
+		Help: "TSDB Syncer: Total number of sync meta operations.",
+	})
+	m.syncMetaFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_sync_meta_failures_total",
+		Help: "TSDB Syncer: Total number of failed sync meta operations.",
+	})
+	m.syncMetaDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_compactor_sync_meta_duration_seconds",
+		Help:    "TSDB Syncer: Time it took to sync meta files.",
+		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
+	})
+
+	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collected_blocks_total",
+		Help: "TSDB Syncer: Total number of deleted blocks by compactor.",
+	})
+	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collection_total",
+		Help: "TSDB Syncer: Total number of garbage collection operations.",
+	})
+	m.garbageCollectionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_garbage_collection_failures_total",
+		Help: "TSDB Syncer: Total number of failed garbage collection operations.",
+	})
+	m.garbageCollectionDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_compactor_garbage_collection_duration_seconds",
+		Help:    "TSDB Syncer: Time it took to perform garbage collection iteration.",
+		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
+	})
+
+	m.compactions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_total",
+		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block.",
+	}, []string{"group"})
+	m.compactionRunsStarted = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compaction_runs_started_total",
+		Help: "TSDB Syncer: Total number of group compaction attempts.",
+	}, []string{"group"})
+	m.compactionRunsCompleted = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compaction_runs_completed_total",
+		Help: "TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
+	}, []string{"group"})
+	m.compactionFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_compactions_failures_total",
+		Help: "TSDB Syncer: Total number of failed group compactions.",
+	}, []string{"group"})
+	m.verticalCompactions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_compactor_group_vertical_compactions_total",
+		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
+	}, []string{"group"})
+
+	if reg != nil {
+		reg.MustRegister(
+			m.syncMetas,
+			m.syncMetaFailures,
+			m.syncMetaDuration,
+			m.garbageCollectedBlocks,
+			m.garbageCollections,
+			m.garbageCollectionFailures,
+			m.garbageCollectionDuration,
+			m.compactions,
+			m.compactionRunsStarted,
+			m.compactionRunsCompleted,
+			m.compactionFailures,
+			m.verticalCompactions,
+		)
+	}
+	return &m
+}
+
+func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
+	mf, err := reg.Gather()
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "failed to gather metrics from syncer registry after compaction", "err", err)
+		return
+	}
+
+	mfm, err := util.NewMetricFamilyMap(mf)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "failed to gather metrics from syncer registry after compaction", "err", err)
+		return
+	}
+
+	m.syncMetas.Add(mfm.SumCounters("thanos_compact_sync_meta_total"))
+	m.syncMetaFailures.Add(mfm.SumCounters("thanos_compact_sync_meta_failures_total"))
+	// TODO: m.syncMetaDuration, thanos_compact_sync_meta_duration_seconds
+	m.garbageCollectedBlocks.Add(mfm.SumCounters("thanos_compact_garbage_collected_blocks_total"))
+	m.garbageCollections.Add(mfm.SumCounters("thanos_compact_garbage_collection_total"))
+	m.garbageCollectionFailures.Add(mfm.SumCounters("thanos_compact_garbage_collection_failures_total"))
+	// TODO: m.garbageCollectionDuration,thanos_compact_garbage_collection_duration_seconds
+
+	addToCounterVec(mfm, m.compactions, "thanos_compact_group_compactions_total", "group")
+	addToCounterVec(mfm, m.compactionRunsStarted, "thanos_compact_group_compaction_runs_started_total", "group")
+	addToCounterVec(mfm, m.compactionRunsCompleted, "thanos_compact_group_compaction_runs_completed_total", "group")
+	addToCounterVec(mfm, m.compactionFailures, "thanos_compact_group_compactions_failures_total", "group")
+	addToCounterVec(mfm, m.verticalCompactions, "thanos_compact_group_vertical_compactions_total", "group")
+}
+
+func addToCounterVec(mfm util.MetricFamilyMap, cv *prometheus.CounterVec, metricName string, labelValues ...string) {
+	svm := mfm.SumCountersWithLabels(metricName, labelValues...)
+	for _, sv := range svm {
+		cv.WithLabelValues(sv.LabelValues...).Add(sv.Value)
+	}
 }

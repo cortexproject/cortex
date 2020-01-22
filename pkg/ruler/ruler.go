@@ -439,8 +439,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	}
 
 	// Wrap registerer with userID and cortex_ prefix
-	reg := prometheus.WrapRegistererWithPrefix("cortex_", r.registry)
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, reg)
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
+	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 
 	opts := &promRules.ManagerOptions{
 		Appendable:  tsdb,

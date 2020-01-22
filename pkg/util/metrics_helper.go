@@ -316,12 +316,14 @@ func (s *SummaryData) Metric(desc *prometheus.Desc, labelValues ...string) prome
 	return prometheus.MustNewConstSummary(desc, s.sampleCount, s.sampleSum, s.quantiles, labelValues...)
 }
 
+// HistogramData keeps data required to build histogram Metric
 type HistogramData struct {
 	sampleCount uint64
 	sampleSum   float64
 	buckets     map[float64]uint64
 }
 
+// Adds histogram from gathered metrics to this histogram data.
 func (d *HistogramData) AddHistogram(histo *dto.Histogram) {
 	d.sampleCount += histo.GetSampleCount()
 	d.sampleSum += histo.GetSampleSum()
@@ -337,6 +339,7 @@ func (d *HistogramData) AddHistogram(histo *dto.Histogram) {
 	}
 }
 
+// Merged another histogram data into this one.
 func (d *HistogramData) AddHistogramData(histo HistogramData) {
 	d.sampleCount += histo.sampleCount
 	d.sampleSum += histo.sampleSum
@@ -351,10 +354,12 @@ func (d *HistogramData) AddHistogramData(histo HistogramData) {
 	}
 }
 
+// Return prometheus metric from this histogram data.
 func (d *HistogramData) Metric(desc *prometheus.Desc) prometheus.Metric {
 	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets)
 }
 
+// Creates new histogram data collector.
 func NewHistogramDataCollector(desc *prometheus.Desc) *HistogramDataCollector {
 	return &HistogramDataCollector{
 		desc: desc,
@@ -362,6 +367,8 @@ func NewHistogramDataCollector(desc *prometheus.Desc) *HistogramDataCollector {
 	}
 }
 
+// HistogramDataCollector combines histogram data, with prometheus descriptor. It can be registered
+// into prometheus to report histogram with stored data. Data can be updated via Add method.
 type HistogramDataCollector struct {
 	desc *prometheus.Desc
 

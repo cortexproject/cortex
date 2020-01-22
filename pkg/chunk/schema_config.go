@@ -424,7 +424,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		nowWeek        = now / periodSecs
 		result         = []TableDesc{}
 	)
-	// Make sure we don't have an extra table
+	// If interval ends exactly on a period boundary, don’t include the upcoming period
 	if through.Unix()%periodSecs == 0 {
 		lastTable--
 	}

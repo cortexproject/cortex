@@ -130,6 +130,26 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
 		# TYPE cortex_compactor_sync_meta_total counter
 		cortex_compactor_sync_meta_total 0
+
+		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
+		# TYPE cortex_compactor_group_compaction_runs_completed_total counter
+		cortex_compactor_group_compaction_runs_completed_total 0
+
+		# HELP cortex_compactor_group_compaction_runs_started_total TSDB Syncer: Total number of group compaction attempts.
+		# TYPE cortex_compactor_group_compaction_runs_started_total counter
+		cortex_compactor_group_compaction_runs_started_total 0
+
+		# HELP cortex_compactor_group_compactions_failures_total TSDB Syncer: Total number of failed group compactions.
+		# TYPE cortex_compactor_group_compactions_failures_total counter
+		cortex_compactor_group_compactions_failures_total 0
+
+		# HELP cortex_compactor_group_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block.
+		# TYPE cortex_compactor_group_compactions_total counter
+		cortex_compactor_group_compactions_total 0
+
+		# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
+		# TYPE cortex_compactor_group_vertical_compactions_total counter
+		cortex_compactor_group_vertical_compactions_total 0
 	`)))
 }
 
@@ -204,6 +224,26 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
 		# TYPE cortex_compactor_sync_meta_total counter
 		cortex_compactor_sync_meta_total 0
+
+		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
+		# TYPE cortex_compactor_group_compaction_runs_completed_total counter
+		cortex_compactor_group_compaction_runs_completed_total 0
+
+		# HELP cortex_compactor_group_compaction_runs_started_total TSDB Syncer: Total number of group compaction attempts.
+		# TYPE cortex_compactor_group_compaction_runs_started_total counter
+		cortex_compactor_group_compaction_runs_started_total 0
+
+		# HELP cortex_compactor_group_compactions_failures_total TSDB Syncer: Total number of failed group compactions.
+		# TYPE cortex_compactor_group_compactions_failures_total counter
+		cortex_compactor_group_compactions_failures_total 0
+
+		# HELP cortex_compactor_group_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block.
+		# TYPE cortex_compactor_group_compactions_total counter
+		cortex_compactor_group_compactions_total 0
+
+		# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
+		# TYPE cortex_compactor_group_vertical_compactions_total counter
+		cortex_compactor_group_vertical_compactions_total 0
 	`)))
 }
 

@@ -130,12 +130,12 @@ func newCompactor(
 			Name: "cortex_compactor_runs_failed_total",
 			Help: "Total number of compaction runs failed.",
 		}),
-		syncerMetrics: newSyncerMetrics(registerer),
 	}
 
 	// Register metrics.
 	if registerer != nil {
 		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed)
+		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
 	// Start the compactor loop.
@@ -279,14 +279,15 @@ type syncerMetrics struct {
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
 	garbageCollectionDuration *util.HistogramDataCollector // was prometheus.Histogram before
-	compactions               *prometheus.CounterVec
-	compactionRunsStarted     *prometheus.CounterVec
-	compactionRunsCompleted   *prometheus.CounterVec
-	compactionFailures        *prometheus.CounterVec
-	verticalCompactions       *prometheus.CounterVec
+	compactions               prometheus.Counter
+	compactionRunsStarted     prometheus.Counter
+	compactionRunsCompleted   prometheus.Counter
+	compactionFailures        prometheus.Counter
+	verticalCompactions       prometheus.Counter
 }
 
 // Copied (and modified with Cortex prefix) from Thanos, pkg/compact/compact.go
+// We also ignore "group" label, since we only use single group.
 func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 	var m syncerMetrics
 
@@ -320,26 +321,26 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 		"TSDB Syncer: Time it took to perform garbage collection iteration.",
 		nil, nil))
 
-	m.compactions = prometheus.NewCounterVec(prometheus.CounterOpts{
+	m.compactions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_total",
 		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block.",
-	}, []string{"group"})
-	m.compactionRunsStarted = prometheus.NewCounterVec(prometheus.CounterOpts{
+	})
+	m.compactionRunsStarted = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_started_total",
 		Help: "TSDB Syncer: Total number of group compaction attempts.",
-	}, []string{"group"})
-	m.compactionRunsCompleted = prometheus.NewCounterVec(prometheus.CounterOpts{
+	})
+	m.compactionRunsCompleted = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_completed_total",
 		Help: "TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
-	}, []string{"group"})
-	m.compactionFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+	})
+	m.compactionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_failures_total",
 		Help: "TSDB Syncer: Total number of failed group compactions.",
-	}, []string{"group"})
-	m.verticalCompactions = prometheus.NewCounterVec(prometheus.CounterOpts{
+	})
+	m.verticalCompactions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_vertical_compactions_total",
 		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
-	}, []string{"group"})
+	})
 
 	if reg != nil {
 		reg.MustRegister(
@@ -361,6 +362,10 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 }
 
 func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
+	if m == nil {
+		return
+	}
+
 	mf, err := reg.Gather()
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "failed to gather metrics from syncer registry after compaction", "err", err)
@@ -381,16 +386,10 @@ func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
 	m.garbageCollectionFailures.Add(mfm.SumCounters("thanos_compact_garbage_collection_failures_total"))
 	m.garbageCollectionDuration.Add(mfm.SumHistograms("thanos_compact_garbage_collection_duration_seconds"))
 
-	addToCounterVec(mfm, m.compactions, "thanos_compact_group_compactions_total", "group")
-	addToCounterVec(mfm, m.compactionRunsStarted, "thanos_compact_group_compaction_runs_started_total", "group")
-	addToCounterVec(mfm, m.compactionRunsCompleted, "thanos_compact_group_compaction_runs_completed_total", "group")
-	addToCounterVec(mfm, m.compactionFailures, "thanos_compact_group_compactions_failures_total", "group")
-	addToCounterVec(mfm, m.verticalCompactions, "thanos_compact_group_vertical_compactions_total", "group")
-}
-
-func addToCounterVec(mfm util.MetricFamilyMap, cv *prometheus.CounterVec, metricName string, labelValues ...string) {
-	svm := mfm.SumCountersWithLabels(metricName, labelValues...)
-	for _, sv := range svm {
-		cv.WithLabelValues(sv.LabelValues...).Add(sv.Value)
-	}
+	// There have "group" label, but we sum them all together.
+	m.compactions.Add(mfm.SumCounters("thanos_compact_group_compactions_total"))
+	m.compactionRunsStarted.Add(mfm.SumCounters("thanos_compact_group_compaction_runs_started_total"))
+	m.compactionRunsCompleted.Add(mfm.SumCounters("thanos_compact_group_compaction_runs_completed_total"))
+	m.compactionFailures.Add(mfm.SumCounters("thanos_compact_group_compactions_failures_total"))
+	m.verticalCompactions.Add(mfm.SumCounters("thanos_compact_group_vertical_compactions_total"))
 }

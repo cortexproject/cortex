@@ -88,33 +88,26 @@ func TestSyncerMetrics(t *testing.T) {
 
 			# HELP cortex_compactor_group_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block.
 			# TYPE cortex_compactor_group_compactions_total counter
-			cortex_compactor_group_compactions_total{group="aaa"} 888880
-			cortex_compactor_group_compactions_total{group="bbb"} 999990
-			cortex_compactor_group_compactions_total{group="ccc"} 1.1111e+06
+			# Sum across all groups
+			cortex_compactor_group_compactions_total 2999970
 
 			# HELP cortex_compactor_group_compaction_runs_started_total TSDB Syncer: Total number of group compaction attempts.
 			# TYPE cortex_compactor_group_compaction_runs_started_total counter
-			cortex_compactor_group_compaction_runs_started_total{group="aaa"} 1.22221e+06
-			cortex_compactor_group_compaction_runs_started_total{group="bbb"} 1.33332e+06
-			cortex_compactor_group_compaction_runs_started_total{group="ccc"} 1.44443e+06
+			# Sum across all groups
+			cortex_compactor_group_compaction_runs_started_total 3999960
 
 			# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 			# TYPE cortex_compactor_group_compaction_runs_completed_total counter
-			cortex_compactor_group_compaction_runs_completed_total{group="aaa"} 1.55554e+06
-			cortex_compactor_group_compaction_runs_completed_total{group="bbb"} 1.66665e+06
-			cortex_compactor_group_compaction_runs_completed_total{group="ccc"} 1.77776e+06
+			# Sum across all groups
+			cortex_compactor_group_compaction_runs_completed_total 4999950
 
 			# HELP cortex_compactor_group_compactions_failures_total TSDB Syncer: Total number of failed group compactions.
 			# TYPE cortex_compactor_group_compactions_failures_total counter
-			cortex_compactor_group_compactions_failures_total{group="aaa"} 1.88887e+06
-			cortex_compactor_group_compactions_failures_total{group="bbb"} 1.99998e+06
-			cortex_compactor_group_compactions_failures_total{group="ccc"} 2.11109e+06
+			cortex_compactor_group_compactions_failures_total 5999940
 
 			# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
 			# TYPE cortex_compactor_group_vertical_compactions_total counter
-			cortex_compactor_group_vertical_compactions_total{group="aaa"} 2.2222e+06
-			cortex_compactor_group_vertical_compactions_total{group="bbb"} 2.33331e+06
-			cortex_compactor_group_vertical_compactions_total{group="ccc"} 2.44442e+06
+			cortex_compactor_group_vertical_compactions_total 6999930
 	`))
 	require.NoError(t, err)
 }

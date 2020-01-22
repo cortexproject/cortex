@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -90,6 +91,30 @@ func (mfm MetricFamilyMap) sumOfSingleValuesWithLabels(metric string, labelNames
 	}
 }
 
+func (mfm MetricFamilyMap) SumHistograms(s string) HistogramData {
+	hd := HistogramData{}
+	mfm.SumHistogramsTo(s, &hd)
+	return hd
+}
+
+func (mfm MetricFamilyMap) SumHistogramsTo(name string, hd *HistogramData) {
+	for _, m := range mfm[name].GetMetric() {
+		hd.AddHistogram(m.GetHistogram())
+	}
+}
+
+func (mfm MetricFamilyMap) SumSummaries(s string) SummaryData {
+	sd := SummaryData{}
+	mfm.SumSummariesTo(s, &sd)
+	return sd
+}
+
+func (mfm MetricFamilyMap) SumSummariesTo(name string, hd *SummaryData) {
+	for _, m := range mfm[name].GetMetric() {
+		hd.AddSummary(m.GetSummary())
+	}
+}
+
 // MetricFamiliesPerUser is a collection of metrics gathered via calling Gatherer.Gather() method on different
 // gatherers, one per user.
 type MetricFamiliesPerUser map[string]MetricFamilyMap
@@ -155,29 +180,16 @@ func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn fun
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
-	var (
-		sampleCount uint64
-		sampleSum   float64
-		quantiles   map[float64]float64
-	)
-
+	summaryData := SummaryData{}
 	for _, userMetrics := range d {
-		for _, m := range userMetrics[summaryName].GetMetric() {
-			summary := m.GetSummary()
-			sampleCount += summary.GetSampleCount()
-			sampleSum += summary.GetSampleSum()
-			quantiles = mergeSummaryQuantiles(quantiles, summary.GetQuantile())
-		}
+		userMetrics.SumSummariesTo(summaryName, &summaryData)
 	}
-
-	out <- prometheus.MustNewConstSummary(desc, sampleCount, sampleSum, quantiles)
+	out <- summaryData.Metric(desc)
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string, labelNames ...string) {
 	type summaryResult struct {
-		sampleCount uint64
-		sampleSum   float64
-		quantiles   map[float64]float64
+		data        SummaryData
 		labelValues []string
 	}
 
@@ -193,72 +205,23 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 					r.labelValues = mwl.labelValues
 				}
 
-				summary := m.GetSummary()
-				r.sampleCount += summary.GetSampleCount()
-				r.sampleSum += summary.GetSampleSum()
-				r.quantiles = mergeSummaryQuantiles(r.quantiles, summary.GetQuantile())
-
+				r.data.AddSummary(m.GetSummary())
 				result[key] = r
 			}
 		}
 	}
 
 	for _, sr := range result {
-		out <- prometheus.MustNewConstSummary(desc, sr.sampleCount, sr.sampleSum, sr.quantiles, sr.labelValues...)
+		out <- sr.data.Metric(desc, sr.labelValues...)
 	}
 }
 
 func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string) {
-	var (
-		sampleCount uint64
-		sampleSum   float64
-		buckets     map[float64]uint64
-	)
-
+	hd := HistogramData{}
 	for _, userMetrics := range d {
-		for _, m := range userMetrics[histogramName].GetMetric() {
-			histo := m.GetHistogram()
-			sampleCount += histo.GetSampleCount()
-			sampleSum += histo.GetSampleSum()
-			buckets = mergeHistogramBuckets(buckets, histo.GetBucket())
-		}
+		userMetrics.SumHistogramsTo(histogramName, &hd)
 	}
-
-	out <- prometheus.MustNewConstHistogram(desc, sampleCount, sampleSum, buckets)
-}
-
-func mergeSummaryQuantiles(quantiles map[float64]float64, summaryQuantiles []*dto.Quantile) map[float64]float64 {
-	if len(summaryQuantiles) == 0 {
-		return quantiles
-	}
-
-	out := quantiles
-	if out == nil {
-		out = map[float64]float64{}
-	}
-
-	for _, q := range summaryQuantiles {
-		// we assume that all summaries have same quantiles
-		out[q.GetQuantile()] += q.GetValue()
-	}
-	return out
-}
-
-func mergeHistogramBuckets(buckets map[float64]uint64, histogramBuckets []*dto.Bucket) map[float64]uint64 {
-	if len(histogramBuckets) == 0 {
-		return buckets
-	}
-
-	out := buckets
-	if out == nil {
-		out = map[float64]uint64{}
-	}
-
-	for _, q := range histogramBuckets {
-		// we assume that all histograms have same buckets
-		out[q.GetUpperBound()] += q.GetCumulativeCount()
-	}
-	return out
+	out <- hd.Metric(desc)
 }
 
 type metricsWithLabels struct {
@@ -326,3 +289,100 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 // This works even if m is nil, m.Counter is nil or m.Counter.Value is nil (it returns 0 in those cases)
 func counterValue(m *dto.Metric) float64 { return m.GetCounter().GetValue() }
 func gaugeValue(m *dto.Metric) float64   { return m.GetGauge().GetValue() }
+
+// SummaryData keeps all data needed to create summary metric
+type SummaryData struct {
+	sampleCount uint64
+	sampleSum   float64
+	quantiles   map[float64]float64
+}
+
+func (s *SummaryData) AddSummary(sum *dto.Summary) {
+	s.sampleCount += sum.GetSampleCount()
+	s.sampleSum += sum.GetSampleSum()
+
+	qs := sum.GetQuantile()
+	if len(qs) > 0 && s.quantiles == nil {
+		s.quantiles = map[float64]float64{}
+	}
+
+	for _, q := range qs {
+		// we assume that all summaries have same quantiles
+		s.quantiles[q.GetQuantile()] += q.GetValue()
+	}
+}
+
+func (s *SummaryData) Metric(desc *prometheus.Desc, labelValues ...string) prometheus.Metric {
+	return prometheus.MustNewConstSummary(desc, s.sampleCount, s.sampleSum, s.quantiles, labelValues...)
+}
+
+type HistogramData struct {
+	sampleCount uint64
+	sampleSum   float64
+	buckets     map[float64]uint64
+}
+
+func (d *HistogramData) AddHistogram(histo *dto.Histogram) {
+	d.sampleCount += histo.GetSampleCount()
+	d.sampleSum += histo.GetSampleSum()
+
+	histoBuckets := histo.GetBucket()
+	if len(histoBuckets) > 0 && d.buckets == nil {
+		d.buckets = map[float64]uint64{}
+	}
+
+	for _, b := range histoBuckets {
+		// we assume that all histograms have same buckets
+		d.buckets[b.GetUpperBound()] += b.GetCumulativeCount()
+	}
+}
+
+func (d *HistogramData) AddHistogramData(histo HistogramData) {
+	d.sampleCount += histo.sampleCount
+	d.sampleSum += histo.sampleSum
+
+	if len(histo.buckets) > 0 && d.buckets == nil {
+		d.buckets = map[float64]uint64{}
+	}
+
+	for bound, count := range histo.buckets {
+		// we assume that all histograms have same buckets
+		d.buckets[bound] += count
+	}
+}
+
+func (d *HistogramData) Metric(desc *prometheus.Desc) prometheus.Metric {
+	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets)
+}
+
+func NewHistogramDataCollector(desc *prometheus.Desc) *HistogramDataCollector {
+	return &HistogramDataCollector{
+		desc: desc,
+		data: &HistogramData{},
+	}
+}
+
+type HistogramDataCollector struct {
+	desc *prometheus.Desc
+
+	dataMu sync.RWMutex
+	data   *HistogramData
+}
+
+func (h *HistogramDataCollector) Describe(out chan<- *prometheus.Desc) {
+	out <- h.desc
+}
+
+func (h *HistogramDataCollector) Collect(out chan<- prometheus.Metric) {
+	h.dataMu.RLock()
+	defer h.dataMu.RUnlock()
+
+	out <- h.data.Metric(h.desc)
+}
+
+func (h *HistogramDataCollector) Add(hd HistogramData) {
+	h.dataMu.Lock()
+	defer h.dataMu.Unlock()
+
+	h.data.AddHistogramData(hd)
+}

@@ -269,15 +269,16 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 	return users, err
 }
 
-// Copied from Thanos, pkg/compact/compact.go
+// Copied from Thanos, pkg/compact/compact.go.
+// Here we aggregate metrics from all finished syncers.
 type syncerMetrics struct {
 	syncMetas                 prometheus.Counter
 	syncMetaFailures          prometheus.Counter
-	syncMetaDuration          prometheus.Histogram
+	syncMetaDuration          *util.HistogramDataCollector // was prometheus.Histogram before
 	garbageCollectedBlocks    prometheus.Counter
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
-	garbageCollectionDuration prometheus.Histogram
+	garbageCollectionDuration *util.HistogramDataCollector // was prometheus.Histogram before
 	compactions               *prometheus.CounterVec
 	compactionRunsStarted     *prometheus.CounterVec
 	compactionRunsCompleted   *prometheus.CounterVec
@@ -297,11 +298,10 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 		Name: "cortex_compactor_sync_meta_failures_total",
 		Help: "TSDB Syncer: Total number of failed sync meta operations.",
 	})
-	m.syncMetaDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_compactor_sync_meta_duration_seconds",
-		Help:    "TSDB Syncer: Time it took to sync meta files.",
-		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
-	})
+	m.syncMetaDuration = util.NewHistogramDataCollector(prometheus.NewDesc(
+		"cortex_compactor_sync_meta_duration_seconds",
+		"TSDB Syncer: Time it took to sync meta files.",
+		nil, nil))
 
 	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collected_blocks_total",
@@ -315,11 +315,10 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 		Name: "cortex_compactor_garbage_collection_failures_total",
 		Help: "TSDB Syncer: Total number of failed garbage collection operations.",
 	})
-	m.garbageCollectionDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_compactor_garbage_collection_duration_seconds",
-		Help:    "TSDB Syncer: Time it took to perform garbage collection iteration.",
-		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
-	})
+	m.garbageCollectionDuration = util.NewHistogramDataCollector(prometheus.NewDesc(
+		"cortex_compactor_garbage_collection_duration_seconds",
+		"TSDB Syncer: Time it took to perform garbage collection iteration.",
+		nil, nil))
 
 	m.compactions = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_total",
@@ -376,11 +375,11 @@ func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
 
 	m.syncMetas.Add(mfm.SumCounters("thanos_compact_sync_meta_total"))
 	m.syncMetaFailures.Add(mfm.SumCounters("thanos_compact_sync_meta_failures_total"))
-	// TODO: m.syncMetaDuration, thanos_compact_sync_meta_duration_seconds
+	m.syncMetaDuration.Add(mfm.SumHistograms("thanos_compact_sync_meta_duration_seconds"))
 	m.garbageCollectedBlocks.Add(mfm.SumCounters("thanos_compact_garbage_collected_blocks_total"))
 	m.garbageCollections.Add(mfm.SumCounters("thanos_compact_garbage_collection_total"))
 	m.garbageCollectionFailures.Add(mfm.SumCounters("thanos_compact_garbage_collection_failures_total"))
-	// TODO: m.garbageCollectionDuration,thanos_compact_garbage_collection_duration_seconds
+	m.garbageCollectionDuration.Add(mfm.SumHistograms("thanos_compact_garbage_collection_duration_seconds"))
 
 	addToCounterVec(mfm, m.compactions, "thanos_compact_group_compactions_total", "group")
 	addToCounterVec(mfm, m.compactionRunsStarted, "thanos_compact_group_compaction_runs_started_total", "group")

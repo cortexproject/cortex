@@ -37,14 +37,8 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 type errorType string
 
 const (
-	errorNone        errorType = ""
-	errorTimeout     errorType = "timeout"
-	errorCanceled    errorType = "canceled"
-	errorExec        errorType = "execution"
-	errorBadData     errorType = "bad_data"
-	errorInternal    errorType = "internal"
-	errorUnavailable errorType = "unavailable"
-	errorNotFound    errorType = "not_found"
+	errorBadData  errorType = "bad_data"
+	errorInternal errorType = "internal"
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
@@ -135,7 +129,6 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string, errType 
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
-	return
 }
 
 func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {

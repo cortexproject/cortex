@@ -51,14 +51,19 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	}
 
 	for i, rl := range rg.GetRules() {
-		formattedRuleGroup.Rules[i] = rulefmt.Rule{
+		newRule := rulefmt.Rule{
 			Record:      rl.GetRecord(),
 			Alert:       rl.GetAlert(),
 			Expr:        rl.GetExpr(),
-			For:         model.Duration(*rl.GetFor()),
 			Labels:      client.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: client.FromLabelAdaptersToLabels(rl.Annotations).Map(),
 		}
+
+		if rl.GetFor() != nil {
+			newRule.For = model.Duration(*rl.GetFor())
+		}
+
+		formattedRuleGroup.Rules[i] = newRule
 	}
 
 	return formattedRuleGroup

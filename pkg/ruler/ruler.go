@@ -68,6 +68,9 @@ type Config struct {
 	FlushCheckPeriod time.Duration
 
 	EnableAPI bool `yaml:"enable_api"`
+
+	// used to avoid duplicate registration in tests
+	registry prometheus.Registerer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -435,9 +438,14 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		return nil, err
 	}
 
+	reg := prometheus.DefaultRegisterer
+	if r.cfg.registry != nil {
+		reg = r.cfg.registry
+	}
+
 	// Wrap registerer with userID and cortex_ prefix
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, prometheus.DefaultRegisterer)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, reg)
 
 	opts := &promRules.ManagerOptions{
 		Appendable:  tsdb,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
@@ -14,6 +15,7 @@ type mockRuleStore struct {
 }
 
 func newMockRuleStore() *mockRuleStore {
+	interval, _ := time.ParseDuration("1m")
 	return &mockRuleStore{
 		rules: map[string]*rules.RuleGroupDesc{
 			"user1:group1": {
@@ -22,9 +24,11 @@ func newMockRuleStore() *mockRuleStore {
 				User:      "user1",
 				Rules: []*rules.RuleDesc{
 					{
-						Expr: "up",
+						Record: "UP_RULE",
+						Expr:   "up",
 					},
 				},
+				Interval: &interval,
 			},
 			"user2:group1": {
 				Name:      "group1",
@@ -32,9 +36,12 @@ func newMockRuleStore() *mockRuleStore {
 				User:      "user2",
 				Rules: []*rules.RuleDesc{
 					{
-						Expr: "up",
+						Record: "UP_RULE",
+						Expr:   "up",
+						For:    &interval,
 					},
 				},
+				Interval: &interval,
 			},
 		},
 	}
@@ -48,7 +55,7 @@ func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules
 
 	for id, rg := range m.rules {
 		components := strings.Split(id, ":")
-		if len(components) != 3 {
+		if len(components) != 2 {
 			continue
 		}
 		user := components[0]

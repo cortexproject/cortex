@@ -1,8 +1,12 @@
 package ruler
 
 import (
+	"context"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -28,6 +33,7 @@ func defaultRulerConfig() Config {
 		StoreConfig: RuleStoreConfig{
 			mock: newMockRuleStore(),
 		},
+		registry: prometheus.NewRegistry(),
 	}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.Ring)
@@ -73,6 +79,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	cfg.AlertmanagerDiscovery = false
 
 	r := newTestRuler(t, cfg)
+	defer r.Stop()
 	n, err := r.getOrCreateNotifier("1")
 	if err != nil {
 		t.Fatal(err)
@@ -89,4 +96,27 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	})
 
 	wg.Wait()
+}
+
+func TestRuler_Rules(t *testing.T) {
+	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
+	defer os.RemoveAll(dir)
+
+	require.NoError(t, err)
+
+	cfg := defaultRulerConfig()
+	cfg.RulePath = dir
+
+	r := newTestRuler(t, cfg)
+	defer r.Stop()
+
+	r.loadRules(context.Background())
+
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	rls, err := r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	for _, rule := range rls.GetGroups() {
+		fmt.Println(rule)
+	}
 }

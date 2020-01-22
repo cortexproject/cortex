@@ -201,10 +201,15 @@ compactor:
     # CLI flag: -compactor.block-ranges
     [block_ranges: <list of duration> | default = [2h,12h,24h]]
 
-    # Number of Go routines to use when syncing block metadata from the long-term
-    # storage.
+    # Number of Go routines to use when syncing block index and chunks files
+    # from the long term storage.
     # CLI flag: -compactor.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
+
+    # Number of Go routines to use when syncing block meta files from the long
+    # term storage.
+    # CLI flag: -compactor.meta-sync-concurrency
+    [meta_sync_concurrency: <int> | default = 20]
 
     # Minimum age of fresh (non-compacted) blocks before they are being processed,
     # in order to skip blocks that are still uploading from ingesters. Malformed

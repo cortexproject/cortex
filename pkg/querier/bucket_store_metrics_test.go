@@ -123,7 +123,21 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
 			cortex_querier_bucket_store_series_merge_duration_seconds_count 9
 
-			# HELP cortex_querier_bucket_store_series_result_series Number of series observed in the final result of a query.
+			# HELP cortex_querier_bucket_store_blocks_meta_sync_duration_seconds TSDB: Duration of the blocks metadata synchronization in seconds
+			# TYPE cortex_querier_bucket_store_blocks_meta_sync_duration_seconds histogram
+			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_bucket{le="+Inf"} 0
+			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_sum 0
+			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_count 0
+
+			# HELP cortex_querier_bucket_store_blocks_meta_sync_failures_total TSDB: Total blocks metadata synchronization failures
+			# TYPE cortex_querier_bucket_store_blocks_meta_sync_failures_total counter
+			cortex_querier_bucket_store_blocks_meta_sync_failures_total 0
+
+			# HELP cortex_querier_bucket_store_blocks_meta_syncs_total TSDB: Total blocks metadata synchronization attempts
+			# TYPE cortex_querier_bucket_store_blocks_meta_syncs_total counter
+			cortex_querier_bucket_store_blocks_meta_syncs_total 0
+
+			# HELP cortex_querier_bucket_store_series_result_series TSDB: Number of series observed in the final result of a query.
 			# TYPE cortex_querier_bucket_store_series_result_series summary
 			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_querier_bucket_store_series_result_series_count 6

@@ -283,17 +283,17 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info msg="discovered users from bucket" users=2`,
 		`level=info msg="starting compaction of user blocks" user=user-1`,
 		`level=info msg="start sync of metas"`,
-		`level=debug msg="download meta" block=01DTVP434PA9VFXSW2JKB3392D`,
 		`level=info msg="start of GC"`,
 		`level=info msg="start of compaction"`,
+		`level=info msg="compaction iterations done"`,
 		`level=info msg="successfully compacted user blocks" user=user-1`,
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info msg="start sync of metas"`,
-		`level=debug msg="download meta" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
 		`level=info msg="start of GC"`,
 		`level=info msg="start of compaction"`,
+		`level=info msg="compaction iterations done"`,
 		`level=info msg="successfully compacted user blocks" user=user-2`,
-	}, strings.Split(strings.TrimSpace(logs.String()), "\n"))
+	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
 	// Real shipper metrics are too variable to embed into a test.
@@ -311,6 +311,18 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
 	`), testedMetrics...))
+}
+
+func removeMetaFetcherLogs(input []string) []string {
+	out := make([]string, 0, len(input))
+
+	for i := 0; i < len(input); i++ {
+		if !strings.Contains(input[i], "block.MetaFetcher") {
+			out = append(out, input[i])
+		}
+	}
+
+	return out
 }
 
 func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer) {
@@ -353,6 +365,7 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 
 func mockBlockMetaJSON(id string) string {
 	meta := tsdb.BlockMeta{
+		Version: 1,
 		ULID:    ulid.MustParse(id),
 		MinTime: 1574776800000,
 		MaxTime: 1574784000000,

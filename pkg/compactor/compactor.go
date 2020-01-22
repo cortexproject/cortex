@@ -15,8 +15,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -26,6 +26,7 @@ import (
 type Config struct {
 	BlockRanges          cortex_tsdb.DurationList `yaml:"block_ranges"`
 	BlockSyncConcurrency int                      `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency  int                      `yaml:"meta_sync_concurrency"`
 	ConsistencyDelay     time.Duration            `yaml:"consistency_delay"`
 	DataDir              string                   `yaml:"data_dir"`
 	CompactionInterval   time.Duration            `yaml:"compaction_interval"`
@@ -45,8 +46,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.retryMaxBackoff = time.Minute
 
 	f.Var(&cfg.BlockRanges, "compactor.block-ranges", "Comma separated list of compaction ranges expressed in the time duration format")
-	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 30*time.Minute, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.MinimumAgeForRemoval))
-	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of goroutines to use when syncing block metadata from object storage")
+	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 30*time.Minute, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.PartialUploadThresholdAge))
+	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of Go routines to use when syncing block index and chunks files from the long term storage.")
+	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
@@ -231,15 +233,30 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 
+	fetcher, err := block.NewMetaFetcher(
+		c.logger,
+		c.compactorCfg.MetaSyncConcurrency,
+		bucket,
+		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
+		// but we prefix it with "meta-" in order to guarantee no clashing with
+		// the directory used by the Thanos Syncer, whatever is the user ID.
+		path.Join(c.compactorCfg.DataDir, "meta-"+userID),
+		nil, // TODO(pracucci) Prometheus registerer
+		// No filters
+	)
+	if err != nil {
+		return err
+	}
+
 	syncer, err := compact.NewSyncer(
 		c.logger,
 		reg,
 		bucket,
-		c.compactorCfg.ConsistencyDelay,
+		fetcher,
 		c.compactorCfg.BlockSyncConcurrency,
 		false, // Do not accept malformed indexes
 		true,  // Enable vertical compaction
-		[]*relabel.Config{})
+	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create syncer")
 	}

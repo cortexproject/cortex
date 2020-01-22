@@ -10,9 +10,6 @@ If you are running with a high `-ruler.num-workers` and if you're not able to ex
 Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full
 instructions below to upgrade your PostgreSQL.
 
-* [CHANGE] Remove unnecessary configs/flags from the ruler ring config to align with the pattern used in the distributor ring. #1987
-    * Ruler ring related flags are now all prefixed with `ruler.ring.` as opposed to just `ruler.`
-    * Changed the default value for `-ruler.ring.prefix` from `collectors/` to `rulers/` in order to not clash with other keys (ie. ring) stored in the same key-value store.
 * [CHANGE] The frontend component now does not cache results if it finds a `Cache-Control` header and if one of its values is `no-store`. #1974
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
   * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
@@ -21,6 +18,7 @@ instructions below to upgrade your PostgreSQL.
   * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files
   * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
   * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
+  * Ruler sharding requires a ring which can be configured via the ring flags prefixed by `ruler.ring.`
 * [CHANGE] Use relative links from /ring page to make it work when used behind reverse proxy. #1896
 * [CHANGE] Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. `-ingester.normalise-tokens` is now deprecated, and ignored. If you want to switch back to using denormalised tokens, you need to downgrade to Cortex 0.4.0. Previous versions don't handle claiming tokens from normalised ingesters correctly. #1809
@@ -40,34 +38,25 @@ instructions below to upgrade your PostgreSQL.
 * [FEATURE] Added support for Microsoft Azure blob storage to be used for storing chunk data. #1913
 * [FEATURE] Added readiness probe endpoint`/ready` to queriers. #1934
 * [FEATURE] Added "multi" KV store that can interact with two other KV stores, primary one for all reads and writes, and secondary one, which only receives writes. Primary/secondary store can be modified in runtime via runtime-config mechanism (previously "overrides"). #1749
-* [FEATURE] Added support to store ring tokens to a file and read it back on startup, instead of generating/fetching the tokens to/from the ring. This feature can be enabled with the flag `-ingester.tokens-file-path` for the ingesters and `-ruler.tokens-file-path` for the ruler. #1750
+* [FEATURE] Added support to store ring tokens to a file and read it back on startup, instead of generating/fetching the tokens to/from the ring. This feature can be enabled with the flag `-ingester.tokens-file-path`. #1750
 * [FEATURE] Experimental TSDB: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Experimental TSDB: Added TSDB blocks `compactor` component, which iterates over users blocks stored in the bucket and compact them according to the configured block ranges. #1942
 * [ENHANCEMENT] metric `cortex_ingester_flush_reasons` gets a new `reason` value: `Spread`, when `-ingester.spread-flushes` option is enabled. #1978
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service. #1923
 * [ENHANCEMENT] Upgraded Kubernetes API version for deployments from `extensions/v1beta1` to `apps/v1`. #1941
-* [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. #1917
-  * `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`
-* [ENHANCEMENT] Experimental TSDB: Added `cortex_ingester_shipper_dir_syncs_total`, `cortex_ingester_shipper_dir_sync_failures_total`, `cortex_ingester_shipper_uploads_total` and `cortex_ingester_shipper_upload_failures_total` metrics from TSDB shipper component. #1983
+* [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. The max concurrency is set via `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`. #1917
 * [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store and in memory index cache (many metrics to list, but all have `cortex_querier_bucket_store_` or `cortex_querier_blocks_index_cache_` prefix). #1996 
 * [ENHANCEMENT] Experimental TSDB: Improved multi-tenant bucket store. #1991
   * Allowed to configure the blocks sync interval via `-experimental.tsdb.bucket-store.sync-interval` (0 disables the sync)
   * Limited the number of tenants concurrently synched by `-experimental.tsdb.bucket-store.block-sync-concurrency`
   * Renamed `cortex_querier_sync_seconds` metric to `cortex_querier_blocks_sync_seconds`
   * Track `cortex_querier_blocks_sync_seconds` metric for the initial sync too
-  * Fixed race condition
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922
 * [BUGFIX] Table Manager: Fixed calculation of expected tables and creation of tables from next active schema considering grace period. #1976
-* [BUGFIX] Experimental TSDB: Fixed handling of out of order/bound samples in ingesters with the experimental TSDB blocks storage. #1864
-* [BUGFIX] Experimental TSDB: Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
-* [BUGFIX] Experimental TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
-* [BUGFIX] Experimental TSDB: Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
-* [BUGFIX] Experimental TSDB: `experimental.tsdb.ship-interval` of <=0 treated as disabled instead of allowing panic. #1975
-* [BUGFIX] Experimental TSDB: Fixed `cortex_ingester_queried_samples` and `cortex_ingester_queried_series` metrics when using block storage. #1981
-* [BUGFIX] Experimental TSDB: Fixed `cortex_ingester_memory_series` and `cortex_ingester_memory_users` metrics when using with the experimental TSDB blocks storage. #1982
-* [BUGFIX] Experimental TSDB: Fixed `cortex_ingester_memory_series_created_total` and `cortex_ingester_memory_series_removed_total` metrics when using TSDB blocks storage. #1990
+* [BUGFIX] Experimental TSDB: Fixed ingesters consistency during hand-over when using experimental TSDB blocks storage. #1854 #1818
+* [BUGFIX] Experimental TSDB: Fixed metrics when using experimental TSDB blocks storage. #1981 #1982 #1990 #1983
 * [BUGFIX] Experimental memberlist: Use the advertised address when sending packets to other peers of the Gossip memberlist. #1857
 
 ### Upgrading PostgreSQL (if you're using configs service)

@@ -277,6 +277,8 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		return i.v2Push(ctx, req)
 	}
 
+	// NOTE: because we use `unsafe` in deserialisation, we must not
+	// retain anything from `req` past the call to ReuseSlice
 	defer client.ReuseSlice(req.Timeseries)
 
 	userID, err := user.ExtractOrgID(ctx)
@@ -299,8 +301,6 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
-	// NOTE: because we use `unsafe` in deserialisation, we must not
-	// retain anything from `req` past the call to ReuseSlice
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			// append() copies the memory in `ts.Labels` except on the error path
@@ -316,13 +316,13 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			}
 
 			// non-validation error: abandon this request
-			return nil, wrapWithUser(err, userID)
+			return nil, grpcForwardableError(userID, http.StatusInternalServerError, err)
 		}
 	}
 
 	if lastPartialErr != nil {
-		// WrappedError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
+		// grpcForwardableError turns the error into a string so it no longer references `req`
+		return &client.WriteResponse{}, grpcForwardableError(userID, lastPartialErr.code, lastPartialErr)
 	}
 
 	if record != nil {

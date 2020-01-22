@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 )
@@ -50,11 +49,6 @@ func makeMetricLimitError(errorType string, labels labels.Labels, err error) err
 	}
 }
 
-func (e *validationError) WrapWithUser(userID string) *validationError {
-	e.err = wrapWithUser(e.err, userID)
-	return e
-}
-
 func (e *validationError) Error() string {
 	if e.err == nil {
 		return e.errorType
@@ -65,14 +59,15 @@ func (e *validationError) Error() string {
 	return fmt.Sprintf("%s for series %s", e.err.Error(), e.labels.String())
 }
 
-// WrappedError returns a HTTP gRPC error than is correctly forwarded over gRPC.
-func (e *validationError) WrappedError() error {
+// returns a HTTP gRPC error than is correctly forwarded over gRPC, with no reference to `e` retained.
+func grpcForwardableError(userID string, code int, e error) error {
 	return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
-		Code: int32(e.code),
-		Body: []byte(e.Error()),
+		Code: int32(code),
+		Body: []byte(wrapWithUser(e, userID).Error()),
 	})
 }
 
+// Note: does not retain a reference to `err`
 func wrapWithUser(err error, userID string) error {
-	return errors.Wrapf(err, "user=%s", userID)
+	return fmt.Errorf("user=%s: %s", userID, err)
 }

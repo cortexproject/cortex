@@ -11,9 +11,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -52,14 +54,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
-// ChunkStore is the read-interface to the Chunk Store.  Made an interface here
-// to reduce package coupling.
-type ChunkStore interface {
-	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
-}
-
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Queryable, *promql.Engine) {
+func New(cfg Config, distributor Distributor, chunkStore chunkstore.ChunkStore) (storage.Queryable, *promql.Engine) {
 	iteratorFunc := mergeChunks
 	if cfg.BatchIterators {
 		iteratorFunc = batch.NewChunkMergeIterator
@@ -82,7 +78,7 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 		if err != nil {
 			return nil, err
 		}
-		return newLazyQuerier(querier), nil
+		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
@@ -183,7 +179,7 @@ func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return metricsToSeriesSet(ms), nil, nil
+	return seriesset.MetricsToSeriesSet(ms), nil, nil
 }
 
 func (querier) Close() error {

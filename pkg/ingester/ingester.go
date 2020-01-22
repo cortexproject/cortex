@@ -437,6 +437,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
+
 	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
@@ -519,6 +520,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numChunks += len(wireChunks)
+
 		batch = append(batch, client.TimeSeriesChunk{
 			Labels: client.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,

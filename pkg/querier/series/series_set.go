@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package querier
+package series
 
 import (
 	"sort"
@@ -25,61 +25,69 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-// concreteSeriesSet implements storage.SeriesSet.
-type concreteSeriesSet struct {
+// ConcreteSeriesSet implements storage.SeriesSet.
+type ConcreteSeriesSet struct {
 	cur    int
 	series []storage.Series
 }
 
-func newConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
+// NewConcreteSeriesSet instantiates an in-memory series set from a series
+func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	sort.Sort(byLabels(series))
-	return &concreteSeriesSet{
+	return &ConcreteSeriesSet{
 		cur:    -1,
 		series: series,
 	}
 }
 
-func (c *concreteSeriesSet) Next() bool {
+// Next iterates through a series set and impls storage.SeriesSet
+func (c *ConcreteSeriesSet) Next() bool {
 	c.cur++
 	return c.cur < len(c.series)
 }
 
-func (c *concreteSeriesSet) At() storage.Series {
+// At returns the current series and impls storage.SeriesSet
+func (c *ConcreteSeriesSet) At() storage.Series {
 	return c.series[c.cur]
 }
 
-func (c *concreteSeriesSet) Err() error {
+// Err impls storage.SeriesSet
+func (c *ConcreteSeriesSet) Err() error {
 	return nil
 }
 
-// concreteSeries implements storage.Series.
-type concreteSeries struct {
+// ConcreteSeries implements storage.Series.
+type ConcreteSeries struct {
 	labels  labels.Labels
 	samples []model.SamplePair
 }
 
-func newConcreteSeries(ls labels.Labels, samples []model.SamplePair) *concreteSeries {
-	return &concreteSeries{
+// NewConcreteSeries instantiates an in memory series from a list of samples & labels
+func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSeries {
+	return &ConcreteSeries{
 		labels:  ls,
 		samples: samples,
 	}
 }
 
-func (c *concreteSeries) Labels() labels.Labels {
+// Labels impls storage.Series
+func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
 
-func (c *concreteSeries) Iterator() storage.SeriesIterator {
-	return newConcreteSeriesIterator(c)
+// Iterator impls storage.Series
+func (c *ConcreteSeries) Iterator() storage.SeriesIterator {
+	return NewConcreteSeriesIterator(c)
 }
 
 // concreteSeriesIterator implements storage.SeriesIterator.
 type concreteSeriesIterator struct {
 	cur    int
-	series *concreteSeries
+	series *ConcreteSeries
 }
 
-func newConcreteSeriesIterator(series *concreteSeries) storage.SeriesIterator {
+// NewConcreteSeriesIterator instaniates an in memory storage.SeriesIterator
+func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
 		series: series,
@@ -107,6 +115,11 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
+// NewErrIterator instantiates an errIterator
+func NewErrIterator(err error) storage.SeriesIterator {
+	return errIterator{err}
+}
+
 // errIterator implements storage.SeriesIterator, just returning an error.
 type errIterator struct {
 	err error
@@ -128,26 +141,28 @@ func (e errIterator) Err() error {
 	return e.err
 }
 
-func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {
+// MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
+func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
-		series = append(series, &concreteSeries{
+		series = append(series, &ConcreteSeries{
 			labels:  metricToLabels(ss.Metric),
 			samples: ss.Values,
 		})
 	}
-	return newConcreteSeriesSet(series)
+	return NewConcreteSeriesSet(series)
 }
 
-func metricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
+// MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
+func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
-		series = append(series, &concreteSeries{
+		series = append(series, &ConcreteSeries{
 			labels:  metricToLabels(m.Metric),
 			samples: nil,
 		})
 	}
-	return newConcreteSeriesSet(series)
+	return NewConcreteSeriesSet(series)
 }
 
 func metricToLabels(m model.Metric) labels.Labels {

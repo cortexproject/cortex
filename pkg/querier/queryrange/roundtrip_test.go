@@ -8,8 +8,12 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -41,7 +45,22 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	tw, _, err := NewTripperware(Config{}, util.Logger, fakeLimits{}, PrometheusCodec, nil)
+	tw, _, err := NewTripperware(Config{},
+		util.Logger,
+		fakeLimits{},
+		PrometheusCodec,
+		nil,
+		chunk.SchemaConfig{},
+		promql.EngineOpts{
+			Logger:        util.Logger,
+			Reg:           nil,
+			MaxConcurrent: 10,
+			MaxSamples:    1000,
+			Timeout:       time.Minute,
+		},
+		0,
+	)
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,4 +103,19 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	r.URL.Scheme = "http"
 	r.URL.Host = s.host
 	return s.next.RoundTrip(r)
+}
+
+func Test_ShardingConfigError(t *testing.T) {
+	_, _, err := NewTripperware(
+		Config{SumShards: true},
+		log.NewNopLogger(),
+		nil,
+		nil,
+		nil,
+		chunk.SchemaConfig{},
+		promql.EngineOpts{},
+		0,
+	)
+
+	require.EqualError(t, err, "a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
 }

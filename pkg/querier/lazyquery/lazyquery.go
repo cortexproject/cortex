@@ -1,26 +1,49 @@
-package querier
+package lazyquery
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
-type lazyQuerier struct {
+// LazyQueryable wraps a storage.Queryable
+type LazyQueryable struct {
+	q storage.Queryable
+}
+
+// Querier impls storage.Queryable
+func (lq LazyQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	q, err := lq.q.Querier(ctx, mint, maxt)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewLazyQuerier(q), nil
+}
+
+// NewLazyQueryable returns a lazily wrapped queryable
+func NewLazyQueryable(q storage.Queryable) storage.Queryable {
+	return LazyQueryable{q}
+}
+
+// LazyQuerier is a lazy-loaded adapter for a storage.Querier
+type LazyQuerier struct {
 	next storage.Querier
 }
 
-// newLazyQuerier wraps a storage.Querier, does the Select in the background.
+// NewLazyQuerier wraps a storage.Querier, does the Select in the background.
 // Return value cannot be used from more than one goroutine simultaneously.
-func newLazyQuerier(next storage.Querier) storage.Querier {
-	return lazyQuerier{next}
+func NewLazyQuerier(next storage.Querier) storage.Querier {
+	return LazyQuerier{next}
 }
 
-func (l lazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select impls Storage.Querier
+func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	future := make(chan storage.SeriesSet)
 	go func() {
 		set, _, err := l.next.Select(params, matchers...)
@@ -35,21 +58,24 @@ func (l lazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Ma
 	}, nil, nil
 }
 
-func (l lazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+// LabelValues impls Storage.Querier
+func (l LazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return l.next.LabelValues(name)
 }
 
-func (l lazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
+// LabelNames impls Storage.Querier
+func (l LazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return l.next.LabelNames()
 }
 
-func (l lazyQuerier) Close() error {
+// Close impls Storage.Querier
+func (l LazyQuerier) Close() error {
 	return l.next.Close()
 }
 
 // Get implements ChunkStore for the chunk tar HTTP handler.
-func (l lazyQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	store, ok := l.next.(ChunkStore)
+func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	store, ok := l.next.(chunkstore.ChunkStore)
 	if !ok {
 		return nil, fmt.Errorf("not supported")
 	}

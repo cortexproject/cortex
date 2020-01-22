@@ -1,7 +1,7 @@
 FROM golang:1.13.3-stretch
 RUN apt-get update && apt-get install -y curl python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN curl -sL https://deb.nodesource.com/setup_6.x | sh -
+RUN curl -sL https://deb.nodesource.com/setup_6.x | bash -
 RUN apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install -g postcss-cli autoprefixer
 ENV HUGO_VERSION=v0.59.1

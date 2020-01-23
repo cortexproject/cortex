@@ -35,7 +35,10 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 		t.Run(fixture.Name(), func(t *testing.T) {
 			indexClient, objectClient, err := testutils.Setup(fixture, tableName)
 			require.NoError(t, err)
-			defer fixture.Teardown() //nolint:errcheck
+			defer func() {
+				err = fixture.Teardown()
+				require.NoError(t, err)
+			}()
 
 			storageClientTest(t, indexClient, objectClient)
 		})

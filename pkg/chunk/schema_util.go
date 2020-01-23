@@ -130,12 +130,6 @@ func encodeTime(t uint32) []byte {
 	return encodedThroughBytes
 }
 
-func decodeTime(bs []byte) uint32 {
-	buf := make([]byte, 4)
-	_, _ = hex.Decode(buf, bs)
-	return binary.BigEndian.Uint32(buf)
-}
-
 // parseMetricNameRangeValue returns the metric name stored in metric name
 // range values. Currently checks range value key and returns the value as the
 // metric name.

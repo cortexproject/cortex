@@ -44,11 +44,9 @@ func (t timed) SetConfig(ctx context.Context, userID string, cfg configs.Config)
 }
 
 func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-		err  error
-	)
-	_ = instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	var cfgs map[string]configs.View
+	err := instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
 		cfgs, err = t.d.GetAllConfigs(ctx)
 		return err
 	})
@@ -57,9 +55,7 @@ func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, erro
 }
 
 func (t timed) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-	)
+	var cfgs map[string]configs.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfgs, err = t.d.GetConfigs(ctx, since)

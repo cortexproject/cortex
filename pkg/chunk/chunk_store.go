@@ -118,6 +118,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	chunks := []Chunk{chunk}
 
 	err := c.storage.PutChunks(ctx, chunks)
@@ -125,7 +126,9 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	_ = c.writeBackCache(ctx, chunks)
+	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+	}
 
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {

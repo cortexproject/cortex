@@ -88,6 +88,10 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
+	if registerer != nil {
+		bucketClient = cortex_tsdb.BucketWithMetrics("compactor", bucketClient)
+	}
+
 	tsdbCompactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
 	if err != nil {
 		cancelCtx()

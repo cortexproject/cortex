@@ -33,6 +33,10 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometh
 		return nil, err
 	}
 
+	if registerer != nil {
+		bucketClient = tsdb.BucketWithMetrics("querier", bucketClient)
+	}
+
 	us, err := NewUserStore(cfg, bucketClient, logLevel, util.Logger, registerer)
 	if err != nil {
 		return nil, err

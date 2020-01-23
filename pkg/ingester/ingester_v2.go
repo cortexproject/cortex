@@ -69,6 +69,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
+	if registerer != nil {
+		bucketClient = cortex_tsdb.BucketWithMetrics("ingester", bucketClient)
+	}
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,

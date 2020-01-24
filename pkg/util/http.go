@@ -130,10 +130,10 @@ func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compressi
 	case FramedSnappy:
 		buf := bytes.Buffer{}
 		writer := snappy.NewBufferedWriter(&buf)
-		defer writer.Close()
 		if _, err := writer.Write(data); err != nil {
 			return err
 		}
+		writer.Close()
 		data = buf.Bytes()
 	case RawSnappy:
 		data = snappy.Encode(nil, data)

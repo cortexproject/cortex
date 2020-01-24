@@ -18,16 +18,12 @@ import (
 
 // RegisterRoutes registers the configs API HTTP routes with the provided Router.
 func (r *Ruler) RegisterRoutes(router *mux.Router) {
-	if r.store == nil {
-		level.Info(util.Logger).Log("msg", "ruler configured with store that does not support api")
-		return
-	}
 	for _, route := range []struct {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
 		{"get_rules", "GET", "/api/prom/api/v1/rules", r.rules},
-		{"get_alerts", "GET", "/api/prom/api/v1/rules", r.alerts},
+		{"get_alerts", "GET", "/api/prom/api/v1/alerts", r.alerts},
 	} {
 		level.Debug(util.Logger).Log("msg", "ruler: registering route", "name", route.name, "method", route.method, "path", route.path)
 		router.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
@@ -148,7 +144,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	groups := make([]*RuleGroup, len(rgs))
+	groups := make([]*RuleGroup, 0, len(rgs))
 
 	for _, g := range rgs {
 		grp := RuleGroup{
@@ -229,7 +225,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	alerts := make([]*Alert, len(rgs))
+	alerts := make([]*Alert, 0, len(rgs))
 
 	for _, g := range rgs {
 		for _, rl := range g.Rules {

@@ -38,7 +38,6 @@ func newMockRuleStore() *mockRuleStore {
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
-						For:    &interval,
 					},
 				},
 				Interval: &interval,

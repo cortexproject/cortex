@@ -17,6 +17,7 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -125,10 +126,11 @@ type Ruler struct {
 	terminated chan struct{}
 
 	registry prometheus.Registerer
+	logger   log.Logger
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor, reg prometheus.Registerer) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -148,11 +150,12 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		notifiers:    map[string]*rulerNotifier{},
 		store:        ruleStore,
 		pusher:       d,
-		mapper:       newMapper(cfg.RulePath),
+		mapper:       newMapper(cfg.RulePath, logger),
 		userManagers: map[string]*promRules.Manager{},
 		done:         make(chan struct{}),
 		terminated:   make(chan struct{}),
 		registry:     reg,
+		logger:       logger,
 	}
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
@@ -173,7 +176,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	}
 
 	go ruler.run()
-	level.Info(util.Logger).Log("msg", "ruler up and running")
+	level.Info(logger).Log("msg", "ruler up and running")
 
 	return ruler, nil
 }
@@ -191,27 +194,27 @@ func (r *Ruler) Stop() {
 	r.notifiersMtx.Unlock()
 
 	if r.cfg.EnableSharding {
-		level.Info(util.Logger).Log("msg", "attempting shutdown lifecycle")
+		level.Info(r.logger).Log("msg", "attempting shutdown lifecycle")
 		r.lifecycler.Shutdown()
-		level.Info(util.Logger).Log("msg", "shutting down the ring")
+		level.Info(r.logger).Log("msg", "shutting down the ring")
 		r.ring.Stop()
 	}
 
-	level.Info(util.Logger).Log("msg", "stopping user managers")
+	level.Info(r.logger).Log("msg", "stopping user managers")
 	wg := sync.WaitGroup{}
 	r.userManagerMtx.Lock()
 	for user, manager := range r.userManagers {
-		level.Debug(util.Logger).Log("msg", "shutting down user  manager", "user", user)
+		level.Debug(r.logger).Log("msg", "shutting down user  manager", "user", user)
 		wg.Add(1)
 		go func(manager *promRules.Manager, user string) {
 			manager.Stop()
 			wg.Done()
-			level.Debug(util.Logger).Log("msg", "user manager shut down", "user", user)
+			level.Debug(r.logger).Log("msg", "user manager shut down", "user", user)
 		}(manager, user)
 	}
 	wg.Wait()
 	r.userManagerMtx.Unlock()
-	level.Info(util.Logger).Log("msg", "all user managers stopped")
+	level.Info(r.logger).Log("msg", "all user managers stopped")
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -287,15 +290,15 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 func (r *Ruler) ownsRule(hash uint32) (bool, error) {
 	rlrs, err := r.ring.Get(hash, ring.Read, []ring.IngesterDesc{})
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "error reading ring to verify rule group ownership", "err", err)
+		level.Warn(r.logger).Log("msg", "error reading ring to verify rule group ownership", "err", err)
 		ringCheckErrors.Inc()
 		return false, err
 	}
 	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
-		level.Debug(util.Logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+		level.Debug(r.logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 		return true, nil
 	}
-	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+	level.Debug(r.logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 	return false, nil
 }
 
@@ -318,7 +321,7 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(unshardedPage))
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to serve status page", "err", err)
+			level.Error(r.logger).Log("msg", "unable to serve status page", "err", err)
 		}
 	}
 }
@@ -345,7 +348,7 @@ func (r *Ruler) loadRules(ctx context.Context) {
 
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "unable to poll for rules", "err", err)
+		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
 		return
 	}
 
@@ -362,13 +365,13 @@ func (r *Ruler) loadRules(ctx context.Context) {
 				ringHasher.Reset()
 				_, err = ringHasher.Write([]byte(id))
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "failed to create group for user", "user", user, "namespace", g.Namespace, "group", g.Name, "err", err)
+					level.Error(r.logger).Log("msg", "failed to create group for user", "user", user, "namespace", g.Namespace, "group", g.Name, "err", err)
 					continue
 				}
 				hash := ringHasher.Sum32()
 				owned, err := r.ownsRule(hash)
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "unable to verify rule group ownership ownership, will retry on the next poll", "err", err)
+					level.Error(r.logger).Log("msg", "unable to verify rule group ownership ownership, will retry on the next poll", "err", err)
 					return
 				}
 				if owned {
@@ -379,36 +382,7 @@ func (r *Ruler) loadRules(ctx context.Context) {
 			filteredGroups = cfg
 		}
 
-		// Map the files to disk and return the file names to be passed to the users manager
-		update, files, err := r.mapper.MapRules(user, filteredGroups.Formatted())
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to map rule files", "user", user, "err", err)
-			continue
-		}
-
-		if update {
-			configUpdatesTotal.WithLabelValues(user).Inc()
-			r.userManagerMtx.Lock()
-			manager, exists := r.userManagers[user]
-			r.userManagerMtx.Unlock()
-			if !exists {
-				manager, err = r.newManager(ctx, user)
-				if err != nil {
-					level.Error(util.Logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
-					continue
-				}
-				manager.Run()
-
-				r.userManagerMtx.Lock()
-				r.userManagers[user] = manager
-				r.userManagerMtx.Unlock()
-			}
-			err = manager.Update(r.cfg.EvaluationInterval, files, nil)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
-				continue
-			}
-		}
+		r.syncManager(ctx, user, filteredGroups)
 	}
 
 	// Check for deleted users and remove them
@@ -418,10 +392,44 @@ func (r *Ruler) loadRules(ctx context.Context) {
 		if _, exists := configs[user]; !exists {
 			go mngr.Stop()
 			delete(r.userManagers, user)
-			level.Info(util.Logger).Log("msg", "deleting rule manager", "user", user)
+			level.Info(r.logger).Log("msg", "deleting rule manager", "user", user)
 		}
 	}
 
+}
+
+// syncManager maps the rule files to disk, detects any changes and will create/update the
+// the users Prometheus Rules Manager
+func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.RuleGroupList) {
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
+
+	// Map the files to disk and return the file names to be passed to the users manager
+	update, files, err := r.mapper.MapRules(user, groups.Formatted())
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to map rule files", "user", user, "err", err)
+		return
+	}
+
+	if update {
+		level.Info(r.logger).Log("msg", "updating rules", "user", "user")
+		configUpdatesTotal.WithLabelValues(user).Inc()
+		manager, exists := r.userManagers[user]
+		if !exists {
+			manager, err = r.newManager(ctx, user)
+			if err != nil {
+				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
+				return
+			}
+			manager.Run()
+			r.userManagers[user] = manager
+		}
+		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
+		if err != nil {
+			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
+			return
+		}
+	}
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id
@@ -441,7 +449,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	// Wrap registerer with userID and cortex_ prefix
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
-
+	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
 		Appendable:  tsdb,
 		TSDB:        tsdb,
@@ -449,7 +457,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
-		Logger:      util.Logger,
+		Logger:      logger,
 		Registerer:  reg,
 	}
 	return promRules.NewManager(opts), nil

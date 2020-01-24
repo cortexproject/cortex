@@ -2,7 +2,7 @@ package ruler
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
@@ -53,8 +55,14 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		MaxConcurrent: 20,
 		Timeout:       2 * time.Minute,
 	})
-	queryable := querier.NewQueryable(nil, nil, nil, querier.Config{})
-	ruler, err := NewRuler(cfg, engine, queryable, nil, prometheus.NewRegistry())
+
+	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return nil, errors.New("not implemented")
+	})
+
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+	ruler, err := NewRuler(cfg, engine, noopQueryable, nil, prometheus.NewRegistry(), l)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +123,4 @@ func TestRuler_Rules(t *testing.T) {
 	rls, err := r.Rules(ctx, &RulesRequest{})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
-	for _, rule := range rls.GetGroups() {
-		fmt.Println(rule)
-	}
 }

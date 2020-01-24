@@ -415,13 +415,14 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
 		return
 	}
 
 	if cfg.Ruler.EnableAPI {
-		t.ruler.RegisterRoutes(t.server.HTTP)
+		subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
+		t.ruler.RegisterRoutes(subrouter)
 	}
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
@@ -460,7 +461,7 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 
 	// TODO this clashed with the queirer and the distributor, so we cannot
 	// run them in the same process.
-	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
+	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
 	return
 }
 

@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
@@ -16,13 +16,15 @@ import (
 type mapper struct {
 	Path string // Path specifies the directory in which rule files will be mapped.
 
-	FS afero.Fs
+	FS     afero.Fs
+	logger log.Logger
 }
 
-func newMapper(path string) *mapper {
+func newMapper(path string, logger log.Logger) *mapper {
 	return &mapper{
-		Path: path,
-		FS:   afero.NewOsFs(),
+		Path:   path,
+		FS:     afero.NewOsFs(),
+		logger: logger,
 	}
 }
 
@@ -62,7 +64,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 		if ruleGroups == nil {
 			err = m.FS.Remove(fullFileName)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
+				level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
 			}
 			anyUpdated = true
 		}
@@ -98,7 +100,7 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 		}
 	}
 
-	level.Info(util.Logger).Log("msg", "updating rule file", "file", filename)
+	level.Info(m.logger).Log("msg", "updating rule file", "file", filename)
 	err = afero.WriteFile(m.FS, filename, d, 0777)
 	if err != nil {
 		return false, err

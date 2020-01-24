@@ -24,7 +24,7 @@ type syncerMetrics struct {
 }
 
 // Copied (and modified with Cortex prefix) from Thanos, pkg/compact/compact.go
-// We also ignore "group" label, since we only use single group.
+// We also ignore "group" label, since we only use a single group.
 func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 	var m syncerMetrics
 

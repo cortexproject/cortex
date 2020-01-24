@@ -2,7 +2,14 @@
 
 # Expect as input parameter the commits range to analyze.
 if [ $# -ne 1 ]; then
-    echo "Usage: $0 COMMIT-RANGE"
+    echo "Usage: $0 range"
+    echo ""
+    echo "  range   The commit range to compare as documented at:"
+    echo "          https://git-scm.com/docs/gitrevisions"
+    echo ""
+    echo "Example:"
+    echo "  $0 v0.4.0...master"
+    echo ""
     exit 1
 fi
 

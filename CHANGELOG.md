@@ -12,13 +12,13 @@ instructions below to upgrade your PostgreSQL.
 
 * [CHANGE] The frontend component now does not cache results if it finds a `Cache-Control` header and if one of its values is `no-store`. #1974
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
-  * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
-  * `ruler.group-timeout`has been removed
-  * `ruler.num-workers` has been removed
-  * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files
+  * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`.
+  * `ruler.group-timeout`has been removed.
+  * `ruler.num-workers` has been removed.
+  * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files.
   * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
   * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
-  * Ruler sharding requires a ring which can be configured via the ring flags prefixed by `ruler.ring.`
+  * Ruler sharding requires a ring which can be configured via the ring flags prefixed by `ruler.ring.`. #1987
 * [CHANGE] Use relative links from /ring page to make it work when used behind reverse proxy. #1896
 * [CHANGE] Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. `-ingester.normalise-tokens` is now deprecated, and ignored. If you want to switch back to using denormalised tokens, you need to downgrade to Cortex 0.4.0. Previous versions don't handle claiming tokens from normalised ingesters correctly. #1809

@@ -3468,6 +3468,7 @@ instructions below to upgrade your Postgres.&lt;/p&gt;
 &lt;li&gt;Fixed race condition&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Added dedicated flag &lt;code&gt;-experimental.tsdb.bucket-store.tenant-sync-concurrency&lt;/code&gt; to configure the maximum number of concurrent tenants for which blocks are synched. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2026&#34;&gt;#2026&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: Expose metrics for objstore operations (prefixed with &lt;code&gt;cortex_&amp;lt;component&amp;gt;_thanos_objstore_&lt;/code&gt;, component being one of &lt;code&gt;ingester&lt;/code&gt;, &lt;code&gt;querier&lt;/code&gt; and &lt;code&gt;compactor&lt;/code&gt;). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2027&#34;&gt;#2027&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1861&#34;&gt;#1861&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1904&#34;&gt;#1904&lt;/a&gt; ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1921&#34;&gt;#1921&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Reduce memory usage when ingester Push() errors. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1922&#34;&gt;#1922&lt;/a&gt;&lt;/li&gt;

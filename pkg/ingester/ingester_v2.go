@@ -70,7 +70,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	}
 
 	if registerer != nil {
-		bucketClient = cortex_tsdb.BucketWithMetrics("ingester", bucketClient)
+		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_ingester_", registerer))
 	}
 
 	i := &Ingester{

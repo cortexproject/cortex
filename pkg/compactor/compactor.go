@@ -89,7 +89,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 	}
 
 	if registerer != nil {
-		bucketClient = cortex_tsdb.BucketWithMetrics("compactor", bucketClient)
+		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_compactor_", registerer))
 	}
 
 	tsdbCompactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())

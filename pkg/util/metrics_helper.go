@@ -71,27 +71,27 @@ func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 	return sum(mfm[name], gaugeValue)
 }
 
-func (mfm MetricFamilyMap) SumHistograms(s string) HistogramData {
+func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
 	hd := HistogramData{}
-	mfm.SumHistogramsTo(s, &hd)
+	mfm.SumHistogramsTo(name, &hd)
 	return hd
 }
 
-func (mfm MetricFamilyMap) SumHistogramsTo(name string, hd *HistogramData) {
+func (mfm MetricFamilyMap) SumHistogramsTo(name string, output *HistogramData) {
 	for _, m := range mfm[name].GetMetric() {
-		hd.AddHistogram(m.GetHistogram())
+		output.AddHistogram(m.GetHistogram())
 	}
 }
 
-func (mfm MetricFamilyMap) SumSummaries(s string) SummaryData {
+func (mfm MetricFamilyMap) SumSummaries(name string) SummaryData {
 	sd := SummaryData{}
-	mfm.SumSummariesTo(s, &sd)
+	mfm.SumSummariesTo(name, &sd)
 	return sd
 }
 
-func (mfm MetricFamilyMap) SumSummariesTo(name string, hd *SummaryData) {
+func (mfm MetricFamilyMap) SumSummariesTo(name string, output *SummaryData) {
 	for _, m := range mfm[name].GetMetric() {
-		hd.AddSummary(m.GetSummary())
+		output.AddSummary(m.GetSummary())
 	}
 }
 

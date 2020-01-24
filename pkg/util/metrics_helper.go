@@ -132,8 +132,8 @@ func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Re
 
 func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
 	result := float64(0)
-	for _, perUser := range d {
-		result += perUser.SumCounters(counter)
+	for _, userMetrics := range d {
+		result += userMetrics.SumCounters(counter)
 	}
 	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, result)
 }
@@ -143,8 +143,8 @@ func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
-	for user, perMetric := range d {
-		v := perMetric.SumCounters(counter)
+	for user, userMetrics := range d {
+		v := userMetrics.SumCounters(counter)
 
 		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, v, user)
 	}
@@ -152,8 +152,8 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Me
 
 func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
 	result := float64(0)
-	for _, perMetric := range d {
-		result += perMetric.SumGauges(gauge)
+	for _, userMetrics := range d {
+		result += userMetrics.SumGauges(gauge)
 	}
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }

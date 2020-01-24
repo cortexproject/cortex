@@ -6,18 +6,17 @@
 ## 0.6.0 / 2020-01-22
 
 Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that might need to be sharded.
-If you are running with a high `-ruler.num-workers` and if you're not able to execute all your rules in `-ruler.evaluation-interval`, then you'll need to shard.
-Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full
-instructions below to upgrade your PostgreSQL.
+Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full instructions below to upgrade your PostgreSQL.
 
 * [CHANGE] The frontend component now does not cache results if it finds a `Cache-Control` header and if one of its values is `no-store`. #1974
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
-  * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`.
-  * `ruler.group-timeout`has been removed.
-  * `ruler.num-workers` has been removed.
-  * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files.
-  * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
-  * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
+  * `-ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`.
+  * `-ruler.group-timeout`has been removed.
+  * `-ruler.num-workers` has been removed.
+  * `-ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files.
+  * `-ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
+  * `-ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
+  * `-ruler.evaluation-interval` default value has changed from `15s` to `1m` to match the default evaluation interval in Prometheus.
   * Ruler sharding requires a ring which can be configured via the ring flags prefixed by `ruler.ring.`. #1987
 * [CHANGE] Use relative links from /ring page to make it work when used behind reverse proxy. #1896
 * [CHANGE] Deprecated `-distributor.limiter-reload-period` flag. #1766

@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -34,9 +33,23 @@ const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 )
 
+// Shipper interface is used to have an easy way to mock it in tests.
+type Shipper interface {
+	Sync(ctx context.Context) (uploaded int, err error)
+}
+
+type userTSDB struct {
+	*tsdb.DB
+
+	// Thanos shipper used to ship blocks to the storage.
+	shipper       Shipper
+	shipperCtx    context.Context
+	shipperCancel context.CancelFunc
+}
+
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs    map[string]*tsdb.DB // tsdb sharded by userID
+	dbs    map[string]*userTSDB // tsdb sharded by userID
 	bucket objstore.Bucket
 
 	// Keeps count of in-flight requests
@@ -65,7 +78,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:         make(chan struct{}),
 		wal:          &noopWAL{},
 		TSDBState: TSDBState{
-			dbs:         make(map[string]*tsdb.DB),
+			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
 			tsdbMetrics: newTSDBMetrics(registerer),
 		},
@@ -97,6 +110,12 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
+
+	// Run the blocks shipping in a dedicated go routine.
+	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		i.done.Add(1)
+		go i.shipBlocksLoop()
+	}
 
 	return i, nil
 }
@@ -371,14 +390,28 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	return result, nil
 }
 
-func (i *Ingester) getTSDB(userID string) *tsdb.DB {
+func (i *Ingester) getTSDB(userID string) *userTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	db, _ := i.TSDBState.dbs[userID]
 	return db
 }
 
-func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) {
+// List all users for which we have a TSDB. We do it here in order
+// to keep the mutex locked for the shortest time possible.
+func (i *Ingester) getTSDBUsers() []string {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	ids := make([]string, 0, len(i.TSDBState.dbs))
+	for userID := range i.TSDBState.dbs {
+		ids = append(ids, userID)
+	}
+
+	return ids
+}
+
+func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error) {
 	db := i.getTSDB(userID)
 	if db != nil {
 		return db, nil
@@ -418,7 +451,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 }
 
 // createTSDB creates a TSDB for a given userID, and returns the created db.
-func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
+func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
 
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
@@ -433,6 +466,10 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 		return nil, err
 	}
 
+	userDB := &userTSDB{
+		DB: db,
+	}
+
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
 	// the series from the storage.
@@ -445,23 +482,18 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, tsdbPromReg, udir, cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket), func() labels.Labels { return l }, metadata.ReceiveSource)
-		i.done.Add(1)
-		go func() {
-			defer i.done.Done()
-			if err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
-				if uploaded, err := s.Sync(context.Background()); err != nil {
-					level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-				}
-				return nil
-			}); err != nil {
-				level.Warn(util.Logger).Log("err", err)
-			}
-		}()
+		userDB.shipper = shipper.New(
+			util.Logger,
+			tsdbPromReg,
+			udir,
+			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
+			func() labels.Labels { return l }, metadata.ReceiveSource)
+
+		userDB.shipperCtx, userDB.shipperCancel = context.WithCancel(context.Background())
 	}
 
 	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
-	return db, nil
+	return userDB, nil
 }
 
 func (i *Ingester) closeAllTSDB() {
@@ -471,10 +503,10 @@ func (i *Ingester) closeAllTSDB() {
 	wg.Add(len(i.TSDBState.dbs))
 
 	// Concurrently close all users TSDB
-	for userID, db := range i.TSDBState.dbs {
+	for userID, userDB := range i.TSDBState.dbs {
 		userID := userID
 
-		go func(db *tsdb.DB) {
+		go func(db *userTSDB) {
 			defer wg.Done()
 
 			if err := db.Close(); err != nil {
@@ -489,7 +521,7 @@ func (i *Ingester) closeAllTSDB() {
 			i.userStatesMtx.Lock()
 			delete(i.TSDBState.dbs, userID)
 			i.userStatesMtx.Unlock()
-		}(db)
+		}(userDB)
 	}
 
 	// Wait until all Close() completed
@@ -578,4 +610,89 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 	}
 
 	return float64(count)
+}
+
+func (i *Ingester) shipBlocksLoop() {
+	// It's important to add the shipper loop to the "done" wait group,
+	// because the blocks transfer should start only once it's guaranteed
+	// there's no shipping on-going.
+	defer i.done.Done()
+
+	// Start a goroutine that will cancel all shipper contexts on ingester
+	// shutdown, so that if there's any shipper sync in progress it will be
+	// quickly canceled.
+	go func() {
+		<-i.quit
+
+		for _, userID := range i.getTSDBUsers() {
+			if userDB := i.getTSDB(userID); userDB != nil && userDB.shipperCancel != nil {
+				userDB.shipperCancel()
+			}
+		}
+	}()
+
+	shipTicker := time.NewTicker(i.cfg.TSDBConfig.ShipInterval)
+	defer shipTicker.Stop()
+
+	for {
+		select {
+		case <-shipTicker.C:
+			i.shipBlocks()
+
+		case <-i.quit:
+			return
+		}
+	}
+}
+
+func (i *Ingester) shipBlocks() {
+	// Do not ship blocks if the ingester is PENDING or JOINING. It's
+	// particularly important for the JOINING state because there could
+	// be a blocks transfer in progress (from another ingester) and if we
+	// run the shipper in such state we could end up with race conditions.
+	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
+		level.Info(util.Logger).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
+		return
+	}
+
+	// Create a pool of workers which will synchronize blocks. The pool size
+	// is limited in order to avoid to concurrently sync a lot of tenants in
+	// a large cluster.
+	workersChan := make(chan string)
+	wg := &sync.WaitGroup{}
+	wg.Add(i.cfg.TSDBConfig.ShipConcurrency)
+
+	for j := 0; j < i.cfg.TSDBConfig.ShipConcurrency; j++ {
+		go func() {
+			defer wg.Done()
+
+			for userID := range workersChan {
+				// Get the user's DB. If the user doesn't exist, we skip it.
+				userDB := i.getTSDB(userID)
+				if userDB == nil || userDB.shipper == nil {
+					continue
+				}
+
+				// Skip if the shipper context has been canceled.
+				if userDB.shipperCtx.Err() != nil {
+					continue
+				}
+
+				// Run the shipper's Sync() to upload unshipped blocks.
+				if uploaded, err := userDB.shipper.Sync(userDB.shipperCtx); err != nil {
+					level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
+				} else {
+					level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
+				}
+			}
+		}()
+	}
+
+	for _, userID := range i.getTSDBUsers() {
+		workersChan <- userID
+	}
+	close(workersChan)
+
+	// Wait until all workers completed.
+	wg.Wait()
 }

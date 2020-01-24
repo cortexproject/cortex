@@ -25,17 +25,19 @@ const (
 
 // Validation errors
 var (
-	errUnsupportedBackend = errors.New("unsupported TSDB storage backend")
+	errUnsupportedBackend     = errors.New("unsupported TSDB storage backend")
+	errInvalidShipConcurrency = errors.New("invalid TSDB ship concurrency")
 )
 
 // Config holds the config information for TSDB storage
 type Config struct {
-	Dir          string            `yaml:"dir"`
-	BlockRanges  DurationList      `yaml:"block_ranges_period"`
-	Retention    time.Duration     `yaml:"retention_period"`
-	ShipInterval time.Duration     `yaml:"ship_interval"`
-	Backend      string            `yaml:"backend"`
-	BucketStore  BucketStoreConfig `yaml:"bucket_store"`
+	Dir             string            `yaml:"dir"`
+	BlockRanges     DurationList      `yaml:"block_ranges_period"`
+	Retention       time.Duration     `yaml:"retention_period"`
+	ShipInterval    time.Duration     `yaml:"ship_interval"`
+	ShipConcurrency int               `yaml:"ship_concurrency"`
+	Backend         string            `yaml:"backend"`
+	BucketStore     BucketStoreConfig `yaml:"bucket_store"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -95,7 +97,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "directory to place all TSDB's into")
 	f.Var(&cfg.BlockRanges, "experimental.tsdb.block-ranges-period", "comma separated list of TSDB block ranges in time.Duration format")
 	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB block retention")
-	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping. 0 means shipping is disabled.")
+	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 1*time.Minute, "How frequently the TSDB blocks are scanned and new ones are shipped to the storage. 0 means shipping is disabled.")
+	f.IntVar(&cfg.ShipConcurrency, "experimental.tsdb.ship-concurrency", 10, "Maximum number of tenants concurrently shipping blocks to the storage.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")
 	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
 }
@@ -106,18 +109,23 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedBackend
 	}
 
+	if cfg.ShipInterval > 0 && cfg.ShipConcurrency <= 0 {
+		return errInvalidShipConcurrency
+	}
+
 	return nil
 }
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier
 type BucketStoreConfig struct {
-	SyncDir              string        `yaml:"sync_dir"`
-	SyncInterval         time.Duration `yaml:"sync_interval"`
-	IndexCacheSizeBytes  uint64        `yaml:"index_cache_size_bytes"`
-	MaxChunkPoolBytes    uint64        `yaml:"max_chunk_pool_bytes"`
-	MaxSampleCount       uint64        `yaml:"max_sample_count"`
-	MaxConcurrent        int           `yaml:"max_concurrent"`
-	BlockSyncConcurrency int           `yaml:"block_sync_concurrency"`
+	SyncDir               string        `yaml:"sync_dir"`
+	SyncInterval          time.Duration `yaml:"sync_interval"`
+	IndexCacheSizeBytes   uint64        `yaml:"index_cache_size_bytes"`
+	MaxChunkPoolBytes     uint64        `yaml:"max_chunk_pool_bytes"`
+	MaxSampleCount        uint64        `yaml:"max_sample_count"`
+	MaxConcurrent         int           `yaml:"max_concurrent"`
+	TenantSyncConcurrency int           `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency  int           `yaml:"block_sync_concurrency"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -128,7 +136,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Uint64Var(&cfg.MaxChunkPoolBytes, "experimental.tsdb.bucket-store.max-chunk-pool-bytes", uint64(2*units.Gibibyte), "Max size of chunk pool in bytes per tenant.")
 	f.Uint64Var(&cfg.MaxSampleCount, "experimental.tsdb.bucket-store.max-sample-count", 0, "Max number of samples (0 is no limit) per query when loading series from storage.")
 	f.IntVar(&cfg.MaxConcurrent, "experimental.tsdb.bucket-store.max-concurrent", 20, "Max number of concurrent queries to the storage per tenant.")
-	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Number of Go routines to use when syncing blocks from object storage per tenant.")
+	f.IntVar(&cfg.TenantSyncConcurrency, "experimental.tsdb.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
+	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

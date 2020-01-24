@@ -171,7 +171,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	io.Copy(w, resp.Body)
 }
 
 func writeError(w http.ResponseWriter, err error) {

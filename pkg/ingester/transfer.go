@@ -545,7 +545,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		wg.Add(len(i.TSDBState.dbs))
 
 		for _, userDB := range i.TSDBState.dbs {
-			go func(db *UserTSDB) {
+			go func(db *userTSDB) {
 				defer wg.Done()
 				db.DisableCompactions()
 			}(userDB)

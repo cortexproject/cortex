@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-type userTSDB struct {
+type testUserTSDB struct {
 	userID      string
 	shipPercent int
 	numBlocks   int
@@ -26,7 +26,7 @@ type userTSDB struct {
 	unshipped   []string
 }
 
-func createTSDB(t *testing.T, dir string, users []*userTSDB) {
+func createTSDB(t *testing.T, dir string, users []*testUserTSDB) {
 	for _, user := range users {
 
 		os.MkdirAll(filepath.Join(dir, user.userID), 0777)
@@ -87,7 +87,7 @@ func TestUnshippedBlocks(t *testing.T) {
 		One of them has all blocks shipped,
 		One of them has no blocks shipped,
 	*/
-	users := []*userTSDB{
+	users := []*testUserTSDB{
 		{
 			userID:      "0",
 			shipPercent: 70,
@@ -157,7 +157,7 @@ func TestTransferUser(t *testing.T) {
 	dir, err := ioutil.TempDir("", "tsdb")
 	require.NoError(t, err)
 
-	createTSDB(t, dir, []*userTSDB{
+	createTSDB(t, dir, []*testUserTSDB{
 		{
 			userID:      "0",
 			shipPercent: 0,

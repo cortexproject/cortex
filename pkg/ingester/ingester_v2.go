@@ -38,8 +38,7 @@ type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
 }
 
-// UserTSDB is a user's TSDB.
-type UserTSDB struct {
+type userTSDB struct {
 	*tsdb.DB
 
 	// Thanos shipper used to ship blocks to the storage.
@@ -50,7 +49,7 @@ type UserTSDB struct {
 
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs    map[string]*UserTSDB // tsdb sharded by userID
+	dbs    map[string]*userTSDB // tsdb sharded by userID
 	bucket objstore.Bucket
 
 	// Keeps count of in-flight requests
@@ -79,7 +78,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:         make(chan struct{}),
 		wal:          &noopWAL{},
 		TSDBState: TSDBState{
-			dbs:         make(map[string]*UserTSDB),
+			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
 			tsdbMetrics: newTSDBMetrics(registerer),
 		},
@@ -391,7 +390,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	return result, nil
 }
 
-func (i *Ingester) getTSDB(userID string) *UserTSDB {
+func (i *Ingester) getTSDB(userID string) *userTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	db, _ := i.TSDBState.dbs[userID]
@@ -412,7 +411,7 @@ func (i *Ingester) getTSDBUsers() []string {
 	return ids
 }
 
-func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*UserTSDB, error) {
+func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error) {
 	db := i.getTSDB(userID)
 	if db != nil {
 		return db, nil
@@ -452,7 +451,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*UserTSDB, error)
 }
 
 // createTSDB creates a TSDB for a given userID, and returns the created db.
-func (i *Ingester) createTSDB(userID string) (*UserTSDB, error) {
+func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
 
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
@@ -467,7 +466,7 @@ func (i *Ingester) createTSDB(userID string) (*UserTSDB, error) {
 		return nil, err
 	}
 
-	userDB := &UserTSDB{
+	userDB := &userTSDB{
 		DB: db,
 	}
 
@@ -507,7 +506,7 @@ func (i *Ingester) closeAllTSDB() {
 	for userID, userDB := range i.TSDBState.dbs {
 		userID := userID
 
-		go func(db *UserTSDB) {
+		go func(db *userTSDB) {
 			defer wg.Done()
 
 			if err := db.Close(); err != nil {

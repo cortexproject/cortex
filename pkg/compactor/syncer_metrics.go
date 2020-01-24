@@ -123,7 +123,7 @@ func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
 	m.garbageCollectionFailures.Add(mfm.SumCounters("thanos_compact_garbage_collection_failures_total"))
 	m.garbageCollectionDuration.Add(mfm.SumHistograms("thanos_compact_garbage_collection_duration_seconds"))
 
-	// There have "group" label, but we sum them all together.
+	// These metrics have "group" label, but we sum them all together.
 	m.compactions.Add(mfm.SumCounters("thanos_compact_group_compactions_total"))
 	m.compactionRunsStarted.Add(mfm.SumCounters("thanos_compact_group_compaction_runs_started_total"))
 	m.compactionRunsCompleted.Add(mfm.SumCounters("thanos_compact_group_compaction_runs_completed_total"))

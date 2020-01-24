@@ -114,7 +114,7 @@ func TestSyncerMetrics(t *testing.T) {
 
 func generateTestData(base float64) *prometheus.Registry {
 	r := prometheus.NewRegistry()
-	m := newTesSyncerMetrics(r)
+	m := newTestSyncerMetrics(r)
 	m.syncMetas.Add(1 * base)
 	m.syncMetaFailures.Add(2 * base)
 	m.syncMetaDuration.Observe(3 * base / 10000)
@@ -156,7 +156,7 @@ type testSyncerMetrics struct {
 	verticalCompactions       *prometheus.CounterVec
 }
 
-func newTesSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
+func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 	var m testSyncerMetrics
 
 	m.syncMetas = prometheus.NewCounter(prometheus.CounterOpts{

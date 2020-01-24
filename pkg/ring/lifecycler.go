@@ -422,7 +422,10 @@ loop:
 	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	_ = i.changeState(context.Background(), LEAVING)
+	err := i.changeState(context.Background(), LEAVING)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.

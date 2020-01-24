@@ -56,10 +56,6 @@ func (cfg *Config) session() (*gocql.Session, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	if err := cfg.createKeyspace(); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
@@ -70,7 +66,19 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cfg.setClusterConfig(cluster)
 
-	return cluster.CreateSession()
+	session, err := cluster.CreateSession()
+	if err != nil {
+		if err != gocql.ErrNoConnectionsStarted {
+			return nil, errors.WithStack(err)
+		}
+		// keyspace not exist
+		if err := cfg.createKeyspace(); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		session, err = cluster.CreateSession()
+	}
+
+	return session, err
 }
 
 // apply config settings to a cassandra ClusterConfig

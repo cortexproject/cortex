@@ -2,7 +2,9 @@ package testutils
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"strconv"
+	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -93,4 +95,8 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 		panic(err)
 	}
 	return chunk
+}
+
+func TeardownFixture(t *testing.T, fixture Fixture) {
+	require.NoError(t, fixture.Teardown())
 }

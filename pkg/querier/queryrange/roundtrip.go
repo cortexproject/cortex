@@ -36,6 +36,11 @@ import (
 
 const day = 24 * time.Hour
 
+// PassthroughMiddleware is a noop middleware
+var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
+	return next
+})
+
 // Config for query_range middleware chain.
 type Config struct {
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`

@@ -43,6 +43,23 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (chunk.PeriodConfig, e
 	return chunk.PeriodConfig{}, errInvalidShardingRange
 }
 
+// GetConf will extract a shardable config corresponding to a request and the shardingconfigs
+func (confs ShardingConfigs) GetConf(r Request) (chunk.PeriodConfig, error) {
+	conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
+
+	// query exists across multiple sharding configs
+	if err != nil {
+		return conf, err
+	}
+
+	// query doesn't have shard factor, so don't try to do AST mapping.
+	if conf.RowShards < 2 {
+		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
+	}
+
+	return conf, nil
+}
+
 func (confs ShardingConfigs) hasShards() bool {
 	for _, conf := range confs {
 		if conf.RowShards > 0 {
@@ -68,9 +85,6 @@ func NewQueryShardMiddleware(
 	codec Codec,
 	minShardingLookback time.Duration,
 ) Middleware {
-	passthrough := MiddlewareFunc(func(next Handler) Handler {
-		return next
-	})
 
 	noshards := !confs.hasShards()
 
@@ -80,38 +94,22 @@ func NewQueryShardMiddleware(
 			"msg", "no configuration with shard found",
 			"confs", fmt.Sprintf("%+v", confs),
 		)
-		return passthrough
-	}
-
-	getConf := func(r Request) (chunk.PeriodConfig, error) {
-		conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
-
-		// query exists across multiple sharding configs
-		if err != nil {
-			return conf, err
-		}
-
-		// query doesn't have shard factor, so don't try to do AST mapping.
-		if conf.RowShards < 2 {
-			return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
-		}
-
-		return conf, nil
+		return PassthroughMiddleware
 	}
 
 	mapperware := MiddlewareFunc(func(next Handler) Handler {
 		return &astMapperware{
-			getConf: getConf,
-			logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
-			next:    next,
+			confs:  confs,
+			logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
+			next:   next,
 		}
 	})
 
 	shardingware := MiddlewareFunc(func(next Handler) Handler {
 		return &queryShard{
-			getConf: getConf,
-			next:    next,
-			engine:  engine,
+			confs:  confs,
+			next:   next,
+			engine: engine,
 		}
 	})
 
@@ -132,13 +130,13 @@ func NewQueryShardMiddleware(
 }
 
 type astMapperware struct {
-	getConf func(Request) (chunk.PeriodConfig, error)
-	logger  log.Logger
-	next    Handler
+	confs  ShardingConfigs
+	logger log.Logger
+	next   Handler
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
-	conf, err := ast.getConf(r)
+	conf, err := ast.confs.GetConf(r)
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ast.logger).Log("err", err.Error())
@@ -176,15 +174,15 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 type queryShard struct {
-	getConf func(Request) (chunk.PeriodConfig, error)
-	next    Handler
-	engine  *promql.Engine
+	confs  ShardingConfigs
+	next   Handler
+	engine *promql.Engine
 }
 
 func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 	// since there's no available sharding configuration for this time range,
 	// no astmapping has been performed, so skip this middleware.
-	if _, err := qs.getConf(r); err != nil {
+	if _, err := qs.confs.GetConf(r); err != nil {
 		return qs.next.Do(ctx, r)
 	}
 

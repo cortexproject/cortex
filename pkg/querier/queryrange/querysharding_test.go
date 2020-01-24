@@ -405,9 +405,7 @@ func TestQueryshardingCorrectness(t *testing.T) {
 
 			mapperware := MiddlewareFunc(func(next Handler) Handler {
 				return &astMapperware{
-					getConf: func(_ Request) (chunk.PeriodConfig, error) {
-						return shardingConf[0], nil
-					},
+					confs:  shardingConf,
 					logger: log.NewNopLogger(),
 					next:   next,
 				}

@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
@@ -31,6 +32,10 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometh
 	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", util.Logger)
 	if err != nil {
 		return nil, err
+	}
+
+	if registerer != nil {
+		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer))
 	}
 
 	us, err := NewUserStore(cfg, bucketClient, logLevel, util.Logger, registerer)

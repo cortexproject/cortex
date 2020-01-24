@@ -69,6 +69,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
+	if registerer != nil {
+		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_ingester_", registerer))
+	}
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,

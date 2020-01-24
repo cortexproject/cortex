@@ -24,6 +24,9 @@ var bucketName = []byte("index")
 const (
 	separator      = "\000"
 	dbReloadPeriod = 10 * time.Minute
+
+	dbOperationRead = iota
+	dbOperationWrite
 )
 
 type archivedDB struct {
@@ -250,11 +253,30 @@ func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	}
 }
 
-func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
+func (b *boltIndexClient) getDB(name string, operation int) (*bbolt.DB, error) {
 	b.dbsMtx.RLock()
 	db, ok := b.dbs[name]
 	b.dbsMtx.RUnlock()
 	if ok {
+		return db, nil
+	}
+
+	if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err == nil || operation == dbOperationWrite {
+		b.dbsMtx.Lock()
+		defer b.dbsMtx.Unlock()
+		db, ok = b.dbs[name]
+		if ok {
+			return db, nil
+		}
+
+		// Open the database.
+		// Set Timeout to avoid obtaining file lock wait indefinitely.
+		db, err := openBoltdbFile(path.Join(b.cfg.Directory, name))
+		if err != nil {
+			return nil, err
+		}
+
+		b.dbs[name] = db
 		return db, nil
 	}
 
@@ -320,16 +342,9 @@ func (b *boltIndexClient) getArchivedDB(ctx context.Context, name string) (*arch
 
 func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	for table, kvps := range batch.(*boltWriteBatch).tables {
-		db, err := b.getDB(table)
+		db, err := b.getDB(table, dbOperationWrite)
 		if err != nil {
 			return err
-		}
-
-		if db == nil {
-			db, err = b.openDB(table)
-			if err != nil {
-				return err
-			}
 		}
 
 		if err := db.Update(func(tx *bbolt.Tx) error {
@@ -357,7 +372,7 @@ func (b *boltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQ
 }
 
 func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
-	localDB, err := b.getDB(query.TableName)
+	localDB, err := b.getDB(query.TableName, dbOperationRead)
 	if err != nil {
 		return err
 	}

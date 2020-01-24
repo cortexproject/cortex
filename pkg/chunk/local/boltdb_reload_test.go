@@ -16,7 +16,7 @@ var (
 )
 
 func setupDb(t *testing.T, boltdbIndexClient *boltIndexClient, dbname string) {
-	db, err := boltdbIndexClient.openDB(dbname)
+	db, err := boltdbIndexClient.getDB(dbname, dbOperationWrite)
 	require.NoError(t, err)
 
 	err = db.Update(func(tx *bbolt.Tx) error {
@@ -52,7 +52,7 @@ func TestBoltDBReload(t *testing.T) {
 
 	require.NoError(t, os.Remove(filepath.Join(dirname, testDb1)))
 
-	droppedDb, err := boltdbIndexClient.getDB(testDb1)
+	droppedDb, err := boltdbIndexClient.getDB(testDb1, dbOperationRead)
 	require.NoError(t, err)
 
 	valueFromDb := []byte{}

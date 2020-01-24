@@ -255,7 +255,8 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
-	log, _ := spanlogger.New(ctx, "store.validateQueryTimeRange")
+	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
+	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
 	if *through < *from {

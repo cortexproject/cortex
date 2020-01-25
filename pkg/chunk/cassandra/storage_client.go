@@ -67,18 +67,14 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cfg.setClusterConfig(cluster)
 
 	session, err := cluster.CreateSession()
-	if err != nil {
-		if err != gocql.ErrNoConnectionsStarted {
-			return nil, errors.WithStack(err)
-		}
-		// keyspace not exist
-		if err := cfg.createKeyspace(); err != nil {
-			return nil, errors.WithStack(err)
-		}
-		session, err = cluster.CreateSession()
+	if err == nil || err != gocql.ErrNoConnectionsStarted {
+		return session, nil
 	}
-
-	return session, err
+	// keyspace not exist
+	if err := cfg.createKeyspace(); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return cluster.CreateSession()
 }
 
 // apply config settings to a cassandra ClusterConfig

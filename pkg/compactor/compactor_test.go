@@ -69,10 +69,11 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	t.Parallel()
 
-	c, bucketClient, _, logs, registry := prepare(t)
-
 	// No user blocks stored in the bucket.
+	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
+
+	c, _, logs, registry := prepare(t, bucketClient)
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -104,10 +105,11 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testing.T) {
 	t.Parallel()
 
-	c, bucketClient, _, logs, registry := prepare(t)
-
 	// Fail to iterate over the bucket while discovering users.
+	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
+
+	c, _, logs, registry := prepare(t, bucketClient)
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -146,14 +148,15 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	t.Parallel()
 
-	c, bucketClient, tsdbCompactor, logs, registry := prepare(t)
-
 	// Mock the bucket to contain two users, each one with one block.
+	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+
+	c, tsdbCompactor, logs, registry := prepare(t, bucketClient)
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -203,14 +206,13 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	`)))
 }
 
-func prepare(t *testing.T) (*Compactor, *cortex_tsdb.BucketClientMock, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer) {
+func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer) {
 	compactorCfg := Config{}
 	storageCfg := cortex_tsdb.Config{}
 	flagext.DefaultValues(&compactorCfg, &storageCfg)
 	compactorCfg.retryMinBackoff = 0
 	compactorCfg.retryMaxBackoff = 0
 
-	bucketClient := &cortex_tsdb.BucketClientMock{}
 	tsdbCompactor := &tsdbCompactorMock{}
 	logs := &bytes.Buffer{}
 	logger := log.NewLogfmtLogger(logs)
@@ -220,7 +222,7 @@ func prepare(t *testing.T) (*Compactor, *cortex_tsdb.BucketClientMock, *tsdbComp
 	c, err := newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registry)
 	require.NoError(t, err)
 
-	return c, bucketClient, tsdbCompactor, logs, registry
+	return c, tsdbCompactor, logs, registry
 }
 
 type tsdbCompactorMock struct {

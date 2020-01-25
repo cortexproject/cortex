@@ -192,7 +192,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
 	// a large cluster.
-	for i := 0; i < u.cfg.BucketStore.BlockSyncConcurrency; i++ {
+	for i := 0; i < u.cfg.BucketStore.TenantSyncConcurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

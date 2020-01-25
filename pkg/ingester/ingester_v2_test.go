@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -952,4 +953,52 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			testData.check(t, ingester)
 		})
 	}
+}
+
+func TestIngester_shipBlocks(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 2
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Create the TSDB for 3 users and then replace the shipper with the mocked one
+	mocks := []*shipperMock{}
+	for _, userID := range []string{"user-1", "user-2", "user-3"} {
+		userDB, err := i.getOrCreateTSDB(userID, false)
+		require.NoError(t, err)
+		require.NotNil(t, userDB)
+
+		m := &shipperMock{}
+		m.On("Sync", mock.Anything).Return(0, nil)
+		mocks = append(mocks, m)
+
+		userDB.shipper = m
+	}
+
+	// Ship blocks and assert on the mocked shipper
+	i.shipBlocks()
+
+	for _, m := range mocks {
+		m.AssertNumberOfCalls(t, "Sync", 1)
+	}
+}
+
+type shipperMock struct {
+	mock.Mock
+}
+
+// Sync mocks Shipper.Sync()
+func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
+	args := m.Called(ctx)
+	return args.Int(0), args.Error(1)
 }

@@ -283,25 +283,6 @@ func (b *boltIndexClient) getDB(name string, operation int) (*bbolt.DB, error) {
 	return nil, nil
 }
 
-func (b *boltIndexClient) openDB(name string) (*bbolt.DB, error) {
-	b.dbsMtx.Lock()
-	defer b.dbsMtx.Unlock()
-	db, ok := b.dbs[name]
-	if ok {
-		return db, nil
-	}
-
-	// Open the database.
-	// Set Timeout to avoid obtaining file lock wait indefinitely.
-	db, err := openBoltdbFile(path.Join(b.cfg.Directory, name))
-	if err != nil {
-		return nil, err
-	}
-
-	b.dbs[name] = db
-	return db, nil
-}
-
 func (b *boltIndexClient) getArchivedDB(ctx context.Context, name string) (*archivedDB, error) {
 	b.archivedDbsMtx.RLock()
 	aDB, ok := b.archivedDbs[name]
@@ -446,39 +427,6 @@ func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 	}
 
 	return nil
-}
-
-func (b *boltIndexClient) queryBoltDB(db *bbolt.DB, start, rowPrefix []byte, query *chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
-	return db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(bucketName)
-		if b == nil {
-			return nil
-		}
-
-		var batch boltReadBatch
-		c := b.Cursor()
-		for k, v := c.Seek(start); k != nil; k, v = c.Next() {
-			if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
-				continue
-			}
-
-			if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
-				break
-			}
-
-			if !bytes.HasPrefix(k, rowPrefix) {
-				break
-			}
-
-			batch.rangeValue = k[len(rowPrefix):]
-			batch.value = v
-			if !callback(&batch) {
-				break
-			}
-		}
-
-		return nil
-	})
 }
 
 type boltWriteBatch struct {

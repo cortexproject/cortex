@@ -35,6 +35,7 @@ func createTestArchiver(t *testing.T, parentTempDir, ingesterName, localStoreLoc
 	}
 
 	archiver, err := NewArchiver(archiverConfig, boltdbFilesLocation)
+	require.Error(t, err)
 	return archiver
 }
 
@@ -91,6 +92,7 @@ func TestArchiver_Sync(t *testing.T) {
 
 	// Verifying contents of file
 	testFile1Content, err := ioutil.ReadFile(syncedFileForTable1Path)
+	require.NoError(t, err)
 	require.Equal(t, "test write", string(testFile1Content))
 
 	// Cleanup

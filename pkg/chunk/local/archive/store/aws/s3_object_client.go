@@ -116,7 +116,7 @@ func (a *ObjectClient) List(ctx context.Context, prefix string) (map[string]time
 	prefixWithSep := prefix + "/"
 
 	err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		output, err := a.S3.ListObjectsV2WithContext(nil, &s3.ListObjectsV2Input{Bucket: &a.bucketName, Prefix: &prefix})
+		output, err := a.S3.ListObjectsV2WithContext(ctx, &s3.ListObjectsV2Input{Bucket: &a.bucketName, Prefix: &prefix})
 		if err != nil {
 			return err
 		}

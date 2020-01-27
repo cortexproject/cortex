@@ -118,19 +118,19 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
 
-		# HELP cortex_compactor_sync_meta_duration_seconds TSDB Syncer: Time it took to sync meta files.
-		# TYPE cortex_compactor_sync_meta_duration_seconds histogram
-		cortex_compactor_sync_meta_duration_seconds_bucket{le="+Inf"} 0
-		cortex_compactor_sync_meta_duration_seconds_sum 0
-		cortex_compactor_sync_meta_duration_seconds_count 0
+		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+		# TYPE cortex_compactor_meta_sync_duration_seconds histogram
+		cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 0
+		cortex_compactor_meta_sync_duration_seconds_sum 0
+		cortex_compactor_meta_sync_duration_seconds_count 0
 
-		# HELP cortex_compactor_sync_meta_failures_total TSDB Syncer: Total number of failed sync meta operations.
-		# TYPE cortex_compactor_sync_meta_failures_total counter
-		cortex_compactor_sync_meta_failures_total 0
+		# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+		# TYPE cortex_compactor_meta_sync_failures_total counter
+		cortex_compactor_meta_sync_failures_total 0
 
-		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
-		# TYPE cortex_compactor_sync_meta_total counter
-		cortex_compactor_sync_meta_total 0
+		# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+		# TYPE cortex_compactor_meta_syncs_total counter
+		cortex_compactor_meta_syncs_total 0
 
 		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 		# TYPE cortex_compactor_group_compaction_runs_completed_total counter
@@ -213,19 +213,19 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
 
-		# HELP cortex_compactor_sync_meta_duration_seconds TSDB Syncer: Time it took to sync meta files.
-		# TYPE cortex_compactor_sync_meta_duration_seconds histogram
-		cortex_compactor_sync_meta_duration_seconds_bucket{le="+Inf"} 0
-		cortex_compactor_sync_meta_duration_seconds_sum 0
-		cortex_compactor_sync_meta_duration_seconds_count 0
+		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+		# TYPE cortex_compactor_meta_sync_duration_seconds histogram
+		cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 0
+		cortex_compactor_meta_sync_duration_seconds_sum 0
+		cortex_compactor_meta_sync_duration_seconds_count 0
 
-		# HELP cortex_compactor_sync_meta_failures_total TSDB Syncer: Total number of failed sync meta operations.
-		# TYPE cortex_compactor_sync_meta_failures_total counter
-		cortex_compactor_sync_meta_failures_total 0
+		# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+		# TYPE cortex_compactor_meta_sync_failures_total counter
+		cortex_compactor_meta_sync_failures_total 0
 
-		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
-		# TYPE cortex_compactor_sync_meta_total counter
-		cortex_compactor_sync_meta_total 0
+		# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+		# TYPE cortex_compactor_meta_syncs_total counter
+		cortex_compactor_meta_syncs_total 0
 
 		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 		# TYPE cortex_compactor_group_compaction_runs_completed_total counter

@@ -241,7 +241,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		// but we prefix it with "meta-" in order to guarantee no clashing with
 		// the directory used by the Thanos Syncer, whatever is the user ID.
 		path.Join(c.compactorCfg.DataDir, "meta-"+userID),
-		nil, // TODO(pracucci) Prometheus registerer
+		reg,
 		// No filters
 	)
 	if err != nil {

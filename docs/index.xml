@@ -3459,6 +3459,7 @@ instructions below to upgrade your Postgres.&lt;/p&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Added &lt;code&gt;cortex_ingester_shipper_dir_syncs_total&lt;/code&gt;, &lt;code&gt;cortex_ingester_shipper_dir_sync_failures_total&lt;/code&gt;, &lt;code&gt;cortex_ingester_shipper_uploads_total&lt;/code&gt; and &lt;code&gt;cortex_ingester_shipper_upload_failures_total&lt;/code&gt; metrics from TSDB shipper component. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1983&#34;&gt;#1983&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store and in memory index cache (many metrics to list, but all have &lt;code&gt;cortex_querier_bucket_store_&lt;/code&gt; or &lt;code&gt;cortex_querier_blocks_index_cache_&lt;/code&gt; prefix). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1996&#34;&gt;#1996&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with &lt;code&gt;cortex_compactor_&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2023&#34;&gt;#2023&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Improved multi-tenant bucket store. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1991&#34;&gt;#1991&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;Allowed to configure the blocks sync interval via &lt;code&gt;-experimental.tsdb.bucket-store.sync-interval&lt;/code&gt; (0 disables the sync)&lt;/li&gt;

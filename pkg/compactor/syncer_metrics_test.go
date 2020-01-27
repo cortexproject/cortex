@@ -19,37 +19,37 @@ func TestSyncerMetrics(t *testing.T) {
 	// total base = 111110
 
 	err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
-			# TYPE cortex_compactor_sync_meta_total counter
-			cortex_compactor_sync_meta_total 111110
+			# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+			# TYPE cortex_compactor_meta_syncs_total counter
+			cortex_compactor_meta_syncs_total 111110
 
-			# HELP cortex_compactor_sync_meta_failures_total TSDB Syncer: Total number of failed sync meta operations.
-			# TYPE cortex_compactor_sync_meta_failures_total counter
-			cortex_compactor_sync_meta_failures_total 222220
+			# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+			# TYPE cortex_compactor_meta_sync_failures_total counter
+			cortex_compactor_meta_sync_failures_total 222220
 
-			# HELP cortex_compactor_sync_meta_duration_seconds TSDB Syncer: Time it took to sync meta files.
-			# TYPE cortex_compactor_sync_meta_duration_seconds histogram
+			# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+			# TYPE cortex_compactor_meta_sync_duration_seconds histogram
 			# Observed values: 3.7035, 22.9629, 6.6666 (seconds)
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="0.01"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="0.1"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="0.3"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="0.6"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="1"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="3"} 0
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="6"} 1
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="9"} 2
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="20"} 2
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="30"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="60"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="90"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="120"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="240"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="360"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="720"} 3
-			cortex_compactor_sync_meta_duration_seconds_bucket{le="+Inf"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="0.01"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="0.1"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="0.3"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="0.6"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="1"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="3"} 0
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="6"} 1
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="9"} 2
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="20"} 2
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="30"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="60"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="90"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="120"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="240"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="360"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="720"} 3
+			cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 3
 			# rounding error
-			cortex_compactor_sync_meta_duration_seconds_sum 33.333000000000006
-			cortex_compactor_sync_meta_duration_seconds_count 3
+			cortex_compactor_meta_sync_duration_seconds_sum 33.333000000000006
+			cortex_compactor_meta_sync_duration_seconds_count 3
 
 			# HELP cortex_compactor_garbage_collected_blocks_total TSDB Syncer: Total number of deleted blocks by compactor.
 			# TYPE cortex_compactor_garbage_collected_blocks_total counter
@@ -115,9 +115,9 @@ func TestSyncerMetrics(t *testing.T) {
 func generateTestData(base float64) *prometheus.Registry {
 	r := prometheus.NewRegistry()
 	m := newTestSyncerMetrics(r)
-	m.syncMetas.Add(1 * base)
-	m.syncMetaFailures.Add(2 * base)
-	m.syncMetaDuration.Observe(3 * base / 10000)
+	m.metaSync.Add(1 * base)
+	m.metaSyncFailures.Add(2 * base)
+	m.metaSyncDuration.Observe(3 * base / 10000)
 	m.garbageCollectedBlocks.Add(4 * base)
 	m.garbageCollections.Add(5 * base)
 	m.garbageCollectionFailures.Add(6 * base)
@@ -142,9 +142,9 @@ func generateTestData(base float64) *prometheus.Registry {
 
 // directly copied from Thanos (and renamed syncerMetrics to testSyncerMetrics to avoid conflict)
 type testSyncerMetrics struct {
-	syncMetas                 prometheus.Counter
-	syncMetaFailures          prometheus.Counter
-	syncMetaDuration          prometheus.Histogram
+	metaSync                  prometheus.Counter
+	metaSyncFailures          prometheus.Counter
+	metaSyncDuration          prometheus.Histogram
 	garbageCollectedBlocks    prometheus.Counter
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
@@ -159,17 +159,17 @@ type testSyncerMetrics struct {
 func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 	var m testSyncerMetrics
 
-	m.syncMetas = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "thanos_compact_sync_meta_total",
-		Help: "Total number of sync meta operations.",
+	m.metaSync = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "blocks_meta_syncs_total",
+		Help: "Total blocks metadata synchronization attempts.",
 	})
-	m.syncMetaFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "thanos_compact_sync_meta_failures_total",
-		Help: "Total number of failed sync meta operations.",
+	m.metaSyncFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "blocks_meta_sync_failures_total",
+		Help: "Total blocks metadata synchronization failures.",
 	})
-	m.syncMetaDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "thanos_compact_sync_meta_duration_seconds",
-		Help:    "Time it took to sync meta files.",
+	m.metaSyncDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "blocks_meta_sync_duration_seconds",
+		Help:    "Duration of the blocks metadata synchronization in seconds.",
 		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
 	})
 
@@ -214,9 +214,9 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 
 	if reg != nil {
 		reg.MustRegister(
-			m.syncMetas,
-			m.syncMetaFailures,
-			m.syncMetaDuration,
+			m.metaSync,
+			m.metaSyncFailures,
+			m.metaSyncDuration,
 			m.garbageCollectedBlocks,
 			m.garbageCollections,
 			m.garbageCollectionFailures,

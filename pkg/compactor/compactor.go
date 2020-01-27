@@ -76,6 +76,9 @@ type Compactor struct {
 	compactionRunsStarted   prometheus.Counter
 	compactionRunsCompleted prometheus.Counter
 	compactionRunsFailed    prometheus.Counter
+
+	// TSDB syncer metrics
+	syncerMetrics *syncerMetrics
 }
 
 // NewCompactor makes a new Compactor.
@@ -136,6 +139,7 @@ func newCompactor(
 	// Register metrics.
 	if registerer != nil {
 		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed)
+		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
 	// Start the compactor loop.
@@ -224,9 +228,12 @@ func (c *Compactor) compactUsers(ctx context.Context) bool {
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	bucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
 
+	reg := prometheus.NewRegistry()
+	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
+
 	syncer, err := compact.NewSyncer(
 		c.logger,
-		nil, // TODO(pracucci) we should pass the prometheus registerer, but we would need to inject the user label to each metric, otherwise we have clashing metrics
+		reg,
 		bucket,
 		c.compactorCfg.ConsistencyDelay,
 		c.compactorCfg.BlockSyncConcurrency,

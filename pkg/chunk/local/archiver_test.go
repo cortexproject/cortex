@@ -1,4 +1,4 @@
-package archive
+package local
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store/local"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,22 +18,25 @@ func createTestArchiver(t *testing.T, parentTempDir, ingesterName, localStoreLoc
 	boltdbFilesLocation, err := ioutil.TempDir(parentTempDir, "boltdb-files")
 	require.NoError(t, err)
 
-	archiverConfig := Config{
+	archiverConfig := ArchiverConfig{
 		CacheLocation: cacheLocation,
 		CacheTTL:      1 * time.Hour,
-		StoreConfig: store.Config{
+		StoreConfig: StoreConfig{
 			Store: "local",
-			LocalConfig: local.Config{
+			FSConfig: FSConfig{
 				Directory: localStoreLocation,
 			},
 		},
 		ResyncInterval: 1 * time.Hour,
 		IngesterName:   ingesterName,
-		Mode:           ArchiveModeReadWrite,
+		Mode:           ArchiverModeReadWrite,
 	}
 
-	archiver, err := NewArchiver(archiverConfig, boltdbFilesLocation)
-	require.Error(t, err)
+	archiveStoreClient, err := NewFSObjectClient(archiverConfig.StoreConfig.FSConfig)
+	require.NoError(t, err)
+
+	archiver, err := NewArchiver(archiverConfig, boltdbFilesLocation, archiveStoreClient)
+	require.NoError(t, err)
 	return archiver
 }
 

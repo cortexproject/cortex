@@ -139,7 +139,20 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "boltdb":
-		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
+		var archiver *local.Archiver
+		if cfg.BoltDBConfig.EnableArchive {
+			archiveStoreClient, err := NewArchiveStoreClient(cfg.BoltDBConfig.ArchiverConfig.StoreConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			archiver, err = local.NewArchiver(cfg.BoltDBConfig.ArchiverConfig, cfg.BoltDBConfig.Directory, archiveStoreClient)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return local.NewBoltDBIndexClient(cfg.BoltDBConfig, archiver)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
@@ -152,7 +165,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		store := chunk.NewMockStorage()
 		return store, nil
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig)
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -169,7 +182,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, schemaCfg)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
@@ -211,4 +224,18 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 	}
 
 	return nil, nil
+}
+
+// NewArchiveStoreClient makes a new client of the desired types for boltdb archiver.
+func NewArchiveStoreClient(cfg local.StoreConfig) (local.ArchiveStoreClient, error) {
+	switch cfg.Store {
+	case "aws", "s3":
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig)
+	case "gcs":
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+	case "filesystem":
+		return local.NewFSObjectClient(cfg.FSConfig)
+	default:
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", cfg.Store)
+	}
 }

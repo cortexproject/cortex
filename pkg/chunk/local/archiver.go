@@ -1,4 +1,4 @@
-package archive
+package local
 
 import (
 	"context"
@@ -11,7 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store"
+	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -25,33 +27,53 @@ const (
 	// UpdateTypeTableRemoved is for table removed update i.e all the files for a periodic table were removed
 	UpdateTypeTableRemoved
 
-	// ArchiveModeReadWrite is to allow both read and write
-	ArchiveModeReadWrite = iota
-	// ArchiveModeReadOnly is to allow only read operations
-	ArchiveModeReadOnly
-	// ArchiveModeWriteOnly is to allow only write operations
-	ArchiveModeWriteOnly
+	// ArchiverModeReadWrite is to allow both read and write
+	ArchiverModeReadWrite = iota
+	// ArchiverModeReadOnly is to allow only read operations
+	ArchiverModeReadOnly
+	// ArchiverModeWriteOnly is to allow only write operations
+	ArchiverModeWriteOnly
 
 	updateChanCapacity = 50
-	// ArchiveFileInterval defines interval at which we keep pushing updated or new files
-	ArchiveFileInterval = 15 * time.Minute
+	// ArchiverFileUploadInterval defines interval at which we keep pushing updated or new files
+	ArchiverFileUploadInterval = 15 * time.Minute
 )
 
-// Config is for configuring an archiver
-type Config struct {
+type StoreConfig struct {
+	Store            string            `yaml:"store"`
+	AWSStorageConfig aws.StorageConfig `yaml:"aws"`
+	GCSConfig        gcp.GCSConfig     `yaml:"gcs"`
+	FSConfig         FSConfig          `yaml:"filesystem"`
+}
+
+// ArchiverConfig is for configuring an archiver
+type ArchiverConfig struct {
 	CacheLocation  string        `yaml:"cache_location"`
 	CacheTTL       time.Duration `yaml:"cache_ttl"`
-	StoreConfig    store.Config  `yaml:"store_config"`
+	StoreConfig    StoreConfig   `yaml:"store_config"`
 	ResyncInterval time.Duration `yaml:"resync_interval"`
-	IngesterName   string
-	Mode           int
+	IngesterName   string        `yaml:"-"`
+	Mode           int           `yaml:"-"`
+}
+
+// ArchiveStoreClient define all the methods that a store needs to implement for managing objects
+type ArchiveStoreClient interface {
+	GetObject(ctx context.Context, objectName string) ([]byte, error)
+	PutObject(ctx context.Context, objectName string, object []byte) error
+	List(ctx context.Context, prefix string) (map[string]time.Time, error)
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.CacheLocation, "boltdb.archive.cache-location", "", "Cache location for restoring boltDB files for queries")
-	f.DurationVar(&cfg.CacheTTL, "boltdb.archive.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
-	f.DurationVar(&cfg.ResyncInterval, "boltdb.archive.resync-interval", 5*time.Minute, "Resync downloaded files with the store")
+func (cfg *ArchiverConfig) RegisterFlags(f *flag.FlagSet) {
+	storeFlagsPrefix := "boltdb.archiver."
+	cfg.StoreConfig.AWSStorageConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
+	cfg.StoreConfig.GCSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
+	cfg.StoreConfig.FSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
+
+	f.StringVar(&cfg.StoreConfig.Store, "boltdb.archiver.store", "filesystem", "Store for keeping boltdb files")
+	f.StringVar(&cfg.CacheLocation, "boltdb.archiver.cache-location", "", "Cache location for restoring boltDB files for queries")
+	f.DurationVar(&cfg.CacheTTL, "boltdb.archiver.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
+	f.DurationVar(&cfg.ResyncInterval, "boltdb.archiver.resync-interval", 5*time.Minute, "Resync downloaded files with the store")
 }
 
 // Update holds a single update to a file or folder
@@ -72,9 +94,9 @@ type downloadedTable struct {
 // Keeps syncing locally changed file to the storage and downloading latest changes from storage
 // Cleans up downloaded files as per configured TTL
 type Archiver struct {
-	cfg             Config
+	cfg             ArchiverConfig
 	boltDbDirectory string
-	storeClient     store.ArchiveStoreClient
+	storeClient     ArchiveStoreClient
 
 	downloadedTables    map[string]*downloadedTable
 	downloadedTablesMtx sync.RWMutex
@@ -96,7 +118,7 @@ type file struct {
 }
 
 // NewArchiver creates an archiver for syncing local objects with a store
-func NewArchiver(cfg Config, boltDbDirectory string) (*Archiver, error) {
+func NewArchiver(cfg ArchiverConfig, boltDbDirectory string, archiveStoreClient ArchiveStoreClient) (*Archiver, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheLocation); err != nil {
 		return nil, err
 	}
@@ -111,11 +133,7 @@ func NewArchiver(cfg Config, boltDbDirectory string) (*Archiver, error) {
 		ingesterNameAndStartUpTs: fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().Unix()),
 	}
 
-	var err error
-	archiver.storeClient, err = store.NewArchiveStoreClient(cfg.StoreConfig)
-	if err != nil {
-		return nil, err
-	}
+	archiver.storeClient = archiveStoreClient
 
 	go archiver.loop()
 
@@ -126,7 +144,7 @@ func (a *Archiver) loop() {
 	resyncTicker := time.NewTicker(a.cfg.ResyncInterval)
 	defer resyncTicker.Stop()
 
-	archiveFileTicker := time.NewTicker(ArchiveFileInterval)
+	archiveFileTicker := time.NewTicker(ArchiverFileUploadInterval)
 	defer archiveFileTicker.Stop()
 
 	cacheTTLTicker := time.NewTicker(a.cfg.CacheTTL)
@@ -167,7 +185,7 @@ func (a *Archiver) Stop() {
 }
 
 func (a *Archiver) archiveFiles(ctx context.Context) error {
-	if a.cfg.Mode == ArchiveModeReadOnly {
+	if a.cfg.Mode == ArchiverModeReadOnly {
 		return nil
 	}
 
@@ -191,9 +209,14 @@ func (a *Archiver) archiveFiles(ctx context.Context) error {
 			return err
 		}
 
+		buf, err := ioutil.ReadAll(f)
+		if err != nil {
+			return err
+		}
+
 		// Files are stored with <periodic-table-name>/<ingester-name>
 		objectName := fmt.Sprintf("%s/%s", file.name, a.ingesterNameAndStartUpTs)
-		err = a.storeClient.Put(ctx, objectName, f)
+		err = a.storeClient.PutObject(ctx, objectName, buf)
 		if err != nil {
 			return err
 		}
@@ -222,7 +245,7 @@ func (a *Archiver) listFiles(path string) ([]file, error) {
 
 // Sync i.e download all files for a table and keep pulling new and updated files
 func (a *Archiver) Sync(ctx context.Context, name string) ([]string, error) {
-	if a.cfg.Mode == ArchiveModeWriteOnly {
+	if a.cfg.Mode == ArchiverModeWriteOnly {
 		return nil, nil
 	}
 
@@ -249,7 +272,7 @@ func (a *Archiver) Sync(ctx context.Context, name string) ([]string, error) {
 }
 
 func (a *Archiver) syncAllTables(ctx context.Context) error {
-	if a.cfg.Mode == ArchiveModeWriteOnly {
+	if a.cfg.Mode == ArchiverModeWriteOnly {
 		return nil
 	}
 
@@ -310,7 +333,7 @@ func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates 
 		}
 
 		objectName := fmt.Sprintf("%s/%s", tableName, fileName)
-		fileBytes, err := a.storeClient.Get(ctx, objectName)
+		fileBytes, err := a.storeClient.GetObject(ctx, objectName)
 		if err != nil {
 			return err
 		}

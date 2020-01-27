@@ -72,8 +72,8 @@ type Config struct {
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 
-	QueryStore                  bool
-	QueryStoreMaxLookBackPeriod time.Duration
+	QueryStore                  bool          `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

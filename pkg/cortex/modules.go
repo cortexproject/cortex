@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
@@ -21,7 +23,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -59,7 +60,7 @@ const (
 	Compactor
 	All
 
-	ingesterQueryStoreMaxLookBackPeriodWhenUsingArchiver = archive.ArchiveFileInterval + (15 * time.Minute)
+	ingesterQueryStoreMaxLookBackPeriodWhenUsingArchiver = local.ArchiverFileUploadInterval + (15 * time.Minute)
 )
 
 func (m moduleName) String() string {
@@ -334,13 +335,13 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 	}
 
 	if cfg.Schema.ActiveIndexType() == "boltdb" && cfg.Storage.BoltDBConfig.EnableArchive {
-		cfg.Storage.BoltDBConfig.ArchiveConfig.IngesterName = cfg.Ingester.LifecyclerConfig.ID
+		cfg.Storage.BoltDBConfig.ArchiverConfig.IngesterName = cfg.Ingester.LifecyclerConfig.ID
 		if cfg.Target == Ingester {
 			// We do not want ingester to unnecessarily keep downloading files
-			cfg.Storage.BoltDBConfig.ArchiveConfig.Mode = archive.ArchiveModeWriteOnly
+			cfg.Storage.BoltDBConfig.ArchiverConfig.Mode = local.ArchiverModeWriteOnly
 		} else if cfg.Target == Querier {
 			// We do not want query to do any updates to index
-			cfg.Storage.BoltDBConfig.ArchiveConfig.Mode = archive.ArchiveModeReadOnly
+			cfg.Storage.BoltDBConfig.ArchiverConfig.Mode = local.ArchiverModeReadOnly
 		}
 	}
 

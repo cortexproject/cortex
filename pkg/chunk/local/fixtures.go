@@ -31,7 +31,7 @@ func (f *fixture) Clients() (
 
 	indexClient, err = NewBoltDBIndexClient(BoltDBConfig{
 		Directory: f.dirname,
-	})
+	}, nil)
 	if err != nil {
 		return
 	}

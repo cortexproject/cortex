@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -33,13 +34,13 @@ func init() {
 	s3RequestDuration.Register()
 }
 
-type s3ObjectClient struct {
+type S3ObjectClient struct {
 	bucketNames []string
 	S3          s3iface.S3API
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+func NewS3ObjectClient(cfg StorageConfig) (*S3ObjectClient, error) {
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
 	}
@@ -60,40 +61,22 @@ func NewS3ObjectClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.O
 	if cfg.BucketNames != "" {
 		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
 	}
-	client := s3ObjectClient{
+	client := S3ObjectClient{
 		S3:          s3Client,
 		bucketNames: bucketNames,
 	}
-	return client, nil
+	return &client, nil
 }
 
-func (a s3ObjectClient) Stop() {
+func (a S3ObjectClient) Stop() {
 }
 
-func (a s3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a S3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, chunks, a.getChunk)
 }
 
-func (a s3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	var resp *s3.GetObjectOutput
-
-	// Map the key into a bucket
-	key := c.ExternalKey()
-	bucket := a.bucketFromKey(key)
-
-	err := instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		var err error
-		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
-		})
-		return err
-	})
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-	defer resp.Body.Close()
-	buf, err := ioutil.ReadAll(resp.Body)
+func (a S3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+	buf, err := a.GetObject(ctx, c.ExternalKey())
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
@@ -103,7 +86,7 @@ func (a s3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return c, nil
 }
 
-func (a s3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (a S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		s3ChunkKeys []string
 		s3ChunkBufs [][]byte
@@ -123,7 +106,7 @@ func (a s3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	incomingErrors := make(chan error)
 	for i := range s3ChunkBufs {
 		go func(i int) {
-			incomingErrors <- a.putS3Chunk(ctx, s3ChunkKeys[i], s3ChunkBufs[i])
+			incomingErrors <- a.PutObject(ctx, s3ChunkKeys[i], s3ChunkBufs[i])
 		}(i)
 	}
 
@@ -137,19 +120,8 @@ func (a s3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	return lastErr
 }
 
-func (a s3ObjectClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
-	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
-			Body:   bytes.NewReader(buf),
-			Bucket: aws.String(a.bucketFromKey(key)),
-			Key:    aws.String(key),
-		})
-		return err
-	})
-}
-
 // bucketFromKey maps a key to a bucket name
-func (a s3ObjectClient) bucketFromKey(key string) string {
+func (a S3ObjectClient) bucketFromKey(key string) string {
 	if len(a.bucketNames) == 0 {
 		return ""
 	}
@@ -159,4 +131,66 @@ func (a s3ObjectClient) bucketFromKey(key string) string {
 	hash := hasher.Sum32()
 
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
+}
+
+// Get object from the store
+func (a S3ObjectClient) GetObject(ctx context.Context, objectName string) ([]byte, error) {
+	var resp *s3.GetObjectOutput
+
+	// Map the key into a bucket
+	bucket := a.bucketFromKey(objectName)
+
+	err := instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectName),
+		})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return ioutil.ReadAll(resp.Body)
+}
+
+// Put object into the store
+func (a S3ObjectClient) PutObject(ctx context.Context, objectName string, object []byte) error {
+	return instrument.CollectedRequest(ctx, "S3.Put", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
+			Body:   bytes.NewReader(object),
+			Bucket: aws.String(a.bucketFromKey(objectName)),
+			Key:    aws.String(objectName),
+		})
+		return err
+	})
+}
+
+// List objects from the store
+func (a S3ObjectClient) List(ctx context.Context, prefix string) (map[string]time.Time, error) {
+	objectNamesWithMtime := map[string]time.Time{}
+	prefixWithSep := prefix + "/"
+
+	for i := range a.bucketNames {
+		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			output, err := a.S3.ListObjectsV2WithContext(ctx, &s3.ListObjectsV2Input{Bucket: &a.bucketNames[i], Prefix: &prefix})
+			if err != nil {
+				return err
+			}
+
+			for i := range output.Contents {
+				objectNamesWithMtime[strings.TrimPrefix(*output.Contents[i].Key, prefixWithSep)] = *output.Contents[i].LastModified
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return objectNamesWithMtime, nil
 }

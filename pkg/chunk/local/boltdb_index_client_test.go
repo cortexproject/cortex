@@ -12,9 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store"
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store/local"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -47,25 +44,37 @@ func buildTestBoltDBIndexClient(boltdbDir, archiveCacheLocation, ingesterName, a
 		Directory: boltdbDir,
 	}
 
+	var archiver *Archiver
+
 	if archiveCacheLocation != "" {
 		boltDBConfig.EnableArchive = true
-		archiveConfig := archive.Config{}
+		archiveConfig := ArchiverConfig{}
 
 		flagext.DefaultValues(&archiveConfig)
 
-		archiveConfig.StoreConfig = store.Config{
+		archiveConfig.StoreConfig = StoreConfig{
 			Store: "local",
-			LocalConfig: local.Config{
+			FSConfig: FSConfig{
 				Directory: archiverLocalStoreLocation,
 			},
 		}
 
 		archiveConfig.CacheLocation = archiveCacheLocation
 		archiveConfig.IngesterName = ingesterName
-		boltDBConfig.ArchiveConfig = archiveConfig
+		boltDBConfig.ArchiverConfig = archiveConfig
+
+		archiveStoreClient, err := NewFSObjectClient(archiveConfig.StoreConfig.FSConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		archiver, err = NewArchiver(archiveConfig, boltDBConfig.Directory, archiveStoreClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	indexClient, err := NewBoltDBIndexClient(boltDBConfig)
+	indexClient, err := NewBoltDBIndexClient(boltDBConfig, archiver)
 	if err != nil {
 		return nil, err
 	}

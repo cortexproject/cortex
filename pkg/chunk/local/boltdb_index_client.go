@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
-
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -36,14 +34,14 @@ type archivedDB struct {
 
 // BoltDBConfig for a BoltDB index client.
 type BoltDBConfig struct {
-	Directory     string         `yaml:"directory"`
-	EnableArchive bool           `yaml:"enable_archive"`
-	ArchiveConfig archive.Config `yaml:"archive_config"`
+	Directory      string         `yaml:"directory"`
+	EnableArchive  bool           `yaml:"enable_archive"`
+	ArchiverConfig ArchiverConfig `yaml:"archiver_config"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ArchiveConfig.RegisterFlags(f)
+	cfg.ArchiverConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.Directory, "boltdb.dir", "", "Location of BoltDB index files.")
 	f.BoolVar(&cfg.EnableArchive, "boltdb.enable-archive", false, "Enable archival of files to a store")
@@ -51,7 +49,7 @@ func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 type boltIndexClient struct {
 	cfg      BoltDBConfig
-	archiver *archive.Archiver
+	archiver *Archiver
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
@@ -63,7 +61,7 @@ type boltIndexClient struct {
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
+func NewBoltDBIndexClient(cfg BoltDBConfig, archiver *Archiver) (chunk.IndexClient, error) {
 	if err := chunk_util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
@@ -75,12 +73,7 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 		archivedDbs: map[string]*archivedDB{},
 	}
 
-	if cfg.EnableArchive {
-		archiver, err := archive.NewArchiver(cfg.ArchiveConfig, cfg.Directory)
-		if err != nil {
-			return nil, err
-		}
-
+	if archiver != nil {
 		indexClient.archiver = archiver
 		go indexClient.processArchiverUpdates()
 	}
@@ -112,17 +105,17 @@ func (b *boltIndexClient) processArchiverUpdates() {
 		select {
 		case update := <-updatesChan:
 			switch update.UpdateType {
-			case archive.UpdateTypeFileRemoved:
+			case UpdateTypeFileRemoved:
 				err := b.processArchiverFileRemovedUpdate(context.Background(), update.TableName, update.FilePath)
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "failed to process file delete update from archiver", "update", update, "err", err)
 				}
-			case archive.UpdateTypeFileDownloaded:
+			case UpdateTypeFileDownloaded:
 				err := b.processArchiverFileDownloadedUpdate(context.Background(), update.TableName, update.FilePath)
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "failed to process file added update from archiver", "update", update, "err", err)
 				}
-			case archive.UpdateTypeTableRemoved:
+			case UpdateTypeTableRemoved:
 				err := b.processArchiverTableDeletedUpdate(update.TableName)
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "failed to process table deleted update from archiver", "update", update, "err", err)

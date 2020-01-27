@@ -24,7 +24,12 @@ type FSConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Directory, "local.chunk-directory", "", "Directory to store chunks in.")
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlags registers flags with prefix.
+func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
 }
 
 // FSObjectClient holds config for filesystem as object store
@@ -47,7 +52,7 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 // PutChunks implements ObjectClient
-func (f *FSObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
+func (f *FSObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -55,7 +60,7 @@ func (f *FSObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) erro
 		}
 
 		filename := base64.StdEncoding.EncodeToString([]byte(chunks[i].ExternalKey()))
-		if err := ioutil.WriteFile(path.Join(f.cfg.Directory, filename), buf, 0644); err != nil {
+		if err := f.PutObject(ctx, filename, buf); err != nil {
 			return err
 		}
 	}
@@ -67,9 +72,10 @@ func (f *FSObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([
 	return util.GetParallelChunks(ctx, chunks, f.getChunk)
 }
 
-func (f *FSObjectClient) getChunk(_ context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (f *FSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	filename := base64.StdEncoding.EncodeToString([]byte(c.ExternalKey()))
-	buf, err := ioutil.ReadFile(path.Join(f.cfg.Directory, filename))
+
+	buf, err := f.GetObject(ctx, filename)
 	if err != nil {
 		return c, err
 	}
@@ -79,6 +85,53 @@ func (f *FSObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	}
 
 	return c, nil
+}
+
+// Get object from the store
+func (f *FSObjectClient) GetObject(ctx context.Context, objectName string) ([]byte, error) {
+	return ioutil.ReadFile(path.Join(f.cfg.Directory, objectName))
+}
+
+// Put object into the store
+func (f *FSObjectClient) PutObject(ctx context.Context, objectName string, object []byte) error {
+	fullPath := path.Join(f.cfg.Directory, objectName)
+	err := util.EnsureDirectory(path.Dir(fullPath))
+	if err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile(fullPath, object, 0644); err != nil {
+		return err
+	}
+	return err
+}
+
+// List objects from the store
+func (f *FSObjectClient) List(ctx context.Context, prefix string) (map[string]time.Time, error) {
+	folderPath := filepath.Join(f.cfg.Directory, prefix)
+
+	_, err := os.Stat(folderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	filesInfo, err := ioutil.ReadDir(folderPath)
+	if err != nil {
+		return nil, err
+	}
+
+	files := map[string]time.Time{}
+	for _, fileInfo := range filesInfo {
+		if fileInfo.IsDir() {
+			continue
+		}
+		files[fileInfo.Name()] = fileInfo.ModTime()
+	}
+
+	return files, nil
 }
 
 // DeleteChunksBefore implements BucketClient

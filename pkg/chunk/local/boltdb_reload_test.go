@@ -38,7 +38,7 @@ func TestBoltDBReload(t *testing.T) {
 
 	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
-	})
+	}, nil)
 
 	testDb1 := "test1"
 	testDb2 := "test2"

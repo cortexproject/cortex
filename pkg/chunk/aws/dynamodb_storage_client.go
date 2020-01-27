@@ -109,17 +109,22 @@ type DynamoDBConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *DynamoDBConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.Var(&cfg.DynamoDB, prefix+"dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
-	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
-	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
-	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
-	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
-	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
-	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
-	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
-	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
-	cfg.Metrics.RegisterFlags(f)
+	f.Float64Var(&cfg.APILimit, prefix+"dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
+	f.Float64Var(&cfg.ThrottleLimit, prefix+"dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
+	f.Var(&cfg.ApplicationAutoScaling, prefix+"applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
+	f.IntVar(&cfg.ChunkGangSize, prefix+"dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
+	f.IntVar(&cfg.ChunkGetMaxParallelism, prefix+"dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
+	f.DurationVar(&cfg.backoffConfig.MinBackoff, prefix+"dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
+	f.DurationVar(&cfg.backoffConfig.MaxBackoff, prefix+"dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.backoffConfig.MaxRetries, prefix+"dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
+	cfg.Metrics.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // StorageConfig specifies config for storing data on AWS.
@@ -132,12 +137,17 @@ type StorageConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.DynamoDBConfig.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *StorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.DynamoDBConfig.RegisterFlagsWithPrefix(prefix, f)
+
+	f.Var(&cfg.S3, prefix+"s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
-	f.BoolVar(&cfg.S3ForcePathStyle, "s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
-	f.StringVar(&cfg.BucketNames, "s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
+	f.BoolVar(&cfg.S3ForcePathStyle, prefix+"s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
+	f.StringVar(&cfg.BucketNames, prefix+"s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
 }
 
 type dynamoDBStorageClient struct {

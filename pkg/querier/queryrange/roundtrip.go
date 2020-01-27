@@ -46,10 +46,15 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
 	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Deprecated: Split queries by day and execute in parallel.")
-	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks.")
+	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
+}
+
+// GenerateCacheKey impls CacheSplitter
+func (cfg Config) GenerateCacheKey(userID string, r Request) string {
+	return generateKey(userID, r, cfg.SplitQueriesByInterval)
 }
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -89,6 +94,19 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
+func determineCacheSplitter(cfg Config, log log.Logger) CacheSplitter {
+	if cfg.ResultsCacheConfig.SplitInterval > 0 {
+		level.Warn(log).Log("msg", "flag frontend.cache-split-interval (or config cache_split_interval) is deprecated, use querier.split-queries-by-interval instead.")
+		return cfg.ResultsCacheConfig
+	}
+	if cfg.SplitQueriesByInterval > 0 {
+		return cfg
+	}
+
+	// by default use 24 hour segments
+	return constSplitter(24 * time.Hour)
+}
+
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, cache.Cache, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
@@ -105,7 +123,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	}
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, determineCacheSplitter(cfg, log), limits, codec, cacheExtractor)
 		if err != nil {
 			return nil, nil, err
 		}

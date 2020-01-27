@@ -37,8 +37,14 @@ type ResultsCacheConfig struct {
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
+
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
-	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 24*time.Hour, "The maximum interval expected for each request, results will be cached per single interval.")
+	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 0, "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This flag has been deprecated and this behavior is now determined by querier.split-queries-by-interval")
+}
+
+// GenerateCacheKey impls CacheSplitter
+func (cfg ResultsCacheConfig) GenerateCacheKey(userID string, r Request) string {
+	return generateKey(userID, r, cfg.SplitInterval)
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -55,6 +61,18 @@ func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
 	return e(start, end, from)
 }
 
+// CacheSplitter generates cache keys
+type CacheSplitter interface {
+	GenerateCacheKey(userID string, r Request) string
+}
+
+// constSplitter is a utility for using a constant split interval when determining cache keys
+type constSplitter time.Duration
+
+func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+	return generateKey(userID, r, time.Duration(t))
+}
+
 // PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
 var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
 	promRes := from.(*PrometheusResponse)
@@ -69,11 +87,12 @@ var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Resp
 })
 
 type resultsCache struct {
-	logger log.Logger
-	cfg    ResultsCacheConfig
-	next   Handler
-	cache  cache.Cache
-	limits Limits
+	logger   log.Logger
+	cfg      ResultsCacheConfig
+	next     Handler
+	cache    cache.Cache
+	limits   Limits
+	splitter CacheSplitter
 
 	extractor Extractor
 	merger    Merger
@@ -85,7 +104,14 @@ type resultsCache struct {
 // Each request starting from within the same interval will hit the same cache entry.
 // If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
 // see `generateKey`.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, cache.Cache, error) {
+func NewResultsCacheMiddleware(
+	logger log.Logger,
+	cfg ResultsCacheConfig,
+	splitter CacheSplitter,
+	limits Limits,
+	merger Merger,
+	extractor Extractor,
+) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, nil, err
@@ -100,6 +126,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			limits:    limits,
 			merger:    merger,
 			extractor: extractor,
+			splitter:  splitter,
 		}
 	}), c, nil
 }
@@ -111,7 +138,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = generateKey(userID, r, s.cfg.SplitInterval)
+		key      = s.splitter.GenerateCacheKey(userID, r)
 		extents  []Extent
 		response Response
 	)

@@ -1388,6 +1388,133 @@ boltdb:
   # CLI flag: -boltdb.dir
   [directory: <string> | default = ""]
 
+  # Enable archival of files to a store
+  # CLI flag: -boltdb.enable-archive
+  [enable_archive: <boolean> | default = false]
+
+  archiver_config:
+    # Cache location for restoring boltDB files for queries
+    # CLI flag: -boltdb.archiver.cache-location
+    [cache_location: <string> | default = ""]
+
+    # TTL for boltDB files restored in cache for queries
+    # CLI flag: -boltdb.archiver.cache-ttl
+    [cache_ttl: <duration> | default = 24h0m0s]
+
+    store_config:
+      # Store for keeping boltdb files
+      # CLI flag: -boltdb.archiver.store
+      [store: <string> | default = "filesystem"]
+
+      aws:
+        dynamodbconfig:
+          dynamodb:
+            # DynamoDB endpoint URL with escaped Key and Secret encoded. If only
+            # region is specified as a host, proper endpoint will be deduced.
+            # Use inmemory:///<table-name> to use a mock in-memory
+            # implementation.
+            # CLI flag: -boltdb.archiver.dynamodb.url
+            [url: <url> | default = ]
+
+          # DynamoDB table management requests per second limit.
+          # CLI flag: -boltdb.archiver.dynamodb.api-limit
+          [apilimit: <float> | default = 2]
+
+          # DynamoDB rate cap to back off when throttled.
+          # CLI flag: -boltdb.archiver.dynamodb.throttle-limit
+          [throttlelimit: <float> | default = 10]
+
+          applicationautoscaling:
+            # ApplicationAutoscaling endpoint URL with escaped Key and Secret
+            # encoded.
+            # CLI flag: -boltdb.archiver.applicationautoscaling.url
+            [url: <url> | default = ]
+
+          metrics:
+            # Use metrics-based autoscaling, via this query URL
+            # CLI flag: -boltdb.archiver.metrics.url
+            [url: <string> | default = ""]
+
+            # Queue length above which we will scale up capacity
+            # CLI flag: -boltdb.archiver.metrics.target-queue-length
+            [targetqueuelen: <int> | default = 100000]
+
+            # Scale up capacity by this multiple
+            # CLI flag: -boltdb.archiver.metrics.scale-up-factor
+            [scaleupfactor: <float> | default = 1.3]
+
+            # Ignore throttling below this level (rate per second)
+            # CLI flag: -boltdb.archiver.metrics.ignore-throttle-below
+            [minthrottling: <float> | default = 1]
+
+            # query to fetch ingester queue length
+            # CLI flag: -boltdb.archiver.metrics.queue-length-query
+            [queuelengthquery: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
+
+            # query to fetch throttle rates per table
+            # CLI flag: -boltdb.archiver.metrics.write-throttle-query
+            [throttlequery: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
+
+            # query to fetch write capacity usage per table
+            # CLI flag: -boltdb.archiver.metrics.usage-query
+            [usagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
+
+            # query to fetch read capacity usage per table
+            # CLI flag: -boltdb.archiver.metrics.read-usage-query
+            [readusagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
+
+            # query to fetch read errors per table
+            # CLI flag: -boltdb.archiver.metrics.read-error-query
+            [readerrorquery: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
+
+          # Number of chunks to group together to parallelise fetches (zero to
+          # disable)
+          # CLI flag: -boltdb.archiver.dynamodb.chunk.gang.size
+          [chunkgangsize: <int> | default = 10]
+
+          # Max number of chunk-get operations to start in parallel
+          # CLI flag: -boltdb.archiver.dynamodb.chunk.get.max.parallelism
+          [chunkgetmaxparallelism: <int> | default = 32]
+
+        s3:
+          # S3 endpoint URL with escaped Key and Secret encoded. If only region
+          # is specified as a host, proper endpoint will be deduced. Use
+          # inmemory:///<bucket-name> to use a mock in-memory implementation.
+          # CLI flag: -boltdb.archiver.s3.url
+          [url: <url> | default = ]
+
+        # Comma separated list of bucket names to evenly distribute chunks over.
+        # Overrides any buckets specified in s3.url flag
+        # CLI flag: -boltdb.archiver.s3.buckets
+        [bucketnames: <string> | default = ""]
+
+        # Set this to `true` to force the request to use path-style addressing.
+        # CLI flag: -boltdb.archiver.s3.force-path-style
+        [s3forcepathstyle: <boolean> | default = false]
+
+      gcs:
+        # Name of GCS bucket to put chunks in.
+        # CLI flag: -boltdb.archiver.gcs.bucketname
+        [bucket_name: <string> | default = ""]
+
+        # The size of the buffer that GCS client for each PUT request. 0 to
+        # disable buffering.
+        # CLI flag: -boltdb.archiver.gcs.chunk-buffer-size
+        [chunk_buffer_size: <int> | default = 0]
+
+        # The duration after which the requests to GCS should be timed out.
+        # CLI flag: -boltdb.archiver.gcs.request-timeout
+        [request_timeout: <duration> | default = 0s]
+
+      filesystem:
+        # Directory to store chunks in.
+        # CLI flag: -boltdb.archiver.local.chunk-directory
+        [directory: <string> | default = ""]
+
+    # Resync downloaded files with the store
+    # CLI flag: -boltdb.archiver.resync-interval
+    [resync_interval: <duration> | default = 5m0s]
+
 filesystem:
   # Directory to store chunks in.
   # CLI flag: -local.chunk-directory

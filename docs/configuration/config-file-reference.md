@@ -550,7 +550,8 @@ The `queryrange_config` configures the query splitting and caching in the Cortex
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
 # should use an a multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks.
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
@@ -604,10 +605,11 @@ results_cache:
   # CLI flag: -frontend.max-cache-freshness
   [max_freshness: <duration> | default = 1m0s]
 
-  # The maximum interval expected for each request, results will be cached per
-  # single interval.
+  # Deprecated: The maximum interval expected for each request, results will be
+  # cached per single interval. This flag has been deprecated and this behavior
+  # is now determined by querier.split-queries-by-interval
   # CLI flag: -frontend.cache-split-interval
-  [cache_split_interval: <duration> | default = 24h0m0s]
+  [cache_split_interval: <duration> | default = 0s]
 
 # Cache query results.
 # CLI flag: -querier.cache-results

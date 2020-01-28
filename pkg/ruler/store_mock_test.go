@@ -14,17 +14,17 @@ type mockRuleStore struct {
 var (
 	interval, _ = time.ParseDuration("1m")
 	mockRules   = map[string]rules.RuleGroupList{
-		"user1": rules.RuleGroupList{
+		"user1": {
 			&rules.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "namespace1",
 				User:      "user1",
 				Rules: []*rules.RuleDesc{
-					&rules.RuleDesc{
+					{
 						Record: "UP_RULE",
 						Expr:   "up",
 					},
-					&rules.RuleDesc{
+					{
 						Alert: "UP_ALERT",
 						Expr:  "up < 1",
 					},
@@ -32,13 +32,13 @@ var (
 				Interval: &interval,
 			},
 		},
-		"user2": rules.RuleGroupList{
+		"user2": {
 			&rules.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "namespace1",
 				User:      "user2",
 				Rules: []*rules.RuleDesc{
-					&rules.RuleDesc{
+					{
 						Record: "UP_RULE",
 						Expr:   "up",
 					},

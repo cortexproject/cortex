@@ -2,7 +2,6 @@ package astmapper
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -59,8 +58,10 @@ func (c jsonCodec) Decode(encoded string) (queries []string, err error) {
 	return embedded.Concat, nil
 }
 
-// Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
-func Squash(isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
+// VectorSquash reduces an AST into a single vector query which can be hijacked by a Queryable impl.
+// It always uses a VectorSelector as the substitution node.
+// This is important because logical/set binops can only be applied against vectors and not matrices.
+func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 
 	// concat OR legs
 	strs := make([]string, 0, len(nodes))
@@ -76,24 +77,11 @@ func Squash(isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
 		return nil, err
 	}
 
-	if isMatrix {
-		return &promql.MatrixSelector{
-			Name:          EmbeddedQueryFlag,
-			Range:         time.Minute,
-			LabelMatchers: []*labels.Matcher{embeddedQuery},
-		}, nil
-	}
-
 	return &promql.VectorSelector{
 		Name:          EmbeddedQueryFlag,
 		LabelMatchers: []*labels.Matcher{embeddedQuery},
 	}, nil
-}
 
-// VectorSquasher always uses a VectorSelector as the substitution node.
-// This is important because logical/set binops can only be applied against vectors and not matrices.
-func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
-	return Squash(false, nodes...)
 }
 
 // OrSquasher is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.

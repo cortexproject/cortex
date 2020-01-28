@@ -51,13 +51,11 @@ func (c *ConfigAlertStore) ListAlertConfigs(ctx context.Context) (map[string]Ale
 			})
 		}
 
-		userRules := AlertConfigDesc{
+		c.alertConfigs[user] = AlertConfigDesc{
 			User:      user,
 			RawConfig: cfg.Config.AlertmanagerConfig,
 			Templates: templates,
 		}
-
-		c.alertConfigs[user] = userRules
 	}
 
 	c.since = configs.GetLatestConfigID()

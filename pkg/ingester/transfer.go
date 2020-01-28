@@ -225,7 +225,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 
 		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
 		if err != nil {
-			return errors.Wrap(err, "unable to create temporary directory storing transferred TSDB blocks")
+			return errors.Wrap(err, "unable to create temporary directory to store transferred TSDB blocks")
 		}
 		defer os.RemoveAll(tmpDir)
 
@@ -279,7 +279,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			if !ok {
 				file, err = createfile(f)
 				if err != nil {
-					return errors.Wrap(err, "unable to create file storing incoming TSDB block received from LEAVING ingester")
+					return errors.Wrap(err, fmt.Sprintf("unable to create the file %s to store incoming TSDB block", f))
 				}
 				filesXfer++
 				files[f.Filename] = file
@@ -629,10 +629,11 @@ func unshippedBlocks(dir string) (map[string][]string, error) {
 		// Ensure the user dir is actually a directory. There may be spurious files
 		// in the storage, especially when using Minio in the local development environment.
 		if stat, err := os.Stat(userDir); err == nil && !stat.IsDir() {
+			level.Warn(util.Logger).Log("msg", "skipping entry while transferring TSDB blocks because not a directory", "path", userDir)
 			continue
 		}
 
-		// Seed the map with the userID to ensure we xfer the WAL, even if all blocks are shipped.
+		// Seed the map with the userID to ensure we transfer the WAL, even if all blocks are shipped.
 		blocks[userID] = []string{}
 
 		blockIDs, err := ioutil.ReadDir(userDir)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -188,8 +189,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 			cluster.DefaultProbeInterval,
 		)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to initialize gossip mesh", "err", err)
-			os.Exit(1)
+			return nil, errors.Wrap(err, "unable to initialize gossip mesh")
 		}
 		err = peer.Join(cluster.DefaultReconnectInterval, cluster.DefaultReconnectTimeout)
 		if err != nil {

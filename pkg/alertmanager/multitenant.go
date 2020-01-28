@@ -216,7 +216,7 @@ func (am *MultitenantAlertmanager) Run() {
 	defer close(am.done)
 
 	// Load initial set of all configurations before polling for new ones.
-	am.addNewConfigs(am.loadAllConfigs())
+	am.syncConfigs(am.loadAllConfigs())
 	ticker := time.NewTicker(am.cfg.PollInterval)
 	for {
 		select {
@@ -268,7 +268,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	am.addNewConfigs(cfgs)
+	am.syncConfigs(cfgs)
 	return nil
 }
 
@@ -282,7 +282,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, er
 	return cfgs, nil
 }
 
-func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]alerts.AlertConfigDesc) {
+func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfigDesc) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for _, cfg := range cfgs {

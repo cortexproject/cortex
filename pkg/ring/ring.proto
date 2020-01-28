@@ -9,9 +9,12 @@ option (gogoproto.unmarshaler_all) = true;
 
 message Desc {
 	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+	reserved 2;
 }
 
 message IngesterDesc {
+	reserved 4, 5; // old, deprecated fields
+
 	string addr = 1;
 	int64 timestamp = 2; // unix timestamp
 	IngesterState state = 3;

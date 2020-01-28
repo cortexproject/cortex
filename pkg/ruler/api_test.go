@@ -43,7 +43,7 @@ func TestRuler_rules(t *testing.T) {
 		Status: "success",
 		Data: &RuleDiscovery{
 			RuleGroups: []*RuleGroup{
-				&RuleGroup{
+				{
 					Name: "group1",
 					File: "namespace1",
 					Rules: []rule{

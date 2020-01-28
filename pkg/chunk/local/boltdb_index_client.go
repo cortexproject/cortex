@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -23,6 +22,9 @@ var bucketName = []byte("index")
 const (
 	separator      = "\000"
 	dbReloadPeriod = 10 * time.Minute
+
+	DBOperationRead = iota
+	DBOperationWrite
 )
 
 // BoltDBConfig for a BoltDB index client.
@@ -35,7 +37,7 @@ func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, "boltdb.dir", "", "Location of BoltDB index files.")
 }
 
-type boltIndexClient struct {
+type BoltIndexClient struct {
 	cfg BoltDBConfig
 
 	dbsMtx sync.RWMutex
@@ -45,12 +47,12 @@ type boltIndexClient struct {
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
-	if err := ensureDirectory(cfg.Directory); err != nil {
+func NewBoltDBIndexClient(cfg BoltDBConfig) (*BoltIndexClient, error) {
+	if err := chunk_util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
 
-	indexClient := &boltIndexClient{
+	indexClient := &BoltIndexClient{
 		cfg:  cfg,
 		dbs:  map[string]*bbolt.DB{},
 		done: make(chan struct{}),
@@ -61,7 +63,7 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 	return indexClient, nil
 }
 
-func (b *boltIndexClient) loop() {
+func (b *BoltIndexClient) loop() {
 	defer b.wait.Done()
 
 	ticker := time.NewTicker(dbReloadPeriod)
@@ -77,7 +79,7 @@ func (b *boltIndexClient) loop() {
 	}
 }
 
-func (b *boltIndexClient) reload() {
+func (b *BoltIndexClient) reload() {
 	b.dbsMtx.RLock()
 
 	removedDBs := []string{}
@@ -105,7 +107,7 @@ func (b *boltIndexClient) reload() {
 
 }
 
-func (b *boltIndexClient) Stop() {
+func (b *BoltIndexClient) Stop() {
 	close(b.done)
 
 	b.dbsMtx.Lock()
@@ -117,13 +119,13 @@ func (b *boltIndexClient) Stop() {
 	b.wait.Wait()
 }
 
-func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
+func (b *BoltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	return &boltWriteBatch{
 		tables: map[string]map[string][]byte{},
 	}
 }
 
-func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
+func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	b.dbsMtx.RLock()
 	db, ok := b.dbs[name]
 	b.dbsMtx.RUnlock()
@@ -131,27 +133,31 @@ func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 		return db, nil
 	}
 
-	b.dbsMtx.Lock()
-	defer b.dbsMtx.Unlock()
-	db, ok = b.dbs[name]
-	if ok {
+	if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err == nil || operation == DBOperationWrite {
+		b.dbsMtx.Lock()
+		defer b.dbsMtx.Unlock()
+		db, ok = b.dbs[name]
+		if ok {
+			return db, nil
+		}
+
+		// Open the database.
+		// Set Timeout to avoid obtaining file lock wait indefinitely.
+		db, err := OpenBoltdbFile(path.Join(b.cfg.Directory, name))
+		if err != nil {
+			return nil, err
+		}
+
+		b.dbs[name] = db
 		return db, nil
 	}
 
-	// Open the database.
-	// Set Timeout to avoid obtaining file lock wait indefinitely.
-	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, &bbolt.Options{Timeout: 5 * time.Second})
-	if err != nil {
-		return nil, err
-	}
-
-	b.dbs[name] = db
-	return db, nil
+	return nil, nil
 }
 
-func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	for table, kvps := range batch.(*boltWriteBatch).tables {
-		db, err := b.getDB(table)
+		db, err := b.GetDB(table, DBOperationWrite)
 		if err != nil {
 			return err
 		}
@@ -176,16 +182,24 @@ func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 	return nil
 }
 
-func (b *boltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
-	db, err := b.getDB(query.TableName)
+func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
+	db, err := b.GetDB(query.TableName, DBOperationRead)
 	if err != nil {
 		return err
 	}
 
+	if db == nil {
+		return nil
+	}
+
+	return b.QueryDb(ctx, db, query, callback)
+}
+
+func (b *BoltIndexClient) QueryDb(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
 	var start []byte
 	if len(query.RangeValuePrefix) > 0 {
 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))
@@ -276,12 +290,6 @@ func (b *boltReadBatchIterator) Value() []byte {
 	return b.value
 }
 
-func ensureDirectory(dir string) error {
-	info, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0777)
-	} else if err == nil && !info.IsDir() {
-		return fmt.Errorf("not a directory: %s", dir)
-	}
-	return err
+func OpenBoltdbFile(path string) (*bbolt.DB, error) {
+	return bbolt.Open(path, 0666, &bbolt.Options{Timeout: 5 * time.Second})
 }

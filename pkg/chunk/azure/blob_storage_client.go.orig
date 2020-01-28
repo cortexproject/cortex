@@ -5,7 +5,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+<<<<<<< HEAD
+=======
 	"io"
+>>>>>>> ad08d01b... support for registering custom index clients, added new methods to object store
 	"io/ioutil"
 	"net/url"
 	"strings"
@@ -74,11 +77,12 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		defer cancel()
 	}
 
-	blockBlobURL, err := b.getBlobURL(input.ExternalKey())
+	readCloser, err := b.GetObject(ctx, input.ExternalKey())
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
 
+<<<<<<< HEAD
 	// Request access to the blob
 	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
@@ -90,6 +94,11 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 	defer bodyStream.Close()
 
 	buf, err := ioutil.ReadAll(bodyStream)
+=======
+	defer readCloser.Close()
+
+	buf, err := ioutil.ReadAll(readCloser)
+>>>>>>> ad08d01b... support for registering custom index clients, added new methods to object store
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
@@ -110,16 +119,7 @@ func (b *BlobStorage) PutChunks(ctx context.Context, chunks []chunk.Chunk) error
 			return err
 		}
 
-		blockBlobURL, err := b.getBlobURL(chunk.ExternalKey())
-		if err != nil {
-			return err
-		}
-
-		bufferSize := b.cfg.UploadBufferSize
-		maxBuffers := b.cfg.UploadBufferCount
-		_, err = azblob.UploadStreamToBlockBlob(ctx, bytes.NewReader(buf), blockBlobURL,
-			azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
-
+		err = b.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf))
 		if err != nil {
 			return err
 		}
@@ -133,13 +133,12 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 		return nil, err
 	}
 
-	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
+	resp, err := blockBlobURL.Download(ctx, 0, 0, azblob.BlobAccessConditions{}, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), nil
+	return resp.Body(azblob.RetryReaderOptions{}), nil
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {

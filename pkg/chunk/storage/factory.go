@@ -25,6 +25,8 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
+type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int
@@ -73,7 +75,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, customIndexClients map[string]IndexClientFactoryFunc) (chunk.Store, error) {
 	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
 	if err != nil {
 		return nil, err
@@ -90,7 +92,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	stores := chunk.NewCompositeStore()
 
 	for _, s := range schemaCfg.Configs {
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, customIndexClients)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -115,7 +117,11 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, customIndexClients map[string]IndexClientFactoryFunc) (chunk.IndexClient, error) {
+	if factory, isOK := customIndexClients[name]; isOK {
+		return factory()
+	}
+
 	switch name {
 	case "inmemory":
 		store := chunk.NewMockStorage()
@@ -152,7 +158,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		store := chunk.NewMockStorage()
 		return store, nil
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig)
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -169,7 +175,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, schemaCfg)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":

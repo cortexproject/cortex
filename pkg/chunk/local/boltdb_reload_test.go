@@ -15,8 +15,8 @@ var (
 	testValue = []byte("test-value")
 )
 
-func setupDb(t *testing.T, boltdbIndexClient *boltIndexClient, dbname string) {
-	db, err := boltdbIndexClient.getDB(dbname)
+func setupDb(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
+	db, err := boltdbIndexClient.GetDB(dbname, DBOperationWrite)
 	require.NoError(t, err)
 
 	err = db.Update(func(tx *bbolt.Tx) error {
@@ -43,7 +43,7 @@ func TestBoltDBReload(t *testing.T) {
 	testDb1 := "test1"
 	testDb2 := "test2"
 
-	boltdbIndexClient := indexClient.(*boltIndexClient)
+	boltdbIndexClient := indexClient
 	setupDb(t, boltdbIndexClient, testDb1)
 	setupDb(t, boltdbIndexClient, testDb2)
 
@@ -52,7 +52,7 @@ func TestBoltDBReload(t *testing.T) {
 
 	require.NoError(t, os.Remove(filepath.Join(dirname, testDb1)))
 
-	droppedDb, err := boltdbIndexClient.getDB(testDb1)
+	droppedDb, err := boltdbIndexClient.GetDB(testDb1, DBOperationRead)
 	require.NoError(t, err)
 
 	valueFromDb := []byte{}

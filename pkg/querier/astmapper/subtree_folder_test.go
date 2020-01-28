@@ -96,8 +96,7 @@ func TestSubtreeMapper(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			mapper, err := NewSubtreeFolder()
-			require.Nil(t, err)
+			mapper := NewSubtreeFolder()
 
 			expr, err := promql.ParseExpr(tc.input)
 			require.Nil(t, err)

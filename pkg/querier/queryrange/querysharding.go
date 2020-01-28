@@ -148,10 +148,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	subtreeFolder, err := astmapper.NewSubtreeFolder(astmapper.JSONCodec)
-	if err != nil {
-		return nil, err
-	}
+	subtreeFolder := astmapper.NewSubtreeFolder()
 
 	strQuery := r.GetQuery()
 	mappedQuery, err := mapQuery(

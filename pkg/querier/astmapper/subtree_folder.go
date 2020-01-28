@@ -14,8 +14,8 @@ type subtreeFolder struct{}
 
 // NewSubtreeFolder creates a subtreeFolder which can reduce an AST
 // to one embedded query if it contains no embedded queries yet
-func NewSubtreeFolder() (ASTMapper, error) {
-	return NewASTNodeMapper(&subtreeFolder{}), nil
+func NewSubtreeFolder() ASTMapper {
+	return NewASTNodeMapper(&subtreeFolder{})
 }
 
 // MapNode impls NodeMapper

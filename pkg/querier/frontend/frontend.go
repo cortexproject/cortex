@@ -225,7 +225,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
 		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
-		_ = tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 	}
 
 	request := request{

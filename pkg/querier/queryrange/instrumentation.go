@@ -8,12 +8,26 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
-var queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "frontend_query_range_duration_seconds",
-	Help:      "Total time spent in seconds doing query range requests.",
-	Buckets:   prometheus.DefBuckets,
-}, []string{"method", "status_code"})
+var (
+	queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "frontend_query_range_duration_seconds",
+		Help:      "Total time spent in seconds doing query range requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"method", "status_code"})
+
+	mappedASTCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "frontend_mapped_asts_total",
+		Help:      "Total number of queries that have undergone AST mapping",
+	})
+
+	splitByCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "frontend_split_queries_total",
+		Help:      "Total number of split (parallelized) request segments",
+	})
+)
 
 // InstrumentMiddleware can be inserted into the middleware chain to expose timing information.
 func InstrumentMiddleware(name string) Middleware {

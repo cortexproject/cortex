@@ -198,6 +198,8 @@ func (summer *shardSummer) splitSum(
 		)
 	}
 
+	shardCounter.Add(float64(summer.shards))
+
 	return parent, children, nil
 }
 

@@ -168,6 +168,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 
 	strMappedQuery := mappedQuery.String()
 	level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
+	mappedASTCounter.Inc()
 
 	return ast.next.Do(ctx, r.WithQuery(strMappedQuery))
 

@@ -109,7 +109,7 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 // TokensFor partitions the tokens into those for the given ID, and those for others.
 func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	takenTokens, myTokens := Tokens{}, Tokens{}
-	for _, token := range d.migrateRing() {
+	for _, token := range d.getTokens() {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
 			myTokens = append(myTokens, token.Token)
@@ -380,7 +380,7 @@ type TokenDesc struct {
 }
 
 // Returns sorted list of tokens with ingester names.
-func (d *Desc) migrateRing() []TokenDesc {
+func (d *Desc) getTokens() []TokenDesc {
 	numTokens := 0
 	for _, ing := range d.Ingesters {
 		numTokens += len(ing.Tokens)

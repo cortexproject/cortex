@@ -170,7 +170,7 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
-		ringTokens := ringDesc.migrateRing()
+		ringTokens := ringDesc.getTokens()
 
 		r.mtx.Lock()
 		defer r.mtx.Unlock()

@@ -248,7 +248,7 @@ func (am *MultitenantAlertmanager) Stop() {
 	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
 
-// Load the full set of configurations from the server, retrying with backoff
+// Load the full set of configurations from the alert store, retrying with backoff
 // until we can get them.
 func (am *MultitenantAlertmanager) loadAllConfigs() map[string]alerts.AlertConfigDesc {
 	backoff := util.NewBackoff(context.Background(), backoffConfig)
@@ -272,7 +272,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 	return nil
 }
 
-// poll the configuration server. Not re-entrant.
+// poll the alert store. Not re-entrant.
 func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, error) {
 	cfgs, err := am.store.ListAlertConfigs(context.Background())
 	if err != nil {

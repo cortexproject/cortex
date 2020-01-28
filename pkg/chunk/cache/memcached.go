@@ -149,7 +149,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	_ = instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
+	err := instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
@@ -165,6 +165,10 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		}
 		return err
 	})
+
+	if err != nil {
+		return found, bufs, keys
+	}
 
 	for _, key := range keys {
 		item, ok := items[key]

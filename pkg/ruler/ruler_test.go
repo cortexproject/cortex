@@ -48,7 +48,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		MaxConcurrent: 20,
 		Timeout:       2 * time.Minute,
 	})
-	queryable := querier.NewQueryable(nil, nil, nil, 0)
+	queryable := querier.NewQueryable(nil, nil, nil, querier.Config{})
 	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)

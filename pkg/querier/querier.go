@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"time"
 
@@ -19,13 +20,16 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent            int
-	Timeout                  time.Duration
-	Iterators                bool
-	BatchIterators           bool
-	IngesterStreaming        bool
-	MaxSamples               int
-	IngesterMaxQueryLookback time.Duration
+	MaxConcurrent        int
+	Timeout              time.Duration
+	Iterators            bool
+	BatchIterators       bool
+	IngesterStreaming    bool
+	MaxSamples           int
+	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+
+	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
+	QueryStoreAfter time.Duration `yaml:"query_store_after"`
 
 	// The default evaluation interval for the promql engine.
 	// Needs to be configured for subqueries to work as it is the default
@@ -35,6 +39,10 @@ type Config struct {
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`
 }
+
+var (
+	errBadLookbackConfigs = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
+)
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -47,9 +55,23 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
-	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
+	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
+}
+
+// Validate the config
+func (cfg *Config) Validate() error {
+
+	// Ensure the config wont create a situation where no queriers are returned.
+	if cfg.QueryIngestersWithin != 0 && cfg.QueryStoreAfter != 0 {
+		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
+			return errBadLookbackConfigs
+		}
+	}
+
+	return nil
 }
 
 // ChunkStore is the read-interface to the Chunk Store.  Made an interface here
@@ -70,11 +92,11 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 	var queryable storage.Queryable
 	if cfg.IngesterStreaming {
 		dq := newIngesterStreamingQueryable(distributor, iteratorFunc)
-		queryable = newUnifiedChunkQueryable(dq, chunkStore, distributor, iteratorFunc, cfg.IngesterMaxQueryLookback)
+		queryable = newUnifiedChunkQueryable(dq, chunkStore, distributor, iteratorFunc, cfg)
 	} else {
 		cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
 		dq := newDistributorQueryable(distributor)
-		queryable = NewQueryable(dq, cq, distributor, cfg.IngesterMaxQueryLookback)
+		queryable = NewQueryable(dq, cq, distributor, cfg)
 	}
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
@@ -97,28 +119,33 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(dq, cq storage.Queryable, distributor Distributor, ingesterMaxQueryLookback time.Duration) storage.Queryable {
+func NewQueryable(dq, cq storage.Queryable, distributor Distributor, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		cqr, err := cq.Querier(ctx, mint, maxt)
-		if err != nil {
-			return nil, err
-		}
-
 		q := querier{
-			queriers:    []storage.Querier{cqr},
 			distributor: distributor,
 			ctx:         ctx,
 			mint:        mint,
 			maxt:        maxt,
 		}
 
-		// Include ingester only if maxt is within ingesterMaxQueryLookback w.r.t. current time.
-		if ingesterMaxQueryLookback == 0 || maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
+		// Include ingester only if maxt is within queryIngestersWithin w.r.t. current time.
+		now := model.Now()
+		if cfg.QueryIngestersWithin == 0 || maxt >= int64(now.Add(-cfg.QueryIngestersWithin)) {
 			dqr, err := dq.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}
 			q.queriers = append(q.queriers, dqr)
+		}
+
+		// Include store only if mint is within QueryStoreAfter w.r.t current time.
+		if cfg.QueryStoreAfter == 0 || mint <= int64(now.Add(-cfg.QueryStoreAfter)) {
+			cqr, err := cq.Querier(ctx, mint, maxt)
+			if err != nil {
+				return nil, err
+			}
+
+			q.queriers = append(q.queriers, cqr)
 		}
 
 		return q, nil

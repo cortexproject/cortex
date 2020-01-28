@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -12,10 +11,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, ingesterMaxQueryLookback time.Duration) storage.Queryable {
+func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		ucq := &unifiedChunkQuerier{
-			stores: []ChunkStore{cs},
 			querier: querier{
 				ctx:         ctx,
 				mint:        mint,
@@ -30,9 +28,15 @@ func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkI
 			},
 		}
 
-		// Include ingester only if maxt is within ingesterMaxQueryLookback w.r.t. current time.
-		if ingesterMaxQueryLookback == 0 || maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
+		now := model.Now()
+		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
+		if cfg.QueryIngestersWithin == 0 || maxt >= int64(now.Add(-cfg.QueryIngestersWithin)) {
 			ucq.stores = append(ucq.stores, ds)
+		}
+
+		// Include store only if mint is within QueryStoreAfter w.r.t. current time.
+		if cfg.QueryStoreAfter == 0 || mint <= int64(now.Add(-cfg.QueryStoreAfter)) {
+			ucq.stores = append(ucq.stores, cs)
 		}
 
 		return ucq, nil

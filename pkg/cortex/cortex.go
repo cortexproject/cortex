@@ -144,6 +144,9 @@ func (c *Config) Validate() error {
 	if err := c.Distributor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
 	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
+	}
 	return nil
 }
 

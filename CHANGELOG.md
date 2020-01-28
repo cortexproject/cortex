@@ -3,7 +3,7 @@
 ## master / unreleased
 
 
-## 0.6.0 / 2020-01-22
+## 0.6.0 / 2020-01-28
 
 Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that might need to be sharded.
 Further, if you're using the configs service, we've upgraded the migration library and this requires some manual intervention. See full instructions below to upgrade your PostgreSQL.
@@ -69,6 +69,11 @@ Reference: https://github.com/golang-migrate/migrate/tree/master/database/postgr
 ```bash
 migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgres://localhost:5432/database force 2 
 ```
+
+### Known issues
+
+- The `cortex_prometheus_rule_group_last_evaluation_timestamp_seconds` metric, tracked by the ruler, is not unregistered for rule groups not being used anymore. This issue will be fixed in the next Cortex release (see [2033](https://github.com/cortexproject/cortex/issues/2033)).
+
 
 ## 0.4.0 / 2019-12-02
 

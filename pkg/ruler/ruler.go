@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -484,11 +486,13 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	}
 	r.userManagerMtx.Unlock()
 
+	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
+
 	for _, group := range groups {
 		interval := group.Interval()
 		groupDesc := &rules.RuleGroupDesc{
 			Name:      group.Name(),
-			Namespace: group.File(),
+			Namespace: strings.TrimPrefix(group.File(), prefix),
 			Interval:  &interval,
 			User:      userID,
 		}

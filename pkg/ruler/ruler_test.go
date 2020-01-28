@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
@@ -119,8 +120,31 @@ func TestRuler_Rules(t *testing.T) {
 
 	r.loadRules(context.Background())
 
+	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")
 	rls, err := r.Rules(ctx, &RulesRequest{})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
+	rg := rls.Groups[0]
+	expectedRg := mockRules["user1"][0]
+	compareRuleGroupDescs(t, rg, expectedRg)
+
+	// test user2
+	ctx = user.InjectOrgID(context.Background(), "user2")
+	rls, err = r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg = rls.Groups[0]
+	expectedRg = mockRules["user2"][0]
+	compareRuleGroupDescs(t, rg, expectedRg)
+}
+
+func compareRuleGroupDescs(t *testing.T, expected, got *rules.RuleGroupDesc) {
+	require.Equal(t, expected.Name, got.Name)
+	require.Equal(t, expected.Namespace, got.Namespace)
+	require.Len(t, got.Rules, len(expected.Rules))
+	for i := range got.Rules {
+		require.Equal(t, expected.Rules[i].Record, got.Rules[i].Record)
+		require.Equal(t, expected.Rules[i].Alert, got.Rules[i].Alert)
+	}
 }

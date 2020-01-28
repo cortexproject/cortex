@@ -23,25 +23,28 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
     depends_on:
       - consul
       - minio
     ports:
       - 8001:8001
+    volumes:
+      - ./config:/cortex/config
 
   ingester-1:
     build:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
     depends_on:
       - consul
       - minio
     ports:
       - 8002:8002
     volumes:
+      - ./config:/cortex/config
       - .data-ingester-1:/tmp/cortex-tsdb-ingester:delegated
 
   ingester-2:
@@ -49,13 +52,14 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
     depends_on:
       - consul
       - minio
     ports:
       - 8003:8003
     volumes:
+      - ./config:/cortex/config
       - .data-ingester-2:/tmp/cortex-tsdb-ingester:delegated
     
   querier:
@@ -63,9 +67,11 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
     depends_on:
       - consul
       - minio
     ports:
       - 8004:8004
+    volumes:
+      - ./config:/cortex/config

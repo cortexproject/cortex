@@ -15,8 +15,8 @@ import (
 func TestRuler_rules(t *testing.T) {
 	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
 	defer os.RemoveAll(dir)
-
 	require.NoError(t, err)
+
 	cfg := defaultRulerConfig()
 	cfg.RulePath = dir
 
@@ -30,11 +30,15 @@ func TestRuler_rules(t *testing.T) {
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Check status code and status response
 	responseJSON := response{}
-	json.Unmarshal(body, &responseJSON)
+	err = json.Unmarshal(body, &responseJSON)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
 
+	// Testing the running rules for user1 in the mock store
 	expectedResponse, _ := json.Marshal(response{
 		Status: "success",
 		Data: &RuleDiscovery{
@@ -70,8 +74,8 @@ func TestRuler_rules(t *testing.T) {
 func TestRuler_alerts(t *testing.T) {
 	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
 	defer os.RemoveAll(dir)
-
 	require.NoError(t, err)
+
 	cfg := defaultRulerConfig()
 	cfg.RulePath = dir
 
@@ -85,11 +89,16 @@ func TestRuler_alerts(t *testing.T) {
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Check status code and status response
 	responseJSON := response{}
-	json.Unmarshal(body, &responseJSON)
+	err = json.Unmarshal(body, &responseJSON)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
 
+	// Currently there is not an easy way to mock firing alerts. The empty
+	// response case is tested instead.
 	expectedResponse, _ := json.Marshal(response{
 		Status: "success",
 		Data: &AlertDiscovery{

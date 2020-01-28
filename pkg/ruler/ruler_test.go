@@ -67,6 +67,10 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Ensure all rules are loaded before usage
+	ruler.loadRules(context.Background())
+
 	return ruler
 }
 
@@ -117,8 +121,6 @@ func TestRuler_Rules(t *testing.T) {
 
 	r := newTestRuler(t, cfg)
 	defer r.Stop()
-
-	r.loadRules(context.Background())
 
 	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")

@@ -1,7 +1,6 @@
 package astmapper
 
 import (
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -11,18 +10,12 @@ if it does not contain any previously embedded queries. This allows the frontend
 subtrees of an AST that have not already been parallelized.
 
 */
-type subtreeFolder struct {
-	codec Codec
-}
+type subtreeFolder struct{}
 
-// NewSubtreeFolder creates a subtreeFolder with a specified codec
-func NewSubtreeFolder(codec Codec) (ASTMapper, error) {
-	if codec == nil {
-		return nil, errors.New("nil codec")
-	}
-	return NewASTNodeMapper(&subtreeFolder{
-		codec: JSONCodec,
-	}), nil
+// NewSubtreeFolder creates a subtreeFolder which can reduce an AST
+// to one embedded query if it contains no embedded queries yet
+func NewSubtreeFolder() (ASTMapper, error) {
+	return NewASTNodeMapper(&subtreeFolder{}), nil
 }
 
 // MapNode impls NodeMapper

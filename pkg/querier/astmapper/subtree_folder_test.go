@@ -96,7 +96,7 @@ func TestSubtreeMapper(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			mapper, err := NewSubtreeFolder(JSONCodec)
+			mapper, err := NewSubtreeFolder()
 			require.Nil(t, err)
 
 			expr, err := promql.ParseExpr(tc.input)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -33,7 +32,7 @@ type EmbeddedQueries struct {
 }
 
 // JSONCodec is a Codec impl that uses JSON representations of EmbeddedQueries structs
-var JSONCodec Codec = jsonCodec{}
+var JSONCodec jsonCodec
 
 type jsonCodec struct{}
 
@@ -60,17 +59,8 @@ func (c jsonCodec) Decode(encoded string) (queries []string, err error) {
 	return embedded.Concat, nil
 }
 
-// A Codec is responsible for encoding/decoding queries
-type Codec interface {
-	Encode([]string) string
-	Decode(string) ([]string, error)
-}
-
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
-func Squash(codec Codec, isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
-	if codec == nil {
-		return nil, errors.Errorf("nil Codec")
-	}
+func Squash(isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
 
 	// concat OR legs
 	strs := make([]string, 0, len(nodes))
@@ -78,7 +68,7 @@ func Squash(codec Codec, isMatrix bool, nodes ...promql.Node) (promql.Expr, erro
 		strs = append(strs, node.String())
 	}
 
-	encoded := codec.Encode(strs)
+	encoded := JSONCodec.Encode(strs)
 
 	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
@@ -103,7 +93,7 @@ func Squash(codec Codec, isMatrix bool, nodes ...promql.Node) (promql.Expr, erro
 // VectorSquasher always uses a VectorSelector as the substitution node.
 // This is important because logical/set binops can only be applied against vectors and not matrices.
 func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
-	return Squash(JSONCodec, false, nodes...)
+	return Squash(false, nodes...)
 }
 
 // OrSquasher is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.

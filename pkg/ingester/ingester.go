@@ -633,6 +633,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2UserStats(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)

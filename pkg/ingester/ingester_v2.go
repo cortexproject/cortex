@@ -141,9 +141,9 @@ func (i *Ingester) rateUpdateLoop() {
 		select {
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
-			for _, state := range i.TSDBState.dbs {
-				state.ingestedAPISamples.tick()
-				state.ingestedRuleSamples.tick()
+			for _, db := range i.TSDBState.dbs {
+				db.ingestedAPISamples.tick()
+				db.ingestedRuleSamples.tick()
 			}
 			i.userStatesMtx.RUnlock()
 		case <-i.quit:
@@ -431,6 +431,26 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	return result, nil
 }
 
+func (i *Ingester) v2UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.UserStatsResponse{}, nil
+	}
+
+	apiRate := db.ingestedAPISamples.rate()
+	ruleRate := db.ingestedRuleSamples.rate()
+	return &client.UserStatsResponse{
+		IngestionRate:     apiRate + ruleRate,
+		ApiIngestionRate:  apiRate,
+		RuleIngestionRate: ruleRate,
+		NumSeries:         db.Head().NumSeries(),
+	}, nil
+}
 func (i *Ingester) v2AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()

@@ -52,7 +52,6 @@ func (r *ewmaRate) inc() {
 	atomic.AddInt64(&r.newEvents, 1)
 }
 
-// add counts some event.
 func (r *ewmaRate) add(delta int64) {
 	atomic.AddInt64(&r.newEvents, delta)
 }

@@ -442,15 +442,9 @@ func (i *Ingester) v2UserStats(ctx old_ctx.Context, req *client.UserStatsRequest
 		return &client.UserStatsResponse{}, nil
 	}
 
-	apiRate := db.ingestedAPISamples.rate()
-	ruleRate := db.ingestedRuleSamples.rate()
-	return &client.UserStatsResponse{
-		IngestionRate:     apiRate + ruleRate,
-		ApiIngestionRate:  apiRate,
-		RuleIngestionRate: ruleRate,
-		NumSeries:         db.Head().NumSeries(),
-	}, nil
+	return createUserStats(db), nil
 }
+
 func (i *Ingester) v2AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
@@ -461,19 +455,23 @@ func (i *Ingester) v2AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequ
 		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
 	}
 	for userID, db := range users {
-		apiRate := db.ingestedAPISamples.rate()
-		ruleRate := db.ingestedRuleSamples.rate()
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
 			UserId: userID,
-			Data: &client.UserStatsResponse{
-				IngestionRate:     apiRate + ruleRate,
-				ApiIngestionRate:  apiRate,
-				RuleIngestionRate: ruleRate,
-				NumSeries:         db.Head().NumSeries(),
-			},
+			Data:   createUserStats(db),
 		})
 	}
 	return response, nil
+}
+
+func createUserStats(db *userTSDB) *client.UserStatsResponse {
+	apiRate := db.ingestedAPISamples.rate()
+	ruleRate := db.ingestedRuleSamples.rate()
+	return &client.UserStatsResponse{
+		IngestionRate:     apiRate + ruleRate,
+		ApiIngestionRate:  apiRate,
+		RuleIngestionRate: ruleRate,
+		NumSeries:         db.Head().NumSeries(),
+	}
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {

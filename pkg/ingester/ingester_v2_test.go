@@ -1060,7 +1060,6 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
 		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
-		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_3"}}, 2, 200000},
 	}
 
 	// Create ingester
@@ -1089,7 +1088,6 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	// Get label names
 	res, err := i.v2AllUserStats(context.Background(), &client.UserStatsRequest{})
 	require.NoError(t, err)
-	t.Logf("res: %v", res)
 
 	expect := []*client.UserIDStatsResponse{
 		{
@@ -1104,12 +1102,12 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 		{
 			UserId: "user-2",
 			Data: &client.UserStatsResponse{
-				IngestionRate:     0.2,
-				NumSeries:         3,
-				ApiIngestionRate:  0.2,
+				IngestionRate:     0.13333333333333333,
+				NumSeries:         2,
+				ApiIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
 			},
 		},
 	}
-	assert.Equal(t, expect, res.Stats)
+	assert.ElementsMatch(t, expect, res.Stats)
 }

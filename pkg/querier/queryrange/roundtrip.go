@@ -59,7 +59,7 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
-		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter.")
+		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
 	}
 	return nil
 }

@@ -605,12 +605,6 @@ results_cache:
   # CLI flag: -frontend.max-cache-freshness
   [max_freshness: <duration> | default = 1m0s]
 
-  # Deprecated: The maximum interval expected for each request, results will be
-  # cached per single interval. This flag has been deprecated and this behavior
-  # is now determined by querier.split-queries-by-interval
-  # CLI flag: -frontend.cache-split-interval
-  [cache_split_interval: <duration> | default = 0s]
-
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]

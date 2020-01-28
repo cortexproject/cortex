@@ -9,14 +9,9 @@ option (gogoproto.unmarshaler_all) = true;
 
 message Desc {
 	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
-
-	// Denormalised tokens used field number 2. We don't reserve this field, since we don't expect to run a mix
-	// of old (with Tokens field) and new (with new field with number 2) Cortex versions in practice.
 }
 
 message IngesterDesc {
-	reserved 4, 5; // old, deprecated fields
-
 	string addr = 1;
 	int64 timestamp = 2; // unix timestamp
 	IngesterState state = 3;

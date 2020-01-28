@@ -156,7 +156,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 
 		for i, rl := range g.Rules {
 			if g.Rules[i].Alert != "" {
-				alerts := make([]*Alert, len(rl.Alerts))
+				alerts := make([]*Alert, 0, len(rl.Alerts))
 				for _, a := range rl.Alerts {
 					alerts = append(alerts, &Alert{
 						Labels:      client.FromLabelAdaptersToLabels(a.Labels),
@@ -225,7 +225,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	alerts := make([]*Alert, 0, len(rgs))
+	alerts := []*Alert{}
 
 	for _, g := range rgs {
 		for _, rl := range g.Rules {

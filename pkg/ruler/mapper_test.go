@@ -245,7 +245,6 @@ var (
 func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
-
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),

@@ -292,7 +292,18 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]alerts.AlertCon
 			continue
 		}
 	}
-	totalConfigs.Set(float64(len(am.cfgs)))
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	for user, userAM := range am.alertmanagers {
+		if _, exists := am.alertmanagers[user]; !exists {
+			go userAM.Stop()
+			delete(am.alertmanagers, user)
+			delete(am.cfgs, user)
+			level.Info(util.Logger).Log("msg", "deleting alertmanager", "user", user)
+		}
+	}
+	totalConfigs.Set(float64(len(am.alertmanagers)))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
@@ -404,16 +415,6 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	}
 	am.cfgs[cfg.User] = cfg
 	return nil
-}
-
-func (am *MultitenantAlertmanager) deleteUser(userID string) {
-	am.alertmanagersMtx.Lock()
-	if existing, hasExisting := am.alertmanagers[userID]; hasExisting {
-		existing.Stop()
-	}
-	delete(am.alertmanagers, userID)
-	delete(am.cfgs, userID)
-	am.alertmanagersMtx.Unlock()
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {

@@ -279,7 +279,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			if !ok {
 				file, err = createfile(f)
 				if err != nil {
-					return errors.Wrap(err, fmt.Sprintf("unable to create the file %s to store incoming TSDB block", f))
+					return errors.Wrapf(err, "unable to create file %s to store incoming TSDB block", f)
 				}
 				filesXfer++
 				files[f.Filename] = file

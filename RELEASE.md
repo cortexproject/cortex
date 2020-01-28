@@ -76,3 +76,5 @@ $ git push --tags
 Signing a tag with a GPG key is appreciated, but in case you can't add a GPG key to your Github account using the following [procedure](https://help.github.com/articles/generating-a-gpg-key/), you can replace the `-s` flag by `-a` flag of the `git tag` command to only annotate the tag without signing.
 
 Once a tag is created, the release process through CircleCI will be triggered for this tag. If everything goes smoothly, create a release in the GitHub UI with the changelog for this release.
+
+Finally run `make dist` to build binaries into `./dist` and attach them to the release on GitHub.

@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes
+.PHONY: all test clean images protos exes dist
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -205,3 +205,12 @@ check-doc: clean-doc doc
 
 web-serve:
 	cd website && hugo --config config.toml -v server
+
+# Generate binaries for a Cortex release
+dist:
+	rm -fr ./dist
+	mkdir -p ./dist
+	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
+	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
+	shasum -a 256 ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
+	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256

@@ -17,6 +17,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"strings"
@@ -50,6 +51,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.SplitQueriesByDay {
+		cfg.SplitQueriesByInterval = day
+	}
+
+	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
+		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter.")
+	}
+	return nil
 }
 
 // GenerateCacheKey impls CacheSplitter
@@ -94,19 +106,6 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
-func determineCacheSplitter(cfg Config, log log.Logger) CacheSplitter {
-	if cfg.ResultsCacheConfig.SplitInterval > 0 {
-		level.Warn(log).Log("msg", "flag frontend.cache-split-interval (or config cache_split_interval) is deprecated, use querier.split-queries-by-interval instead.")
-		return cfg.ResultsCacheConfig
-	}
-	if cfg.SplitQueriesByInterval > 0 {
-		return cfg
-	}
-
-	// by default use 24 hour segments
-	return constSplitter(24 * time.Hour)
-}
-
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, cache.Cache, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
@@ -116,14 +115,13 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {
 		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
-		cfg.SplitQueriesByInterval = day
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, determineCacheSplitter(cfg, log), limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, cfg, limits, codec, cacheExtractor)
 		if err != nil {
 			return nil, nil, err
 		}

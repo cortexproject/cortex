@@ -19,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -31,20 +32,15 @@ var (
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
 	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
-	SplitInterval     time.Duration `yaml:"cache_split_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
-	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
-	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 0, "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This flag has been deprecated and this behavior is now determined by querier.split-queries-by-interval")
-}
+	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
 
-// GenerateCacheKey impls CacheSplitter
-func (cfg ResultsCacheConfig) GenerateCacheKey(userID string, r Request) string {
-	return generateKey(userID, r, cfg.SplitInterval)
+	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -61,16 +57,10 @@ func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
 	return e(start, end, from)
 }
 
-// CacheSplitter generates cache keys
+// CacheSplitter generates cache keys. This is a useful interface for downstream
+// consumers who wish to impl their own strategies.
 type CacheSplitter interface {
 	GenerateCacheKey(userID string, r Request) string
-}
-
-// constSplitter is a utility for using a constant split interval when determining cache keys
-type constSplitter time.Duration
-
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
-	return generateKey(userID, r, time.Duration(t))
 }
 
 // PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.

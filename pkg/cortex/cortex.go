@@ -147,6 +147,9 @@ func (c *Config) Validate() error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid queryrange config")
+	}
 	return nil
 }
 

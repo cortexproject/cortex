@@ -270,12 +270,11 @@ func TestResultsCache(t *testing.T) {
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
 		},
-		SplitInterval: 24 * time.Hour,
 	}
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		cfg,
+		Config{SplitQueriesByInterval: 24 * time.Hour},
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,
@@ -308,9 +307,8 @@ func TestResultsCache(t *testing.T) {
 func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
-	cfg.SplitInterval = 24 * time.Hour
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, Config{SplitQueriesByInterval: 24 * time.Hour}, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -341,12 +339,11 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
 		},
-		SplitInterval: 24 * time.Hour,
 	}
 	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		cfg,
+		Config{SplitQueriesByInterval: 24 * time.Hour},
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,

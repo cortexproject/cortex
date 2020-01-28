@@ -276,7 +276,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, error) {
 	cfgs, err := am.store.ListAlertConfigs(context.Background())
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
+		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs alert store poll failed", "err", err)
 		return nil, err
 	}
 	return cfgs, nil

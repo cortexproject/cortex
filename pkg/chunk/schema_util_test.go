@@ -38,7 +38,7 @@ func TestLabelSeriesID(t *testing.T) {
 			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
 		},
 	} {
-		seriesID := string(LabelsSeriesID(c.lbls))
+		seriesID := string(labelsSeriesID(c.lbls))
 		assert.Equal(t, c.expected, seriesID, labelsString(c.lbls))
 	}
 }

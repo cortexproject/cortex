@@ -43,92 +43,12 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	return lifecyclerConfig
 }
 
-func checkDenormalisedLeaving(d interface{}, id string) bool {
-	desc, ok := d.(*Desc)
-	return ok &&
-		len(desc.Ingesters) == 1 &&
-		desc.Ingesters[id].State == LEAVING &&
-		len(desc.Ingesters[id].Tokens) == 0 &&
-		len(desc.Tokens) == 1
-}
-
 func checkNormalised(d interface{}, id string) bool {
 	desc, ok := d.(*Desc)
 	return ok &&
 		len(desc.Ingesters) == 1 &&
 		desc.Ingesters[id].State == ACTIVE &&
-		len(desc.Ingesters[id].Tokens) == 1 &&
-		len(desc.Tokens) == 0
-}
-
-func TestRingNormaliseMigration(t *testing.T) {
-	var ringConfig Config
-	flagext.DefaultValues(&ringConfig)
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
-
-	r, err := New(ringConfig, "ingester", IngesterRingKey)
-	require.NoError(t, err)
-	defer r.Stop()
-
-	// Add an 'ingester' with denormalised tokens.
-	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
-
-	// Since code to insert ingester with denormalised tokens into ring was removed,
-	// instead of running lifecycler, we do it manually here.
-	token := uint32(0)
-	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		require.Nil(t, in)
-		r := NewDesc()
-		tks := GenerateTokens(lifecyclerConfig1.NumTokens, nil)
-		r.Ingesters[lifecyclerConfig1.ID] = IngesterDesc{
-			Addr:      lifecyclerConfig1.Addr,
-			Timestamp: time.Now().Unix(),
-			State:     LEAVING, // expected by second ingester`
-		}
-		for _, t := range tks {
-			r.Tokens = append(r.Tokens, TokenDesc{
-				Token:    t,
-				Ingester: lifecyclerConfig1.ID,
-			})
-		}
-		token = tks[0]
-		return r, true, nil
-	})
-	require.NoError(t, err)
-
-	// Check this ingester joined, is active, and has one token.
-	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		require.NoError(t, err)
-		return checkDenormalisedLeaving(d, "ing1")
-	})
-
-	// Add a second ingester with normalised tokens.
-	var lifecyclerConfig2 = testLifecyclerConfig(ringConfig, "ing2")
-	lifecyclerConfig2.JoinAfter = 100 * time.Second
-
-	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true)
-	require.NoError(t, err)
-	l2.Start()
-
-	// Since there is nothing that would make l2 to claim tokens from l1 (normally done on transfer)
-	// we do it manually.
-	require.NoError(t, l2.ClaimTokensFor(context.Background(), "ing1"))
-	require.NoError(t, l2.ChangeState(context.Background(), ACTIVE))
-
-	// Check the new ingester joined, has the same token, and is active.
-	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		require.NoError(t, err)
-
-		if desc, ok := d.(*Desc); ok {
-			// lifecycler for ingester 1 isn't running, so we need to delete it manually
-			// (to make checkNormalised happy)
-			delete(desc.Ingesters, lifecyclerConfig1.ID)
-		}
-		return checkNormalised(d, "ing2") &&
-			d.(*Desc).Ingesters["ing2"].Tokens[0] == token
-	})
+		len(desc.Ingesters[id].Tokens) == 1
 }
 
 func TestLifecycler_HealthyInstancesCount(t *testing.T) {
@@ -381,8 +301,7 @@ func TestTokensOnDisk(t *testing.T) {
 		return ok &&
 			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
-			len(desc.Ingesters["ing1"].Tokens) == 512 &&
-			len(desc.Tokens) == 0
+			len(desc.Ingesters["ing1"].Tokens) == 512
 	})
 
 	l1.Shutdown()
@@ -406,8 +325,7 @@ func TestTokensOnDisk(t *testing.T) {
 		return ok &&
 			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing2"].State == ACTIVE &&
-			len(desc.Ingesters["ing2"].Tokens) == 512 &&
-			len(desc.Tokens) == 0
+			len(desc.Ingesters["ing2"].Tokens) == 512
 	})
 
 	// Check for same tokens.
@@ -441,15 +359,8 @@ func TestJoinInLeavingState(t *testing.T) {
 					State:  LEAVING,
 					Tokens: []uint32{1, 4},
 				},
-			},
-			Tokens: []TokenDesc{
-				{
-					Ingester: "ing2",
-					Token:    2,
-				},
-				{
-					Ingester: "ing2",
-					Token:    3,
+				"ing2": {
+					Tokens: []uint32{2, 3},
 				},
 			},
 		}
@@ -468,9 +379,9 @@ func TestJoinInLeavingState(t *testing.T) {
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		return ok &&
-			len(desc.Ingesters) == 1 &&
+			len(desc.Ingesters) == 2 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
 			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
-			len(desc.Tokens) == 2
+			len(desc.Ingesters["ing2"].Tokens) == 2
 	})
 }

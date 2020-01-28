@@ -2,18 +2,11 @@ package ingester
 
 import (
 	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
-}
 
 func TestWAL(t *testing.T) {
 	dirname, err := ioutil.TempDir("", "cortex-wal")

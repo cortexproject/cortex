@@ -216,7 +216,6 @@ func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.
 		out.Ingesters[u] = ing
 	}
 
-	// Keep ring normalized.
 	d.Ingesters = thisIngesterMap
 
 	return out, nil
@@ -233,7 +232,6 @@ func (d *Desc) MergeContent() []string {
 }
 
 // buildNormalizedIngestersMap will do the following:
-// - moves all tokens from r.Tokens into individual ingesters
 // - sorts tokens and removes duplicates (only within single ingester)
 // - it doesn't modify input ring
 func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
@@ -249,7 +247,7 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 
 	// Sort tokens, and remove duplicates
 	for name, ing := range out {
-		if ing.Tokens == nil {
+		if len(ing.Tokens) == 0 {
 			continue
 		}
 
@@ -257,17 +255,16 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 			sort.Sort(Tokens(ing.Tokens))
 		}
 
-		seen := make(map[uint32]bool)
-
-		n := 0
-		for _, v := range ing.Tokens {
-			if !seen[v] {
-				seen[v] = true
-				ing.Tokens[n] = v
-				n++
+		// tokens are sorted now, we can easily remove duplicates.
+		prev := ing.Tokens[0]
+		for ix := 1; ix < len(ing.Tokens); {
+			if ing.Tokens[ix] == prev {
+				ing.Tokens = append(ing.Tokens[:ix], ing.Tokens[ix+1:]...)
+			} else {
+				prev = ing.Tokens[ix]
+				ix++
 			}
 		}
-		ing.Tokens = ing.Tokens[:n]
 
 		// write updated value back to map
 		out[name] = ing

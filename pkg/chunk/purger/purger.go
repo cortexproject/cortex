@@ -48,10 +48,9 @@ type workerJobExecutionStatus struct {
 // DataPurger does the purging of data which is requested to be deleted
 type DataPurger struct {
 	cfg         DataPurgerConfig
-	deleteStore chunk.DeleteStore
+	deleteStore *chunk.DeleteStore
 	chunkStore  chunk.Store
 
-	buildPlanChan                chan chunk.DeleteRequest
 	executePlansChan             chan chunk.DeleteRequest
 	workerJobChan                chan workerJob
 	workerJobExecutionStatusChan chan workerJobExecutionStatus
@@ -66,17 +65,20 @@ type DataPurger struct {
 }
 
 // NewDataPurger creates a new DataPurger
-func NewDataPurger(cfg DataPurgerConfig, deleteStore chunk.DeleteStore, chunkStore chunk.Store) (*DataPurger, error) {
+func NewDataPurger(cfg DataPurgerConfig, deleteStore *chunk.DeleteStore, chunkStore chunk.Store) (*DataPurger, error) {
 	dataPurger := DataPurger{
 		cfg:                          cfg,
 		deleteStore:                  deleteStore,
 		chunkStore:                   chunkStore,
 		inProcessRequestIDs:          map[string]string{},
-		buildPlanChan:                make(chan chunk.DeleteRequest, 50),
 		executePlansChan:             make(chan chunk.DeleteRequest, 50),
 		workerJobChan:                make(chan workerJob, 50),
 		workerJobExecutionStatusChan: make(chan workerJobExecutionStatus, 50),
+		quit:                         make(chan struct{}),
 	}
+
+	dataPurger.runWorkers()
+	go dataPurger.jobScheduler()
 
 	err := dataPurger.loadInprocessDeleteRequests()
 	if err != nil {
@@ -88,8 +90,6 @@ func NewDataPurger(cfg DataPurgerConfig, deleteStore chunk.DeleteStore, chunkSto
 
 // Run starts workers, job scheduler and a loop for feeding delete requests to them for processing
 func (dp *DataPurger) Run() {
-	dp.runWorkers()
-	go dp.jobScheduler()
 	dp.loop()
 }
 
@@ -102,7 +102,7 @@ func (dp *DataPurger) Stop() {
 func (dp *DataPurger) loop() {
 	dp.wg.Add(1)
 
-	pullDeleteRequestsToPlanDeletesTicker := time.NewTicker(time.Second)
+	pullDeleteRequestsToPlanDeletesTicker := time.NewTicker(time.Hour)
 	defer pullDeleteRequestsToPlanDeletesTicker.Stop()
 
 	for {
@@ -111,11 +111,6 @@ func (dp *DataPurger) loop() {
 			err := dp.pullDeleteRequestsToPlanDeletes()
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
-			}
-		case deleteRequest := <-dp.buildPlanChan:
-			err := dp.buildDeletePlan(deleteRequest)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error building delete plan", "request-id", deleteRequest.RequestID, "err", err)
 			}
 		case <-dp.quit:
 			dp.wg.Done()
@@ -148,7 +143,7 @@ func (dp *DataPurger) jobScheduler() {
 						pendingPlansCount[jobExecutionStatus.deleteRequestID]--
 
 						if pendingPlansCount[jobExecutionStatus.deleteRequestID] == 0 {
-							level.Debug(util.Logger).Log("msg", "finished execution of all plans so cleaning up and updating status of request",
+							level.Info(util.Logger).Log("msg", "finished execution of all plans, cleaning up and updating status of request",
 								"request-id", jobExecutionStatus.deleteRequestID, "user-id", jobExecutionStatus.userID)
 
 							err := dp.deleteStore.UpdateStatus(context.Background(), jobExecutionStatus.userID, jobExecutionStatus.deleteRequestID, chunk.DeleteRequestStatusProcessed)
@@ -182,7 +177,7 @@ func (dp *DataPurger) jobScheduler() {
 		select {
 		case deleteRequest := <-dp.executePlansChan:
 			numPlans := numOfPlans(deleteRequest.StartTime, deleteRequest.EndTime)
-			level.Debug(util.Logger).Log("msg", "sending jobs to workers for purging data",
+			level.Info(util.Logger).Log("msg", "sending jobs to workers for purging data",
 				"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-jobs", numPlans)
 
 			pendingPlansCountMtx.Lock()
@@ -220,13 +215,13 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int) error {
 	}
 
 	if pb == nil {
-		level.Debug(util.Logger).Log("msg", "plan not found, must be executed already",
+		level.Info(util.Logger).Log("msg", "plan not found, must be executed already",
 			"request-id", requestID, "user-id", userID, "plan-no", planNo)
 		// this means plan was already executed and got removed. Do nothing.
 		return nil
 	}
 
-	level.Debug(util.Logger).Log("msg", "executing plan",
+	level.Info(util.Logger).Log("msg", "executing plan",
 		"request-id", requestID, "user-id", userID, "plan-no", planNo)
 
 	var plan purgeplan.Plan
@@ -277,7 +272,7 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int) error {
 		}
 	}
 
-	level.Debug(util.Logger).Log("msg", "finished execution of plan",
+	level.Info(util.Logger).Log("msg", "finished execution of plan",
 		"request-id", requestID, "user-id", userID, "plan-no", planNo)
 
 	return nil
@@ -291,10 +286,13 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 	}
 
 	for _, deleteRequest := range requestsWithBuildingPlanStatus {
-		level.Debug(util.Logger).Log("msg", "loaded in process delete requests with status building plan", "request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
+		level.Info(util.Logger).Log("msg", "loaded in process delete requests with status building plan", "request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
 
 		dp.inProcessRequestIDs[deleteRequest.UserID] = dp.inProcessRequestIDs[deleteRequest.RequestID]
-		dp.buildPlanChan <- deleteRequest
+		err := dp.buildDeletePlan(deleteRequest)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error building delete plan", "request-id", deleteRequest.RequestID, "err", err)
+		}
 	}
 
 	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.DeleteRequestStatusDeleting)
@@ -303,7 +301,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 	}
 
 	for _, deleteRequest := range requestsWithDeletingStatus {
-		level.Debug(util.Logger).Log("msg", "loaded in process delete requests with status deleting", "request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
+		level.Info(util.Logger).Log("msg", "loaded in process delete requests with status deleting", "request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
 
 		dp.inProcessRequestIDs[deleteRequest.UserID] = dp.inProcessRequestIDs[deleteRequest.RequestID]
 		dp.executePlansChan <- deleteRequest
@@ -345,10 +343,13 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
 		dp.inProcessRequestIDsMtx.Unlock()
 
-		level.Debug(util.Logger).Log("msg", "new delete request sent for building plan",
+		level.Info(util.Logger).Log("msg", "building plan for a new delete request",
 			"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
-		dp.buildPlanChan <- deleteRequest
-
+		err := dp.buildDeletePlan(deleteRequest)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error building delete plan", "request-id", deleteRequest.RequestID, "err", err)
+			return err
+		}
 	}
 
 	return nil
@@ -363,7 +364,7 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 	ctx = user.InjectOrgID(ctx, deleteRequest.UserID)
 
 	perDayTimeRange := splitByDay(deleteRequest.StartTime, deleteRequest.EndTime)
-	level.Debug(util.Logger).Log("msg", "building delete plan",
+	level.Info(util.Logger).Log("msg", "building delete plan",
 		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange)-1)
 
 	plans := make([][]byte, len(perDayTimeRange)-1)
@@ -407,7 +408,7 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 		return err
 	}
 
-	level.Debug(util.Logger).Log("msg", "built delete plans and sending delete request for execution",
+	level.Info(util.Logger).Log("msg", "built delete plans and sending delete request for execution",
 		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange)-1)
 	dp.executePlansChan <- deleteRequest
 

@@ -637,7 +637,7 @@ func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader chunk.Tom
 
 			cacheGenNumber, err := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 

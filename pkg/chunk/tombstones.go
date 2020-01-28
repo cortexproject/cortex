@@ -30,12 +30,12 @@ type tombstonesLoader struct {
 
 	cacheGenNumbers    map[string]*CacheGenNumbers
 	cacheGenNumbersMtx sync.RWMutex
-	deleteStore        DeleteStore
+	deleteStore        *DeleteStore
 	quit               chan struct{}
 }
 
 // NewTombstonesLoader creates a tombstonesLoader
-func NewTombstonesLoader(deleteStore DeleteStore) TombstonesLoader {
+func NewTombstonesLoader(deleteStore *DeleteStore) TombstonesLoader {
 	tl := tombstonesLoader{
 		tombstones:      map[string]*TombstonesSet{},
 		deleteStore:     deleteStore,

@@ -16,11 +16,11 @@ import (
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteStore chunk.DeleteStore
+	deleteStore *chunk.DeleteStore
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore chunk.DeleteStore) (*DeleteRequestHandler, error) {
+func NewDeleteRequestHandler(deleteStore *chunk.DeleteStore) (*DeleteRequestHandler, error) {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
 	}

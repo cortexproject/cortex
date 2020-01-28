@@ -5,12 +5,12 @@ import (
 	"compress/gzip"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
 
 // ChunksHandler allows you to fetch a compressed tar of all the chunks for a
@@ -24,13 +24,13 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		mint, err := queryrange.ParseTime(r.FormValue("start"))
+		mint, err := util.ParseTime(r.FormValue("start"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		maxt, err := queryrange.ParseTime(r.FormValue("end"))
+		maxt, err := util.ParseTime(r.FormValue("end"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

@@ -39,12 +39,12 @@ func (m *mockAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alert
 func TestMultitenantAlertmanager_loadAllConfigs(t *testing.T) {
 	mockStore := &mockAlertStore{
 		configs: map[string]alerts.AlertConfigDesc{
-			"user1": alerts.AlertConfigDesc{
+			"user1": {
 				User:      "user1",
 				RawConfig: simpleConfigOne,
 				Templates: []*alerts.TemplateDesc{},
 			},
-			"user2": alerts.AlertConfigDesc{
+			"user2": {
 				User:      "user2",
 				RawConfig: simpleConfigOne,
 				Templates: []*alerts.TemplateDesc{},

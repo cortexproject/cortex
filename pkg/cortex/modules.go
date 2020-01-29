@@ -423,6 +423,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	if cfg.Ruler.EnableAPI {
 		subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
 		t.ruler.RegisterRoutes(subrouter)
+		ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
 	}
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)

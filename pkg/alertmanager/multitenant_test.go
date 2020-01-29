@@ -104,10 +104,4 @@ func TestMultitenantAlertmanager_loadAllConfigs(t *testing.T) {
 	currentConfig, exists = am.cfgs["user1"]
 	require.True(t, exists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
-
-	// Test deletion of user config
-	delete(mockStore.configs, "user1")
-	err = am.updateConfigs()
-	require.NoError(t, err)
-	require.Len(t, am.alertmanagers, 2)
 }

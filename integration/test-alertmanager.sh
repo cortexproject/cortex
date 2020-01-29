@@ -6,7 +6,7 @@ set -e
 
 docker network create cortex
 
-ALERTMANAGER_ARGS="-target=alertmanager -log.level=debug -alertmanager.storage.local.path=/tests/fixtures/alertmanager_configs/ -alertmanager.storage.type=file -target=alertmanager -alertmanager.web.external-url=http://localhost:8080/api/prom"
+ALERTMANAGER_ARGS="-target=alertmanager -log.level=debug -alertmanager.storage.local.path=/tests/fixtures/alertmanager_configs/ -alertmanager.storage.type=local -target=alertmanager -alertmanager.web.external-url=http://localhost:8080/api/prom"
 echo Start alertmanager
 docker run $RUN_ARGS -p 8080:80 -d --name=alertmanager --hostname=alertmanager "$IMAGE_PREFIX"cortex:$IMAGE_TAG $ALERTMANAGER_ARGS
 

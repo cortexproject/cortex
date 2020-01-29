@@ -45,6 +45,10 @@ type userTSDB struct {
 	shipper       Shipper
 	shipperCtx    context.Context
 	shipperCancel context.CancelFunc
+
+	// for statistics
+	ingestedAPISamples  *ewmaRate
+	ingestedRuleSamples *ewmaRate
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -121,7 +125,31 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		go i.shipBlocksLoop()
 	}
 
+	i.done.Add(1)
+	go i.rateUpdateLoop()
+
 	return i, nil
+}
+
+func (i *Ingester) rateUpdateLoop() {
+	defer i.done.Done()
+
+	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
+	defer rateUpdateTicker.Stop()
+
+	for {
+		select {
+		case <-rateUpdateTicker.C:
+			i.userStatesMtx.RLock()
+			for _, db := range i.TSDBState.dbs {
+				db.ingestedAPISamples.tick()
+				db.ingestedRuleSamples.tick()
+			}
+			i.userStatesMtx.RUnlock()
+		case <-i.quit:
+			return
+		}
+	}
 }
 
 // v2Push adds metrics to a block
@@ -207,6 +235,15 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+
+	switch req.Source {
+	case client.RULE:
+		db.ingestedRuleSamples.add(int64(succeededSamplesCount))
+	case client.API:
+		fallthrough
+	default:
+		db.ingestedAPISamples.add(int64(succeededSamplesCount))
+	}
 
 	if firstPartialErr != nil {
 		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
@@ -394,6 +431,49 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	return result, nil
 }
 
+func (i *Ingester) v2UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.UserStatsResponse{}, nil
+	}
+
+	return createUserStats(db), nil
+}
+
+func (i *Ingester) v2AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	users := i.TSDBState.dbs
+
+	response := &client.UsersStatsResponse{
+		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
+	}
+	for userID, db := range users {
+		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
+			UserId: userID,
+			Data:   createUserStats(db),
+		})
+	}
+	return response, nil
+}
+
+func createUserStats(db *userTSDB) *client.UserStatsResponse {
+	apiRate := db.ingestedAPISamples.rate()
+	ruleRate := db.ingestedRuleSamples.rate()
+	return &client.UserStatsResponse{
+		IngestionRate:     apiRate + ruleRate,
+		ApiIngestionRate:  apiRate,
+		RuleIngestionRate: ruleRate,
+		NumSeries:         db.Head().NumSeries(),
+	}
+}
+
 func (i *Ingester) getTSDB(userID string) *userTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
@@ -471,7 +551,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	userDB := &userTSDB{
-		DB: db,
+		DB:                  db,
+		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 	}
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,

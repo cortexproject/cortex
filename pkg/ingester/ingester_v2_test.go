@@ -1002,3 +1002,112 @@ func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	args := m.Called(ctx)
 	return args.Int(0), args.Error(1)
 }
+
+func Test_Ingester_v2UserStats(t *testing.T) {
+	series := []struct {
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	for _, series := range series {
+		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.tick()
+		db.ingestedRuleSamples.tick()
+	}
+
+	// Get label names
+	res, err := i.v2UserStats(ctx, &client.UserStatsRequest{})
+	require.NoError(t, err)
+	assert.InDelta(t, 0.2, res.ApiIngestionRate, 0.0001)
+	assert.InDelta(t, float64(0), res.RuleIngestionRate, 0.0001)
+	assert.Equal(t, uint64(3), res.NumSeries)
+}
+
+func Test_Ingester_v2AllUserStats(t *testing.T) {
+	series := []struct {
+		user      string
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+	for _, series := range series {
+		ctx := user.InjectOrgID(context.Background(), series.user)
+		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.tick()
+		db.ingestedRuleSamples.tick()
+	}
+
+	// Get label names
+	res, err := i.v2AllUserStats(context.Background(), &client.UserStatsRequest{})
+	require.NoError(t, err)
+
+	expect := []*client.UserIDStatsResponse{
+		{
+			UserId: "user-1",
+			Data: &client.UserStatsResponse{
+				IngestionRate:     0.2,
+				NumSeries:         3,
+				ApiIngestionRate:  0.2,
+				RuleIngestionRate: 0,
+			},
+		},
+		{
+			UserId: "user-2",
+			Data: &client.UserStatsResponse{
+				IngestionRate:     0.13333333333333333,
+				NumSeries:         2,
+				ApiIngestionRate:  0.13333333333333333,
+				RuleIngestionRate: 0,
+			},
+		},
+	}
+	assert.ElementsMatch(t, expect, res.Stats)
+}

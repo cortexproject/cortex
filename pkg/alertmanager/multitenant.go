@@ -297,7 +297,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	defer am.alertmanagersMtx.Unlock()
 	for user, userAM := range am.alertmanagers {
 		if _, exists := cfgs[user]; !exists {
-			go userAM.Stop()
+			userAM.Stop()
 			delete(am.alertmanagers, user)
 			delete(am.cfgs, user)
 			level.Info(util.Logger).Log("msg", "deleting alertmanager", "user", user)

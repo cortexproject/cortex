@@ -129,6 +129,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.done.Add(1)
 	go i.updateLoop()
 
+	if i.cfg.TSDBConfig.CompactionConcurrency > 0 && i.cfg.TSDBConfig.CompactionInterval > 0 {
+		i.done.Add(1)
+		go i.compactionLoop()
+	}
+
 	return i, nil
 }
 
@@ -592,6 +597,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.DisableCompactions() // we will compact on our own schedule
 
 	userDB := &userTSDB{
 		DB:                  db,
@@ -818,11 +824,83 @@ func (i *Ingester) shipBlocks() {
 		}()
 	}
 
+sendLoop:
 	for _, userID := range i.getTSDBUsers() {
-		workersChan <- userID
+		select {
+		case workersChan <- userID:
+			// ok
+		case <-i.quit:
+			// don't start new shippings
+			break sendLoop
+		}
 	}
 	close(workersChan)
 
 	// Wait until all workers completed.
+	wg.Wait()
+}
+
+func (i *Ingester) compactionLoop() {
+	defer i.done.Done()
+
+	ticker := time.NewTicker(i.cfg.TSDBConfig.CompactionInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			i.compactBlocks()
+
+		case <-i.quit:
+			return
+		}
+	}
+}
+
+func (i *Ingester) compactBlocks() {
+	// Don't compact TSDB blocks while JOINING or LEAVING, as there may be ongoing blocks transfers.
+	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING || ingesterState == ring.LEAVING {
+		level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	ch := make(chan string)
+
+	for ix := 0; ix < i.cfg.TSDBConfig.CompactionConcurrency; ix++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for userID := range ch {
+				userDB := i.getTSDB(userID)
+				if userDB == nil {
+					continue
+				}
+
+				err := userDB.Compact()
+				if err != nil {
+					level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
+				} else {
+					level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
+				}
+			}
+		}()
+	}
+
+sendLoop:
+	for _, userID := range i.getTSDBUsers() {
+		select {
+		case ch <- userID:
+			// ok
+		case <-i.quit:
+			// don't start new compactions.
+			break sendLoop
+		}
+	}
+
+	close(ch)
+
+	// wait for ongoing compactions to finish.
 	wg.Wait()
 }

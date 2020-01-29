@@ -2,8 +2,8 @@ package ruler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -155,7 +155,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 						Annotations: client.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
 						ActiveAt:    &a.ActiveAt,
-						Value:       fmt.Sprintf("%f", a.Value),
+						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
 					})
 				}
 				grp.Rules[i] = alertingRule{
@@ -228,7 +228,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 						Annotations: client.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
 						ActiveAt:    &a.ActiveAt,
-						Value:       fmt.Sprintf("%f", a.Value),
+						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
 					})
 				}
 			}

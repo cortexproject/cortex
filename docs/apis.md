@@ -76,6 +76,17 @@ The following schema is used both when retrieving the current configs from the A
 - Normal Response Codes: NoContent(204)
 - Error Response Codes: Unauthorized(401), BadRequest(400)
 
+The POST request body is expected to be like the following example:
+```json
+{
+    "rule_format_version": "2",
+    "alertmanager_config": "global:\n  resolve_timeout: 10s\nroute: \n  receiver: webhook\nreceivers:\n  - name: webhook\n    webhook_configs: \n    - url: http://example.com",
+    "rules_files": {
+        "rules.yaml": "groups:\n- name: demo-service-alerts\n  interval: 1s\n  rules:\n  - alert: SomethingIsUp\n    expr: up == 1\n"
+    }
+}
+```
+
 `POST /api/prom/configs/alertmanager/validate` - Validate Alertmanager config
 
 Normal Response: OK(200)

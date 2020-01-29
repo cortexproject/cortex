@@ -64,11 +64,6 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// GenerateCacheKey impls CacheSplitter
-func (cfg Config) GenerateCacheKey(userID string, r Request) string {
-	return generateKey(userID, r, cfg.SplitQueriesByInterval)
-}
-
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, Request) (Response, error)
 
@@ -121,7 +116,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	}
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, cfg, limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor)
 		if err != nil {
 			return nil, nil, err
 		}

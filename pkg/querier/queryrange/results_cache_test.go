@@ -274,7 +274,7 @@ func TestResultsCache(t *testing.T) {
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		Config{SplitQueriesByInterval: 24 * time.Hour},
+		constSplitter(24*time.Hour),
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,
@@ -308,7 +308,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, Config{SplitQueriesByInterval: 24 * time.Hour}, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(24*time.Hour), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -343,7 +343,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,
-		Config{SplitQueriesByInterval: 24 * time.Hour},
+		constSplitter(24*time.Hour),
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,
@@ -398,7 +398,7 @@ func Test_generateKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := generateKey("fake", tt.r, tt.interval); got != tt.want {
+			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})

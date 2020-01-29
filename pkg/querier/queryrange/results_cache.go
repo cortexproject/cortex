@@ -58,9 +58,18 @@ func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
 }
 
 // CacheSplitter generates cache keys. This is a useful interface for downstream
-// consumers who wish to impl their own strategies.
+// consumers who wish to implement their own strategies.
 type CacheSplitter interface {
 	GenerateCacheKey(userID string, r Request) string
+}
+
+// constSplitter is a utility for using a constant split interval when determining cache keys
+type constSplitter time.Duration
+
+// GenerateCacheKey generates a cache key based on the userID, Request and interval.
+func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 // PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
@@ -374,12 +383,6 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 		}
 	}
 	return extents, nil
-}
-
-// generateKey generates a cache key based on the userID, Request and interval.
-func generateKey(userID string, r Request, interval time.Duration) string {
-	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {

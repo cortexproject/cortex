@@ -220,8 +220,8 @@ func (am *MultitenantAlertmanager) Run() {
 	ticker := time.NewTicker(am.cfg.PollInterval)
 	for {
 		select {
-		case now := <-ticker.C:
-			err := am.updateConfigs(now)
+		case <-ticker.C:
+			err := am.updateConfigs()
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error updating configs", "err", err)
 			}
@@ -263,7 +263,7 @@ func (am *MultitenantAlertmanager) loadAllConfigs() map[string]alerts.AlertConfi
 	}
 }
 
-func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
+func (am *MultitenantAlertmanager) updateConfigs() error {
 	cfgs, err := am.poll()
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	am.alertmanagersMtx.Lock()
 	defer am.alertmanagersMtx.Unlock()
 	for user, userAM := range am.alertmanagers {
-		if _, exists := am.alertmanagers[user]; !exists {
+		if _, exists := cfgs[user]; !exists {
 			go userAM.Stop()
 			delete(am.alertmanagers, user)
 			delete(am.cfgs, user)

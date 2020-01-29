@@ -21,6 +21,10 @@ Read is on `/api/prom/read` and write is on `/api/prom/push`.
 
 Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
 
+`GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
+
+`GET /api/prom/api/v1/alerts` - List of all active alerts
+
 ## Configs API
 
 The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.

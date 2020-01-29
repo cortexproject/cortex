@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
@@ -16,26 +17,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// RegisterRoutes registers the configs API HTTP routes with the provided Router.
+// RegisterRoutes registers the ruler API HTTP routes with the provided Router.
 func (r *Ruler) RegisterRoutes(router *mux.Router) {
 	for _, route := range []struct {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
-		{"get_rules", "GET", "/api/prom/api/v1/rules", r.rules},
-		{"get_alerts", "GET", "/api/prom/api/v1/alerts", r.alerts},
+		{"get_rules", "GET", "/api/v1/rules", r.rules},
+		{"get_alerts", "GET", "/api/v1/alerts", r.alerts},
 	} {
 		level.Debug(util.Logger).Log("msg", "ruler: registering route", "name", route.name, "method", route.method, "path", route.path)
 		router.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
 }
-
-type errorType string
-
-const (
-	errorBadData  errorType = "bad_data"
-	errorInternal errorType = "internal"
-)
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not pass a context to
@@ -44,10 +38,10 @@ const (
 // https://github.com/prometheus/prometheus/pull/4999
 
 type response struct {
-	Status    string      `json:"status"`
-	Data      interface{} `json:"data,omitempty"`
-	ErrorType errorType   `json:"errorType,omitempty"`
-	Error     string      `json:"error,omitempty"`
+	Status    string       `json:"status"`
+	Data      interface{}  `json:"data,omitempty"`
+	ErrorType v1.ErrorType `json:"errorType,omitempty"`
+	Error     string       `json:"error,omitempty"`
 }
 
 // AlertDiscovery has info for all active alerts.
@@ -93,8 +87,7 @@ type alertingRule struct {
 	Alerts      []*Alert      `json:"alerts"`
 	Health      string        `json:"health"`
 	LastError   string        `json:"lastError,omitempty"`
-	// Type of an alertingRule is always "alerting".
-	Type string `json:"type"`
+	Type        v1.RuleType   `json:"type"`
 }
 
 type recordingRule struct {
@@ -103,11 +96,10 @@ type recordingRule struct {
 	Labels    labels.Labels `json:"labels,omitempty"`
 	Health    string        `json:"health"`
 	LastError string        `json:"lastError,omitempty"`
-	// Type of a recordingRule is always "recording".
-	Type string `json:"type"`
+	Type      v1.RuleType   `json:"type"`
 }
 
-func respondError(logger log.Logger, w http.ResponseWriter, msg string, errType errorType) {
+func respondError(logger log.Logger, w http.ResponseWriter, msg string, errType v1.ErrorType) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
 		ErrorType: errType,
@@ -132,7 +124,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found", errorInternal)
+		respondError(logger, w, "no valid org id found", v1.ErrServer)
 		return
 	}
 
@@ -140,7 +132,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		respondError(logger, w, err.Error(), errorInternal)
+		respondError(logger, w, err.Error(), v1.ErrServer)
 		return
 	}
 
@@ -176,7 +168,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 					Alerts:      alerts,
 					Health:      rl.GetHealth(),
 					LastError:   rl.GetLastError(),
-					Type:        "alerting",
+					Type:        v1.RuleTypeAlerting,
 				}
 			} else {
 				grp.Rules[i] = recordingRule{
@@ -185,7 +177,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 					Labels:    client.FromLabelAdaptersToLabels(rl.Labels),
 					Health:    rl.GetHealth(),
 					LastError: rl.GetLastError(),
-					Type:      "recording",
+					Type:      v1.RuleTypeRecording,
 				}
 			}
 		}
@@ -198,7 +190,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data", errorBadData)
+		respondError(logger, w, "unable to marshal the requested data", v1.ErrServer)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -213,7 +205,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found", errorInternal)
+		respondError(logger, w, "no valid org id found", v1.ErrServer)
 		return
 	}
 
@@ -221,7 +213,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		respondError(logger, w, err.Error(), "internal")
+		respondError(logger, w, err.Error(), v1.ErrServer)
 		return
 	}
 
@@ -249,7 +241,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data", errorBadData)
+		respondError(logger, w, "unable to marshal the requested data", v1.ErrServer)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

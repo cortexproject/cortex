@@ -401,12 +401,15 @@ func (r *Ruler) loadRules(ctx context.Context) {
 }
 
 // syncManager maps the rule files to disk, detects any changes and will create/update the
-// the users Prometheus Rules Manager
+// the users Prometheus Rules Manager.
 func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.RuleGroupList) {
+	// A lock is taken to ensure if syncManager is called concurrently, that each call
+	// returns after the call map files and check for updates
 	r.userManagerMtx.Lock()
 	defer r.userManagerMtx.Unlock()
 
-	// Map the files to disk and return the file names to be passed to the users manager
+	// Map the files to disk and return the file names to be passed to the users manager if they
+	// have been updated
 	update, files, err := r.mapper.MapRules(user, groups.Formatted())
 	if err != nil {
 		level.Error(r.logger).Log("msg", "unable to map rule files", "user", user, "err", err)
@@ -414,7 +417,7 @@ func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.Ru
 	}
 
 	if update {
-		level.Info(r.logger).Log("msg", "updating rules", "user", "user")
+		level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
 		configUpdatesTotal.WithLabelValues(user).Inc()
 		manager, exists := r.userManagers[user]
 		if !exists {
@@ -428,7 +431,7 @@ func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.Ru
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
-			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
+			level.Error(r.logger).Log("dsg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}
 	}
@@ -476,16 +479,14 @@ func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*rules.RuleGroup
 }
 
 func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
-	groupDescs := []*rules.RuleGroupDesc{}
-
 	var groups []*promRules.Group
 	r.userManagerMtx.Lock()
-	mngr, exists := r.userManagers[userID]
-	if exists {
+	if mngr, exists := r.userManagers[userID]; exists {
 		groups = mngr.RuleGroups()
 	}
 	r.userManagerMtx.Unlock()
 
+	groupDescs := make([]*rules.RuleGroupDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
 	for _, group := range groups {

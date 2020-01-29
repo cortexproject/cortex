@@ -417,7 +417,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
-		return
+		return err
 	}
 
 	if cfg.Ruler.EnableAPI {
@@ -461,7 +461,7 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 
 	// TODO this clashed with the queirer and the distributor, so we cannot
 	// run them in the same process.
-	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
+	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
 	return
 }
 

@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -58,7 +57,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	})
 
 	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return nil, errors.New("not implemented")
+		return storage.NoopQuerier(), nil
 	})
 
 	l := log.NewLogfmtLogger(os.Stdout)

@@ -17,7 +17,8 @@ option (gogoproto.unmarshaler_all) = true;
 message RuleGroupDesc {
   string name = 1;
   string namespace = 2;
-  google.protobuf.Duration interval = 3 [(gogoproto.stdduration) = true];
+  google.protobuf.Duration interval = 3
+      [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   repeated RuleDesc rules = 4;
   bool deleted = 5;
   string user = 6;
@@ -28,7 +29,7 @@ message RuleDesc {
   string expr = 1;
   string record = 2;
   string alert = 3;
-  google.protobuf.Duration for = 4 [(gogoproto.stdduration) = true];
+  google.protobuf.Duration for = 4 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
   repeated cortex.LabelPair labels = 5 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) =
@@ -42,10 +43,10 @@ message RuleDesc {
   string state = 7;
   string health = 8;
   string lastError = 9;
-  repeated Alert alerts = 10;
+  repeated AlertDesc alerts = 10;
 }
 
-message Alert {
+message AlertDesc {
   string state = 1;
   repeated cortex.LabelPair labels = 2 [
     (gogoproto.nullable) = false,
@@ -58,9 +59,14 @@ message Alert {
         "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
   ];
   double value = 4;
-  google.protobuf.Timestamp active_at = 5 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp fired_at = 6 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp resolved_at = 7 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp last_sent_at = 8 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp valid_until = 9 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp active_at = 5
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp fired_at = 6
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp resolved_at = 7
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp last_sent_at = 8
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp valid_until = 9
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }

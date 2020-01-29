@@ -34,12 +34,12 @@ const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 // RuleGroupDesc is a proto representation of a cortex rule group
 type RuleGroupDesc struct {
-	Name      string         `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Namespace string         `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Interval  *time.Duration `protobuf:"bytes,3,opt,name=interval,proto3,stdduration" json:"interval,omitempty"`
-	Rules     []*RuleDesc    `protobuf:"bytes,4,rep,name=rules,proto3" json:"rules,omitempty"`
-	Deleted   bool           `protobuf:"varint,5,opt,name=deleted,proto3" json:"deleted,omitempty"`
-	User      string         `protobuf:"bytes,6,opt,name=user,proto3" json:"user,omitempty"`
+	Name      string        `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace string        `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Interval  time.Duration `protobuf:"bytes,3,opt,name=interval,proto3,stdduration" json:"interval"`
+	Rules     []*RuleDesc   `protobuf:"bytes,4,rep,name=rules,proto3" json:"rules,omitempty"`
+	Deleted   bool          `protobuf:"varint,5,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	User      string        `protobuf:"bytes,6,opt,name=user,proto3" json:"user,omitempty"`
 }
 
 func (m *RuleGroupDesc) Reset()      { *m = RuleGroupDesc{} }
@@ -88,11 +88,11 @@ func (m *RuleGroupDesc) GetNamespace() string {
 	return ""
 }
 
-func (m *RuleGroupDesc) GetInterval() *time.Duration {
+func (m *RuleGroupDesc) GetInterval() time.Duration {
 	if m != nil {
 		return m.Interval
 	}
-	return nil
+	return 0
 }
 
 func (m *RuleGroupDesc) GetRules() []*RuleDesc {
@@ -121,13 +121,13 @@ type RuleDesc struct {
 	Expr        string                                                             `protobuf:"bytes,1,opt,name=expr,proto3" json:"expr,omitempty"`
 	Record      string                                                             `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`
 	Alert       string                                                             `protobuf:"bytes,3,opt,name=alert,proto3" json:"alert,omitempty"`
-	For         *time.Duration                                                     `protobuf:"bytes,4,opt,name=for,proto3,stdduration" json:"for,omitempty"`
+	For         time.Duration                                                      `protobuf:"bytes,4,opt,name=for,proto3,stdduration" json:"for"`
 	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,5,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
 	Annotations []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,6,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
 	State       string                                                             `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
 	Health      string                                                             `protobuf:"bytes,8,opt,name=health,proto3" json:"health,omitempty"`
 	LastError   string                                                             `protobuf:"bytes,9,opt,name=lastError,proto3" json:"lastError,omitempty"`
-	Alerts      []*Alert                                                           `protobuf:"bytes,10,rep,name=alerts,proto3" json:"alerts,omitempty"`
+	Alerts      []*AlertDesc                                                       `protobuf:"bytes,10,rep,name=alerts,proto3" json:"alerts,omitempty"`
 }
 
 func (m *RuleDesc) Reset()      { *m = RuleDesc{} }
@@ -183,11 +183,11 @@ func (m *RuleDesc) GetAlert() string {
 	return ""
 }
 
-func (m *RuleDesc) GetFor() *time.Duration {
+func (m *RuleDesc) GetFor() time.Duration {
 	if m != nil {
 		return m.For
 	}
-	return nil
+	return 0
 }
 
 func (m *RuleDesc) GetState() string {
@@ -211,36 +211,36 @@ func (m *RuleDesc) GetLastError() string {
 	return ""
 }
 
-func (m *RuleDesc) GetAlerts() []*Alert {
+func (m *RuleDesc) GetAlerts() []*AlertDesc {
 	if m != nil {
 		return m.Alerts
 	}
 	return nil
 }
 
-type Alert struct {
+type AlertDesc struct {
 	State       string                                                             `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
 	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,2,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
 	Annotations []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,3,rep,name=annotations,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"annotations"`
 	Value       float64                                                            `protobuf:"fixed64,4,opt,name=value,proto3" json:"value,omitempty"`
-	ActiveAt    *time.Time                                                         `protobuf:"bytes,5,opt,name=active_at,json=activeAt,proto3,stdtime" json:"active_at,omitempty"`
-	FiredAt     *time.Time                                                         `protobuf:"bytes,6,opt,name=fired_at,json=firedAt,proto3,stdtime" json:"fired_at,omitempty"`
-	ResolvedAt  *time.Time                                                         `protobuf:"bytes,7,opt,name=resolved_at,json=resolvedAt,proto3,stdtime" json:"resolved_at,omitempty"`
-	LastSentAt  *time.Time                                                         `protobuf:"bytes,8,opt,name=last_sent_at,json=lastSentAt,proto3,stdtime" json:"last_sent_at,omitempty"`
-	ValidUntil  *time.Time                                                         `protobuf:"bytes,9,opt,name=valid_until,json=validUntil,proto3,stdtime" json:"valid_until,omitempty"`
+	ActiveAt    time.Time                                                          `protobuf:"bytes,5,opt,name=active_at,json=activeAt,proto3,stdtime" json:"active_at"`
+	FiredAt     time.Time                                                          `protobuf:"bytes,6,opt,name=fired_at,json=firedAt,proto3,stdtime" json:"fired_at"`
+	ResolvedAt  time.Time                                                          `protobuf:"bytes,7,opt,name=resolved_at,json=resolvedAt,proto3,stdtime" json:"resolved_at"`
+	LastSentAt  time.Time                                                          `protobuf:"bytes,8,opt,name=last_sent_at,json=lastSentAt,proto3,stdtime" json:"last_sent_at"`
+	ValidUntil  time.Time                                                          `protobuf:"bytes,9,opt,name=valid_until,json=validUntil,proto3,stdtime" json:"valid_until"`
 }
 
-func (m *Alert) Reset()      { *m = Alert{} }
-func (*Alert) ProtoMessage() {}
-func (*Alert) Descriptor() ([]byte, []int) {
+func (m *AlertDesc) Reset()      { *m = AlertDesc{} }
+func (*AlertDesc) ProtoMessage() {}
+func (*AlertDesc) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8e722d3e922f0937, []int{2}
 }
-func (m *Alert) XXX_Unmarshal(b []byte) error {
+func (m *AlertDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Alert) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *AlertDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Alert.Marshal(b, m, deterministic)
+		return xxx_messageInfo_AlertDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalTo(b)
@@ -250,118 +250,118 @@ func (m *Alert) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Alert) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Alert.Merge(m, src)
+func (m *AlertDesc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AlertDesc.Merge(m, src)
 }
-func (m *Alert) XXX_Size() int {
+func (m *AlertDesc) XXX_Size() int {
 	return m.Size()
 }
-func (m *Alert) XXX_DiscardUnknown() {
-	xxx_messageInfo_Alert.DiscardUnknown(m)
+func (m *AlertDesc) XXX_DiscardUnknown() {
+	xxx_messageInfo_AlertDesc.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Alert proto.InternalMessageInfo
+var xxx_messageInfo_AlertDesc proto.InternalMessageInfo
 
-func (m *Alert) GetState() string {
+func (m *AlertDesc) GetState() string {
 	if m != nil {
 		return m.State
 	}
 	return ""
 }
 
-func (m *Alert) GetValue() float64 {
+func (m *AlertDesc) GetValue() float64 {
 	if m != nil {
 		return m.Value
 	}
 	return 0
 }
 
-func (m *Alert) GetActiveAt() *time.Time {
+func (m *AlertDesc) GetActiveAt() time.Time {
 	if m != nil {
 		return m.ActiveAt
 	}
-	return nil
+	return time.Time{}
 }
 
-func (m *Alert) GetFiredAt() *time.Time {
+func (m *AlertDesc) GetFiredAt() time.Time {
 	if m != nil {
 		return m.FiredAt
 	}
-	return nil
+	return time.Time{}
 }
 
-func (m *Alert) GetResolvedAt() *time.Time {
+func (m *AlertDesc) GetResolvedAt() time.Time {
 	if m != nil {
 		return m.ResolvedAt
 	}
-	return nil
+	return time.Time{}
 }
 
-func (m *Alert) GetLastSentAt() *time.Time {
+func (m *AlertDesc) GetLastSentAt() time.Time {
 	if m != nil {
 		return m.LastSentAt
 	}
-	return nil
+	return time.Time{}
 }
 
-func (m *Alert) GetValidUntil() *time.Time {
+func (m *AlertDesc) GetValidUntil() time.Time {
 	if m != nil {
 		return m.ValidUntil
 	}
-	return nil
+	return time.Time{}
 }
 
 func init() {
 	proto.RegisterType((*RuleGroupDesc)(nil), "rules.RuleGroupDesc")
 	proto.RegisterType((*RuleDesc)(nil), "rules.RuleDesc")
-	proto.RegisterType((*Alert)(nil), "rules.Alert")
+	proto.RegisterType((*AlertDesc)(nil), "rules.AlertDesc")
 }
 
 func init() { proto.RegisterFile("rules.proto", fileDescriptor_8e722d3e922f0937) }
 
 var fileDescriptor_8e722d3e922f0937 = []byte{
-	// 645 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x54, 0x4f, 0x6b, 0x14, 0x31,
-	0x14, 0xdf, 0x74, 0xff, 0x67, 0x2b, 0x62, 0x10, 0x89, 0x45, 0xb2, 0x4b, 0x51, 0xd8, 0x8b, 0xbb,
-	0x58, 0x8f, 0x45, 0x70, 0x97, 0x8a, 0x1e, 0x3c, 0xc8, 0xa8, 0x17, 0x2f, 0x25, 0x3b, 0xf3, 0x3a,
-	0x1d, 0xcd, 0x4e, 0x86, 0x24, 0xb3, 0x78, 0x11, 0xfc, 0x08, 0x3d, 0xfa, 0x11, 0xfc, 0x28, 0x3d,
-	0x16, 0xbc, 0x14, 0x0f, 0xd5, 0x4e, 0x11, 0xbc, 0x08, 0xfd, 0x08, 0x92, 0x64, 0xa6, 0x5b, 0xf4,
-	0xb2, 0x08, 0xea, 0x69, 0xf2, 0x7b, 0x2f, 0xbf, 0xf7, 0xe7, 0xf7, 0x5e, 0x06, 0xf7, 0x54, 0x2e,
-	0x40, 0x8f, 0x32, 0x25, 0x8d, 0x24, 0x4d, 0x07, 0x36, 0xee, 0xc6, 0x89, 0xd9, 0xcf, 0x67, 0xa3,
-	0x50, 0xce, 0xc7, 0xb1, 0x8c, 0xe5, 0xd8, 0x79, 0x67, 0xf9, 0x9e, 0x43, 0x0e, 0xb8, 0x93, 0x67,
-	0x6d, 0xb0, 0x58, 0xca, 0x58, 0xc0, 0xf2, 0x56, 0x94, 0x2b, 0x6e, 0x12, 0x99, 0x96, 0xfe, 0xfe,
-	0xaf, 0x7e, 0x93, 0xcc, 0x41, 0x1b, 0x3e, 0xcf, 0xca, 0x0b, 0x0f, 0x2f, 0xe5, 0x0b, 0xa5, 0x32,
-	0xf0, 0x36, 0x53, 0xf2, 0x35, 0x84, 0xa6, 0x44, 0xe3, 0xec, 0x4d, 0x3c, 0x4e, 0xd2, 0x18, 0xb4,
-	0x01, 0x35, 0x0e, 0x45, 0x02, 0x69, 0xe5, 0xf2, 0x11, 0x36, 0x3f, 0x21, 0x7c, 0x25, 0xc8, 0x05,
-	0x3c, 0x56, 0x32, 0xcf, 0x76, 0x40, 0x87, 0x84, 0xe0, 0x46, 0xca, 0xe7, 0x40, 0xd1, 0x00, 0x0d,
-	0xbb, 0x81, 0x3b, 0x93, 0x5b, 0xb8, 0x6b, 0xbf, 0x3a, 0xe3, 0x21, 0xd0, 0x35, 0xe7, 0x58, 0x1a,
-	0xc8, 0x36, 0xee, 0x24, 0xa9, 0x01, 0xb5, 0xe0, 0x82, 0xd6, 0x07, 0x68, 0xd8, 0xdb, 0xba, 0x39,
-	0xf2, 0x95, 0x8f, 0xaa, 0xca, 0x47, 0x3b, 0x65, 0x67, 0xd3, 0xc6, 0x87, 0x2f, 0x7d, 0x14, 0x5c,
-	0x10, 0xc8, 0x1d, 0xec, 0xb5, 0xa3, 0x8d, 0x41, 0x7d, 0xd8, 0xdb, 0xba, 0x3a, 0xf2, 0xb2, 0xda,
-	0x9a, 0x6c, 0x39, 0x81, 0xf7, 0x12, 0x8a, 0xdb, 0x11, 0x08, 0x30, 0x10, 0xd1, 0xe6, 0x00, 0x0d,
-	0x3b, 0x41, 0x05, 0x6d, 0xbd, 0xb9, 0x06, 0x45, 0x5b, 0xbe, 0x5e, 0x7b, 0xde, 0xfc, 0x56, 0xc7,
-	0x9d, 0x2a, 0x82, 0xbd, 0x60, 0x75, 0xa9, 0x1a, 0xb2, 0x67, 0x72, 0x03, 0xb7, 0x14, 0x84, 0x52,
-	0x45, 0x65, 0x37, 0x25, 0x22, 0xd7, 0x71, 0x93, 0x0b, 0x50, 0xc6, 0xf5, 0xd1, 0x0d, 0x3c, 0x20,
-	0xf7, 0x70, 0x7d, 0x4f, 0x2a, 0xda, 0x58, 0xad, 0x37, 0x7b, 0x97, 0x68, 0xdc, 0x12, 0x7c, 0x06,
-	0x42, 0xd3, 0xa6, 0xeb, 0xeb, 0xda, 0xa8, 0x94, 0xfd, 0xa9, 0xb5, 0x3e, 0xe3, 0x89, 0x9a, 0x3e,
-	0x39, 0x3c, 0xe9, 0xd7, 0x3e, 0x9f, 0xf4, 0xff, 0x64, 0x88, 0x3e, 0xcc, 0x24, 0xe2, 0x99, 0x01,
-	0x15, 0x94, 0xa9, 0xc8, 0x3b, 0xdc, 0xe3, 0x69, 0x2a, 0x8d, 0xab, 0x46, 0xd3, 0xd6, 0xdf, 0xcf,
-	0x7c, 0x39, 0x9f, 0x15, 0x4f, 0x1b, 0x6e, 0x80, 0xb6, 0xbd, 0x78, 0x0e, 0x58, 0xa9, 0xf7, 0x81,
-	0x0b, 0xb3, 0x4f, 0x3b, 0x5e, 0x6a, 0x8f, 0xec, 0x4e, 0x09, 0xae, 0xcd, 0x23, 0xa5, 0xa4, 0xa2,
-	0x5d, 0xbf, 0x53, 0x17, 0x06, 0x72, 0x1b, 0xb7, 0x9c, 0xf6, 0x9a, 0x62, 0xd7, 0xc5, 0x7a, 0xb9,
-	0x17, 0x13, 0x6b, 0x0c, 0x4a, 0xdf, 0xe6, 0x8f, 0x06, 0x6e, 0x3a, 0xcb, 0x32, 0x37, 0xba, 0x9c,
-	0x7b, 0x39, 0x85, 0xb5, 0xff, 0x36, 0x85, 0xfa, 0xbf, 0x9f, 0xc2, 0x82, 0x8b, 0x1c, 0xdc, 0xba,
-	0xa2, 0xc0, 0x03, 0xf2, 0x00, 0x77, 0x79, 0x68, 0x92, 0x05, 0xec, 0x72, 0xe3, 0x5e, 0x50, 0x6f,
-	0x6b, 0xe3, 0xb7, 0x45, 0x7e, 0x51, 0xfd, 0x5e, 0xa6, 0x8d, 0x03, 0xf7, 0x4a, 0x3d, 0x65, 0x62,
-	0xec, 0x13, 0xdf, 0x4b, 0x14, 0x44, 0x96, 0xdd, 0x5a, 0x91, 0xdd, 0x76, 0x8c, 0x89, 0x21, 0x13,
-	0xdc, 0x53, 0xa0, 0xa5, 0x58, 0x78, 0x7e, 0x7b, 0x45, 0x3e, 0xae, 0x48, 0x13, 0x43, 0xa6, 0x78,
-	0xdd, 0xee, 0xc6, 0xae, 0x86, 0xd4, 0xd8, 0x18, 0x9d, 0x55, 0x63, 0x58, 0xd6, 0x73, 0x48, 0x8d,
-	0x2f, 0x63, 0xc1, 0x45, 0x12, 0xed, 0xe6, 0xa9, 0x49, 0x84, 0x5b, 0xb9, 0x95, 0x42, 0x38, 0xd2,
-	0x4b, 0xcb, 0x99, 0x6e, 0x1f, 0x9d, 0xb2, 0xda, 0xf1, 0x29, 0xab, 0x9d, 0x9f, 0x32, 0xf4, 0xbe,
-	0x60, 0xe8, 0x63, 0xc1, 0xd0, 0x61, 0xc1, 0xd0, 0x51, 0xc1, 0xd0, 0xd7, 0x82, 0xa1, 0xef, 0x05,
-	0xab, 0x9d, 0x17, 0x0c, 0x1d, 0x9c, 0xb1, 0xda, 0xd1, 0x19, 0xab, 0x1d, 0x9f, 0xb1, 0xda, 0x2b,
-	0xff, 0x0b, 0x9b, 0xb5, 0x5c, 0x8a, 0xfb, 0x3f, 0x03, 0x00, 0x00, 0xff, 0xff, 0xfa, 0xf4, 0x48,
-	0x2d, 0x39, 0x06, 0x00, 0x00,
+	// 651 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x54, 0xbf, 0x6f, 0xd4, 0x30,
+	0x14, 0x3e, 0xf7, 0x7a, 0xbf, 0x7c, 0x20, 0xc0, 0x42, 0xc8, 0x54, 0xc8, 0x77, 0xaa, 0x84, 0x74,
+	0x0b, 0x39, 0xa9, 0x88, 0x89, 0x01, 0xae, 0x6a, 0x81, 0x81, 0x01, 0x05, 0x58, 0x58, 0x2a, 0x5f,
+	0xf2, 0x9a, 0x06, 0x7c, 0x71, 0x64, 0x3b, 0x27, 0x16, 0x24, 0x16, 0xf6, 0x8e, 0xfc, 0x09, 0xfc,
+	0x29, 0x1d, 0xbb, 0x51, 0x31, 0x14, 0x9a, 0x2e, 0x2c, 0x48, 0xfd, 0x13, 0x90, 0xed, 0xa4, 0x57,
+	0xc1, 0xd2, 0x22, 0x01, 0x53, 0xfc, 0xf9, 0xf9, 0x7d, 0xef, 0x7b, 0xcf, 0x9f, 0x83, 0xfb, 0xaa,
+	0x10, 0xa0, 0x83, 0x5c, 0x49, 0x23, 0x49, 0xcb, 0x81, 0x95, 0x3b, 0x49, 0x6a, 0x76, 0x8a, 0x69,
+	0x10, 0xc9, 0xd9, 0x38, 0x91, 0x89, 0x1c, 0xbb, 0xe8, 0xb4, 0xd8, 0x76, 0xc8, 0x01, 0xb7, 0xf2,
+	0x59, 0x2b, 0x2c, 0x91, 0x32, 0x11, 0xb0, 0x38, 0x15, 0x17, 0x8a, 0x9b, 0x54, 0x66, 0x55, 0x7c,
+	0xf0, 0x6b, 0xdc, 0xa4, 0x33, 0xd0, 0x86, 0xcf, 0xf2, 0xea, 0xc0, 0xc3, 0x33, 0xf5, 0x22, 0xa9,
+	0x0c, 0xbc, 0xcd, 0x95, 0x7c, 0x0d, 0x91, 0xa9, 0xd0, 0x38, 0x7f, 0x93, 0x8c, 0xd3, 0x2c, 0x01,
+	0x6d, 0x40, 0x8d, 0x23, 0x91, 0x42, 0x56, 0x87, 0x3c, 0xc3, 0xea, 0x67, 0x84, 0x2f, 0x87, 0x85,
+	0x80, 0xc7, 0x4a, 0x16, 0xf9, 0x06, 0xe8, 0x88, 0x10, 0xbc, 0x9c, 0xf1, 0x19, 0x50, 0x34, 0x44,
+	0xa3, 0x5e, 0xe8, 0xd6, 0xe4, 0x16, 0xee, 0xd9, 0xaf, 0xce, 0x79, 0x04, 0x74, 0xc9, 0x05, 0x16,
+	0x1b, 0xe4, 0x01, 0xee, 0xa6, 0x99, 0x01, 0x35, 0xe7, 0x82, 0x36, 0x87, 0x68, 0xd4, 0x5f, 0xbb,
+	0x19, 0x78, 0xe5, 0x41, 0xad, 0x3c, 0xd8, 0xa8, 0x3a, 0x5b, 0xef, 0xee, 0x1d, 0x0e, 0x1a, 0x1f,
+	0xbf, 0x0e, 0x50, 0x78, 0x9a, 0x44, 0x6e, 0x63, 0x3f, 0x3f, 0xba, 0x3c, 0x6c, 0x8e, 0xfa, 0x6b,
+	0x57, 0x02, 0x3f, 0x5a, 0xab, 0xcb, 0x4a, 0x0a, 0x7d, 0x94, 0x50, 0xdc, 0x89, 0x41, 0x80, 0x81,
+	0x98, 0xb6, 0x86, 0x68, 0xd4, 0x0d, 0x6b, 0x68, 0x35, 0x17, 0x1a, 0x14, 0x6d, 0x7b, 0xcd, 0x76,
+	0xbd, 0xfa, 0xa3, 0x89, 0xbb, 0x35, 0x83, 0x3d, 0x60, 0x67, 0x53, 0x37, 0x65, 0xd7, 0xe4, 0x06,
+	0x6e, 0x2b, 0x88, 0xa4, 0x8a, 0xab, 0x8e, 0x2a, 0x44, 0xae, 0xe3, 0x16, 0x17, 0xa0, 0x8c, 0xeb,
+	0xa5, 0x17, 0x7a, 0x40, 0xee, 0xe1, 0xe6, 0xb6, 0x54, 0x74, 0xf9, 0xfc, 0xfd, 0xd9, 0xf3, 0x44,
+	0xe3, 0xb6, 0xe0, 0x53, 0x10, 0x9a, 0xb6, 0x5c, 0x6f, 0xd7, 0x82, 0x6a, 0xfc, 0x4f, 0xed, 0xee,
+	0x33, 0x9e, 0xaa, 0xf5, 0x27, 0x36, 0xe3, 0xcb, 0xe1, 0xe0, 0x4f, 0x2e, 0xd3, 0xd3, 0x4c, 0x62,
+	0x9e, 0x1b, 0x50, 0x61, 0x55, 0x8a, 0xbc, 0xc3, 0x7d, 0x9e, 0x65, 0xd2, 0x38, 0x45, 0x9a, 0xb6,
+	0xff, 0x7e, 0xe5, 0xb3, 0xf5, 0xec, 0x00, 0xb5, 0xe1, 0x06, 0x68, 0xc7, 0x0f, 0xd0, 0x01, 0x3b,
+	0xee, 0x1d, 0xe0, 0xc2, 0xec, 0xd0, 0xae, 0x1f, 0xb7, 0x47, 0xd6, 0x5b, 0x82, 0x6b, 0xb3, 0xa9,
+	0x94, 0x54, 0xb4, 0xe7, 0xbd, 0x75, 0xba, 0x41, 0x46, 0xb8, 0xed, 0xe6, 0xaf, 0x29, 0x76, 0x5d,
+	0x5c, 0xad, 0xbc, 0x31, 0xb1, 0x9b, 0xce, 0x1c, 0x55, 0x7c, 0xf5, 0x43, 0x0b, 0xf7, 0x4e, 0x77,
+	0x17, 0x1a, 0xd0, 0x59, 0x0d, 0x8b, 0xdb, 0x58, 0xfa, 0x6f, 0xb7, 0xd1, 0xfc, 0xf7, 0xb7, 0x31,
+	0xe7, 0xa2, 0x00, 0x67, 0x5d, 0x14, 0x7a, 0x40, 0x26, 0xb8, 0xc7, 0x23, 0x93, 0xce, 0x61, 0x8b,
+	0x1b, 0xf7, 0x9a, 0xfa, 0x6b, 0x2b, 0xbf, 0x99, 0xfa, 0x45, 0xfd, 0xbb, 0xf1, 0xae, 0xde, 0x75,
+	0xaf, 0xd6, 0xa7, 0x4d, 0x8c, 0x7d, 0xf6, 0xdb, 0xa9, 0x82, 0xd8, 0x32, 0xb4, 0x2f, 0xc0, 0xd0,
+	0x71, 0x59, 0x13, 0x43, 0x36, 0x71, 0x5f, 0x81, 0x96, 0x62, 0xee, 0x39, 0x3a, 0x17, 0xe0, 0xc0,
+	0x75, 0xe2, 0xc4, 0x90, 0x47, 0xf8, 0x92, 0xf5, 0xcb, 0x96, 0x86, 0xcc, 0x58, 0x9e, 0xee, 0x45,
+	0x78, 0x6c, 0xe6, 0x73, 0xc8, 0x8c, 0x97, 0x33, 0xe7, 0x22, 0x8d, 0xb7, 0x8a, 0xcc, 0xa4, 0xc2,
+	0x59, 0xf1, 0xdc, 0x34, 0x2e, 0xf1, 0xa5, 0xcd, 0x5b, 0xbf, 0xbf, 0x7f, 0xc4, 0x1a, 0x07, 0x47,
+	0xac, 0x71, 0x72, 0xc4, 0xd0, 0xfb, 0x92, 0xa1, 0x4f, 0x25, 0x43, 0x7b, 0x25, 0x43, 0xfb, 0x25,
+	0x43, 0xdf, 0x4a, 0x86, 0xbe, 0x97, 0xac, 0x71, 0x52, 0x32, 0xb4, 0x7b, 0xcc, 0x1a, 0xfb, 0xc7,
+	0xac, 0x71, 0x70, 0xcc, 0x1a, 0xaf, 0xfc, 0x2f, 0x6e, 0xda, 0x76, 0x65, 0xee, 0xfe, 0x0c, 0x00,
+	0x00, 0xff, 0xff, 0x26, 0xdc, 0xc9, 0xc9, 0x5d, 0x06, 0x00, 0x00,
 }
 
 func (this *RuleGroupDesc) Equal(that interface{}) bool {
@@ -389,13 +389,7 @@ func (this *RuleGroupDesc) Equal(that interface{}) bool {
 	if this.Namespace != that1.Namespace {
 		return false
 	}
-	if this.Interval != nil && that1.Interval != nil {
-		if *this.Interval != *that1.Interval {
-			return false
-		}
-	} else if this.Interval != nil {
-		return false
-	} else if that1.Interval != nil {
+	if this.Interval != that1.Interval {
 		return false
 	}
 	if len(this.Rules) != len(that1.Rules) {
@@ -442,13 +436,7 @@ func (this *RuleDesc) Equal(that interface{}) bool {
 	if this.Alert != that1.Alert {
 		return false
 	}
-	if this.For != nil && that1.For != nil {
-		if *this.For != *that1.For {
-			return false
-		}
-	} else if this.For != nil {
-		return false
-	} else if that1.For != nil {
+	if this.For != that1.For {
 		return false
 	}
 	if len(this.Labels) != len(that1.Labels) {
@@ -486,14 +474,14 @@ func (this *RuleDesc) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *Alert) Equal(that interface{}) bool {
+func (this *AlertDesc) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*Alert)
+	that1, ok := that.(*AlertDesc)
 	if !ok {
-		that2, ok := that.(Alert)
+		that2, ok := that.(AlertDesc)
 		if ok {
 			that1 = &that2
 		} else {
@@ -527,39 +515,19 @@ func (this *Alert) Equal(that interface{}) bool {
 	if this.Value != that1.Value {
 		return false
 	}
-	if that1.ActiveAt == nil {
-		if this.ActiveAt != nil {
-			return false
-		}
-	} else if !this.ActiveAt.Equal(*that1.ActiveAt) {
+	if !this.ActiveAt.Equal(that1.ActiveAt) {
 		return false
 	}
-	if that1.FiredAt == nil {
-		if this.FiredAt != nil {
-			return false
-		}
-	} else if !this.FiredAt.Equal(*that1.FiredAt) {
+	if !this.FiredAt.Equal(that1.FiredAt) {
 		return false
 	}
-	if that1.ResolvedAt == nil {
-		if this.ResolvedAt != nil {
-			return false
-		}
-	} else if !this.ResolvedAt.Equal(*that1.ResolvedAt) {
+	if !this.ResolvedAt.Equal(that1.ResolvedAt) {
 		return false
 	}
-	if that1.LastSentAt == nil {
-		if this.LastSentAt != nil {
-			return false
-		}
-	} else if !this.LastSentAt.Equal(*that1.LastSentAt) {
+	if !this.LastSentAt.Equal(that1.LastSentAt) {
 		return false
 	}
-	if that1.ValidUntil == nil {
-		if this.ValidUntil != nil {
-			return false
-		}
-	} else if !this.ValidUntil.Equal(*that1.ValidUntil) {
+	if !this.ValidUntil.Equal(that1.ValidUntil) {
 		return false
 	}
 	return true
@@ -602,12 +570,12 @@ func (this *RuleDesc) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Alert) GoString() string {
+func (this *AlertDesc) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 13)
-	s = append(s, "&rules.Alert{")
+	s = append(s, "&rules.AlertDesc{")
 	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	s = append(s, "Annotations: "+fmt.Sprintf("%#v", this.Annotations)+",\n")
@@ -655,16 +623,14 @@ func (m *RuleGroupDesc) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintRules(dAtA, i, uint64(len(m.Namespace)))
 		i += copy(dAtA[i:], m.Namespace)
 	}
-	if m.Interval != nil {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(*m.Interval)))
-		n1, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(*m.Interval, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n1
+	dAtA[i] = 0x1a
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.Interval)))
+	n1, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Interval, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
+	i += n1
 	if len(m.Rules) > 0 {
 		for _, msg := range m.Rules {
 			dAtA[i] = 0x22
@@ -729,16 +695,14 @@ func (m *RuleDesc) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintRules(dAtA, i, uint64(len(m.Alert)))
 		i += copy(dAtA[i:], m.Alert)
 	}
-	if m.For != nil {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(*m.For)))
-		n2, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(*m.For, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n2
+	dAtA[i] = 0x22
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.For)))
+	n2, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.For, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
+	i += n2
 	if len(m.Labels) > 0 {
 		for _, msg := range m.Labels {
 			dAtA[i] = 0x2a
@@ -796,7 +760,7 @@ func (m *RuleDesc) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *Alert) Marshal() (dAtA []byte, err error) {
+func (m *AlertDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -806,7 +770,7 @@ func (m *Alert) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Alert) MarshalTo(dAtA []byte) (int, error) {
+func (m *AlertDesc) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -847,56 +811,46 @@ func (m *Alert) MarshalTo(dAtA []byte) (int, error) {
 		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
 		i += 8
 	}
-	if m.ActiveAt != nil {
-		dAtA[i] = 0x2a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ActiveAt)))
-		n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ActiveAt, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n3
+	dAtA[i] = 0x2a
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ActiveAt)))
+	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ActiveAt, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.FiredAt != nil {
-		dAtA[i] = 0x32
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.FiredAt)))
-		n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.FiredAt, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n4
+	i += n3
+	dAtA[i] = 0x32
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.FiredAt)))
+	n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FiredAt, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.ResolvedAt != nil {
-		dAtA[i] = 0x3a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ResolvedAt)))
-		n5, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ResolvedAt, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n5
+	i += n4
+	dAtA[i] = 0x3a
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ResolvedAt)))
+	n5, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ResolvedAt, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.LastSentAt != nil {
-		dAtA[i] = 0x42
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.LastSentAt)))
-		n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.LastSentAt, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n6
+	i += n5
+	dAtA[i] = 0x42
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.LastSentAt)))
+	n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastSentAt, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.ValidUntil != nil {
-		dAtA[i] = 0x4a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.ValidUntil)))
-		n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.ValidUntil, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n7
+	i += n6
+	dAtA[i] = 0x4a
+	i++
+	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ValidUntil)))
+	n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ValidUntil, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
+	i += n7
 	return i, nil
 }
 
@@ -923,10 +877,8 @@ func (m *RuleGroupDesc) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovRules(uint64(l))
 	}
-	if m.Interval != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdDuration(*m.Interval)
-		n += 1 + l + sovRules(uint64(l))
-	}
+	l = github_com_gogo_protobuf_types.SizeOfStdDuration(m.Interval)
+	n += 1 + l + sovRules(uint64(l))
 	if len(m.Rules) > 0 {
 		for _, e := range m.Rules {
 			l = e.Size()
@@ -961,10 +913,8 @@ func (m *RuleDesc) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovRules(uint64(l))
 	}
-	if m.For != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdDuration(*m.For)
-		n += 1 + l + sovRules(uint64(l))
-	}
+	l = github_com_gogo_protobuf_types.SizeOfStdDuration(m.For)
+	n += 1 + l + sovRules(uint64(l))
 	if len(m.Labels) > 0 {
 		for _, e := range m.Labels {
 			l = e.Size()
@@ -998,7 +948,7 @@ func (m *RuleDesc) Size() (n int) {
 	return n
 }
 
-func (m *Alert) Size() (n int) {
+func (m *AlertDesc) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1023,26 +973,16 @@ func (m *Alert) Size() (n int) {
 	if m.Value != 0 {
 		n += 9
 	}
-	if m.ActiveAt != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ActiveAt)
-		n += 1 + l + sovRules(uint64(l))
-	}
-	if m.FiredAt != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.FiredAt)
-		n += 1 + l + sovRules(uint64(l))
-	}
-	if m.ResolvedAt != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ResolvedAt)
-		n += 1 + l + sovRules(uint64(l))
-	}
-	if m.LastSentAt != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.LastSentAt)
-		n += 1 + l + sovRules(uint64(l))
-	}
-	if m.ValidUntil != nil {
-		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.ValidUntil)
-		n += 1 + l + sovRules(uint64(l))
-	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.ActiveAt)
+	n += 1 + l + sovRules(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.FiredAt)
+	n += 1 + l + sovRules(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.ResolvedAt)
+	n += 1 + l + sovRules(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.LastSentAt)
+	n += 1 + l + sovRules(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.ValidUntil)
+	n += 1 + l + sovRules(uint64(l))
 	return n
 }
 
@@ -1066,7 +1006,7 @@ func (this *RuleGroupDesc) String() string {
 	s := strings.Join([]string{`&RuleGroupDesc{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`Namespace:` + fmt.Sprintf("%v", this.Namespace) + `,`,
-		`Interval:` + strings.Replace(fmt.Sprintf("%v", this.Interval), "Duration", "duration.Duration", 1) + `,`,
+		`Interval:` + strings.Replace(strings.Replace(this.Interval.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Rules:` + strings.Replace(fmt.Sprintf("%v", this.Rules), "RuleDesc", "RuleDesc", 1) + `,`,
 		`Deleted:` + fmt.Sprintf("%v", this.Deleted) + `,`,
 		`User:` + fmt.Sprintf("%v", this.User) + `,`,
@@ -1082,31 +1022,31 @@ func (this *RuleDesc) String() string {
 		`Expr:` + fmt.Sprintf("%v", this.Expr) + `,`,
 		`Record:` + fmt.Sprintf("%v", this.Record) + `,`,
 		`Alert:` + fmt.Sprintf("%v", this.Alert) + `,`,
-		`For:` + strings.Replace(fmt.Sprintf("%v", this.For), "Duration", "duration.Duration", 1) + `,`,
+		`For:` + strings.Replace(strings.Replace(this.For.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
 		`State:` + fmt.Sprintf("%v", this.State) + `,`,
 		`Health:` + fmt.Sprintf("%v", this.Health) + `,`,
 		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
-		`Alerts:` + strings.Replace(fmt.Sprintf("%v", this.Alerts), "Alert", "Alert", 1) + `,`,
+		`Alerts:` + strings.Replace(fmt.Sprintf("%v", this.Alerts), "AlertDesc", "AlertDesc", 1) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *Alert) String() string {
+func (this *AlertDesc) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&Alert{`,
+	s := strings.Join([]string{`&AlertDesc{`,
 		`State:` + fmt.Sprintf("%v", this.State) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
 		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
-		`ActiveAt:` + strings.Replace(fmt.Sprintf("%v", this.ActiveAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
-		`FiredAt:` + strings.Replace(fmt.Sprintf("%v", this.FiredAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
-		`ResolvedAt:` + strings.Replace(fmt.Sprintf("%v", this.ResolvedAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
-		`LastSentAt:` + strings.Replace(fmt.Sprintf("%v", this.LastSentAt), "Timestamp", "timestamp.Timestamp", 1) + `,`,
-		`ValidUntil:` + strings.Replace(fmt.Sprintf("%v", this.ValidUntil), "Timestamp", "timestamp.Timestamp", 1) + `,`,
+		`ActiveAt:` + strings.Replace(strings.Replace(this.ActiveAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`FiredAt:` + strings.Replace(strings.Replace(this.FiredAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ResolvedAt:` + strings.Replace(strings.Replace(this.ResolvedAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastSentAt:` + strings.Replace(strings.Replace(this.LastSentAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ValidUntil:` + strings.Replace(strings.Replace(this.ValidUntil.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1241,10 +1181,7 @@ func (m *RuleGroupDesc) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Interval == nil {
-				m.Interval = new(time.Duration)
-			}
-			if err := github_com_gogo_protobuf_types.StdDurationUnmarshal(m.Interval, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdDurationUnmarshal(&m.Interval, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1512,10 +1449,7 @@ func (m *RuleDesc) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.For == nil {
-				m.For = new(time.Duration)
-			}
-			if err := github_com_gogo_protobuf_types.StdDurationUnmarshal(m.For, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdDurationUnmarshal(&m.For, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1712,7 +1646,7 @@ func (m *RuleDesc) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Alerts = append(m.Alerts, &Alert{})
+			m.Alerts = append(m.Alerts, &AlertDesc{})
 			if err := m.Alerts[len(m.Alerts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1741,7 +1675,7 @@ func (m *RuleDesc) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Alert) Unmarshal(dAtA []byte) error {
+func (m *AlertDesc) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1764,10 +1698,10 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Alert: wiretype end group for non-group")
+			return fmt.Errorf("proto: AlertDesc: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Alert: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AlertDesc: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1910,10 +1844,7 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ActiveAt == nil {
-				m.ActiveAt = new(time.Time)
-			}
-			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ActiveAt, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.ActiveAt, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1946,10 +1877,7 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.FiredAt == nil {
-				m.FiredAt = new(time.Time)
-			}
-			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.FiredAt, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.FiredAt, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1982,10 +1910,7 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ResolvedAt == nil {
-				m.ResolvedAt = new(time.Time)
-			}
-			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ResolvedAt, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.ResolvedAt, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2018,10 +1943,7 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.LastSentAt == nil {
-				m.LastSentAt = new(time.Time)
-			}
-			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.LastSentAt, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.LastSentAt, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2054,10 +1976,7 @@ func (m *Alert) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ValidUntil == nil {
-				m.ValidUntil = new(time.Time)
-			}
-			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.ValidUntil, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.ValidUntil, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

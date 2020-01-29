@@ -29,7 +29,7 @@ var (
 						Expr:  "up < 1",
 					},
 				},
-				Interval: &interval,
+				Interval: interval,
 			},
 		},
 		"user2": {
@@ -43,7 +43,7 @@ var (
 						Expr:   "up",
 					},
 				},
-				Interval: &interval,
+				Interval: interval,
 			},
 		},
 	}

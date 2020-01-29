@@ -494,7 +494,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 		groupDesc := &rules.RuleGroupDesc{
 			Name:      group.Name(),
 			Namespace: strings.TrimPrefix(group.File(), prefix),
-			Interval:  &interval,
+			Interval:  interval,
 			User:      userID,
 		}
 		for _, r := range group.Rules() {
@@ -506,20 +506,19 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 			var ruleDesc *rules.RuleDesc
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
-				dur := rule.Duration()
 				rule.ActiveAlerts()
-				alerts := []*rules.Alert{}
+				alerts := []*rules.AlertDesc{}
 				for _, a := range rule.ActiveAlerts() {
-					alerts = append(alerts, &rules.Alert{
+					alerts = append(alerts, &rules.AlertDesc{
 						State:       a.State.String(),
 						Labels:      client.FromLabelsToLabelAdapters(a.Labels),
 						Annotations: client.FromLabelsToLabelAdapters(a.Annotations),
 						Value:       a.Value,
-						ActiveAt:    &a.ActiveAt,
-						FiredAt:     &a.FiredAt,
-						ResolvedAt:  &a.ResolvedAt,
-						LastSentAt:  &a.LastSentAt,
-						ValidUntil:  &a.ValidUntil,
+						ActiveAt:    a.ActiveAt,
+						FiredAt:     a.FiredAt,
+						ResolvedAt:  a.ResolvedAt,
+						LastSentAt:  a.LastSentAt,
+						ValidUntil:  a.ValidUntil,
 					})
 				}
 				ruleDesc = &rules.RuleDesc{
@@ -527,7 +526,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 					Alert:       rule.Name(),
 					Alerts:      alerts,
 					Expr:        rule.Query().String(),
-					For:         &dur,
+					For:         rule.Duration(),
 					Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
 					Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
 					Health:      string(rule.Health()),

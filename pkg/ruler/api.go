@@ -154,7 +154,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 						Labels:      client.FromLabelAdaptersToLabels(a.Labels),
 						Annotations: client.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
-						ActiveAt:    a.ActiveAt,
+						ActiveAt:    &a.ActiveAt,
 						Value:       fmt.Sprintf("%f", a.Value),
 					})
 				}
@@ -227,7 +227,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 						Labels:      client.FromLabelAdaptersToLabels(a.Labels),
 						Annotations: client.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
-						ActiveAt:    a.ActiveAt,
+						ActiveAt:    &a.ActiveAt,
 						Value:       fmt.Sprintf("%f", a.Value),
 					})
 				}

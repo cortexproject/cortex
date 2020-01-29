@@ -16,7 +16,7 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 	rg := RuleGroupDesc{
 		Name:      rl.Name,
 		Namespace: namespace,
-		Interval:  &dur,
+		Interval:  dur,
 		Rules:     formattedRuleToProto(rl.Rules),
 		User:      user,
 	}
@@ -33,7 +33,7 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 			Record: rls[i].Record,
 			Alert:  rls[i].Alert,
 
-			For:         &f,
+			For:         f,
 			Labels:      client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
 			Annotations: client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
@@ -46,7 +46,7 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:     rg.GetName(),
-		Interval: model.Duration(*rg.Interval),
+		Interval: model.Duration(rg.Interval),
 		Rules:    make([]rulefmt.Rule, len(rg.GetRules())),
 	}
 
@@ -57,10 +57,7 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 			Expr:        rl.GetExpr(),
 			Labels:      client.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: client.FromLabelAdaptersToLabels(rl.Annotations).Map(),
-		}
-
-		if rl.GetFor() != nil {
-			newRule.For = model.Duration(*rl.GetFor())
+			For:         model.Duration(rl.GetFor()),
 		}
 
 		formattedRuleGroup.Rules[i] = newRule

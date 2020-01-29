@@ -66,6 +66,7 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
+	lock            sync.Mutex
 }
 
 var webReload = make(chan chan error)
@@ -191,6 +192,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	am.api.Update(conf, func(_ model.LabelSet) {})
 
+	am.lock.Lock()
 	am.inhibitor.Stop()
 	am.dispatcher.Stop()
 
@@ -229,12 +231,16 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	go am.dispatcher.Run()
 	go am.inhibitor.Run()
 
+	am.lock.Unlock()
+
 	return nil
 }
 
 // Stop stops the Alertmanager.
 func (am *Alertmanager) Stop() {
+	am.lock.Lock()
 	am.dispatcher.Stop()
+	am.lock.Unlock()
 	am.alerts.Close()
 	close(am.stop)
 	am.wg.Wait()

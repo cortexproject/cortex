@@ -217,7 +217,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.nflog,
 		am.cfg.Peer,
 	)
-	dispatcher := dispatch.NewDispatcher(
+	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
 		pipeline,
@@ -226,7 +226,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		log.With(am.logger, "component", "dispatcher"),
 	)
 
-	go dispatcher.Run()
+	go am.dispatcher.Run()
 	go am.inhibitor.Run()
 
 	return nil

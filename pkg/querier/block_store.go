@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -232,6 +233,9 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 
 // Info makes an info request to the underlying user store
 func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	log, ctx := spanlogger.New(ctx, "UserStore.Info")
+	defer log.Span.Finish()
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("no metadata")
@@ -252,7 +256,10 @@ func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storep
 
 // Series makes a series request to the underlying user store
 func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	md, ok := metadata.FromIncomingContext(srv.Context())
+	log, ctx := spanlogger.New(srv.Context(), "UserStore.Series")
+	defer log.Span.Finish()
+
+	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return fmt.Errorf("no metadata")
 	}
@@ -272,6 +279,9 @@ func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesS
 
 // LabelNames makes a labelnames request to the underlying user store
 func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	log, ctx := spanlogger.New(ctx, "UserStore.LabelNames")
+	defer log.Span.Finish()
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("no metadata")
@@ -292,6 +302,9 @@ func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReque
 
 // LabelValues makes a labelvalues request to the underlying user store
 func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	log, ctx := spanlogger.New(ctx, "UserStore.LabelValues")
+	defer log.Span.Finish()
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("no metadata")

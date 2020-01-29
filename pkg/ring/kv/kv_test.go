@@ -92,12 +92,26 @@ func TestNilCAS(t *testing.T) {
 func TestWatchKey(t *testing.T) {
 	const key = "test"
 	const max = 100
-	const sleep = 10 * time.Millisecond
+	const sleep = 15 * time.Millisecond
+	const totalTestTimeout = 3 * max * sleep
+	const expectedFactor = 0.75 // we may not see every single value
 
 	withFixtures(t, func(t *testing.T, client Client) {
-		ch := make(chan struct{})
+		observedValuesCh := make(chan string, max)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		go func() {
-			defer close(ch)
+			// Start watching before we even start generating values.
+			// Values will be buffered in the channel.
+			client.WatchKey(ctx, key, func(value interface{}) bool {
+				observedValuesCh <- value.(string)
+				return true
+			})
+		}()
+
+		// update value for the key
+		go func() {
 			for i := 0; i < max; i++ {
 				// Start with sleeping, so that watching client see empty KV store at the beginning.
 				time.Sleep(sleep)
@@ -105,40 +119,43 @@ func TestWatchKey(t *testing.T) {
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return fmt.Sprintf("%d", i), true, nil
 				})
+
+				if ctx.Err() != nil {
+					break
+				}
 				require.NoError(t, err)
 			}
 		}()
 
-		observedValues := map[string]time.Time{}
-		ctx, cancel := context.WithTimeout(context.Background(), 1.5*max*sleep)
-		defer cancel()
+		lastObservedValue := -1
+		observedCount := 0
 
-		client.WatchKey(ctx, key, func(i interface{}) bool {
-			observedValues[i.(string)] = time.Now()
-			return true
-		})
+		totalDeadline := time.After(totalTestTimeout)
 
-		// wait until updater finishes (should be done by now)
-		<-ch
+		for watching := true; watching; {
+			select {
+			case <-totalDeadline:
+				watching = false
+			case valStr := <-observedValuesCh:
+				val, err := strconv.Atoi(valStr)
+				if err != nil {
+					t.Fatal("Unexpected value observed:", valStr)
+				}
 
-		// We should have seen some values, observed at increasing times
-		count := 0
-		lastVal := ""
-		lastTime := time.Time{}
-		for i := 0; i < max; i++ {
-			val := fmt.Sprintf("%d", i)
-			ot, ok := observedValues[val]
-			if ok {
-				count++
-				if lastTime.After(ot) {
-					t.Errorf("value %s observed at %s, before previous value %s observed at %s", val, ot, lastVal, lastTime)
+				if val <= lastObservedValue {
+					t.Fatal("Unexpected value observed:", val, "previous:", lastObservedValue)
+				}
+				lastObservedValue = val
+				observedCount++
+
+				if observedCount >= expectedFactor*max {
+					watching = false
 				}
 			}
 		}
 
-		const expectedFactor = 0.9
-		if count < expectedFactor*max {
-			t.Errorf("expected at least %.0f%% observed values, got %.0f%% (observed count: %d)", 100*expectedFactor, 100*float64(count)/max, count)
+		if observedCount < expectedFactor*max {
+			t.Errorf("expected at least %.0f%% observed values, got %.0f%% (observed count: %d)", 100*expectedFactor, 100*float64(observedCount)/max, observedCount)
 		}
 	})
 }

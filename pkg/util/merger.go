@@ -19,12 +19,8 @@ func MergeSampleSets(a, b []model.SamplePair) []model.SamplePair {
 			j++
 		}
 	}
-	for ; i < len(a); i++ {
-		result = append(result, a[i])
-	}
-	for ; j < len(b); j++ {
-		result = append(result, b[j])
-	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
 	return result
 }
 

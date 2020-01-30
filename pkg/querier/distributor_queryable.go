@@ -90,7 +90,8 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers [
 			continue
 		}
 
-		chunks, err := chunkcompat.FromChunks(userID, nil, result.Chunks)
+		metric := client.FromLabelAdaptersToLabels(result.Labels)
+		chunks, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
 		if err != nil {
 			return nil, nil, promql.ErrStorage{Err: err}
 		}

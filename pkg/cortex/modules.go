@@ -448,7 +448,7 @@ func (t *Cortex) stopConfigs() error {
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, cfg.ConfigStore)
 	if err != nil {
-		return
+		return err
 	}
 	go t.alertmanager.Run()
 

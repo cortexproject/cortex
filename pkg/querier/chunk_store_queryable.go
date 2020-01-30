@@ -44,17 +44,16 @@ func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc, false), nil, nil
+	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
 }
 
-func partitionChunks(chunks []chunk.Chunk, mint int64, maxt int64, iteratorFunc chunkIteratorFunc, sortSeries bool) storage.SeriesSet {
+// Series in the returned set are sorted by labels.
+func partitionChunks(chunks []chunk.Chunk, mint int64, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
 	chunksBySeries := map[model.Fingerprint][]chunk.Chunk{}
 	for _, c := range chunks {
 		fp := client.Fingerprint(c.Metric)
 		chunksBySeries[fp] = append(chunksBySeries[fp], c)
 	}
-
-	// TODO: sort series, if needed
 
 	series := make([]storage.Series, 0, len(chunksBySeries))
 	for i := range chunksBySeries {

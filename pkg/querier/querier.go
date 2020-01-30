@@ -253,10 +253,8 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 		return storage.NewMergeSeriesSet(otherSets, nil)
 	}
 
-	// if we're going to merge non-chunks sets, with chunk sets, we need to sort them.
-	// we expect that "normal" sets are already sorted.
-	sortChunksSet := len(otherSets) > 0
-	chunksSet := partitionChunks(chunks, q.mint, q.maxt, q.chunkIterFn, sortChunksSet)
+	// partitionChunks returns set with sorted series, so it can be used by NewMergeSeriesSet
+	chunksSet := partitionChunks(chunks, q.mint, q.maxt, q.chunkIterFn)
 
 	if len(otherSets) == 0 {
 		return chunksSet

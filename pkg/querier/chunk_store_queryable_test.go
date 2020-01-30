@@ -65,3 +65,23 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 	}
 	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }
+
+func TestPartitionChunksOutputIsSorted(t *testing.T) {
+	allChunks := []chunk.Chunk{}
+
+	const count = 10
+	for i := count; i > 0; i-- {
+		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.Bigchunk)
+		ch.Metric[0].Value = fmt.Sprintf("%02d", i)
+
+		allChunks = append(allChunks, ch)
+	}
+
+	res := partitionChunks(allChunks, 0, 1000, mergeChunks)
+
+	for i := 1; i <= count; i++ {
+		require.True(t, res.Next())
+		require.Equal(t, labels.Labels{{Name: model.MetricNameLabel, Value: fmt.Sprintf("%02d", i)}}, res.At().Labels())
+	}
+	require.False(t, res.Next())
+}

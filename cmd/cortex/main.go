@@ -73,9 +73,10 @@ func main() {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 	}
 
+	util.InitLogger(&cfg.Server)
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err := cfg.Validate()
+	err := cfg.Validate(util.Logger)
 	if err != nil {
 		fmt.Printf("error validating config: %v\n", err)
 		os.Exit(1)
@@ -84,7 +85,6 @@ func main() {
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
 	ballast := make([]byte, ballastBytes)
 
-	util.InitLogger(&cfg.Server)
 	util.InitEvents(eventSampleRate)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing

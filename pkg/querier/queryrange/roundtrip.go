@@ -53,9 +53,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(log log.Logger) error {
+	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {
 		cfg.SplitQueriesByInterval = day
+		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 	}
 
 	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
@@ -106,10 +108,6 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
-	}
-	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
-	if cfg.SplitQueriesByDay {
-		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))

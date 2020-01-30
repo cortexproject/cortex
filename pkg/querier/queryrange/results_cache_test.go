@@ -378,7 +378,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
-func Test_generateKey(t *testing.T) {
+func TestConstSplitter_generateCacheKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

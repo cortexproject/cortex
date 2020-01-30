@@ -307,21 +307,21 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 #### WAL
 
-- `--ingester.wal-dir`
-   Directory where the WAL data should be stores and/or recovered from.
+- `-ingester.wal-dir`
+   Directory where the WAL data should be stored and/or recovered from.
 
-- `--ingester.wal-enabled`
+- `-ingester.wal-enabled`
 
    Setting this to `true` enables writing to WAL during ingestion.
 
-- `--ingester.checkpoint-enabled`
+- `-ingester.checkpoint-enabled`
    Set this to `true` to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.
 
-- `--ingester.checkpoint-duration` 
+- `-ingester.checkpoint-duration` 
    This is the interval at which checkpoints should be created.
 
-- `--ingester.recover-from-wal`
-   Set this to to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
+- `-ingester.recover-from-wal`
+   Set this to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
 
 ## Runtime Configuration file
 

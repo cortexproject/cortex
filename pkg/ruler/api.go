@@ -99,10 +99,10 @@ type recordingRule struct {
 	Type      v1.RuleType   `json:"type"`
 }
 
-func respondError(logger log.Logger, w http.ResponseWriter, msg string, errType v1.ErrorType) {
+func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
-		ErrorType: errType,
+		ErrorType: v1.ErrServer,
 		Error:     msg,
 		Data:      nil,
 	})
@@ -124,7 +124,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found", v1.ErrServer)
+		respondError(logger, w, "no valid org id found")
 		return
 	}
 
@@ -132,7 +132,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		respondError(logger, w, err.Error(), v1.ErrServer)
+		respondError(logger, w, err.Error())
 		return
 	}
 
@@ -190,7 +190,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data", v1.ErrServer)
+		respondError(logger, w, "unable to marshal the requested data")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -205,7 +205,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found", v1.ErrServer)
+		respondError(logger, w, "no valid org id found")
 		return
 	}
 
@@ -213,7 +213,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := r.GetRules(ctx, userID)
 
 	if err != nil {
-		respondError(logger, w, err.Error(), v1.ErrServer)
+		respondError(logger, w, err.Error())
 		return
 	}
 
@@ -241,7 +241,7 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data", v1.ErrServer)
+		respondError(logger, w, "unable to marshal the requested data")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

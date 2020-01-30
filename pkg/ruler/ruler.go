@@ -431,7 +431,7 @@ func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.Ru
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
-			level.Error(r.logger).Log("dsg", "unable to update rule manager", "user", user, "err", err)
+			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}
 	}

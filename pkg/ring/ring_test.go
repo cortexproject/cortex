@@ -149,11 +149,15 @@ func TestSubring(t *testing.T) {
 	require.Error(t, err)
 
 	// Generate a sub ring for all possible valid ranges
-	for i := 1; i < n+1; i++ {
+	for i := 1; i < n+2; i++ {
 		subr, err := ring.Subring(rand.Uint32(), i)
 		require.NoError(t, err)
-		require.Equal(t, i, len(subr.(*Ring).ringDesc.Ingesters))
-		require.Equal(t, i*128, len(subr.(*Ring).ringTokens))
+		subringSize := i
+		if i > n {
+			subringSize = n
+		}
+		require.Equal(t, subringSize, len(subr.(*Ring).ringDesc.Ingesters))
+		require.Equal(t, subringSize*128, len(subr.(*Ring).ringTokens))
 		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {
 			return subr.(*Ring).ringTokens[i].Token < subr.(*Ring).ringTokens[j].Token
 		}))
@@ -168,10 +172,6 @@ func TestSubring(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, size, len(set.Ingesters))
 	}
-
-	// Subring larger than possible
-	_, err = ring.Subring(0, n+1)
-	require.Error(t, err)
 }
 
 func TestStableSubring(t *testing.T) {

@@ -388,16 +388,18 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 		return nil, ErrEmptyRing
 	}
 
-	if n > len(r.ringDesc.Ingesters) {
-		return nil, fmt.Errorf("subring too large")
-	}
-
 	var (
 		ingesters     = make(map[string]IngesterDesc, n)
 		distinctHosts = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
 	)
+
+	// Subring exceeds number of ingesters, set to total ring size
+	if n > len(r.ringDesc.Ingesters) {
+		n = len(r.ringDesc.Ingesters)
+	}
+
 	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
 		iterations++
 		// Wrap i around in the ring.

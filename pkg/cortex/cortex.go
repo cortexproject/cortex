@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -125,7 +126,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
-func (c *Config) Validate() error {
+func (c *Config) Validate(log log.Logger) error {
 	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
@@ -146,6 +147,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
+	}
+	if err := c.QueryRange.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid queryrange config")
 	}
 	return nil
 }

@@ -26,7 +26,7 @@ const (
 type RefCache struct {
 	// The cache is split into stripes, each one with a dedicated lock, in
 	// order to reduce lock contention.
-	stripes []*refCacheStripe
+	stripes [refCacheStripes]*refCacheStripe
 }
 
 // refCacheStripe holds a subset of the series references for a single tenant.
@@ -44,9 +44,7 @@ type refCacheEntry struct {
 
 // NewRefCache makes a new RefCache.
 func NewRefCache() *RefCache {
-	c := &RefCache{
-		stripes: make([]*refCacheStripe, refCacheStripes, refCacheStripes),
-	}
+	c := &RefCache{}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
 	for i := uint8(0); i < refCacheStripes; i++ {

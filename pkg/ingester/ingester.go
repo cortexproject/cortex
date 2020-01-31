@@ -180,7 +180,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		chunkStore:    chunkStore,
 		quit:          make(chan struct{}),
 		blockedRanges: make(map[ring.TokenRange]bool),
-		flushQueues:   make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		flushQueues:   make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 	}
 
 	var err error

@@ -340,7 +340,7 @@ func generateRing(t *testing.T, desc string) *namedRing {
 	t.Helper()
 
 	regex, err := regexp.Compile(
-		"(?P<ingester>[A-Z])(?P<token>\\d*)(?P<state>\\+|\\-|\\?|\\.)?",
+		`(?P<ingester>[A-Z])(?P<token>\d*)(?P<state>\+|\-|\?|\.)?`,
 	)
 	if err != nil {
 		t.Fatalf("unexpected regex err %v", err)

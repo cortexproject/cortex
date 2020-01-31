@@ -103,7 +103,10 @@ func (i *Ingester) BlockRanges(ranges []ring.TokenRange) {
 
 	go func() {
 		<-time.After(i.cfg.RangeBlockPeriod)
-		i.UnblockRanges(context.Background(), &client.UnblockRangesRequest{Ranges: ranges})
+		_, err := i.UnblockRanges(context.Background(), &client.UnblockRangesRequest{Ranges: ranges})
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error unblocking ranges", "err", err)
+		}
 	}()
 }
 

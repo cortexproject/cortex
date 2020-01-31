@@ -494,7 +494,7 @@ func (f *testIngesterFactory) getIngester(t require.TestingT) *Ingester {
 	f.ingestersMtx.Lock()
 	defer f.ingestersMtx.Unlock()
 
-	f.ingesters[fmt.Sprintf("%s", cfg.LifecyclerConfig.ID)] = ing
+	f.ingesters[cfg.LifecyclerConfig.ID] = ing
 	f.ingesters[fmt.Sprintf("%s:0", cfg.LifecyclerConfig.ID)] = ing
 
 	// NB there's some kind of race condition with the in-memory KV client when
@@ -558,9 +558,9 @@ func (c *testIngesterClient) QueryStream(ctx context.Context, in *client.QueryRe
 
 	go func() {
 		srv := testIngesterQueryStreamServer{ctx: ctx, ch: ch}
-		c.i.QueryStream(in, &srv)
-	}()
+		_ = c.i.QueryStream(in, &srv)
 
+	}()
 	cli := testIngesterQueryStreamClient{ch: ch}
 	return &cli, nil
 }
@@ -600,7 +600,7 @@ func (c *testIngesterClient) TransferChunks(ctx context.Context, opts ...grpc.Ca
 	}
 
 	go func() {
-		c.i.TransferChunks(&srv)
+		_ = c.i.TransferChunks(&srv)
 	}()
 
 	return &cli, nil
@@ -645,7 +645,7 @@ func (c *testIngesterClient) TransferChunksSubset(ctx context.Context, opts ...g
 	}
 
 	go func() {
-		c.i.TransferChunksSubset(&srv)
+		_ = c.i.TransferChunksSubset(&srv)
 	}()
 
 	return &cli, nil
@@ -658,7 +658,7 @@ func (c *testIngesterClient) GetChunksSubset(ctx context.Context, in *client.Get
 	cli := testTimeSeriesClient{ctx: ctx, ch: ch}
 
 	go func() {
-		c.i.GetChunksSubset(in, &srv)
+		_ = c.i.GetChunksSubset(in, &srv)
 		close(ch)
 	}()
 

@@ -714,9 +714,6 @@ func (j *mockIncrementalJoin) RequestChunkRanges(_ context.Context, ranges []Tok
 	return nil
 }
 
-type casCallback = func(in interface{}) (out interface{}, retry bool, err error)
-type casFunc = func(ctx context.Context, key string, f casCallback) error
-
 func waitIngesterState(t *testing.T, r *Ring, id string, waitTime time.Duration, joined bool) {
 	t.Helper()
 

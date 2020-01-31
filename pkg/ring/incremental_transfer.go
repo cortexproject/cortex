@@ -95,7 +95,10 @@ func (i *Lifecycler) joinIncrementalTransfer(ctx context.Context) error {
 	// Make sure that we set all tokens to ACTIVE, even when we fail.
 	defer func() {
 		i.setTokens(i.getTransitioningTokens())
-		i.changeState(ctx, ACTIVE)
+		err := i.changeState(ctx, ACTIVE)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to force state to active", "err", err)
+		}
 	}()
 
 	r := i.getLastRing()
@@ -194,7 +197,10 @@ func (i *Lifecycler) leaveIncrementalTransfer(ctx context.Context) error {
 
 		i.setTokens(nil)
 		i.setState(LEAVING)
-		i.updateConsul(ctx)
+		err := i.updateConsul(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to update consul after leave incremental transfer", "err", err)
+		}
 	}()
 
 	r := i.getLastRing()

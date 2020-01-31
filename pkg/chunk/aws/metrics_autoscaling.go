@@ -56,22 +56,17 @@ type MetricsAutoScalingConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", f)
-}
+	f.StringVar(&cfg.URL, "metrics.url", "", "Use metrics-based autoscaling, via this query URL")
+	f.Int64Var(&cfg.TargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
+	f.Float64Var(&cfg.ScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
+	f.Float64Var(&cfg.MinThrottling, "metrics.ignore-throttle-below", 1, "Ignore throttling below this level (rate per second)")
+	f.StringVar(&cfg.QueueLengthQuery, "metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
+	f.StringVar(&cfg.ThrottleQuery, "metrics.write-throttle-query", defaultThrottleRateQuery, "query to fetch throttle rates per table")
+	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
+	f.StringVar(&cfg.ReadUsageQuery, "metrics.read-usage-query", defaultReadUsageQuery, "query to fetch read capacity usage per table")
+	f.StringVar(&cfg.ReadErrorQuery, "metrics.read-error-query", defaultReadErrorQuery, "query to fetch read errors per table")
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
-func (cfg *MetricsAutoScalingConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.URL, prefix+"metrics.url", "", "Use metrics-based autoscaling, via this query URL")
-	f.Int64Var(&cfg.TargetQueueLen, prefix+"metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
-	f.Float64Var(&cfg.ScaleUpFactor, prefix+"metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
-	f.Float64Var(&cfg.MinThrottling, prefix+"metrics.ignore-throttle-below", 1, "Ignore throttling below this level (rate per second)")
-	f.StringVar(&cfg.QueueLengthQuery, prefix+"metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
-	f.StringVar(&cfg.ThrottleQuery, prefix+"metrics.write-throttle-query", defaultThrottleRateQuery, "query to fetch throttle rates per table")
-	f.StringVar(&cfg.UsageQuery, prefix+"metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
-	f.StringVar(&cfg.ReadUsageQuery, prefix+"metrics.read-usage-query", defaultReadUsageQuery, "query to fetch read capacity usage per table")
-	f.StringVar(&cfg.ReadErrorQuery, prefix+"metrics.read-error-query", defaultReadErrorQuery, "query to fetch read errors per table")
-
-	f.StringVar(&cfg.deprecatedErrorRateQuery, prefix+"metrics.error-rate-query", "", "DEPRECATED: use -metrics.write-throttle-query instead")
+	f.StringVar(&cfg.deprecatedErrorRateQuery, "metrics.error-rate-query", "", "DEPRECATED: use -metrics.write-throttle-query instead")
 }
 
 type metricsData struct {

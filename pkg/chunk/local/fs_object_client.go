@@ -121,7 +121,8 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 }
 
 // List objects from the store
-func (f *FSObjectClient) List(ctx context.Context, prefix string) (map[string]time.Time, error) {
+func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+	var storageObjects []chunk.StorageObject
 	folderPath := filepath.Join(f.cfg.Directory, prefix)
 
 	_, err := os.Stat(folderPath)
@@ -137,15 +138,17 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) (map[string]ti
 		return nil, err
 	}
 
-	files := map[string]time.Time{}
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
 			continue
 		}
-		files[fileInfo.Name()] = fileInfo.ModTime()
+		storageObjects = append(storageObjects, chunk.StorageObject{
+			Key:        fileInfo.Name(),
+			ModifiedAt: fileInfo.ModTime(),
+		})
 	}
 
-	return files, nil
+	return storageObjects, nil
 }
 
 // DeleteChunksBefore implements BucketClient

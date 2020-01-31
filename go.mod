@@ -5,6 +5,7 @@ go 1.12
 require (
 	cloud.google.com/go/bigtable v1.1.0
 	cloud.google.com/go/storage v1.3.0
+	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1

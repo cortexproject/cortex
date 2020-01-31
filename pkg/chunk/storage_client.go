@@ -1,6 +1,9 @@
 package chunk
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
@@ -42,4 +45,9 @@ type ReadBatchIterator interface {
 	Next() bool
 	RangeValue() []byte
 	Value() []byte
+}
+
+type StorageObject struct {
+	Key        string
+	ModifiedAt time.Time
 }

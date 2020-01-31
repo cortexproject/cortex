@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 
@@ -89,14 +91,14 @@ func (s *GCSObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([
 func (s *GCSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	readCloser, err := s.GetObject(ctx, input.ExternalKey())
 	if err != nil {
-		return chunk.Chunk{}, err
+		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	defer readCloser.Close()
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return chunk.Chunk{}, err
+		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	if err := input.Decode(decodeContext, buf); err != nil {
@@ -137,26 +139,31 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 }
 
 // List objects from the store
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) (map[string]time.Time, error) {
-	objectKeysWithMtime := map[string]time.Time{}
-	prefixWithSep := prefix + "/"
+func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+	var storageObjects []chunk.StorageObject
 
 	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix})
 	for {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		attr, err := iter.Next()
 		if err != nil {
 			if err == iterator.Done {
 				break
-			} else {
-				return nil, err
 			}
+			return nil, err
 		}
 
-		if attr.Name == prefixWithSep {
+		if attr.Name == prefix {
 			continue
 		}
-		objectKeysWithMtime[strings.TrimPrefix(attr.Name, prefixWithSep)] = attr.Updated
+		storageObjects = append(storageObjects, chunk.StorageObject{
+			Key:        strings.TrimPrefix(attr.Name, prefix),
+			ModifiedAt: attr.Updated,
+		})
 	}
 
-	return objectKeysWithMtime, nil
+	return storageObjects, nil
 }

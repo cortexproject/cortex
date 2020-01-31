@@ -125,13 +125,13 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
 	DynamoDBConfig
-	S3 S3Config `yaml:"inline"`
+	S3Config `yaml:",inline"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)
-	cfg.S3.RegisterFlags(f)
+	cfg.S3Config.RegisterFlags(f)
 }
 
 type dynamoDBStorageClient struct {

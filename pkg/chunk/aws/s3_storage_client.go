@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -91,14 +90,14 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	return &client, nil
 }
 
-func (a S3ObjectClient) Stop() {
+func (a *S3ObjectClient) Stop() {
 }
 
-func (a S3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a *S3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, chunks, a.getChunk)
 }
 
-func (a S3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (a *S3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	readCloser, err := a.GetObject(ctx, c.ExternalKey())
 	if err != nil {
 		return chunk.Chunk{}, err
@@ -117,7 +116,7 @@ func (a S3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return c, nil
 }
 
-func (a S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (a *S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		s3ChunkKeys []string
 		s3ChunkBufs [][]byte
@@ -152,7 +151,7 @@ func (a S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 // bucketFromKey maps a key to a bucket name
-func (a S3ObjectClient) bucketFromKey(key string) string {
+func (a *S3ObjectClient) bucketFromKey(key string) string {
 	if len(a.bucketNames) == 0 {
 		return ""
 	}
@@ -165,7 +164,7 @@ func (a S3ObjectClient) bucketFromKey(key string) string {
 }
 
 // Get object from the store
-func (a S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
@@ -187,7 +186,7 @@ func (a S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Rea
 }
 
 // Put object into the store
-func (a S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   object,
@@ -199,19 +198,35 @@ func (a S3ObjectClient) PutObject(ctx context.Context, objectKey string, object 
 }
 
 // List objects from the store
-func (a S3ObjectClient) List(ctx context.Context, prefix string) (map[string]time.Time, error) {
-	objectKeysWithMtime := map[string]time.Time{}
-	prefixWithSep := prefix + "/"
+func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+	var storageObjects []chunk.StorageObject
 
 	for i := range a.bucketNames {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-			output, err := a.S3.ListObjectsV2WithContext(ctx, &s3.ListObjectsV2Input{Bucket: &a.bucketNames[i], Prefix: &prefix})
-			if err != nil {
-				return err
+			input := s3.ListObjectsV2Input{
+				Bucket: aws.String(a.bucketNames[i]),
+				Prefix: aws.String(prefix),
 			}
 
-			for i := range output.Contents {
-				objectKeysWithMtime[strings.TrimPrefix(*output.Contents[i].Key, prefixWithSep)] = *output.Contents[i].LastModified
+			for {
+				output, err := a.S3.ListObjectsV2WithContext(ctx, &input)
+				if err != nil {
+					return err
+				}
+
+				for i := range output.Contents {
+					storageObjects = append(storageObjects, chunk.StorageObject{
+						Key:        strings.TrimPrefix(*output.Contents[i].Key, prefix),
+						ModifiedAt: *output.Contents[i].LastModified,
+					})
+				}
+
+				if !*output.IsTruncated {
+					// No more results to fetch
+					break
+				}
+
+				input.SetContinuationToken(*output.NextContinuationToken)
 			}
 
 			return nil
@@ -222,5 +237,5 @@ func (a S3ObjectClient) List(ctx context.Context, prefix string) (map[string]tim
 		}
 	}
 
-	return objectKeysWithMtime, nil
+	return storageObjects, nil
 }

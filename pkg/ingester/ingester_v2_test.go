@@ -1111,3 +1111,71 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
 }
+
+func Test_Ingester_UserSeriesLimitExceeded(t *testing.T) {
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Override limit config
+	limits := defaultLimitsTestConfig()
+	limits.MaxLocalSeriesPerUser = 1
+	i.limiter.limits, err = validation.NewOverrides(limits, nil)
+	assert.Nil(t, err)
+
+	// Sample series
+	userID := "1"
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	sample1 := client.Sample{
+		TimestampMs: 0,
+		Value:       1,
+	}
+	sample2 := client.Sample{
+		TimestampMs: 1,
+		Value:       2,
+	}
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sample3 := client.Sample{
+		TimestampMs: 1,
+		Value:       3,
+	}
+
+	// Append only one series first, expect no error.
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = i.v2Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, client.API))
+	require.NoError(t, err)
+
+	// Append to two series, expect series-exceeded error.
+	_, err = i.v2Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
+	t.Logf("Log### %v", err)
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected error about exceeding metrics per user, got %v %v %v", err, ok, resp)
+	}
+
+	// Read samples back via ingester queries.
+	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "testmetric"}},
+	})
+	require.NoError(t, err)
+
+	expected := []client.TimeSeries{
+		{
+			Labels: client.FromLabelsToLabelAdapters(labels.Labels{
+				{Name: labels.MetricName, Value: "testmetric"},
+				{Name: "foo", Value: "bar"},
+			}),
+			Samples: []client.Sample{{Value: 1, TimestampMs: 0}},
+		},
+	}
+
+	assert.Equal(t, expected, res.Timeseries)
+}

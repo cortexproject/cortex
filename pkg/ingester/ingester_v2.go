@@ -198,10 +198,17 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		lset := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 		for _, s := range ts.Samples {
-			_, err := app.Add(lset, s.TimestampMs, s.Value)
+			// Check rate-limit
+			var err error
+			if e := i.limiter.AssertMaxSeriesPerUser(userID, int(db.currentNumSeries())); e != nil {
+				err = makeLimitError(perUserSeriesLimit, e)
+			}
 			if err == nil {
-				succeededSamplesCount++
-				continue
+				_, err = app.Add(lset, s.TimestampMs, s.Value)
+				if err == nil {
+					succeededSamplesCount++
+					continue
+				}
 			}
 
 			failedSamplesCount++
@@ -223,6 +230,9 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
 			}
 
+			if ve, ok := err.(*validationError); ok {
+				return nil, ve.WrapWithUser(userID).WrappedError()
+			}
 			return nil, wrapWithUser(err, userID)
 		}
 	}
@@ -470,7 +480,7 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
-		NumSeries:         db.Head().NumSeries(),
+		NumSeries:         db.currentNumSeries(),
 	}
 }
 
@@ -692,7 +702,7 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 
 	count := uint64(0)
 	for _, db := range i.TSDBState.dbs {
-		count += db.Head().NumSeries()
+		count += db.currentNumSeries()
 	}
 
 	return float64(count)
@@ -781,4 +791,8 @@ func (i *Ingester) shipBlocks() {
 
 	// Wait until all workers completed.
 	wg.Wait()
+}
+
+func (db *userTSDB) currentNumSeries() uint64 {
+	return db.Head().NumSeries()
 }

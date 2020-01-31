@@ -130,9 +130,7 @@ func (cfg *DynamoDBConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
 	DynamoDBConfig
-	S3               flagext.URLValue
-	BucketNames      string
-	S3ForcePathStyle bool
+	S3 S3Config `yaml:"inline"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -143,11 +141,7 @@ func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *StorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlagsWithPrefix(prefix, f)
-
-	f.Var(&cfg.S3, prefix+"s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
-	f.BoolVar(&cfg.S3ForcePathStyle, prefix+"s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
-	f.StringVar(&cfg.BucketNames, prefix+"s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
+	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type dynamoDBStorageClient struct {

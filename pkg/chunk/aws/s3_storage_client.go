@@ -3,6 +3,7 @@ package aws
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 )
@@ -35,13 +37,33 @@ func init() {
 	s3RequestDuration.Register()
 }
 
+// S3Config specifies config for storing chunks on AWS S3.
+type S3Config struct {
+	S3               flagext.URLValue
+	BucketNames      string
+	S3ForcePathStyle bool
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *S3Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.Var(&cfg.S3, prefix+"s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
+	f.BoolVar(&cfg.S3ForcePathStyle, prefix+"s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
+	f.StringVar(&cfg.BucketNames, prefix+"s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
+}
+
 type S3ObjectClient struct {
 	bucketNames []string
 	S3          s3iface.S3API
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg StorageConfig) (*S3ObjectClient, error) {
+func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
 	}
@@ -166,7 +188,7 @@ func (a S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Rea
 
 // Put object into the store
 func (a S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "S3.Put", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   object,
 			Bucket: aws.String(a.bucketFromKey(objectKey)),

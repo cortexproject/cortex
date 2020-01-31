@@ -1243,21 +1243,22 @@ aws:
     # CLI flag: -dynamodb.chunk.get.max.parallelism
     [chunkgetmaxparallelism: <int> | default = 32]
 
-  s3:
-    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-    # specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<bucket-name> to use a mock in-memory implementation.
-    # CLI flag: -s3.url
-    [url: <url> | default = ]
+  inline:
+    s3:
+      # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+      # specified as a host, proper endpoint will be deduced. Use
+      # inmemory:///<bucket-name> to use a mock in-memory implementation.
+      # CLI flag: -s3.url
+      [url: <url> | default = ]
 
-  # Comma separated list of bucket names to evenly distribute chunks over.
-  # Overrides any buckets specified in s3.url flag
-  # CLI flag: -s3.buckets
-  [bucketnames: <string> | default = ""]
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -s3.buckets
+    [bucketnames: <string> | default = ""]
 
-  # Set this to `true` to force the request to use path-style addressing.
-  # CLI flag: -s3.force-path-style
-  [s3forcepathstyle: <boolean> | default = false]
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
 
 azure:
   # Name of the blob container used to store chunks. Defaults to `cortex`. This

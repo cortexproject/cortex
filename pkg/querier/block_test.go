@@ -102,16 +102,3 @@ func mockTSDBChunkData() []byte {
 
 	return chunk.Bytes()
 }
-
-func mockTSDBChunkDataWithInvalidTimestampOrder() []byte {
-	chunk := chunkenc.NewXORChunk()
-	appender, err := chunk.Appender()
-	if err != nil {
-		panic(err)
-	}
-
-	appender.Append(time.Unix(1, 0).Unix()*1000, 1)
-	appender.Append(time.Unix(0, 0).Unix()*1000, 2)
-
-	return chunk.Bytes()
-}

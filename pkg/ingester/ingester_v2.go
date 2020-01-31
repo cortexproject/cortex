@@ -226,6 +226,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 				if err == tsdb.ErrNotFound {
 					cachedRefExists = false
+					err = nil
 				}
 			}
 

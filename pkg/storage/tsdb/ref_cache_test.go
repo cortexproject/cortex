@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -95,24 +96,42 @@ func TestRefCache_Purge(t *testing.T) {
 }
 
 func BenchmarkRefCache_SetRef(b *testing.B) {
+	const numSeries = 10000
+
+	// Prepare series
+	series := [numSeries]labels.Labels{}
+	for s := 0; s < numSeries; s++ {
+		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+	}
+
 	now := time.Now()
-	ls := []labels.Label{{Name: "a", Value: "1"}}
 	c := NewRefCache()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c.SetRef(now, ls, uint64(i))
+		for s := 0; s < numSeries; s++ {
+			c.SetRef(now, series[0], uint64(i))
+		}
 	}
 }
 
 func BenchmarkRefCache_Ref(b *testing.B) {
+	const numSeries = 10000
+
 	now := time.Now()
-	ls := []labels.Label{{Name: "a", Value: "1"}}
 	c := NewRefCache()
-	c.SetRef(now, ls, 1)
+
+	// Prepare series
+	series := [numSeries]labels.Labels{}
+	for s := 0; s < numSeries; s++ {
+		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+		c.SetRef(now, series[s], uint64(s))
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c.Ref(now, ls)
+		for s := 0; s < numSeries; s++ {
+			c.Ref(now, series[s])
+		}
 	}
 }

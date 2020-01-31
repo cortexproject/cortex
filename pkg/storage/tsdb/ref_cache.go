@@ -122,20 +122,20 @@ func (c *RefCache) SetRef(now time.Time, series []labels.Label, ref uint64) {
 // periodically to avoid memory leaks.
 func (c *RefCache) Purge(keepUntil time.Time) {
 	for s := uint8(0); s < refCacheStripes; s++ {
-		c.purgeStripe(keepUntil, c.stripes[s])
+		c.stripes[s].purge(keepUntil)
 	}
 }
 
-func (c *RefCache) purgeStripe(keepUntil time.Time, stripe *refCacheStripe) {
-	stripe.refsMu.Lock()
-	defer stripe.refsMu.Unlock()
+func (s *refCacheStripe) purge(keepUntil time.Time) {
+	s.refsMu.Lock()
+	defer s.refsMu.Unlock()
 
-	for fp, entries := range stripe.refs {
+	for fp, entries := range s.refs {
 		// Since we do expect very few fingerprint collisions, we
 		// have an optimized implementation for the common case.
 		if len(entries) == 1 {
 			if entries[0].touchedAt.Before(keepUntil) {
-				delete(stripe.refs, fp)
+				delete(s.refs, fp)
 			}
 
 			continue
@@ -153,9 +153,9 @@ func (c *RefCache) purgeStripe(keepUntil time.Time, stripe *refCacheStripe) {
 
 		// Either update or delete the entries in the map
 		if len(entries) == 0 {
-			delete(stripe.refs, fp)
+			delete(s.refs, fp)
 		} else {
-			stripe.refs[fp] = entries
+			s.refs[fp] = entries
 		}
 	}
 }

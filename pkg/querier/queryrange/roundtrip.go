@@ -17,7 +17,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"net/http"
 	"strings"

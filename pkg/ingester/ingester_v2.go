@@ -210,6 +210,8 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
+		// The labels must be sorted (in our case, it's guaranteed a write request
+		// has sorted labels once hit the ingester).
 		cachedRef, cachedRefExists := db.refCache.Ref(now, client.FromLabelAdaptersToLabels(ts.Labels))
 
 		for _, s := range ts.Samples {

@@ -454,10 +454,45 @@ lifecycler:
   # CLI flag: -ingester.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
+  # Request chunks from neighboring ingesters on join. Disables the handoff
+  # process when set and ignores the -ingester.join-after flag.
+  # CLI flag: -ingester.join-incremental-transfer
+  [join_incremental_transfer: <boolean> | default = false]
+
+  # Send chunks to neighboring ingesters on leave. Takes precedence over chunk
+  # flushing when set and disables handoff.
+  # CLI flag: -ingester.leave-incremental-transfer
+  [leave_incremental_transfer: <boolean> | default = false]
+
+  # Minimum amount of time to wait before incrementally joining the ring. Allows
+  # time to receieve ring updates so two ingesters do not join at once.
+  # CLI flag: -ingester.min-incremental-join-jitter
+  [min_incremental_join_jitter: <duration> | default = 0s]
+
+  # Maximum amount of time to wait before incrementally joining the ring. Allows
+  # time to receieve ring updates so two ingesters do not join at once.
+  # CLI flag: -ingester.max-incremental-join-jitter
+  [max_incremental_join_jitter: <duration> | default = 2s]
+
+  # How long after the incremental join process to notify the target ingesters
+  # to clean up any blocked token ranges.
+  # CLI flag: -ingester.transfer-finish-delay
+  [transfer_finish_delay: <duration> | default = 5s]
+
+token_checker:
+  # Period with which to check that all in-memory streams fall within expected
+  # token ranges. 0 to disable.
+  # CLI flag: -token-checker.check-on-interval
+  [check_on_interval: <duration> | default = 0s]
+
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over.
 # CLI flag: -ingester.max-transfer-retries
 [max_transfer_retries: <int> | default = 10]
+
+# Period after which write blocks on ranges expire.
+# CLI flag: -ingester.range-block-period
+[range_block_period: <duration> | default = 1m0s]
 
 # Period with which to attempt to flush chunks.
 # CLI flag: -ingester.flush-period
@@ -496,6 +531,19 @@ lifecycler:
 # If true, spread series flushes across the whole period of MaxChunkAge
 # CLI flag: -ingester.spread-flushes
 [spreadflushes: <boolean> | default = false]
+
+# Check that newly created streams fall within expected token ranges
+# CLI flag: -ingester.check-token-on-create
+[check_token_on_create: <boolean> | default = false]
+
+# Check that existing streams appended to fall within expected token ranges
+# CLI flag: -ingester.check-token-on-append
+[check_token_on_append: <boolean> | default = false]
+
+# Check that streams transferred in using the transfer mechanism fall within
+# expected token ranges
+# CLI flag: -ingester.check-token-on-transfer
+[check_token_on_transfer: <boolean> | default = false]
 
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -117,4 +118,108 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
 
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
+}
+
+func TestSubring(t *testing.T) {
+	r := NewDesc()
+
+	n := 16 // number of ingesters in ring
+	var prevTokens []uint32
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("ing%v", i)
+		ingTokens := GenerateTokens(128, prevTokens)
+
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+
+		prevTokens = append(prevTokens, ingTokens...)
+	}
+
+	// Create a ring with the ingesters
+	ring := Ring{
+		name: "main ring",
+		cfg: Config{
+			HeartbeatTimeout: time.Hour,
+		},
+		ringDesc:   r,
+		ringTokens: r.getTokens(),
+	}
+
+	// Subring of 0 invalid
+	_, err := ring.Subring(0, 0)
+	require.Error(t, err)
+
+	// Generate a sub ring for all possible valid ranges
+	for i := 1; i < n+2; i++ {
+		subr, err := ring.Subring(rand.Uint32(), i)
+		require.NoError(t, err)
+		subringSize := i
+		if i > n {
+			subringSize = n
+		}
+		require.Equal(t, subringSize, len(subr.(*Ring).ringDesc.Ingesters))
+		require.Equal(t, subringSize*128, len(subr.(*Ring).ringTokens))
+		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {
+			return subr.(*Ring).ringTokens[i].Token < subr.(*Ring).ringTokens[j].Token
+		}))
+
+		// Obtain a replication slice
+		size := i - 1
+		if size <= 0 {
+			size = 1
+		}
+		subr.(*Ring).cfg.ReplicationFactor = size
+		set, err := subr.Get(rand.Uint32(), Write, nil)
+		require.NoError(t, err)
+		require.Equal(t, size, len(set.Ingesters))
+	}
+}
+
+func TestStableSubring(t *testing.T) {
+	r := NewDesc()
+
+	n := 16 // number of ingesters in ring
+	var prevTokens []uint32
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("ing%v", i)
+		ingTokens := GenerateTokens(128, prevTokens)
+
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+
+		prevTokens = append(prevTokens, ingTokens...)
+	}
+
+	// Create a ring with the ingesters
+	ring := Ring{
+		name: "main ring",
+		cfg: Config{
+			HeartbeatTimeout: time.Hour,
+		},
+		ringDesc:   r,
+		ringTokens: r.getTokens(),
+	}
+
+	// Generate the same subring multiple times
+	var subrings [][]TokenDesc
+	key := rand.Uint32()
+	subringsize := 4
+	for i := 1; i < 4; i++ {
+		subr, err := ring.Subring(key, subringsize)
+		require.NoError(t, err)
+		require.Equal(t, subringsize, len(subr.(*Ring).ringDesc.Ingesters))
+		require.Equal(t, subringsize*128, len(subr.(*Ring).ringTokens))
+		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {
+			return subr.(*Ring).ringTokens[i].Token < subr.(*Ring).ringTokens[j].Token
+		}))
+
+		subrings = append(subrings, subr.(*Ring).ringTokens)
+	}
+
+	// Validate that the same subring is produced each time from the same ring
+	for i := 0; i < len(subrings); i++ {
+		next := i + 1
+		if next >= len(subrings) {
+			next = 0
+		}
+		require.Equal(t, subrings[i], subrings[next])
+	}
 }

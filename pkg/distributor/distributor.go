@@ -431,7 +431,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
 	}
 
-	err = ring.DoBatch(ctx, d.ingestersRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	var subRing ring.ReadRing
+	subRing = d.ingestersRing
+
+	// Obtain a subring if required
+	if size := d.limits.SubringSize(userID); size > 0 {
+		h := client.HashAdd32(client.HashNew32(), userID)
+		subRing, err = d.ingestersRing.Subring(h, size)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unable to create subring: %v", err)
+		}
+	}
+
+	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		for _, i := range indexes {
 			timeseries = append(timeseries, validatedTimeseries[i])

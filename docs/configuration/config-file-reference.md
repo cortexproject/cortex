@@ -1808,6 +1808,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
 
+# Per-user subring to shard metrics to ingesters. 0 is disabled.
+# CLI flag: -experimental.distributor.user-subring-size
+[user_subring_size: <int> | default = 0]
+
 # The maximum number of series that a query can return.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]

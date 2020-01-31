@@ -28,7 +28,7 @@ func TestReplicationStrategy(t *testing.T) {
 		{
 			RF:            1,
 			DeadIngesters: 1,
-			ExpectedError: "at least 1 live ingesters required, could only find 0",
+			ExpectedError: "at least 1 live replicas required, could only find 0",
 		},
 
 		// Ensure it works for the default production config.
@@ -49,7 +49,7 @@ func TestReplicationStrategy(t *testing.T) {
 			RF:            3,
 			LiveIngesters: 1,
 			DeadIngesters: 2,
-			ExpectedError: "at least 2 live ingesters required, could only find 1",
+			ExpectedError: "at least 2 live replicas required, could only find 1",
 		},
 
 		// Ensure it works when adding / removing nodes.
@@ -72,7 +72,7 @@ func TestReplicationStrategy(t *testing.T) {
 			RF:            3,
 			LiveIngesters: 2,
 			DeadIngesters: 2,
-			ExpectedError: "at least 3 live ingesters required, could only find 2",
+			ExpectedError: "at least 3 live replicas required, could only find 2",
 		},
 	} {
 		ingesters := []IngesterDesc{}

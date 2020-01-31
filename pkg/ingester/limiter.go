@@ -70,6 +70,11 @@ func (l *SeriesLimiter) MaxSeriesPerQuery(userID string) int {
 	return l.limits.MaxSeriesPerQuery(userID)
 }
 
+// MaxSamplesPerQuery returns the maximum number of sample a query is allowed to hit.
+func (l *SeriesLimiter) MaxSamplesPerQuery(userID string) int {
+	return l.limits.MaxSamplesPerQuery(userID)
+}
+
 func (l *SeriesLimiter) maxSeriesPerMetric(userID string) int {
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)

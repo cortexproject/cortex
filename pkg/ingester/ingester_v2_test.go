@@ -1154,9 +1154,8 @@ func Test_Ingester_UserSeriesLimitExceeded(t *testing.T) {
 
 	// Append to two series, expect series-exceeded error.
 	_, err = i.v2Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
-	t.Logf("Log### %v", err)
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected error about exceeding metrics per user, got %v %v %v", err, ok, resp)
+		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
 
 	// Read samples back via ingester queries.
@@ -1177,5 +1176,107 @@ func Test_Ingester_UserSeriesLimitExceeded(t *testing.T) {
 		},
 	}
 
+	assert.Equal(t, expected, res.Timeseries)
+}
+
+func Test_Ingester_QueryLimitExceeded(t *testing.T) {
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Override limit config
+	limits := defaultLimitsTestConfig()
+	limits.MaxSeriesPerQuery = 1
+	limits.MaxSamplesPerQuery = 3
+	i.limiter.limits, err = validation.NewOverrides(limits, nil)
+	assert.Nil(t, err)
+
+	// Sample series
+	userID := "1"
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	labels2 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	series := []struct {
+		Label   labels.Labels
+		Samples []client.Sample
+	}{
+		{
+			Label: labels1,
+			Samples: []client.Sample{
+				{TimestampMs: 1, Value: 2},
+				{TimestampMs: 2, Value: 4},
+				{TimestampMs: 3, Value: 6},
+				{TimestampMs: 4, Value: 8},
+			},
+		},
+		{
+			Label: labels2,
+			Samples: []client.Sample{
+				{TimestampMs: 1, Value: 3},
+			},
+		},
+	}
+
+	// Push series
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for _, ts := range series {
+		for _, sample := range ts.Samples {
+			_, err = i.v2Push(ctx, client.ToWriteRequest([]labels.Labels{ts.Label}, []client.Sample{sample}, client.API))
+			require.NoError(t, err)
+		}
+	}
+
+	// Read tow series
+	_, err = i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   2,
+		Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "testmetric"}},
+	})
+	require.NotNil(t, err)
+	assert.Contains(t, err.Error(), "exceeded maximum number of series in a query")
+
+	// Read one series
+	_, err = i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers: []*client.LabelMatcher{
+			{Type: client.EQUAL, Name: labels.MetricName, Value: "testmetric"},
+			{Type: client.EQUAL, Name: "foo", Value: "bar"},
+		},
+	})
+	require.NotNil(t, err)
+	assert.Contains(t, err.Error(), "exceeded maximum number of samples in a query (3)")
+
+	// Read one series
+	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   3,
+		Matchers: []*client.LabelMatcher{
+			{Type: client.EQUAL, Name: labels.MetricName, Value: "testmetric"},
+			{Type: client.EQUAL, Name: "foo", Value: "bar"},
+		},
+	})
+	require.Nil(t, err)
+	require.NotNil(t, res)
+
+	expected := []client.TimeSeries{
+		{
+			Labels: client.FromLabelsToLabelAdapters(labels.Labels{
+				{Name: labels.MetricName, Value: "testmetric"},
+				{Name: "foo", Value: "bar"},
+			}),
+			Samples: []client.Sample{
+				{Value: 2, TimestampMs: 1},
+				{Value: 4, TimestampMs: 2},
+				{Value: 6, TimestampMs: 3},
+			},
+		},
+	}
 	assert.Equal(t, expected, res.Timeseries)
 }

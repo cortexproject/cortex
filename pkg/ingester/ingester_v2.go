@@ -290,6 +290,8 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		return nil, err
 	}
 
+	maxSamplesPerQuery := i.limiter.MaxSamplesPerQuery(userID)
+	maxSeriesPerQuery := i.limiter.MaxSeriesPerQuery(userID)
 	numSamples := 0
 
 	result := &client.QueryResponse{}
@@ -306,6 +308,14 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 
+		if numSamples+len(ts.Samples) > maxSamplesPerQuery {
+			err = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
+			break
+		}
+		if len(result.Timeseries) >= maxSeriesPerQuery {
+			err = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
+			break
+		}
 		numSamples += len(ts.Samples)
 		result.Timeseries = append(result.Timeseries, ts)
 	}
@@ -313,6 +323,9 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	i.metrics.queriedSeries.Observe(float64(len(result.Timeseries)))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
 
+	if err != nil {
+		return result, err
+	}
 	return result, ss.Err()
 }
 

@@ -60,20 +60,31 @@ func NewRefCache() *RefCache {
 // is NOT retained.
 func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 	fp := client.Fingerprint(series)
-
-	// Get the related stripe
 	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
-	stripe := c.stripes[stripeID]
 
-	// Lock outside so that we can avoid defer which adds a performance penalty
-	stripe.refsMu.Lock()
-	ref, exists := stripe.ref(now, series, fp)
-	stripe.refsMu.Unlock()
+	return c.stripes[stripeID].ref(now, series, fp)
+}
 
-	return ref, exists
+// SetRef sets/updates the cached series reference. The input labels set IS retained.
+func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
+	fp := client.Fingerprint(series)
+	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
+
+	c.stripes[stripeID].setRef(now, series, fp, ref)
+}
+
+// Purge removes expired entries from the cache. This function should be called
+// periodically to avoid memory leaks.
+func (c *RefCache) Purge(keepUntil time.Time) {
+	for s := uint8(0); s < refCacheStripes; s++ {
+		c.stripes[s].purge(keepUntil)
+	}
 }
 
 func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
+	s.refsMu.Lock()
+	defer s.refsMu.Unlock()
+
 	entries, ok := s.refs[fp]
 	if !ok {
 		return 0, false
@@ -92,21 +103,10 @@ func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Finge
 	return 0, false
 }
 
-// SetRef sets/updates the cached series reference. The input labels set IS retained.
-func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
-	fp := client.Fingerprint(series)
-
-	// Get the related stripe
-	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
-	stripe := c.stripes[stripeID]
-
-	// Lock outside so that we can avoid defer which adds a performance penalty
-	stripe.refsMu.Lock()
-	stripe.setRef(now, series, fp, ref)
-	stripe.refsMu.Unlock()
-}
-
 func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fingerprint, ref uint64) {
+	s.refsMu.Lock()
+	defer s.refsMu.Unlock()
+
 	// Check if already exists within the entries.
 	for _, entry := range s.refs[fp] {
 		if !labels.Equal(entry.lbs, series) {
@@ -120,14 +120,6 @@ func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fi
 
 	// The entry doesn't exist, so we have to add a new one.
 	s.refs[fp] = append(s.refs[fp], &refCacheEntry{lbs: series, ref: ref, touchedAt: now})
-}
-
-// Purge removes expired entries from the cache. This function should be called
-// periodically to avoid memory leaks.
-func (c *RefCache) Purge(keepUntil time.Time) {
-	for s := uint8(0); s < refCacheStripes; s++ {
-		c.stripes[s].purge(keepUntil)
-	}
 }
 
 func (s *refCacheStripe) purge(keepUntil time.Time) {

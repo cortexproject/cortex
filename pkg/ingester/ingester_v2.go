@@ -17,7 +17,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -157,7 +156,7 @@ func (i *Ingester) updateLoop() {
 			for _, userID := range i.getTSDBUsers() {
 				userDB := i.getTSDB(userID)
 				if userDB != nil {
-					userDB.refCache.Purge(time.Now().UnixNano(), cortex_tsdb.DefaultRefCacheTTL)
+					userDB.refCache.Purge(time.Now().Add(time.Duration(-cortex_tsdb.DefaultRefCacheTTL)))
 				}
 			}
 		case <-i.quit:
@@ -204,7 +203,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	// successfully committed
 	succeededSamplesCount := 0
 	failedSamplesCount := 0
-	now := model.Now().UnixNano()
+	now := time.Now()
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()

@@ -269,7 +269,7 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 	db, err := i.getOrCreateTSDB(userID, false)
 	require.NoError(t, err)
 	require.NotNil(t, db)
-	db.refCache.SetRef(model.Now().UnixNano(), metricLabels, 12345)
+	db.refCache.SetRef(time.Now(), metricLabels, 12345)
 
 	// Push the same series multiple times, each time with an increasing timestamp
 	for j := 1; j <= 3; j++ {

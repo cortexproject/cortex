@@ -2,56 +2,59 @@ package tsdb
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRefCache_GetAndSetReferences(t *testing.T) {
+	now := time.Now()
 	ls1 := []labels.Label{{Name: "a", Value: "1"}}
 	ls2 := []labels.Label{{Name: "a", Value: "2"}}
 
 	c := NewRefCache()
-	_, ok := c.GetRef(0, ls1)
+	_, ok := c.GetRef(now, ls1)
 	assert.Equal(t, false, ok)
 
-	_, ok = c.GetRef(0, ls2)
+	_, ok = c.GetRef(now, ls2)
 	assert.Equal(t, false, ok)
 
-	c.SetRef(0, ls1, 1)
-	ref, ok := c.GetRef(0, ls1)
+	c.SetRef(now, ls1, 1)
+	ref, ok := c.GetRef(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	_, ok = c.GetRef(0, ls2)
+	_, ok = c.GetRef(now, ls2)
 	assert.Equal(t, false, ok)
 
-	c.SetRef(0, ls2, 2)
-	ref, ok = c.GetRef(0, ls2)
+	c.SetRef(now, ls2, 2)
+	ref, ok = c.GetRef(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 
 	// Overwrite a value with a new one
-	c.SetRef(0, ls2, 3)
-	ref, ok = c.GetRef(0, ls2)
+	c.SetRef(now, ls2, 3)
+	ref, ok = c.GetRef(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(3), ref)
 }
 
 func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
+	now := time.Now()
 	// The two following series have the same FastFingerprint=e002a3a451262627
 	ls1 := []labels.Label{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "l"}, {Name: "uniq0", Value: "0"}, {Name: "uniq1", Value: "1"}}
 	ls2 := []labels.Label{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "m"}, {Name: "uniq0", Value: "1"}, {Name: "uniq1", Value: "1"}}
 
 	c := NewRefCache()
-	c.SetRef(0, ls1, 1)
-	c.SetRef(0, ls2, 2)
+	c.SetRef(now, ls1, 1)
+	c.SetRef(now, ls2, 2)
 
-	ref, ok := c.GetRef(0, ls1)
+	ref, ok := c.GetRef(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	ref, ok = c.GetRef(0, ls2)
+	ref, ok = c.GetRef(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 }
@@ -67,15 +70,15 @@ func TestRefCache_Purge(t *testing.T) {
 
 	// Run the same test for increasing TTL values
 	for ttl := 0; ttl <= len(series); ttl++ {
-		now := int64(100)
+		now := time.Unix(100, 0)
 		c := NewRefCache()
 
 		// Set the series to the cache with decreasing timestamps
 		for i := 0; i < len(series); i++ {
-			c.SetRef(now-int64(i), series[i], uint64(i))
+			c.SetRef(now.Add(time.Duration(-i)*time.Second), series[i], uint64(i))
 		}
 
-		c.Purge(now, int64(ttl))
+		c.Purge(now.Add(time.Duration(-ttl) * time.Second))
 
 		// Check retained and purged entries
 		for i := 0; i <= ttl && i < len(series); i++ {
@@ -92,22 +95,24 @@ func TestRefCache_Purge(t *testing.T) {
 }
 
 func BenchmarkRefCache_SetRef(b *testing.B) {
+	now := time.Now()
 	ls := []labels.Label{{Name: "a", Value: "1"}}
 	c := NewRefCache()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c.SetRef(0, ls, uint64(i))
+		c.SetRef(now, ls, uint64(i))
 	}
 }
 
 func BenchmarkRefCache_GetRef(b *testing.B) {
+	now := time.Now()
 	ls := []labels.Label{{Name: "a", Value: "1"}}
 	c := NewRefCache()
-	c.SetRef(0, ls, 1)
+	c.SetRef(now, ls, 1)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c.GetRef(0, ls)
+		c.GetRef(now, ls)
 	}
 }

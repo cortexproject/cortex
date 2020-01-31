@@ -138,7 +138,7 @@ func (i *Ingester) updateLoop() {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
-	// We use an hardcoded value for this ticket because there should be no
+	// We use an hardcoded value for this ticker because there should be no
 	// real value in customizing it.
 	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
 	defer refCachePurgeTicker.Stop()
@@ -210,7 +210,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
-		cachedRef, cachedRefExists := db.refCache.GetRef(now, client.FromLabelAdaptersToLabels(ts.Labels))
+		cachedRef, cachedRefExists := db.refCache.Ref(now, client.FromLabelAdaptersToLabels(ts.Labels))
 
 		for _, s := range ts.Samples {
 			var err error

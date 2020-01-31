@@ -24,9 +24,9 @@ const (
 // to copy write request series labels each time (because the memory buffers used to
 // unmarshal the write request is reused).
 type RefCache struct {
-	// The cache is splitted into stripes, each one with a dedicated lock, in
+	// The cache is split into stripes, each one with a dedicated lock, in
 	// order to reduce lock contention.
-	stripes map[uint8]*refCacheStripe
+	stripes []*refCacheStripe
 }
 
 // refCacheStripe holds a subset of the series references for a single tenant.
@@ -45,7 +45,7 @@ type refCacheEntry struct {
 // NewRefCache makes a new RefCache.
 func NewRefCache() *RefCache {
 	c := &RefCache{
-		stripes: make(map[uint8]*refCacheStripe, refCacheStripes),
+		stripes: make([]*refCacheStripe, refCacheStripes, refCacheStripes),
 	}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
@@ -58,9 +58,9 @@ func NewRefCache() *RefCache {
 	return c
 }
 
-// GetRef returns the cached series reference, and guarantees the input labels set
+// Ref returns the cached series reference, and guarantees the input labels set
 // is NOT retained.
-func (c *RefCache) GetRef(now time.Time, series labels.Labels) (uint64, bool) {
+func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 	fp := client.Fingerprint(series)
 
 	// Get the related stripe

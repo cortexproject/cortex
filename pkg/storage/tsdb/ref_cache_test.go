@@ -14,28 +14,28 @@ func TestRefCache_GetAndSetReferences(t *testing.T) {
 	ls2 := []labels.Label{{Name: "a", Value: "2"}}
 
 	c := NewRefCache()
-	_, ok := c.GetRef(now, ls1)
+	_, ok := c.Ref(now, ls1)
 	assert.Equal(t, false, ok)
 
-	_, ok = c.GetRef(now, ls2)
+	_, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls1, 1)
-	ref, ok := c.GetRef(now, ls1)
+	ref, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	_, ok = c.GetRef(now, ls2)
+	_, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls2, 2)
-	ref, ok = c.GetRef(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 
 	// Overwrite a value with a new one
 	c.SetRef(now, ls2, 3)
-	ref, ok = c.GetRef(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(3), ref)
 }
@@ -50,11 +50,11 @@ func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
 	c.SetRef(now, ls1, 1)
 	c.SetRef(now, ls2, 2)
 
-	ref, ok := c.GetRef(now, ls1)
+	ref, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	ref, ok = c.GetRef(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 }
@@ -82,13 +82,13 @@ func TestRefCache_Purge(t *testing.T) {
 
 		// Check retained and purged entries
 		for i := 0; i <= ttl && i < len(series); i++ {
-			ref, ok := c.GetRef(now, series[i])
+			ref, ok := c.Ref(now, series[i])
 			assert.Equal(t, true, ok)
 			assert.Equal(t, uint64(i), ref)
 		}
 
 		for i := ttl + 1; i < len(series); i++ {
-			_, ok := c.GetRef(now, series[i])
+			_, ok := c.Ref(now, series[i])
 			assert.Equal(t, false, ok)
 		}
 	}
@@ -105,7 +105,7 @@ func BenchmarkRefCache_SetRef(b *testing.B) {
 	}
 }
 
-func BenchmarkRefCache_GetRef(b *testing.B) {
+func BenchmarkRefCache_Ref(b *testing.B) {
 	now := time.Now()
 	ls := []labels.Label{{Name: "a", Value: "1"}}
 	c := NewRefCache()
@@ -113,6 +113,6 @@ func BenchmarkRefCache_GetRef(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c.GetRef(now, ls)
+		c.Ref(now, ls)
 	}
 }

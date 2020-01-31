@@ -863,7 +863,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		}
 
 		// Re-sync token states for the current lifecycler if they've changed.
-		ringDesc.SetIngesterTokens(i.ID, i.tokens)
+		ringDesc.SetIngesterTokens(i.ID, i.getTokens())
 		return ringDesc, true, nil
 	})
 

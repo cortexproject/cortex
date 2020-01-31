@@ -102,18 +102,15 @@ func (c *RefCache) SetRef(now int64, series []labels.Label, ref uint64) {
 	stripe.refsMu.Lock()
 
 	// Check if already exists within the entries.
-	entries := stripe.refs[fp]
-	if entries != nil {
-		for _, entry := range entries {
-			if !labels.Equal(entry.lbs, series) {
-				continue
-			}
-
-			entry.ref = ref
-			entry.touchedAt = now
-			stripe.refsMu.Unlock()
-			return
+	for _, entry := range stripe.refs[fp] {
+		if !labels.Equal(entry.lbs, series) {
+			continue
 		}
+
+		entry.ref = ref
+		entry.touchedAt = now
+		stripe.refsMu.Unlock()
+		return
 	}
 
 	// The entry doesn't exist, so we have to add a new one.

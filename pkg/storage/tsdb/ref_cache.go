@@ -65,12 +65,17 @@ func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
 	stripe := c.stripes[stripeID]
 
-	// Look for series within the stripe
+	// Lock outside so that we can avoid defer which adds a performance penalty
 	stripe.refsMu.Lock()
+	ref, exists := stripe.ref(now, series, fp)
+	stripe.refsMu.Unlock()
 
-	entries, ok := stripe.refs[fp]
+	return ref, exists
+}
+
+func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
+	entries, ok := s.refs[fp]
 	if !ok {
-		stripe.refsMu.Unlock()
 		return 0, false
 	}
 
@@ -79,13 +84,11 @@ func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 			// Get the reference and touch the timestamp before releasing the lock
 			ref := entry.ref
 			entry.touchedAt = now
-			stripe.refsMu.Unlock()
 
 			return ref, true
 		}
 	}
 
-	stripe.refsMu.Unlock()
 	return 0, false
 }
 
@@ -97,23 +100,26 @@ func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
 	stripe := c.stripes[stripeID]
 
+	// Lock outside so that we can avoid defer which adds a performance penalty
 	stripe.refsMu.Lock()
+	stripe.setRef(now, series, fp, ref)
+	stripe.refsMu.Unlock()
+}
 
+func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fingerprint, ref uint64) {
 	// Check if already exists within the entries.
-	for _, entry := range stripe.refs[fp] {
+	for _, entry := range s.refs[fp] {
 		if !labels.Equal(entry.lbs, series) {
 			continue
 		}
 
 		entry.ref = ref
 		entry.touchedAt = now
-		stripe.refsMu.Unlock()
 		return
 	}
 
 	// The entry doesn't exist, so we have to add a new one.
-	stripe.refs[fp] = append(stripe.refs[fp], &refCacheEntry{lbs: series, ref: ref, touchedAt: now})
-	stripe.refsMu.Unlock()
+	s.refs[fp] = append(s.refs[fp], &refCacheEntry{lbs: series, ref: ref, touchedAt: now})
 }
 
 // Purge removes expired entries from the cache. This function should be called

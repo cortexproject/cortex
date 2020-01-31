@@ -60,8 +60,8 @@ func NewRefCache() *RefCache {
 
 // GetRef returns the cached series reference, and guarantees the input labels set
 // is NOT retained.
-func (c *RefCache) GetRef(now time.Time, series []labels.Label) (uint64, bool) {
-	fp := client.FastFingerprint(client.FromLabelsToLabelAdapters(series))
+func (c *RefCache) GetRef(now time.Time, series labels.Labels) (uint64, bool) {
+	fp := client.Fingerprint(series)
 
 	// Get the related stripe
 	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
@@ -92,8 +92,8 @@ func (c *RefCache) GetRef(now time.Time, series []labels.Label) (uint64, bool) {
 }
 
 // SetRef sets/updates the cached series reference. The input labels set IS retained.
-func (c *RefCache) SetRef(now time.Time, series []labels.Label, ref uint64) {
-	fp := client.FastFingerprint(client.FromLabelsToLabelAdapters(series))
+func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
+	fp := client.Fingerprint(series)
 
 	// Get the related stripe
 	stripeID := uint8(util.HashFP(fp) % refCacheStripes)

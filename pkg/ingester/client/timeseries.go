@@ -76,9 +76,9 @@ func (bs *LabelAdapter) Marshal() ([]byte, error) {
 	return buf[:n], err
 }
 
-func (m *LabelAdapter) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+func (bs *LabelAdapter) MarshalTo(dAtA []byte) (int, error) {
+	size := bs.Size()
+	return bs.MarshalToSizedBuffer(dAtA[:size])
 }
 
 // MarshalTo implements proto.Marshaller.

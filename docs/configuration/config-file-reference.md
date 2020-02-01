@@ -1384,6 +1384,18 @@ cassandra:
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 600ms]
 
+  # Number of retries to perform on a request. (Default is 0: no retries)
+  # CLI flag: -cassandra.max-retries
+  [max_retries: <int> | default = 0]
+
+  # Maximum time to wait before retrying a failed request. (Default = 10s)
+  # CLI flag: -cassandra.retry-max-backoff
+  [retry_max_backoff: <duration> | default = 10s]
+
+  # Minimum time to wait before retrying a failed request. (Default = 100ms)
+  # CLI flag: -cassandra.retry-min-backoff
+  [retry_min_backoff: <duration> | default = 100ms]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir

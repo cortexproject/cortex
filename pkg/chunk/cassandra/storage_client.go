@@ -30,7 +30,7 @@ type Config struct {
 	Password                 string        `yaml:"password,omitempty"`
 	Timeout                  time.Duration `yaml:"timeout,omitempty"`
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
-	Retries                  int           `yaml:"retry_count"`
+	Retries                  int           `yaml:"max_retries"`
 	MaxBackoff               time.Duration `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration `yaml:"retry_min_backoff"`
 }
@@ -51,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 600*time.Millisecond, "Timeout when connecting to cassandra.")
 	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 600*time.Millisecond, "Initial connection timeout, used during initial dial to server.")
-	f.IntVar(&cfg.Retries, "cassandra.retry-count", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
+	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 }

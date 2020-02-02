@@ -13,6 +13,16 @@
 * [ENHANCEMENT] Experimental TSDB: Added dedicated flag `-experimental.tsdb.bucket-store.tenant-sync-concurrency` to configure the maximum number of concurrent tenants for which blocks are synched. #2026
 * [ENHANCEMENT] Experimental TSDB: Expose metrics for objstore operations (prefixed with `cortex_<component>_thanos_objstore_`, component being one of `ingester`, `querier` and `compactor`). #2027
 * [ENHANCEMENT] Cassanda Storage: added `max_retries`, `retry_min_backoff` and `retry_max_backoff` configuration options to enable retrying recoverable errors. #2054
+* [ENHANCEMENT] Allow to configure HTTP and gRPC server listen address, maximum number of simultaneous connections and connection keepalive settings.
+  * `-server.http-listen-address`
+  * `-server.http-conn-limit`
+  * `-server.grpc-listen-address`
+  * `-server.grpc-conn-limit` 
+  * `-server.grpc.keepalive.max-connection-idle`
+  * `-server.grpc.keepalive.max-connection-age`
+  * `-server.grpc.keepalive.max-connection-age-grace`
+  * `-server.grpc.keepalive.time`
+  * `-server.grpc.keepalive.timeout`
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.

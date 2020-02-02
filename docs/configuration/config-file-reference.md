@@ -109,13 +109,29 @@ runtime_config:
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
 ```yaml
+# HTTP server listen address.
+# CLI flag: -server.http-listen-address
+[http_listen_address: <string> | default = ""]
+
 # HTTP server listen port.
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# Maximum number of simultaneous http connections, <=0 to disable
+# CLI flag: -server.http-conn-limit
+[http_listen_conn_limit: <int> | default = 0]
+
+# gRPC server listen address.
+# CLI flag: -server.grpc-listen-address
+[grpc_listen_address: <string> | default = ""]
+
 # gRPC server listen port.
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# Maximum number of simultaneous grpc connections, <=0 to disable
+# CLI flag: -server.grpc-conn-limit
+[grpc_listen_conn_limit: <int> | default = 0]
 
 # Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
@@ -148,6 +164,31 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
+
+# The duration after which an idle connection should be closed. Default:
+# infinity
+# CLI flag: -server.grpc.keepalive.max-connection-idle
+[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
+
+# The duration for the maximum amount of time a connection may exist before it
+# will be closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age
+[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
+
+# An additive period after max-connection-age after which the connection will be
+# forcibly closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age-grace
+[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
+
+# Duration after which a keepalive probe is sent in case of no activity over the
+# connection., Default: 2h
+# CLI flag: -server.grpc.keepalive.time
+[grpc_server_keepalive_time: <duration> | default = 2h0m0s]
+
+# After having pinged for keepalive check, the duration after which an idle
+# connection should be closed, Default: 20s
+# CLI flag: -server.grpc.keepalive.timeout
+[grpc_server_keepalive_timeout: <duration> | default = 20s]
 
 # Only log messages with the given severity or above. Valid levels: [debug,
 # info, warn, error]

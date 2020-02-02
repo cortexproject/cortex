@@ -1,7 +1,7 @@
 .PHONY: all test clean images protos exes dist
 .DEFAULT_GOAL := all
 
-# Boiler plate for bulding Docker containers.
+# Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.

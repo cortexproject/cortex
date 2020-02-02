@@ -326,7 +326,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	for _, ts := range req.Timeseries {
 		numSamples += len(ts.Samples)
 	}
-	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
+	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {

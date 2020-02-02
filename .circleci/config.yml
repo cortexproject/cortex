@@ -115,6 +115,11 @@ jobs:
         command: |
           ./integration-tests/stop-components.sh
           ./integration-tests/test-flush.sh
+    - run:
+        name: Backwards-compatibility test
+        command: |
+          ./integration-tests/stop-components.sh
+          ./integration-tests/test-backcompat.sh
 
   build:
     <<: *defaults

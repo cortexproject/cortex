@@ -272,7 +272,8 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	return storage.NewMergeSeriesSet(otherSets, nil)
 }
 
-// This series set ignores first 'Next' call and simply returns true.
+// This series set ignores first 'Next' call and simply returns cached result
+// to avoid doing the work required to compute it twice.
 type seriesSetWithFirstSeries struct {
 	firstNextCalled bool
 	firstSeries     storage.Series

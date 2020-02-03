@@ -77,14 +77,22 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		return chunk.Chunk{}, err
 	}
 
-	buf := make([]byte, 0, b.cfg.DownloadBufferSize)
-
-	err = azblob.DownloadBlobToBuffer(ctx, blockBlobURL.BlobURL, 0, 0, buf, azblob.DownloadFromBlobOptions{})
+	// Request access to the blob
+	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
 
-	if err := input.Decode(decodeContext, buf); err != nil {
+	// download the contents & read into a buffer
+	bodyStream := downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries})
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(bodyStream)
+
+	if err != nil {
+		return chunk.Chunk{}, err
+	}
+
+	if err := input.Decode(decodeContext, buf.Bytes()); err != nil {
 		return chunk.Chunk{}, err
 	}
 

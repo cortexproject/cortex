@@ -23,7 +23,6 @@ require (
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20190301043612-f6df8288f9b4
-	github.com/gogo/googleapis v1.1.0 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
 	github.com/golang-migrate/migrate/v4 v4.7.0
@@ -56,7 +55,6 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
-	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
 	github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
@@ -65,8 +63,7 @@ require (
 	github.com/uber-go/atomic v1.4.0
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
-	github.com/weaveworks/promrus v1.2.0 // indirect
+	github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343

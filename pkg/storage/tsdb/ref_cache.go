@@ -14,7 +14,7 @@ const (
 	// DefaultRefCacheTTL is the default RefCache purge TTL. We use a reasonable
 	// value that should cover most use cases. The cache would be ineffective if
 	// the scrape interval of a series is greater than this TTL.
-	DefaultRefCacheTTL = int64(5 * time.Minute)
+	DefaultRefCacheTTL = 5 * time.Minute
 
 	refCacheStripes = 128
 )

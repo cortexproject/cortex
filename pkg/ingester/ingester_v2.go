@@ -156,7 +156,7 @@ func (i *Ingester) updateLoop() {
 			for _, userID := range i.getTSDBUsers() {
 				userDB := i.getTSDB(userID)
 				if userDB != nil {
-					userDB.refCache.Purge(time.Now().Add(time.Duration(-cortex_tsdb.DefaultRefCacheTTL)))
+					userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
 				}
 			}
 		case <-i.quit:

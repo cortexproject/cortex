@@ -39,7 +39,7 @@ type WALConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or Recover from WAL.")
+	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 	f.BoolVar(&cfg.WalEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")

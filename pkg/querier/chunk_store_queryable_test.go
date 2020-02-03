@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -67,11 +68,13 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 }
 
 func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
-	allChunks := []chunk.Chunk{}
+	var allChunks []chunk.Chunk
 
 	const count = 10
+	// go down, to add series in reversed order
 	for i := count; i > 0; i-- {
 		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.Bigchunk)
+		// mkChunk uses `foo` as metric name, so we rename metric to be unique
 		ch.Metric[0].Value = fmt.Sprintf("%02d", i)
 
 		allChunks = append(allChunks, ch)
@@ -79,9 +82,18 @@ func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
 
 	res := partitionChunks(allChunks, 0, 1000, mergeChunks)
 
-	for i := 1; i <= count; i++ {
-		require.True(t, res.Next())
-		require.Equal(t, labels.Labels{{Name: model.MetricNameLabel, Value: fmt.Sprintf("%02d", i)}}, res.At().Labels())
+	// collect labels from each series
+	var seriesLabels []labels.Labels
+	for res.Next() {
+		seriesLabels = append(seriesLabels, res.At().Labels())
 	}
-	require.False(t, res.Next())
+
+	require.Len(t, seriesLabels, count)
+	require.True(t, sort.IsSorted(sortedByLabels(seriesLabels)))
 }
+
+type sortedByLabels []labels.Labels
+
+func (b sortedByLabels) Len() int           { return len(b) }
+func (b sortedByLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b sortedByLabels) Less(i, j int) bool { return labels.Compare(b[i], b[j]) < 0 }

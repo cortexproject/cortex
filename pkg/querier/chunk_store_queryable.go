@@ -47,7 +47,7 @@ func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
 }
 
-// Series in the returned set are sorted by labels.
+// Series in the returned set are sorted alphabetically by labels.
 func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
 	chunksBySeries := map[model.Fingerprint][]chunk.Chunk{}
 	for _, c := range chunks {

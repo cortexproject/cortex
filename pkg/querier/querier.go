@@ -251,7 +251,9 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 				chunks = append(chunks, s.(SeriesWithChunks).Chunks()...)
 			}
 		} else {
-			otherSets = append(otherSets, &ignoreFirstNextSeriesSet{set: set})
+			// We already called set.Next() once, but we want to return same result from At() also
+			// to the query engine.
+			otherSets = append(otherSets, &seriesSetWithFirstSeries{set: set, firstSeries: s})
 		}
 	}
 
@@ -271,23 +273,28 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 }
 
 // This series set ignores first 'Next' call and simply returns true.
-type ignoreFirstNextSeriesSet struct {
+type seriesSetWithFirstSeries struct {
 	firstNextCalled bool
+	firstSeries     storage.Series
 	set             storage.SeriesSet
 }
 
-func (pss *ignoreFirstNextSeriesSet) Next() bool {
+func (pss *seriesSetWithFirstSeries) Next() bool {
 	if pss.firstNextCalled {
+		pss.firstSeries = nil
 		return pss.set.Next()
 	}
 	pss.firstNextCalled = true
 	return true
 }
 
-func (pss *ignoreFirstNextSeriesSet) At() storage.Series {
+func (pss *seriesSetWithFirstSeries) At() storage.Series {
+	if pss.firstSeries != nil {
+		return pss.firstSeries
+	}
 	return pss.set.At()
 }
 
-func (pss *ignoreFirstNextSeriesSet) Err() error {
+func (pss *seriesSetWithFirstSeries) Err() error {
 	return pss.set.Err()
 }

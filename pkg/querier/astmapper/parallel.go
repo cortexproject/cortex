@@ -17,6 +17,7 @@ var summableAggregates = map[promql.ItemType]struct{}{
 var nonParallelFuncs = []string{
 	"histogram_quantile",
 	"quantile_over_time",
+	"absent",
 }
 
 // CanParallel tests if a subtree is parallelizable.

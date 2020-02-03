@@ -298,9 +298,6 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn: "abs",
 		},
 		{
-			fn: "absent",
-		},
-		{
 			fn:           "avg_over_time",
 			isTestMatrix: true,
 			approximate:  true,

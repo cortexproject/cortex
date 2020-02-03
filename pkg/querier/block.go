@@ -275,7 +275,7 @@ func (bqs *blockQuerierSeries) Labels() labels.Labels {
 func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
 	if len(bqs.chunks) == 0 {
 		// should not happen in practice, but we have a unit test for it
-		return errSeriesIterator{err: errors.New("no chunks")}
+		return errIterator{err: errors.New("no chunks")}
 	}
 
 	its := make([]chunkenc.Iterator, 0, len(bqs.chunks))
@@ -283,7 +283,7 @@ func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
 	for _, c := range bqs.chunks {
 		ch, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
-			return errSeriesIterator{err: errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime)}
+			return errIterator{err: errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime)}
 		}
 
 		it := ch.Iterator(nil)
@@ -348,13 +348,3 @@ func (it *blockQuerierSeriesIterator) Err() error {
 	}
 	return nil
 }
-
-// iterator that only returns error
-type errSeriesIterator struct {
-	err error
-}
-
-func (errSeriesIterator) Seek(int64) bool      { return false }
-func (errSeriesIterator) Next() bool           { return false }
-func (errSeriesIterator) At() (int64, float64) { return 0, 0 }
-func (it errSeriesIterator) Err() error        { return it.err }

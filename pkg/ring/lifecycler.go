@@ -471,7 +471,7 @@ func (i *Lifecycler) loop() {
 		}
 
 		if err := i.autoJoin(context.Background(), JOINING); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+			level.Error(util.Logger).Log("msg", "failed to pick tokens in KV store", "err", err)
 			os.Exit(1)
 		}
 

@@ -215,6 +215,22 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		// is increased for the key. Dead ingesters will be filtered later by
 		// replication_strategy.go. Filtering later means that we can calculate
 		// a healthiness quorum.
+		if !ingester.Incremental {
+			if op == Write && ingester.State != ACTIVE {
+				n++
+			} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+				n++
+			}
+		} else {
+			// If the ingester is incrementally transferring tokens, its current
+			// state is just informational and is used to inform users what phase
+			// the transfer is in. Incremental transfers only disallow writing in
+			// the PENDING state.
+			if op == Write && ingester.State == PENDING {
+				n++
+			}
+		}
+
 		if !ingester.IsHealthyState(op) {
 			n++
 		}

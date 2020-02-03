@@ -108,8 +108,8 @@ type IngesterDesc struct {
 	Timestamp int64         `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	State     IngesterState `protobuf:"varint,3,opt,name=state,proto3,enum=ring.IngesterState" json:"state,omitempty"`
 	Tokens    []uint32      `protobuf:"varint,6,rep,packed,name=tokens,proto3" json:"tokens,omitempty"`
-	// Incremental refers to if the state the ingester is in is utilizing incremental
-	// transfers. Only meaningful for JOINING and LEAVING states.
+	// When true, the ingester is currently incrementally transferring tokens. This
+	// will only be true when the ingester's state is JOINING or LEAVING.
 	Incremental bool `protobuf:"varint,7,opt,name=incremental,proto3" json:"incremental,omitempty"`
 }
 

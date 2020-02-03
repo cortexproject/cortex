@@ -630,7 +630,7 @@ func (s *testSendChunksServer) SendAndClose(resp *client.TransferChunksResponse)
 	return nil
 }
 
-func (c *testIngesterClient) TransferChunksSubset(ctx context.Context, opts ...grpc.CallOption) (client.Ingester_TransferChunksSubsetClient, error) {
+func (c *testIngesterClient) AcceptChunksSubset(ctx context.Context, opts ...grpc.CallOption) (client.Ingester_AcceptChunksSubsetClient, error) {
 	ch := make(chan *client.TimeSeriesChunk)
 	resp := make(chan *client.TransferChunksResponse)
 
@@ -645,7 +645,7 @@ func (c *testIngesterClient) TransferChunksSubset(ctx context.Context, opts ...g
 	}
 
 	go func() {
-		_ = c.i.TransferChunksSubset(&srv)
+		_ = c.i.AcceptChunksSubset(&srv)
 	}()
 
 	return &cli, nil

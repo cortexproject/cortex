@@ -10,23 +10,20 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 )
 
 var (
-	blockedRanges = prometheus.NewGauge(prometheus.GaugeOpts{
+	blockedRanges = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_ingester_blocked_ranges",
 		Help: "The current number of ranges that will not accept writes by this ingester.",
 	})
 )
 
-func init() {
-	prometheus.MustRegister(blockedRanges)
-}
-
-// TransferChunksSubset accepts chunks from a client and moves them into the local Ingester.
-func (i *Ingester) TransferChunksSubset(stream client.Ingester_TransferChunksSubsetServer) error {
+// AcceptChunksSubset accepts chunks from a client and moves them into the local Ingester.
+func (i *Ingester) AcceptChunksSubset(stream client.Ingester_AcceptChunksSubsetServer) error {
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 
@@ -90,8 +87,8 @@ func (i *Ingester) GetChunksSubset(req *client.GetChunksRequest, stream client.I
 // sitting around forever if a joining ingester crashes, as writes will continue
 // to go to us and get rejected for as long as the blocked range exists.
 func (i *Ingester) BlockRanges(ranges []ring.TokenRange) {
-	i.blockedTokenMtx.Lock()
-	defer i.blockedTokenMtx.Unlock()
+	i.blockedRangesMtx.Lock()
+	defer i.blockedRangesMtx.Unlock()
 
 	for _, rg := range ranges {
 		if exist := i.blockedRanges[rg]; exist {
@@ -112,8 +109,8 @@ func (i *Ingester) BlockRanges(ranges []ring.TokenRange) {
 
 // UnblockRanges manually removes blocks for the provided ranges.
 func (i *Ingester) UnblockRanges(ctx context.Context, in *client.UnblockRangesRequest) (*client.UnblockRangesResponse, error) {
-	i.blockedTokenMtx.Lock()
-	defer i.blockedTokenMtx.Unlock()
+	i.blockedRangesMtx.Lock()
+	defer i.blockedRangesMtx.Unlock()
 
 	for _, rg := range in.Ranges {
 		if exist := i.blockedRanges[rg]; !exist {
@@ -146,8 +143,8 @@ func (i *Ingester) SendChunkRanges(ctx context.Context, ranges []ring.TokenRange
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, fakeOrgID)
-	stream, err := c.TransferChunksSubset(ctx)
+	ctx = user.InjectOrgID(ctx, noOrgID)
+	stream, err := c.AcceptChunksSubset(ctx)
 	if err != nil {
 		return errors.Wrap(err, "SendChunks")
 	}
@@ -186,7 +183,7 @@ func (i *Ingester) RequestChunkRanges(ctx context.Context, ranges []ring.TokenRa
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, fakeOrgID)
+	ctx = user.InjectOrgID(ctx, noOrgID)
 	stream, err := c.GetChunksSubset(ctx, &client.GetChunksRequest{
 		Ranges:         ranges,
 		Move:           move,
@@ -220,7 +217,7 @@ func (i *Ingester) RequestComplete(ctx context.Context, ranges []ring.TokenRange
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, fakeOrgID)
+	ctx = user.InjectOrgID(ctx, noOrgID)
 	_, err = c.UnblockRanges(ctx, &client.UnblockRangesRequest{Ranges: ranges})
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "could not clean up target after transfer", "err", err)

@@ -154,15 +154,26 @@ func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 func (i *IngesterDesc) IsHealthyState(op Operation) bool {
 	healthy := false
 
-	switch op {
-	case Write:
-		healthy = (i.State == ACTIVE)
+	if i.Incremental {
+		// Incremental transferring ingester: everything is healthy except
+		// writing or reading to a PENDING ingester.
+		switch op {
+		case Write:
+			healthy = (i.State != PENDING)
+		default:
+			healthy = true
+		}
+	} else {
+		switch op {
+		case Write:
+			healthy = (i.State == ACTIVE)
 
-	case Read:
-		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
+		case Read:
+			healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
 
-	case Reporting:
-		healthy = true
+		case Reporting:
+			healthy = true
+		}
 	}
 
 	return healthy

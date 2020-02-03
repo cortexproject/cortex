@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	fakeOrgID = "-1"
+	noOrgID = "-1"
 
 	sentChunks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_sent_chunks",
@@ -123,7 +123,7 @@ func (i *Ingester) acceptChunksFromStream(opts acceptChunksOptions) (fromIngeste
 		}
 		prevNumChunks := len(series.chunkDescs)
 
-		if i.cfg.CheckOnTransfer && !i.tokenChecker.TokenExpected(wireSeries.Token) {
+		if i.cfg.CheckTokens && !i.tokenChecker.TokenExpected(wireSeries.Token) {
 			level.Debug(util.Logger).Log("msg", "unexpected stream transferred to ingester", "token", wireSeries.Token)
 			i.metrics.unexpectedSeriesTotal.WithLabelValues("transfer").Inc()
 		}
@@ -577,7 +577,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, fakeOrgID)
+	ctx = user.InjectOrgID(ctx, noOrgID)
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferChunks")
@@ -672,7 +672,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, fakeOrgID)
+	ctx = user.InjectOrgID(ctx, noOrgID)
 	stream, err := c.TransferTSDB(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferTSDB() has failed")

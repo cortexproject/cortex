@@ -29,9 +29,9 @@ service Ingester {
   // TransferTSDB transfers all files of a tsdb to a joining ingester
   rpc TransferTSDB(stream TimeSeriesFile) returns (TransferTSDBResponse) {};
 
-  // TransferChunksSubset is invoked by a leaving ingester (client), streaming
+  // AcceptChunksSubset is invoked by a leaving ingester (client), streaming
   // a subset of its chunks directly to an existing ingester.
-  rpc TransferChunksSubset(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+  rpc AcceptChunksSubset(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 
   // GetChunksSubset is invoked by a joining ingester (client). A subset of the
   // serving ingester's chunks will be sent as a stream.

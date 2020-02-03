@@ -63,9 +63,7 @@ type Config struct {
 	SpreadFlushes     bool
 
 	// Config for checking tokens.
-	CheckOnCreate   bool `yaml:"check_token_on_create,omitempty"`
-	CheckOnAppend   bool `yaml:"check_token_on_append,omitempty"`
-	CheckOnTransfer bool `yaml:"check_token_on_transfer,omitempty"`
+	CheckTokens bool `yaml:"check_tokens,omitempty"`
 
 	RateUpdatePeriod time.Duration
 
@@ -98,9 +96,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
-	f.BoolVar(&cfg.CheckOnCreate, "ingester.check-token-on-create", false, "Check that newly created streams fall within expected token ranges")
-	f.BoolVar(&cfg.CheckOnAppend, "ingester.check-token-on-append", false, "Check that existing streams appended to fall within expected token ranges")
-	f.BoolVar(&cfg.CheckOnTransfer, "ingester.check-token-on-transfer", false, "Check that streams transferred in using the transfer mechanism fall within expected token ranges")
+	f.BoolVar(&cfg.CheckTokens, "ingester.check-tokens", false, "Check tokens for streams that are created or appended to.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 }
 
@@ -134,8 +130,8 @@ type Ingester struct {
 	wal WAL
 
 	// Stops specific appends
-	blockedTokenMtx sync.RWMutex
-	blockedRanges   map[ring.TokenRange]bool
+	blockedRangesMtx sync.RWMutex
+	blockedRanges    map[ring.TokenRange]bool
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
@@ -299,21 +295,22 @@ func (i *Ingester) StopIncomingRequests() {
 		i.userStatesMtx.Lock()
 		defer i.userStatesMtx.Unlock()
 		i.stopped = true
-		return
 	}
 
-	// When we are incrementally transferring tokens, we want to wait
-	// for there to be no blocked ranges on our local ingester.
-	for {
-		i.blockedTokenMtx.RLock()
-		numBlocked := len(i.blockedRanges)
-		i.blockedTokenMtx.RUnlock()
+	if i.cfg.LifecyclerConfig.LeaveIncrementalTransfer {
+		// When we are incrementally transferring tokens, we want to wait
+		// for there to be no blocked ranges on our local ingester.
+		for {
+			i.blockedRangesMtx.RLock()
+			numBlocked := len(i.blockedRanges)
+			i.blockedRangesMtx.RUnlock()
 
-		if numBlocked == 0 {
-			return
+			if numBlocked == 0 {
+				break
+			}
+
+			time.Sleep(time.Millisecond * 250)
 		}
-
-		time.Sleep(time.Millisecond * 250)
 	}
 }
 
@@ -379,8 +376,8 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 // isTokenBlocked checks to see if a token is in a blocked range.
 func (i *Ingester) isTokenBlocked(token uint32) error {
-	i.blockedTokenMtx.RLock()
-	defer i.blockedTokenMtx.RUnlock()
+	i.blockedRangesMtx.RLock()
+	defer i.blockedRangesMtx.RUnlock()
 
 	for rg := range i.blockedRanges {
 		if rg.Contains(token) {
@@ -429,12 +426,12 @@ func (i *Ingester) append(ctx context.Context, userID string, token uint32, labe
 		return err
 	}
 
-	if sstate == seriesCreated && i.cfg.CheckOnCreate {
+	if sstate == seriesCreated && i.cfg.CheckTokens {
 		if ok := i.tokenChecker.TokenExpected(token); !ok {
 			level.Debug(util.Logger).Log("msg", "unexpected stream created in ingester", "token", token)
 			i.metrics.unexpectedSeriesTotal.WithLabelValues("create").Inc()
 		}
-	} else if i.cfg.CheckOnAppend {
+	} else if i.cfg.CheckTokens {
 		if ok := i.tokenChecker.TokenExpected(token); !ok {
 			level.Debug(util.Logger).Log("msg", "unexpected stream appended in ingester", "token", token)
 			i.metrics.unexpectedSeriesTotal.WithLabelValues("append").Inc()

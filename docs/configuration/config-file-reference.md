@@ -532,18 +532,9 @@ token_checker:
 # CLI flag: -ingester.spread-flushes
 [spreadflushes: <boolean> | default = false]
 
-# Check that newly created streams fall within expected token ranges
-# CLI flag: -ingester.check-token-on-create
-[check_token_on_create: <boolean> | default = false]
-
-# Check that existing streams appended to fall within expected token ranges
-# CLI flag: -ingester.check-token-on-append
-[check_token_on_append: <boolean> | default = false]
-
-# Check that streams transferred in using the transfer mechanism fall within
-# expected token ranges
-# CLI flag: -ingester.check-token-on-transfer
-[check_token_on_transfer: <boolean> | default = false]
+# Check tokens for streams that are created or appended to.
+# CLI flag: -ingester.check-tokens
+[check_tokens: <boolean> | default = false]
 
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period

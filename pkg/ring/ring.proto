@@ -10,42 +10,42 @@ option (gogoproto.unmarshaler_all) = true;
 option go_package = "github.com/cortexproject/cortex/pkg/ring";
 
 message Desc {
-	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
-	reserved 2;
+  map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+  reserved 2;
 }
 
 message IngesterDesc {
-	reserved 4, 5; // old, deprecated fields
+  reserved 4, 5; // old, deprecated fields
 
-	string addr = 1;
+  string addr = 1;
 
-	// Timestamp is the Unix timestamp for the last heartbeat an ingester
-	// gave.
-	int64 timestamp = 2;
-	IngesterState state = 3;
-	repeated uint32 tokens = 6;
+  // Timestamp is the Unix timestamp for the last heartbeat an ingester
+  // gave.
+  int64 timestamp = 2;
+  IngesterState state = 3;
+  repeated uint32 tokens = 6;
 
-	// Incremental refers to if the state the ingester is in is utilizing incremental
-	// transfers. Only meaningful for JOINING and LEAVING states.
-	bool incremental = 7;
+  // When true, the ingester is currently incrementally transferring tokens. This
+  // will only be true when the ingester's state is JOINING or LEAVING.
+  bool incremental = 7;
 }
 
 enum IngesterState {
-	ACTIVE = 0;
-	LEAVING = 1;
+  ACTIVE = 0;
+  LEAVING = 1;
 
-	PENDING = 2;
-	JOINING = 3;
+  PENDING = 2;
+  JOINING = 3;
 
-	// This state is only used by gossiping code to distribute information about
-	// ingesters that have been removed from the ring. Ring users should not use it directly.
-	LEFT = 4;
+  // This state is only used by gossiping code to distribute information about
+  // ingesters that have been removed from the ring. Ring users should not use it directly.
+  LEFT = 4;
 }
 
 // TokenRange represents a range of tokens, starting inclusively
 // with From and ending exclusively at To.
 message TokenRange {
-	uint32 from = 1;
-	uint32 to = 2;
+  uint32 from = 1;
+  uint32 to = 2;
 }
 

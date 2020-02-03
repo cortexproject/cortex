@@ -1,10 +1,13 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ingester
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: ingester
 
   # Ingesters are not ready for at least 1 min
   # after creation.  This has to be in sync with

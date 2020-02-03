@@ -16,7 +16,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/shipper"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -97,7 +96,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 				return errors.Wrap(err, "TransferChunks: fromWireChunks")
 			}
 
-			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
+			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
 			if err != nil {
 				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 			}
@@ -226,7 +225,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 
 		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
 		if err != nil {
-			return err
+			return errors.Wrap(err, "unable to create temporary directory to store transferred TSDB blocks")
 		}
 		defer os.RemoveAll(tmpDir)
 
@@ -280,7 +279,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			if !ok {
 				file, err = createfile(f)
 				if err != nil {
-					return err
+					return errors.Wrapf(err, "unable to create file %s to store incoming TSDB block", f)
 				}
 				filesXfer++
 				files[f.Filename] = file
@@ -349,8 +348,12 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	return nil
 }
 
-func toWireChunks(descs []*desc) ([]client.Chunk, error) {
-	wireChunks := make([]client.Chunk, 0, len(descs))
+// The passed wireChunks slice is for re-use.
+func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, error) {
+	if cap(wireChunks) < len(descs) {
+		wireChunks = make([]client.Chunk, 0, len(descs))
+	}
+	wireChunks = wireChunks[:0]
 	for _, d := range descs {
 		wireChunk := client.Chunk{
 			StartTimestampMs: int64(d.FirstTime),
@@ -454,6 +457,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return errors.Wrap(err, "TransferChunks")
 	}
 
+	var chunks []client.Chunk
 	for userID, state := range userStatesCopy {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
@@ -463,7 +467,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				continue
 			}
 
-			chunks, err := toWireChunks(pair.series.chunkDescs)
+			chunks, err = toWireChunks(pair.series.chunkDescs, chunks)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)
 				return errors.Wrap(err, "toWireChunks")
@@ -540,11 +544,11 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		wg := &sync.WaitGroup{}
 		wg.Add(len(i.TSDBState.dbs))
 
-		for _, db := range i.TSDBState.dbs {
-			go func(db *tsdb.DB) {
+		for _, userDB := range i.TSDBState.dbs {
+			go func(db *userTSDB) {
 				defer wg.Done()
 				db.DisableCompactions()
-			}(db)
+			}(userDB)
 		}
 
 		i.userStatesMtx.RUnlock()
@@ -614,22 +618,38 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 func unshippedBlocks(dir string) (map[string][]string, error) {
 	userIDs, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to list the directory containing TSDB blocks")
 	}
 
 	blocks := make(map[string][]string, len(userIDs))
 	for _, user := range userIDs {
 		userID := user.Name()
-		blocks[userID] = []string{} // seed the map with the userID to ensure we xfer the WAL, even if all blocks are shipped
+		userDir := filepath.Join(dir, userID)
 
-		blockIDs, err := ioutil.ReadDir(filepath.Join(dir, userID))
+		// Ensure the user dir is actually a directory. There may be spurious files
+		// in the storage, especially when using Minio in the local development environment.
+		if stat, err := os.Stat(userDir); err == nil && !stat.IsDir() {
+			level.Warn(util.Logger).Log("msg", "skipping entry while transferring TSDB blocks because not a directory", "path", userDir)
+			continue
+		}
+
+		// Seed the map with the userID to ensure we transfer the WAL, even if all blocks are shipped.
+		blocks[userID] = []string{}
+
+		blockIDs, err := ioutil.ReadDir(userDir)
 		if err != nil {
 			return nil, err
 		}
 
-		m, err := shipper.ReadMetaFile(filepath.Join(dir, userID))
+		m, err := shipper.ReadMetaFile(userDir)
 		if err != nil {
-			return nil, err
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+
+			// If the meta file doesn't exit, it means the first sync for this
+			// user didn't occur yet, so we're going to consider all blocks unshipped.
+			m = &shipper.Meta{}
 		}
 
 		shipped := make(map[string]bool)

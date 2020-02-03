@@ -106,17 +106,7 @@ func (us *userStates) get(userID string) (*userState, bool) {
 	return state.(*userState), ok
 }
 
-func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
-	}
-	state, ok := us.get(userID)
-	return state, ok, nil
-}
-
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
-
+func (us *userStates) getOrCreate(userID string) *userState {
 	state, ok := us.get(userID)
 	if !ok {
 
@@ -153,11 +143,25 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 		state = stored.(*userState)
 	}
 
-	fp, series, err := state.getSeries(labels)
+	return state
+}
+
+func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("no user id")
+	}
+	state, ok := us.get(userID)
+	return state, ok, nil
+}
+
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
+	state := us.getOrCreate(userID)
+	fp, series, err := state.getSeries(labels, record)
 	return state, fp, series, err
 }
 
-func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -171,38 +175,55 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 		return fp, series, nil
 	}
 
+	series, err := u.createSeriesWithFingerprint(fp, metric, record, false)
+	if err != nil {
+		u.fpLocker.Unlock(fp)
+		return 0, nil, err
+	}
+
+	return fp, series, nil
+}
+
+func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length())
-	if err != nil {
-		u.fpLocker.Unlock(fp)
-		return fp, nil, makeLimitError(perUserSeriesLimit, err)
+
+	if !recovery {
+		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length()); err != nil {
+			return nil, makeLimitError(perUserSeriesLimit, err)
+		}
 	}
 
 	metricName, err := extract.MetricNameFromLabelAdapters(metric)
 	if err != nil {
-		u.fpLocker.Unlock(fp)
-		return fp, nil, err
+		return nil, err
 	}
 
-	// Check if the per-metric limit has been exceeded
-	err = u.canAddSeriesFor(string(metricName))
-	if err != nil {
-		u.fpLocker.Unlock(fp)
-		return fp, nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
+	if !recovery {
+		// Check if the per-metric limit has been exceeded
+		if err = u.canAddSeriesFor(string(metricName)); err != nil {
+			return nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
+		}
 	}
 
 	u.memSeriesCreatedTotal.Inc()
 	u.memSeries.Inc()
 
+	if record != nil {
+		record.Labels = append(record.Labels, Labels{
+			Fingerprint: uint64(fp),
+			Labels:      metric,
+		})
+	}
+
 	labels := u.index.Add(metric, fp)
-	series = newMemorySeries(labels)
+	series := newMemorySeries(labels)
 	u.fpToSeries.put(fp, series)
 
-	return fp, series, nil
+	return series, nil
 }
 
 func (u *userState) canAddSeriesFor(metric string) error {

@@ -27,11 +27,27 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
-		"should pass on unknown backend": {
+		"should fail on unknown backend": {
 			config: Config{
 				Backend: "unknown",
 			},
 			expectedErr: errUnsupportedBackend,
+		},
+		"should fail on invalid ship concurrency": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    time.Minute,
+				ShipConcurrency: 0,
+			},
+			expectedErr: errInvalidShipConcurrency,
+		},
+		"should pass on invalid ship concurrency but shipping is disabled": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    0,
+				ShipConcurrency: 0,
+			},
+			expectedErr: nil,
 		},
 	}
 
@@ -86,7 +102,7 @@ func TestConfig_DurationList(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			testdata.f(&testdata.cfg)
-			assert.Equal(t, testdata.expectedRanges, testdata.cfg.BlockRanges.ToMillisecondRanges())
+			assert.Equal(t, testdata.expectedRanges, testdata.cfg.BlockRanges.ToMilliseconds())
 		})
 	}
 }

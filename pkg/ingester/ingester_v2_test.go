@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -36,6 +37,8 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_ingested_samples_failures_total",
 		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
 	}
 	userID := "test"
 
@@ -73,6 +76,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -103,6 +112,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -133,6 +148,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -163,6 +184,12 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series The current number of series in memory.
 				# TYPE cortex_ingester_memory_series gauge
 				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 	}
@@ -226,6 +253,8 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		"cortex_ingester_ingested_samples_failures_total",
 		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
 	}
 
 	registry := prometheus.NewRegistry()
@@ -278,6 +307,14 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		# HELP cortex_ingester_memory_series The current number of series in memory.
 		# TYPE cortex_ingester_memory_series gauge
 		cortex_ingester_memory_series 2
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="test-1"} 1
+		cortex_ingester_memory_series_created_total{user="test-2"} 1
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="test-1"} 0
+		cortex_ingester_memory_series_removed_total{user="test-2"} 0
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
@@ -916,4 +953,161 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			testData.check(t, ingester)
 		})
 	}
+}
+
+func TestIngester_shipBlocks(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 2
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Create the TSDB for 3 users and then replace the shipper with the mocked one
+	mocks := []*shipperMock{}
+	for _, userID := range []string{"user-1", "user-2", "user-3"} {
+		userDB, err := i.getOrCreateTSDB(userID, false)
+		require.NoError(t, err)
+		require.NotNil(t, userDB)
+
+		m := &shipperMock{}
+		m.On("Sync", mock.Anything).Return(0, nil)
+		mocks = append(mocks, m)
+
+		userDB.shipper = m
+	}
+
+	// Ship blocks and assert on the mocked shipper
+	i.shipBlocks()
+
+	for _, m := range mocks {
+		m.AssertNumberOfCalls(t, "Sync", 1)
+	}
+}
+
+type shipperMock struct {
+	mock.Mock
+}
+
+// Sync mocks Shipper.Sync()
+func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
+	args := m.Called(ctx)
+	return args.Int(0), args.Error(1)
+}
+
+func Test_Ingester_v2UserStats(t *testing.T) {
+	series := []struct {
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	for _, series := range series {
+		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.tick()
+		db.ingestedRuleSamples.tick()
+	}
+
+	// Get label names
+	res, err := i.v2UserStats(ctx, &client.UserStatsRequest{})
+	require.NoError(t, err)
+	assert.InDelta(t, 0.2, res.ApiIngestionRate, 0.0001)
+	assert.InDelta(t, float64(0), res.RuleIngestionRate, 0.0001)
+	assert.Equal(t, uint64(3), res.NumSeries)
+}
+
+func Test_Ingester_v2AllUserStats(t *testing.T) {
+	series := []struct {
+		user      string
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "200"}, {Name: "route", Value: "get_user"}}, 1, 100000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_1"}, {Name: "status", Value: "500"}, {Name: "route", Value: "get_user"}}, 1, 110000},
+		{"user-1", labels.Labels{{Name: labels.MetricName, Value: "test_1_2"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_1"}}, 2, 200000},
+		{"user-2", labels.Labels{{Name: labels.MetricName, Value: "test_2_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+	for _, series := range series {
+		ctx := user.InjectOrgID(context.Background(), series.user)
+		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// force update statistics
+	for _, db := range i.TSDBState.dbs {
+		db.ingestedAPISamples.tick()
+		db.ingestedRuleSamples.tick()
+	}
+
+	// Get label names
+	res, err := i.v2AllUserStats(context.Background(), &client.UserStatsRequest{})
+	require.NoError(t, err)
+
+	expect := []*client.UserIDStatsResponse{
+		{
+			UserId: "user-1",
+			Data: &client.UserStatsResponse{
+				IngestionRate:     0.2,
+				NumSeries:         3,
+				ApiIngestionRate:  0.2,
+				RuleIngestionRate: 0,
+			},
+		},
+		{
+			UserId: "user-2",
+			Data: &client.UserStatsResponse{
+				IngestionRate:     0.13333333333333333,
+				NumSeries:         2,
+				ApiIngestionRate:  0.13333333333333333,
+				RuleIngestionRate: 0,
+			},
+		},
+	}
+	assert.ElementsMatch(t, expect, res.Stats)
 }

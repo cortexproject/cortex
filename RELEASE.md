@@ -12,8 +12,8 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | v0.2.0         | 2019-08-28                                 | Goutham Veeramachaneni (Github: @gouthamve) |
 | v0.3.0         | 2019-10-09                                 | Bryan Boreham (@bboreham)                   |
 | v0.4.0         | 2019-11-13                                 | Tom Wilkie (@tomwilkie)                     |
-| v0.5.0         | 2020-01-08                                 | _Abandoned_                                   |
-| v0.6.0         | 2020-01-20                                 | **searching for a volunteer**                   |
+| v0.5.0         | 2020-01-08                                 | _Abandoned_                                 |
+| v0.6.0         | 2020-01-22                                 | Marco Pracucci (@pracucci)                  |
 
 ## Release shepherd responsibilities
 
@@ -59,6 +59,8 @@ Entries in the `CHANGELOG.md` are meant to be in this order:
 * `[ENHANCEMENT]`
 * `[BUGFIX]`
 
+To quickly look for the list of PR missing a reference in the `CHANGELOG.md` you can run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master`.
+
 ### Draft the new release
 
 Tag the new release with a tag named `v<major>.<minor>.<patch>`, e.g. `v0.1.3`. Note the `v` prefix.
@@ -74,3 +76,5 @@ $ git push --tags
 Signing a tag with a GPG key is appreciated, but in case you can't add a GPG key to your Github account using the following [procedure](https://help.github.com/articles/generating-a-gpg-key/), you can replace the `-s` flag by `-a` flag of the `git tag` command to only annotate the tag without signing.
 
 Once a tag is created, the release process through CircleCI will be triggered for this tag. If everything goes smoothly, create a release in the GitHub UI with the changelog for this release.
+
+Finally run `make dist` to build binaries into `./dist` and attach them to the release on GitHub.

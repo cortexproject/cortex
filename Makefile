@@ -1,7 +1,7 @@
-.PHONY: all test clean images protos exes
+.PHONY: all test clean images protos exes dist
 .DEFAULT_GOAL := all
 
-# Boiler plate for bulding Docker containers.
+# Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.
@@ -49,12 +49,14 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
 # Manually declared dependencies And what goes into each exe
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
+pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
+
 all: $(UPTODATE_FILES)
 test: protos
 mod-check: protos
@@ -120,6 +122,10 @@ protos: $(PROTO_GOS)
 lint:
 	misspell -error docs
 	golangci-lint run --new-from-rev ed7c302fd968 --build-tags netgo --timeout=5m --enable golint --enable misspell --enable gofmt
+
+	# Validate Kubernetes spec files. Requires:
+	# https://kubeval.instrumenta.dev
+	kubeval ./k8s/*
 
 test:
 	./tools/test -netgo
@@ -199,3 +205,12 @@ check-doc: clean-doc doc
 
 web-serve:
 	cd website && hugo --config config.toml -v server
+
+# Generate binaries for a Cortex release
+dist:
+	rm -fr ./dist
+	mkdir -p ./dist
+	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
+	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
+	shasum -a 256 ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
+	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256

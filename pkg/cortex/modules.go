@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -53,6 +54,7 @@ const (
 	Ruler
 	Configs
 	AlertManager
+	Compactor
 	All
 )
 
@@ -84,6 +86,8 @@ func (m moduleName) String() string {
 		return "configs"
 	case AlertManager:
 		return "alertmanager"
+	case Compactor:
+		return "compactor"
 	case All:
 		return "all"
 	default:
@@ -129,12 +133,19 @@ func (m *moduleName) Set(s string) error {
 	case "alertmanager":
 		*m = AlertManager
 		return nil
+	case "compactor":
+		*m = Compactor
+		return nil
 	case "all":
 		*m = All
 		return nil
 	default:
 		return fmt.Errorf("unrecognised module name: %s", s)
 	}
+}
+
+func (m moduleName) MarshalYAML() (interface{}, error) {
+	return m.String(), nil
 }
 
 func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -344,7 +355,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 func (t *Cortex) stopQueryFrontend() (err error) {
 	t.frontend.Close()
 	if t.cache != nil {
-		_ = t.cache.Stop()
+		t.cache.Stop()
 		t.cache = nil
 	}
 	return
@@ -401,7 +412,7 @@ func (t *Cortex) stopTableManager() error {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
-	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
@@ -437,7 +448,7 @@ func (t *Cortex) stopConfigs() error {
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, cfg.ConfigStore)
 	if err != nil {
-		return
+		return err
 	}
 	go t.alertmanager.Run()
 
@@ -451,6 +462,16 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 
 func (t *Cortex) stopAlertmanager() error {
 	t.alertmanager.Stop()
+	return nil
+}
+
+func (t *Cortex) initCompactor(cfg *Config) (err error) {
+	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
+	return err
+}
+
+func (t *Cortex) stopCompactor() error {
+	t.compactor.Shutdown()
 	return nil
 }
 
@@ -533,6 +554,12 @@ var modules = map[moduleName]module{
 		deps: []moduleName{Server},
 		init: (*Cortex).initAlertmanager,
 		stop: (*Cortex).stopAlertmanager,
+	},
+
+	Compactor: {
+		deps: []moduleName{Server},
+		init: (*Cortex).initCompactor,
+		stop: (*Cortex).stopCompactor,
 	},
 
 	All: {

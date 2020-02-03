@@ -850,6 +850,10 @@ type mockRing struct {
 	replicationFactor uint32
 }
 
+func (r mockRing) Subring(key uint32, n int) (ring.ReadRing, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
 func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,

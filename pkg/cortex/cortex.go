@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -18,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
@@ -75,6 +77,7 @@ type Config struct {
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
+	Compactor      compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
@@ -109,6 +112,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
 	c.TSDB.RegisterFlags(f)
+	c.Compactor.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
@@ -122,7 +126,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
-func (c *Config) Validate() error {
+func (c *Config) Validate(log log.Logger) error {
 	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
@@ -140,6 +144,12 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
+	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
+	}
+	if err := c.QueryRange.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid queryrange config")
 	}
 	return nil
 }
@@ -165,6 +175,7 @@ type Cortex struct {
 	configAPI    *api.API
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
+	compactor    *compactor.Compactor
 }
 
 // New makes a new Cortex.

@@ -273,9 +273,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    Deprecated. New ingesters always write "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
 
-   Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and later will always *write* normalised tokens, although it can still *read* denormalised tokens written by older ingesters.
+   Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
    
-   It's perfectly OK to have a mix of ingesters running denormalised (<= 0.4.0) and normalised tokens (either by using `-ingester.normalise-tokens` in Cortex <= 0.4.0, or Cortex 0.5.0+) during upgrades. 
+   Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with `-ingester.normalise-tokens=false`) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.
 
 - `-ingester.chunk-encoding`
 
@@ -304,6 +304,24 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.
+
+#### WAL
+
+- `-ingester.wal-dir`
+   Directory where the WAL data should be stored and/or recovered from.
+
+- `-ingester.wal-enabled`
+
+   Setting this to `true` enables writing to WAL during ingestion.
+
+- `-ingester.checkpoint-enabled`
+   Set this to `true` to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.
+
+- `-ingester.checkpoint-duration` 
+   This is the interval at which checkpoints should be created.
+
+- `-ingester.recover-from-wal`
+   Set this to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
 
 ## Runtime Configuration file
 

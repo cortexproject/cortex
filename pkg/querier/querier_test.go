@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,45 +150,45 @@ func TestQuerier(t *testing.T) {
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
 	testCases := []struct {
-		name                     string
-		mint, maxt               time.Time
-		hitIngester              bool
-		ingesterMaxQueryLookback time.Duration
+		name                 string
+		mint, maxt           time.Time
+		hitIngester          bool
+		queryIngestersWithin time.Duration
 	}{
 		{
-			name:                     "hit-test1",
-			mint:                     time.Now().Add(-5 * time.Hour),
-			maxt:                     time.Now().Add(1 * time.Hour),
-			hitIngester:              true,
-			ingesterMaxQueryLookback: 1 * time.Hour,
+			name:                 "hit-test1",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(1 * time.Hour),
+			hitIngester:          true,
+			queryIngestersWithin: 1 * time.Hour,
 		},
 		{
-			name:                     "hit-test2",
-			mint:                     time.Now().Add(-5 * time.Hour),
-			maxt:                     time.Now().Add(-59 * time.Minute),
-			hitIngester:              true,
-			ingesterMaxQueryLookback: 1 * time.Hour,
+			name:                 "hit-test2",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(-59 * time.Minute),
+			hitIngester:          true,
+			queryIngestersWithin: 1 * time.Hour,
 		},
 		{ // Skipping ingester is disabled.
-			name:                     "hit-test2",
-			mint:                     time.Now().Add(-5 * time.Hour),
-			maxt:                     time.Now().Add(-50 * time.Minute),
-			hitIngester:              true,
-			ingesterMaxQueryLookback: 0,
+			name:                 "hit-test2",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(-50 * time.Minute),
+			hitIngester:          true,
+			queryIngestersWithin: 0,
 		},
 		{
-			name:                     "dont-hit-test1",
-			mint:                     time.Now().Add(-5 * time.Hour),
-			maxt:                     time.Now().Add(-100 * time.Minute),
-			hitIngester:              false,
-			ingesterMaxQueryLookback: 1 * time.Hour,
+			name:                 "dont-hit-test1",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(-100 * time.Minute),
+			hitIngester:          false,
+			queryIngestersWithin: 1 * time.Hour,
 		},
 		{
-			name:                     "dont-hit-test2",
-			mint:                     time.Now().Add(-5 * time.Hour),
-			maxt:                     time.Now().Add(-61 * time.Minute),
-			hitIngester:              false,
-			ingesterMaxQueryLookback: 1 * time.Hour,
+			name:                 "dont-hit-test2",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(-61 * time.Minute),
+			hitIngester:          false,
+			queryIngestersWithin: 1 * time.Hour,
 		},
 	}
 
@@ -201,7 +202,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
 		for _, c := range testCases {
-			cfg.IngesterMaxQueryLookback = c.ingesterMaxQueryLookback
+			cfg.QueryIngestersWithin = c.queryIngestersWithin
 			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
@@ -299,4 +300,102 @@ func (m *errDistributor) LabelNames(context.Context) ([]string, error) {
 }
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, errDistributorError
+}
+
+type emptyChunkStore struct {
+	sync.Mutex
+	called bool
+}
+
+func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	c.Lock()
+	defer c.Unlock()
+	c.called = true
+	return nil, nil
+}
+
+func (c *emptyChunkStore) IsCalled() bool {
+	c.Lock()
+	defer c.Unlock()
+	return c.called
+}
+
+func TestShortTermQueryToLTS(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		mint, maxt           time.Time
+		hitIngester          bool
+		hitLTS               bool
+		queryIngestersWithin time.Duration
+		queryStoreAfter      time.Duration
+	}{
+		{
+			name:                 "hit only ingester",
+			mint:                 time.Now().Add(-5 * time.Minute),
+			maxt:                 time.Now(),
+			hitIngester:          true,
+			hitLTS:               false,
+			queryIngestersWithin: 1 * time.Hour,
+			queryStoreAfter:      time.Hour,
+		},
+		{
+			name:                 "hit both",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now(),
+			hitIngester:          true,
+			hitLTS:               true,
+			queryIngestersWithin: 1 * time.Hour,
+			queryStoreAfter:      time.Hour,
+		},
+		{
+			name:                 "hit only storage",
+			mint:                 time.Now().Add(-5 * time.Hour),
+			maxt:                 time.Now().Add(-2 * time.Hour),
+			hitIngester:          false,
+			hitLTS:               true,
+			queryIngestersWithin: 1 * time.Hour,
+			queryStoreAfter:      0,
+		},
+	}
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:        util.Logger,
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       1 * time.Minute,
+	})
+	cfg := Config{}
+	for _, ingesterStreaming := range []bool{true, false} {
+		cfg.IngesterStreaming = ingesterStreaming
+		for _, c := range testCases {
+			cfg.QueryIngestersWithin = c.queryIngestersWithin
+			cfg.QueryStoreAfter = c.queryStoreAfter
+			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
+				chunkStore := &emptyChunkStore{}
+				distributor := &errDistributor{}
+
+				queryable, _ := New(cfg, distributor, chunkStore)
+				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				require.NoError(t, err)
+
+				ctx := user.InjectOrgID(context.Background(), "0")
+				r := query.Exec(ctx)
+				_, err = r.Matrix()
+
+				if c.hitIngester {
+					// If the ingester was hit, the distributor always returns errDistributorError.
+					require.Error(t, err)
+					require.Equal(t, errDistributorError.Error(), err.Error())
+				} else {
+					// If the ingester was hit, there would have been an error from errDistributor.
+					require.NoError(t, err)
+				}
+
+				// Verify if the test did/did not hit the LTS
+				time.Sleep(30 * time.Millisecond) // NOTE: Since this is a lazy querier there is a race condition between the response and chunk store being called
+				require.Equal(t, c.hitLTS, chunkStore.IsCalled())
+			})
+		}
+	}
+
 }

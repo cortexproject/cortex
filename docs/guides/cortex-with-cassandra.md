@@ -99,6 +99,9 @@ schema:
     index:
       prefix: index_
       period: 168h
+    chunks:
+      prefix: chunk_
+      period: 168h
 
 storage:
   cassandra:

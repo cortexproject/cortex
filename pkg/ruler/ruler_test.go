@@ -30,14 +30,12 @@ func defaultRulerConfig() Config {
 		},
 	}
 	flagext.DefaultValues(&cfg)
-	flagext.DefaultValues(&cfg.LifecyclerConfig)
-	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
-	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = consul
-	cfg.LifecyclerConfig.NumTokens = 1
-	cfg.LifecyclerConfig.FinalSleep = time.Duration(0)
-	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
-	cfg.LifecyclerConfig.Addr = "localhost"
-	cfg.LifecyclerConfig.ID = "localhost"
+	flagext.DefaultValues(&cfg.Ring)
+	cfg.Ring.KVStore.Mock = consul
+	cfg.Ring.NumTokens = 1
+	cfg.Ring.ListenPort = 0
+	cfg.Ring.InstanceAddr = "localhost"
+	cfg.Ring.InstanceID = "localhost"
 	return cfg
 }
 
@@ -50,7 +48,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		MaxConcurrent: 20,
 		Timeout:       2 * time.Minute,
 	})
-	queryable := querier.NewQueryable(nil, nil, nil, 0)
+	queryable := querier.NewQueryable(nil, nil, nil, querier.Config{})
 	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)

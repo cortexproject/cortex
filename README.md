@@ -93,6 +93,12 @@ If you have any questions about Cortex:
 
 Your feedback is always welcome.
 
+## Community Meetings
+
+The Cortex community call happens every three weeks on Thursday at 03:30pm – 04:15pm UTC to get calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring).
+
+Meeting notes are held [here](https://docs.google.com/document/d/1shtXSAqp3t7fiC-9uZcKkq3mgwsItAJlH6YW6x1joZo/edit).
+
 ## Hosted Cortex (Prometheus as a service)
 
 There are several commercial services where you can use Cortex

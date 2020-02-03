@@ -4,9 +4,15 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
+)
+
+const (
+	memSeriesCreatedTotalName = "cortex_ingester_memory_series_created_total"
+	memSeriesCreatedTotalHelp = "The total number of series that were created per user."
+
+	memSeriesRemovedTotalName = "cortex_ingester_memory_series_removed_total"
+	memSeriesRemovedTotalHelp = "The total number of series that were removed per user."
 )
 
 type ingesterMetrics struct {
@@ -21,9 +27,10 @@ type ingesterMetrics struct {
 	memUsers              prometheus.Gauge
 	memSeriesCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal *prometheus.CounterVec
+	walReplayDuration     prometheus.Gauge
 }
 
-func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
 	m := &ingesterMetrics{
 		flushQueueLength: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -68,13 +75,17 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Help: "The current number of users in memory.",
 		}),
 		memSeriesCreatedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_memory_series_created_total",
-			Help: "The total number of series that were created per user.",
+			Name: memSeriesCreatedTotalName,
+			Help: memSeriesCreatedTotalHelp,
 		}, []string{"user"}),
 		memSeriesRemovedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_memory_series_removed_total",
-			Help: "The total number of series that were removed per user.",
+			Name: memSeriesRemovedTotalName,
+			Help: memSeriesRemovedTotalHelp,
 		}, []string{"user"}),
+		walReplayDuration: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_wal_replay_duration_seconds",
+			Help: "Time taken to replay the checkpoint and the WAL.",
+		}),
 	}
 
 	if r != nil {
@@ -88,28 +99,39 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedChunks,
 			m.memSeries,
 			m.memUsers,
-			m.memSeriesCreatedTotal,
-			m.memSeriesRemovedTotal,
+			m.walReplayDuration,
 		)
+
+		if registerMetricsConflictingWithTSDB {
+			r.MustRegister(
+				m.memSeriesCreatedTotal,
+				m.memSeriesRemovedTotal,
+			)
+		}
 	}
 
 	return m
 }
 
-// TSDB shipper metrics. We aggregate metrics from individual TSDB shippers into
-// a single set of counters, which are exposed as Cortex metrics.
-type shipperMetrics struct {
+// TSDB metrics. Each tenant has its own registry, that TSDB code uses.
+type tsdbMetrics struct {
+	// We aggregate metrics from individual TSDB registries into
+	// a single set of counters, which are exposed as Cortex metrics.
 	dirSyncs        *prometheus.Desc // sum(thanos_shipper_dir_syncs_total)
 	dirSyncFailures *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
 	uploads         *prometheus.Desc // sum(thanos_shipper_uploads_total)
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
 
+	// These two metrics replace metrics in ingesterMetrics, as we count them differently
+	memSeriesCreatedTotal *prometheus.Desc
+	memSeriesRemovedTotal *prometheus.Desc
+
 	regsMu sync.RWMutex                    // custom mutex for shipper registry, to avoid blocking main user state mutex on collection
-	regs   map[string]*prometheus.Registry // One prometheus registry (used by shipper) per tenant
+	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
 }
 
-func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
-	m := &shipperMetrics{
+func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
+	m := &tsdbMetrics{
 		regs: make(map[string]*prometheus.Registry),
 
 		dirSyncs: prometheus.NewDesc(
@@ -128,6 +150,9 @@ func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
 			"cortex_ingester_shipper_upload_failures_total",
 			"TSDB: Total number of failed object uploads",
 			nil, nil),
+
+		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
+		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
 	}
 
 	if r != nil {
@@ -136,76 +161,42 @@ func newShipperMetrics(r prometheus.Registerer) *shipperMetrics {
 	return m
 }
 
-func (sm *shipperMetrics) Describe(out chan<- *prometheus.Desc) {
+func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.dirSyncs
 	out <- sm.dirSyncFailures
 	out <- sm.uploads
 	out <- sm.uploadFailures
+	out <- sm.memSeriesCreatedTotal
+	out <- sm.memSeriesRemovedTotal
 }
 
-func (sm *shipperMetrics) Collect(out chan<- prometheus.Metric) {
-	gathered := make(map[string][]*dto.MetricFamily)
-
-	regs := sm.shipperRegistries()
-	for userID, r := range regs {
-		m, err := r.Gather()
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to gather metrics from TSDB shipper", "user", userID, "err", err)
-			continue
-		}
-
-		addToGatheredMap(gathered, m)
-	}
+func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
+	data := util.BuildMetricFamiliesPerUserFromUserRegistries(sm.registries())
 
 	// OK, we have it all. Let's build results.
-	out <- prometheus.MustNewConstMetric(sm.dirSyncs, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_dir_syncs_total"]))
-	out <- prometheus.MustNewConstMetric(sm.dirSyncFailures, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_dir_sync_failures_total"]))
-	out <- prometheus.MustNewConstMetric(sm.uploads, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_uploads_total"]))
-	out <- prometheus.MustNewConstMetric(sm.uploadFailures, prometheus.CounterValue, sumCounters(gathered["thanos_shipper_upload_failures_total"]))
+	data.SendSumOfCounters(out, sm.dirSyncs, "thanos_shipper_dir_syncs_total")
+	data.SendSumOfCounters(out, sm.dirSyncFailures, "thanos_shipper_dir_sync_failures_total")
+	data.SendSumOfCounters(out, sm.uploads, "thanos_shipper_uploads_total")
+	data.SendSumOfCounters(out, sm.uploadFailures, "thanos_shipper_upload_failures_total")
+
+	data.SendSumOfCountersPerUser(out, sm.memSeriesCreatedTotal, "prometheus_tsdb_head_series_created_total")
+	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")
 }
 
-func (sm *shipperMetrics) shipperRegistries() []*prometheus.Registry {
+// make a copy of the map, so that metrics can be gathered while the new registry is being added.
+func (sm *tsdbMetrics) registries() map[string]*prometheus.Registry {
 	sm.regsMu.RLock()
 	defer sm.regsMu.RUnlock()
 
-	regs := make([]*prometheus.Registry, 0, len(sm.regs))
-	for _, r := range sm.regs {
-		regs = append(regs, r)
+	regs := make(map[string]*prometheus.Registry, len(sm.regs))
+	for u, r := range sm.regs {
+		regs[u] = r
 	}
 	return regs
 }
 
-func (sm *shipperMetrics) newRegistryForUser(userID string) prometheus.Registerer {
-	reg := prometheus.NewRegistry()
+func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
 	sm.regsMu.Lock()
-	sm.regs[userID] = reg
+	sm.regs[userID] = registry
 	sm.regsMu.Unlock()
-	return reg
-}
-
-func sumCounters(mfs []*dto.MetricFamily) float64 {
-	result := float64(0)
-	for _, mf := range mfs {
-		if mf.Type == nil || *mf.Type != dto.MetricType_COUNTER {
-			continue
-		}
-
-		for _, m := range mf.Metric {
-			if m == nil || m.Counter == nil || m.Counter.Value == nil {
-				continue
-			}
-
-			result += *m.Counter.Value
-		}
-	}
-	return result
-}
-
-func addToGatheredMap(all map[string][]*dto.MetricFamily, mfs []*dto.MetricFamily) {
-	for _, m := range mfs {
-		if m.Name == nil {
-			continue
-		}
-		all[*m.Name] = append(all[*m.Name], m)
-	}
 }

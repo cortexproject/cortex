@@ -393,7 +393,7 @@ func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fing
 
 	sizePerUser := chunkSizePerUser.WithLabelValues(userID)
 	countPerUser := chunksPerUser.WithLabelValues(userID)
-	// Record statistsics only when actual put request did not return error.
+	// Record statistics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
 		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
 		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "nlabels", len(metric), "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)

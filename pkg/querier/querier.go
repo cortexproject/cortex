@@ -203,6 +203,8 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
+		case <-q.ctx.Done():
+			return nil, nil, q.ctx.Err()
 		}
 	}
 

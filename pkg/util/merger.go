@@ -19,6 +19,7 @@ func MergeSampleSets(a, b []model.SamplePair) []model.SamplePair {
 			j++
 		}
 	}
+	// Add the rest of a or b. One of them is empty now.
 	result = append(result, a[i:]...)
 	result = append(result, b[j:]...)
 	return result

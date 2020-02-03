@@ -66,7 +66,7 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }
 
-func TestPartitionChunksOutputIsSorted(t *testing.T) {
+func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
 	allChunks := []chunk.Chunk{}
 
 	const count = 10

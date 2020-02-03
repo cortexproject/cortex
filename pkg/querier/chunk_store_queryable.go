@@ -48,7 +48,7 @@ func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels
 }
 
 // Series in the returned set are sorted by labels.
-func partitionChunks(chunks []chunk.Chunk, mint int64, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
+func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
 	chunksBySeries := map[model.Fingerprint][]chunk.Chunk{}
 	for _, c := range chunks {
 		fp := client.Fingerprint(c.Metric)

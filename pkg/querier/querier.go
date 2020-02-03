@@ -98,8 +98,8 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	var queryable storage.Queryable
-	dq := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc)
-	queryable = NewQueryable(dq, storeQueryable, iteratorFunc, cfg)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc)
+	queryable = NewQueryable(distributorQueryable, storeQueryable, iteratorFunc, cfg)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -135,12 +135,12 @@ func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn ch
 			return nil, err
 		}
 
-		q.primary = dqr
+		q.distributorQuerier = dqr
 
 		// Include ingester only if maxt is within queryIngestersWithin w.r.t. current time.
 		now := model.Now()
 		if cfg.QueryIngestersWithin == 0 || maxt >= int64(now.Add(-cfg.QueryIngestersWithin)) {
-			q.queriers = append(q.queriers, dqr)
+			q.selectQueriers = append(q.selectQueriers, dqr)
 		}
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
@@ -150,7 +150,7 @@ func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn ch
 				return nil, err
 			}
 
-			q.queriers = append(q.queriers, cqr)
+			q.selectQueriers = append(q.selectQueriers, cqr)
 		}
 
 		return q, nil
@@ -158,9 +158,11 @@ func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn ch
 }
 
 type querier struct {
-	// primary querier is used for labels and metadata queries
-	primary  storage.Querier
-	queriers []storage.Querier
+	// used for labels and metadata queries
+	distributorQuerier storage.Querier
+
+	// used for selecting series
+	selectQueriers []storage.Querier
 
 	chunkIterFn chunkIteratorFunc
 	ctx         context.Context
@@ -170,18 +172,18 @@ type querier struct {
 // Select implements storage.Querier.
 func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
-	// which needs only metadata. Here we expect that primary querier will handle that.
+	// which needs only metadata. Here we expect that distributorQuerier querier will handle that.
 	if sp == nil {
-		return q.primary.Select(nil, matchers...)
+		return q.distributorQuerier.Select(nil, matchers...)
 	}
 
-	if len(q.queriers) == 1 {
-		return q.queriers[0].Select(sp, matchers...)
+	if len(q.selectQueriers) == 1 {
+		return q.selectQueriers[0].Select(sp, matchers...)
 	}
 
-	sets := make(chan storage.SeriesSet, len(q.queriers))
-	errs := make(chan error, len(q.queriers))
-	for _, querier := range q.queriers {
+	sets := make(chan storage.SeriesSet, len(q.selectQueriers))
+	errs := make(chan error, len(q.selectQueriers))
+	for _, querier := range q.selectQueriers {
 		go func(querier storage.Querier) {
 			set, _, err := querier.Select(sp, matchers...)
 			if err != nil {
@@ -193,7 +195,7 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	}
 
 	var result []storage.SeriesSet
-	for range q.queriers {
+	for range q.selectQueriers {
 		select {
 		case err := <-errs:
 			return nil, nil, err
@@ -209,11 +211,11 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	return q.primary.LabelValues(name)
+	return q.distributorQuerier.LabelValues(name)
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
-	return q.primary.LabelNames()
+	return q.distributorQuerier.LabelNames()
 }
 
 func (querier) Close() error {

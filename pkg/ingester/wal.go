@@ -40,7 +40,7 @@ type WALConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or Recover from WAL.")
-	f.BoolVar(&cfg.Recover, "ingester.Recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
+	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 	f.BoolVar(&cfg.WalEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
@@ -398,7 +398,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	}
 
 	if segExists, err := segmentsExist(walDir); err == nil && !segExists {
-		level.Info(util.Logger).Log("msg", "no segments found, skipping Recover from segments")
+		level.Info(util.Logger).Log("msg", "no segments found, skipping recover from segments")
 		return nil
 	}
 

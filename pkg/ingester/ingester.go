@@ -143,7 +143,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	if cfg.WALConfig.WalEnabled {
 		// If WAL is enabled, we don't transfer out the data to any ingester.
-		// Either the next ingester which takes it's place should Recover from WAL
+		// Either the next ingester which takes it's place should recover from WAL
 		// or the data has to be flushed during scaledown.
 		cfg.MaxTransferRetries = 0
 
@@ -178,7 +178,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to Recover from WAL", "time", time.Since(start).String())
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return nil, err
 		}
 		elapsed := time.Since(start)
@@ -186,7 +186,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
-	// If the WAL Recover happened, then the userStates would already be set.
+	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
 		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 	}

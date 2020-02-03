@@ -40,7 +40,7 @@ func TestWAL(t *testing.T) {
 			cfg.WALConfig.WalEnabled = false
 			cfg.WALConfig.CheckpointEnabled = false
 		}
-		// Start a new ingester and Recover the WAL.
+		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 
 		for i, userID := range userIDs {

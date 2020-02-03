@@ -173,6 +173,8 @@ type querier struct {
 func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that distributorQuerier querier will handle that.
+	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ingesters and skip querying
+	// the long-term storage.
 	if sp == nil {
 		return q.distributorQuerier.Select(nil, matchers...)
 	}

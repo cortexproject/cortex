@@ -28,6 +28,12 @@ type tsdbBucketStoreMetrics struct {
 	seriesGetAllDuration  *prometheus.Desc
 	seriesMergeDuration   *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
+	metaSyncs             *prometheus.Desc
+	metaSyncFailures      *prometheus.Desc
+	metaSyncDuration      *prometheus.Desc
+
+	// Ignored:
+	// blocks_meta_synced
 
 	// Metrics gathered from Thanos storecache.InMemoryIndexCache
 	cacheItemsEvicted          *prometheus.Desc
@@ -99,7 +105,19 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_result_series",
-			"Number of series observed in the final result of a query.",
+			"TSDB: Number of series observed in the final result of a query.",
+			nil, nil),
+		metaSyncs: prometheus.NewDesc(
+			"cortex_querier_bucket_store_blocks_meta_syncs_total",
+			"TSDB: Total blocks metadata synchronization attempts",
+			nil, nil),
+		metaSyncFailures: prometheus.NewDesc(
+			"cortex_querier_bucket_store_blocks_meta_sync_failures_total",
+			"TSDB: Total blocks metadata synchronization failures",
+			nil, nil),
+		metaSyncDuration: prometheus.NewDesc(
+			"cortex_querier_bucket_store_blocks_meta_sync_duration_seconds",
+			"TSDB: Duration of the blocks metadata synchronization in seconds",
 			nil, nil),
 
 		// Cache
@@ -171,6 +189,10 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesMergeDuration
 	out <- m.resultSeriesCount
 
+	out <- m.metaSyncs
+	out <- m.metaSyncFailures
+	out <- m.metaSyncDuration
+
 	out <- m.cacheItemsEvicted
 	out <- m.cacheItemsAdded
 	out <- m.cacheRequests
@@ -200,6 +222,10 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
+
+	data.SendSumOfCounters(out, m.metaSyncs, "blocks_meta_syncs_total")
+	data.SendSumOfCounters(out, m.metaSyncFailures, "blocks_meta_sync_failures_total")
+	data.SendSumOfHistograms(out, m.metaSyncDuration, "blocks_meta_sync_duration_seconds")
 
 	data.SendSumOfCountersWithLabels(out, m.cacheItemsEvicted, "thanos_store_index_cache_items_evicted_total", "item_type")
 	data.SendSumOfCountersWithLabels(out, m.cacheItemsAdded, "thanos_store_index_cache_items_added_total", "item_type")

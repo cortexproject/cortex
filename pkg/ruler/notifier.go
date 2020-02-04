@@ -2,8 +2,6 @@ package ruler
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -61,16 +59,8 @@ func (rn *rulerNotifier) applyConfig(cfg *config.Config) error {
 	}
 
 	sdCfgs := make(map[string]sd_config.ServiceDiscoveryConfig)
-	for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
-		// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
-		b, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-		// This hash needs to be identical to the one computed in the notifier in
-		// https://github.com/prometheus/prometheus/blob/719c579f7b917b384c3d629752dea026513317dc/notifier/notifier.go#L265
-		// This kind of sucks, but it's done in Prometheus in main.go in the same way.
-		sdCfgs[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+	for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
+		sdCfgs[k] = v.ServiceDiscoveryConfig
 	}
 	return rn.sdManager.ApplyConfig(sdCfgs)
 }

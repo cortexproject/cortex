@@ -126,6 +126,7 @@ type BucketStoreConfig struct {
 	MaxConcurrent         int           `yaml:"max_concurrent"`
 	TenantSyncConcurrency int           `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency  int           `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency   int           `yaml:"meta_sync_concurrency"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -138,6 +139,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConcurrent, "experimental.tsdb.bucket-store.max-concurrent", 20, "Max number of concurrent queries to the storage per tenant.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "experimental.tsdb.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
+	f.IntVar(&cfg.MetaSyncConcurrency, "experimental.tsdb.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

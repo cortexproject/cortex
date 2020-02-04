@@ -118,19 +118,19 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
 
-		# HELP cortex_compactor_sync_meta_duration_seconds TSDB Syncer: Time it took to sync meta files.
-		# TYPE cortex_compactor_sync_meta_duration_seconds histogram
-		cortex_compactor_sync_meta_duration_seconds_bucket{le="+Inf"} 0
-		cortex_compactor_sync_meta_duration_seconds_sum 0
-		cortex_compactor_sync_meta_duration_seconds_count 0
+		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+		# TYPE cortex_compactor_meta_sync_duration_seconds histogram
+		cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 0
+		cortex_compactor_meta_sync_duration_seconds_sum 0
+		cortex_compactor_meta_sync_duration_seconds_count 0
 
-		# HELP cortex_compactor_sync_meta_failures_total TSDB Syncer: Total number of failed sync meta operations.
-		# TYPE cortex_compactor_sync_meta_failures_total counter
-		cortex_compactor_sync_meta_failures_total 0
+		# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+		# TYPE cortex_compactor_meta_sync_failures_total counter
+		cortex_compactor_meta_sync_failures_total 0
 
-		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
-		# TYPE cortex_compactor_sync_meta_total counter
-		cortex_compactor_sync_meta_total 0
+		# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+		# TYPE cortex_compactor_meta_syncs_total counter
+		cortex_compactor_meta_syncs_total 0
 
 		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 		# TYPE cortex_compactor_group_compaction_runs_completed_total counter
@@ -213,19 +213,19 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
 
-		# HELP cortex_compactor_sync_meta_duration_seconds TSDB Syncer: Time it took to sync meta files.
-		# TYPE cortex_compactor_sync_meta_duration_seconds histogram
-		cortex_compactor_sync_meta_duration_seconds_bucket{le="+Inf"} 0
-		cortex_compactor_sync_meta_duration_seconds_sum 0
-		cortex_compactor_sync_meta_duration_seconds_count 0
+		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+		# TYPE cortex_compactor_meta_sync_duration_seconds histogram
+		cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 0
+		cortex_compactor_meta_sync_duration_seconds_sum 0
+		cortex_compactor_meta_sync_duration_seconds_count 0
 
-		# HELP cortex_compactor_sync_meta_failures_total TSDB Syncer: Total number of failed sync meta operations.
-		# TYPE cortex_compactor_sync_meta_failures_total counter
-		cortex_compactor_sync_meta_failures_total 0
+		# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+		# TYPE cortex_compactor_meta_sync_failures_total counter
+		cortex_compactor_meta_sync_failures_total 0
 
-		# HELP cortex_compactor_sync_meta_total TSDB Syncer: Total number of sync meta operations.
-		# TYPE cortex_compactor_sync_meta_total counter
-		cortex_compactor_sync_meta_total 0
+		# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+		# TYPE cortex_compactor_meta_syncs_total counter
+		cortex_compactor_meta_syncs_total 0
 
 		# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 		# TYPE cortex_compactor_group_compaction_runs_completed_total counter
@@ -283,17 +283,17 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info msg="discovered users from bucket" users=2`,
 		`level=info msg="starting compaction of user blocks" user=user-1`,
 		`level=info msg="start sync of metas"`,
-		`level=debug msg="download meta" block=01DTVP434PA9VFXSW2JKB3392D`,
 		`level=info msg="start of GC"`,
 		`level=info msg="start of compaction"`,
+		`level=info msg="compaction iterations done"`,
 		`level=info msg="successfully compacted user blocks" user=user-1`,
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info msg="start sync of metas"`,
-		`level=debug msg="download meta" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
 		`level=info msg="start of GC"`,
 		`level=info msg="start of compaction"`,
+		`level=info msg="compaction iterations done"`,
 		`level=info msg="successfully compacted user blocks" user=user-2`,
-	}, strings.Split(strings.TrimSpace(logs.String()), "\n"))
+	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
 	// Real shipper metrics are too variable to embed into a test.
@@ -311,6 +311,18 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
 	`), testedMetrics...))
+}
+
+func removeMetaFetcherLogs(input []string) []string {
+	out := make([]string, 0, len(input))
+
+	for i := 0; i < len(input); i++ {
+		if !strings.Contains(input[i], "block.MetaFetcher") {
+			out = append(out, input[i])
+		}
+	}
+
+	return out
 }
 
 func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer) {
@@ -353,6 +365,7 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 
 func mockBlockMetaJSON(id string) string {
 	meta := tsdb.BlockMeta{
+		Version: 1,
 		ULID:    ulid.MustParse(id),
 		MinTime: 1574776800000,
 		MaxTime: 1574784000000,

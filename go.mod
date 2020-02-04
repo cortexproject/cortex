@@ -10,9 +10,9 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/armon/go-metrics v0.3.0
-	github.com/aws/aws-sdk-go v1.25.35
+	github.com/aws/aws-sdk-go v1.25.48
 	github.com/blang/semver v3.5.0+incompatible
-	github.com/bradfitz/gomemcache v0.0.0-20190329173943-551aad21a668
+	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cenkalti/backoff v1.0.0 // indirect
 	github.com/cespare/xxhash v1.1.0
 	github.com/coreos/go-semver v0.3.0 // indirect
@@ -52,12 +52,12 @@ require (
 	github.com/prometheus/client_golang v1.2.1
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/common v0.7.0
-	github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
+	github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
-	github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
+	github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.4.0

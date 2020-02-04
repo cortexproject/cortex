@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -349,13 +350,27 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 
 	level.Info(u.logger).Log("msg", "creating user bucket store", "user", userID)
 
+	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
+
 	reg := prometheus.NewRegistry()
 	indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 	maxItemSizeBytes := indexCacheSizeBytes / 2
-	indexCache, err := storecache.NewInMemoryIndexCache(u.logger, reg, storecache.Opts{
-		MaxSizeBytes:     indexCacheSizeBytes,
-		MaxItemSizeBytes: maxItemSizeBytes,
+	indexCache, err := storecache.NewInMemoryIndexCacheWithConfig(u.logger, reg, storecache.InMemoryIndexCacheConfig{
+		MaxSize:     storecache.Bytes(indexCacheSizeBytes),
+		MaxItemSize: storecache.Bytes(maxItemSizeBytes),
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	fetcher, err := block.NewMetaFetcher(
+		u.logger,
+		u.cfg.BucketStore.MetaSyncConcurrency,
+		userBkt,
+		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
+		reg,
+		// No filters
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +378,8 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	bs, err = store.NewBucketStore(
 		u.logger,
 		reg,
-		tsdb.NewUserBucketClient(userID, u.bucket),
+		userBkt,
+		fetcher,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
 		indexCache,
 		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
@@ -375,7 +391,6 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 			MinTime: u.syncMint,
 			MaxTime: u.syncMaxt,
 		},
-		nil,   // No relabelling config
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 	)
 	if err != nil {

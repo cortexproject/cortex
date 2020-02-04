@@ -1,9 +1,11 @@
-package main
+package framework
 
 import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -24,9 +26,9 @@ func NewScenario() (*Scenario, error) {
 	}
 
 	// Setup the docker network
-	if out, err := runCommandAndGetOutput("docker", "network", "create", s.networkName); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "network", "create", s.networkName); err != nil {
 		fmt.Println(string(out))
-		return nil, err
+		return nil, errors.Wrapf(err, "create docker network '%s'", s.networkName)
 	}
 
 	nextScenarioID++
@@ -131,7 +133,7 @@ func (s *Scenario) StartDistributor(name string, flags map[string]string, image 
 		s.networkName,
 		[]int{80},
 		nil,
-		NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(map[string]string{
+		NewCommandWithoutEntrypoint("cortex", BuildArgs(MergeFlags(map[string]string{
 			"-target":                         "distributor",
 			"-log.level":                      "warn",
 			"-auth.enabled":                   "true",
@@ -155,7 +157,7 @@ func (s *Scenario) StartQuerier(name string, flags map[string]string, image stri
 		s.networkName,
 		[]int{80},
 		nil,
-		NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(map[string]string{
+		NewCommandWithoutEntrypoint("cortex", BuildArgs(MergeFlags(map[string]string{
 			"-target":                         "querier",
 			"-log.level":                      "warn",
 			"-distributor.replication-factor": "1",
@@ -178,7 +180,7 @@ func (s *Scenario) StartIngester(name string, flags map[string]string, image str
 		s.networkName,
 		[]int{80},
 		nil,
-		NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(map[string]string{
+		NewCommandWithoutEntrypoint("cortex", BuildArgs(MergeFlags(map[string]string{
 			"-target":                        "ingester",
 			"-log.level":                     "warn",
 			"-ingester.final-sleep":          "0s",
@@ -206,7 +208,7 @@ func (s *Scenario) StartTableManager(name string, flags map[string]string, image
 		s.networkName,
 		[]int{80},
 		nil,
-		NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(map[string]string{
+		NewCommandWithoutEntrypoint("cortex", BuildArgs(MergeFlags(map[string]string{
 			"-target":    "table-manager",
 			"-log.level": "warn",
 		}, flags))...),
@@ -263,7 +265,7 @@ func (s *Scenario) Shutdown() {
 	}
 
 	// Teardown the docker network
-	if out, err := runCommandAndGetOutput("docker", "network", "rm", s.networkName); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "network", "rm", s.networkName); err != nil {
 		fmt.Println(out)
 		fmt.Println("Unable to remove docker network", s.networkName, ":", err.Error())
 	}

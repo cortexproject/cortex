@@ -1,4 +1,4 @@
-package main
+package framework
 
 import (
 	"context"
@@ -78,7 +78,7 @@ func (s *Service) Start() error {
 
 	// Get the dynamic local ports mapped to the container
 	for _, containerPort := range s.networkPorts {
-		out, err := runCommandAndGetOutput("docker", "port", s.name, strconv.Itoa(containerPort))
+		out, err := RunCommandAndGetOutput("docker", "port", s.name, strconv.Itoa(containerPort))
 		if err != nil {
 			return errors.Wrapf(err, "unable to get mapping for port %d", containerPort)
 		}
@@ -103,7 +103,7 @@ func (s *Service) Start() error {
 func (s *Service) Stop() error {
 	fmt.Println("Stopping", s.name)
 
-	if out, err := runCommandAndGetOutput("docker", "stop", "--time=30", s.name); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.name); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
@@ -114,7 +114,7 @@ func (s *Service) Stop() error {
 func (s *Service) Kill() error {
 	fmt.Println("Killing", s.name)
 
-	if out, err := runCommandAndGetOutput("docker", "stop", "--time=0", s.name); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.name); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
@@ -156,7 +156,7 @@ func (s *Service) Metrics(port int) (string, error) {
 	}
 
 	// Fetch metrics
-	res, err := getRequest(fmt.Sprintf("http://localhost:%d/metrics", localPort))
+	res, err := GetRequest(fmt.Sprintf("http://localhost:%d/metrics", localPort))
 	if err != nil {
 		return "", err
 	}
@@ -298,7 +298,7 @@ func NewReadinessProbe(port int, path string, expectedStatus int) *ReadinessProb
 }
 
 func (p *ReadinessProbe) Ready(localPort int) bool {
-	res, err := getRequest(fmt.Sprintf("http://localhost:%d%s", localPort, p.path))
+	res, err := GetRequest(fmt.Sprintf("http://localhost:%d%s", localPort, p.path))
 	if err != nil {
 		return false
 	}

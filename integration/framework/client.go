@@ -1,4 +1,4 @@
-package main
+package framework
 
 import (
 	"bytes"
@@ -12,7 +12,6 @@ import (
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -95,30 +94,4 @@ func (r *addOrgIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Set("X-Scope-OrgID", r.orgID)
 
 	return r.next.RoundTrip(req)
-}
-
-func generateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vector model.Vector) {
-	tsMillis := timeToMilliseconds(ts)
-
-	// Generate the series
-	series = append(series, prompb.TimeSeries{
-		Labels: []prompb.Label{
-			{Name: labels.MetricName, Value: name},
-		},
-		Samples: []prompb.Sample{
-			{Value: float64(1), Timestamp: tsMillis},
-		},
-	})
-
-	// Generate the expected vector when querying it
-	metric := model.Metric{}
-	metric[labels.MetricName] = model.LabelValue(name)
-
-	vector = append(vector, &model.Sample{
-		Metric:    metric,
-		Value:     model.SampleValue(1),
-		Timestamp: model.Time(tsMillis),
-	})
-
-	return
 }

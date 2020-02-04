@@ -4,13 +4,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/integration/framework"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, BlocksStorage, func(t *testing.T, s *Scenario) {
+	runIngesterHandOverTest(t, BlocksStorage, func(t *testing.T, s *framework.Scenario) {
 		// Start dependencies
 		require.NoError(t, s.StartMinio())
 		require.NoError(t, s.StartConsul())
@@ -25,7 +26,7 @@ func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
 }
 
 func TestIngesterHandOverWithChunksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, ChunksStorage, func(t *testing.T, s *Scenario) {
+	runIngesterHandOverTest(t, ChunksStorage, func(t *testing.T, s *framework.Scenario) {
 		// Start dependencies
 		require.NoError(t, s.StartDynamoDB())
 		require.NoError(t, s.StartConsul())
@@ -44,8 +45,8 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 	})
 }
 
-func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *Scenario)) {
-	s, err := NewScenario()
+func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *framework.Scenario)) {
+	s, err := framework.NewScenario()
 	require.NoError(t, err)
 	defer s.Shutdown()
 
@@ -56,7 +57,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	require.NoError(t, s.Service("distributor").WaitMetric(80, "cortex_ring_tokens_total", 512))
 	require.NoError(t, s.Service("querier").WaitMetric(80, "cortex_ring_tokens_total", 512))
 
-	c, err := NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
+	c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
 	require.NoError(t, err)
 
 	// Push some series to Cortex

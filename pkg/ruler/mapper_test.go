@@ -1,12 +1,14 @@
 package ruler
 
 import (
+	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -92,9 +94,12 @@ var (
 )
 
 func Test_mapper_MapRules(t *testing.T) {
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
 	m := &mapper{
-		Path: "/rules",
-		FS:   afero.NewMemMapFs(),
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: l,
 	}
 
 	t.Run("basic rulegroup", func(t *testing.T) {
@@ -238,9 +243,12 @@ var (
 )
 
 func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
 	m := &mapper{
-		Path: "/rules",
-		FS:   afero.NewMemMapFs(),
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: l,
 	}
 
 	t.Run("basic rulegroup", func(t *testing.T) {

@@ -17,6 +17,13 @@ APIs.  The encoding is Protobuf over http.
 
 Read is on `/api/prom/read` and write is on `/api/prom/push`.
 
+## Alerts & Rules API
+
+Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
+
+`GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
+
+`GET /api/prom/api/v1/alerts` - List of all active alerts
 
 ## Configs API
 

@@ -12,11 +12,10 @@ import (
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
 func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc {
-	dur := time.Duration(rl.Interval)
 	rg := RuleGroupDesc{
 		Name:      rl.Name,
 		Namespace: namespace,
-		Interval:  &dur,
+		Interval:  time.Duration(rl.Interval),
 		Rules:     formattedRuleToProto(rl.Rules),
 		User:      user,
 	}
@@ -26,14 +25,11 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
-		f := time.Duration(rls[i].For)
-
 		rules[i] = &RuleDesc{
-			Expr:   rls[i].Expr,
-			Record: rls[i].Record,
-			Alert:  rls[i].Alert,
-
-			For:         &f,
+			Expr:        rls[i].Expr,
+			Record:      rls[i].Record,
+			Alert:       rls[i].Alert,
+			For:         time.Duration(rls[i].For),
 			Labels:      client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
 			Annotations: client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
@@ -46,19 +42,21 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:     rg.GetName(),
-		Interval: model.Duration(*rg.Interval),
+		Interval: model.Duration(rg.Interval),
 		Rules:    make([]rulefmt.Rule, len(rg.GetRules())),
 	}
 
 	for i, rl := range rg.GetRules() {
-		formattedRuleGroup.Rules[i] = rulefmt.Rule{
+		newRule := rulefmt.Rule{
 			Record:      rl.GetRecord(),
 			Alert:       rl.GetAlert(),
 			Expr:        rl.GetExpr(),
-			For:         model.Duration(*rl.GetFor()),
 			Labels:      client.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: client.FromLabelAdaptersToLabels(rl.Annotations).Map(),
+			For:         model.Duration(rl.GetFor()),
 		}
+
+		formattedRuleGroup.Rules[i] = newRule
 	}
 
 	return formattedRuleGroup

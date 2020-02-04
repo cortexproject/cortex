@@ -415,9 +415,15 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
-		return
+		return err
+	}
+
+	if cfg.Ruler.EnableAPI {
+		subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
+		t.ruler.RegisterRoutes(subrouter)
+		ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
 	}
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)

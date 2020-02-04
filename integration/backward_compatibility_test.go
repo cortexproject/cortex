@@ -44,6 +44,8 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	series, expectedVector := generateSeries("series_1", now)
 
 	c, err := framework.NewClient(s.Endpoint("distributor", 80), "", "user-1")
+	require.NoError(t, err)
+
 	res, err := c.Push(series)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
@@ -75,6 +77,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		assert.Equal(t, expectedVector, result.(model.Vector))
 
 		// Stop the querier, so that the test on the next image will work
-		s.StopService("querier")
+		err = s.StopService("querier")
+		require.NoError(t, err)
 	}
 }

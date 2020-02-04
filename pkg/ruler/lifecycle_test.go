@@ -11,8 +11,9 @@ import (
 
 // TestRulerShutdown tests shutting down ruler unregisters correctly
 func TestRulerShutdown(t *testing.T) {
-	config := defaultRulerConfig()
+	config, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	config.EnableSharding = true
+	defer cleanup()
 
 	{
 		r := newTestRuler(t, config)
@@ -27,9 +28,10 @@ func TestRulerShutdown(t *testing.T) {
 
 // TestRulerRestart tests a restarting ruler doesn't keep adding more tokens.
 func TestRulerRestart(t *testing.T) {
-	config := defaultRulerConfig()
+	config, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	config.Ring.SkipUnregister = true
 	config.EnableSharding = true
+	defer cleanup()
 
 	{
 		r := newTestRuler(t, config)

@@ -225,8 +225,6 @@ func (s *Service) WaitMetric(port int, metric string, value float64) error {
 					return nil
 				}
 			}
-
-			return fmt.Errorf("unsupported type for metric %s", metric)
 		}
 
 		s.retryBackoff.Wait()

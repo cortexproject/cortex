@@ -20,7 +20,7 @@ func TestWAL(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := defaultIngesterTestConfig()
-	cfg.WALConfig.WalEnabled = true
+	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
 	cfg.WALConfig.Dir = dirname
@@ -37,7 +37,7 @@ func TestWAL(t *testing.T) {
 
 	for r := 0; r < numRestarts; r++ {
 		if r == numRestarts-1 {
-			cfg.WALConfig.WalEnabled = false
+			cfg.WALConfig.WALEnabled = false
 			cfg.WALConfig.CheckpointEnabled = false
 		}
 		// Start a new ingester and recover the WAL.

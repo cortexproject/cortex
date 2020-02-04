@@ -29,19 +29,19 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	WalEnabled         bool          `yaml:"wal_enabled,omitempty"`
-	CheckpointEnabled  bool          `yaml:"checkpoint_enabled,omitempty"`
-	Recover            bool          `yaml:"recover_from_wal,omitempty"`
-	Dir                string        `yaml:"wal_dir,omitempty"`
-	CheckpointDuration time.Duration `yaml:"checkpoint_duration,omitempty"`
-	metricsRegisterer  prometheus.Registerer
+	WALEnabled         bool                  `yaml:"wal_enabled,omitempty"`
+	CheckpointEnabled  bool                  `yaml:"checkpoint_enabled,omitempty"`
+	Recover            bool                  `yaml:"recover_from_wal,omitempty"`
+	Dir                string                `yaml:"wal_dir,omitempty"`
+	CheckpointDuration time.Duration         `yaml:"checkpoint_duration,omitempty"`
+	metricsRegisterer  prometheus.Registerer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
-	f.BoolVar(&cfg.WalEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
+	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
 }
@@ -77,7 +77,7 @@ type walWrapper struct {
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
 func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
-	if !cfg.WalEnabled {
+	if !cfg.WALEnabled {
 		return &noopWAL{}, nil
 	}
 

@@ -42,7 +42,7 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig
+	WALConfig        WALConfig             `yaml:"walconfig,omitempty"`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
@@ -141,7 +141,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
-	if cfg.WALConfig.walEnabled {
+	if cfg.WALConfig.WALEnabled {
 		// If WAL is enabled, we don't transfer out the data to any ingester.
 		// Either the next ingester which takes it's place should recover from WAL
 		// or the data has to be flushed during scaledown.
@@ -167,14 +167,14 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
-	// The '!cfg.WALConfig.walEnabled' argument says don't flush on shutdown if the WAL is enabled.
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.walEnabled)
+	// The '!cfg.WALConfig.WALEnabled' argument says don't flush on shutdown if the WAL is enabled.
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled)
 	if err != nil {
 		return nil, err
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
-	if cfg.WALConfig.recover {
+	if cfg.WALConfig.Recover {
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
@@ -286,7 +286,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 
 	var lastPartialErr *validationError
 	var record *Record
-	if i.cfg.WALConfig.walEnabled {
+	if i.cfg.WALConfig.WALEnabled {
 		record = recordPool.Get().(*Record)
 		record.UserId = userID
 		// Assuming there is not much churn in most cases, there is no use

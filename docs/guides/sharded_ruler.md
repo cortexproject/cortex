@@ -24,3 +24,5 @@ In addition the ruler requires it's own ring to be configured, for instance:
 ```
 
 The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.
+
+Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.

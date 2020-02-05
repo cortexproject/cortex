@@ -72,39 +72,17 @@ func normalizedSource() *Desc {
 	return r
 }
 
-func unnormalizedSource() *Desc {
-	r := NewDesc()
-	r.Ingesters["first"] = IngesterDesc{}
-	r.Ingesters["second"] = IngesterDesc{}
-	r.Tokens = []TokenDesc{
-		{Token: 100, Ingester: "first"},
-		{Token: 200, Ingester: "first"},
-		{Token: 300, Ingester: "first"},
-	}
-	return r
-}
-
 func normalizedOutput() *Desc {
 	return &Desc{
 		Ingesters: map[string]IngesterDesc{
 			"first":  {},
 			"second": {Tokens: []uint32{100, 200, 300}},
 		},
-		Tokens: nil,
 	}
 }
 
 func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
 	r := normalizedSource()
-	result := r.ClaimTokens("first", "second")
-
-	assert.Equal(t, Tokens{100, 200, 300}, result)
-	assert.Equal(t, normalizedOutput(), r)
-}
-
-func TestClaimTokensFromUnnormalizedToNormalized(t *testing.T) {
-	r := unnormalizedSource()
-
 	result := r.ClaimTokens("first", "second")
 
 	assert.Equal(t, Tokens{100, 200, 300}, result)
@@ -145,8 +123,9 @@ func TestReady(t *testing.T) {
 		t.Fatal("expected !ready (no tokens), but got no error")
 	}
 
-	r.Tokens = []TokenDesc{
-		{Token: 12345, Ingester: "some ingester"},
+	r.Ingesters["some ingester"] = IngesterDesc{
+		Tokens:    []uint32{12345},
+		Timestamp: now.Unix(),
 	}
 
 	if err := r.Ready(now, 10*time.Second); err != nil {

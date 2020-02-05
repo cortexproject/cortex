@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -418,6 +419,10 @@ func TestV2IngesterTransfer(t *testing.T) {
 			dir2, err := ioutil.TempDir("", "tsdb")
 			require.NoError(t, err)
 			require.NoError(t, os.Remove(dir2)) // remove the destination dir so there isn't a move conflict
+
+			// Add a spurious file to the ing1 TSDB directory, in order to ensure
+			// the transfer successfully work anyway.
+			ioutil.WriteFile(filepath.Join(dir1, ".DS_Store"), []byte("{}"), 0644)
 
 			// Start the first ingester, and get it into ACTIVE state.
 			cfg1 := defaultIngesterTestConfig()

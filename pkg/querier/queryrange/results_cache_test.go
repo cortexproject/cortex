@@ -266,14 +266,15 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 
 func TestResultsCache(t *testing.T) {
 	calls := 0
+	cfg := ResultsCacheConfig{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
-		ResultsCacheConfig{
-			CacheConfig: cache.Config{
-				Cache: cache.NewMockCache(),
-			},
-			SplitInterval: 24 * time.Hour,
-		},
+		cfg,
+		constSplitter(day),
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,
@@ -307,7 +308,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -334,14 +335,15 @@ func TestResultsCacheRecent(t *testing.T) {
 }
 
 func Test_resultsCache_MissingData(t *testing.T) {
+	cfg := ResultsCacheConfig{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
 	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
-		ResultsCacheConfig{
-			CacheConfig: cache.Config{
-				Cache: cache.NewMockCache(),
-			},
-			SplitInterval: 24 * time.Hour,
-		},
+		cfg,
+		constSplitter(day),
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor,
@@ -376,7 +378,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
-func Test_generateKey(t *testing.T) {
+func TestConstSplitter_generateCacheKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -396,7 +398,7 @@ func Test_generateKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := generateKey("fake", tt.r, tt.interval); got != tt.want {
+			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})

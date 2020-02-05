@@ -225,7 +225,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 
 		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
 		if err != nil {
-			return err
+			return errors.Wrap(err, "unable to create temporary directory to store transferred TSDB blocks")
 		}
 		defer os.RemoveAll(tmpDir)
 
@@ -279,7 +279,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			if !ok {
 				file, err = createfile(f)
 				if err != nil {
-					return err
+					return errors.Wrapf(err, "unable to create file %s to store incoming TSDB block", f)
 				}
 				filesXfer++
 				files[f.Filename] = file
@@ -618,20 +618,30 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 func unshippedBlocks(dir string) (map[string][]string, error) {
 	userIDs, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to list the directory containing TSDB blocks")
 	}
 
 	blocks := make(map[string][]string, len(userIDs))
 	for _, user := range userIDs {
 		userID := user.Name()
-		blocks[userID] = []string{} // seed the map with the userID to ensure we xfer the WAL, even if all blocks are shipped
+		userDir := filepath.Join(dir, userID)
 
-		blockIDs, err := ioutil.ReadDir(filepath.Join(dir, userID))
+		// Ensure the user dir is actually a directory. There may be spurious files
+		// in the storage, especially when using Minio in the local development environment.
+		if stat, err := os.Stat(userDir); err == nil && !stat.IsDir() {
+			level.Warn(util.Logger).Log("msg", "skipping entry while transferring TSDB blocks because not a directory", "path", userDir)
+			continue
+		}
+
+		// Seed the map with the userID to ensure we transfer the WAL, even if all blocks are shipped.
+		blocks[userID] = []string{}
+
+		blockIDs, err := ioutil.ReadDir(userDir)
 		if err != nil {
 			return nil, err
 		}
 
-		m, err := shipper.ReadMetaFile(filepath.Join(dir, userID))
+		m, err := shipper.ReadMetaFile(userDir)
 		if err != nil {
 			if !os.IsNotExist(err) {
 				return nil, err

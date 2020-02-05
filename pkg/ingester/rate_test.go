@@ -33,4 +33,14 @@ func TestRate(t *testing.T) {
 			t.Fatalf("%d. unexpected rate: want %v, got %v", i, tick.want, r.rate())
 		}
 	}
+
+	r = newEWMARate(0.2, time.Minute)
+
+	for i, tick := range ticks {
+		r.add(int64(tick.events))
+		r.tick()
+		if r.rate() != tick.want {
+			t.Fatalf("%d. unexpected rate: want %v, got %v", i, tick.want, r.rate())
+		}
+	}
 }

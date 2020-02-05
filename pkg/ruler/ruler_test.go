@@ -1,22 +1,29 @@
 package ruler
 
 import (
+	"context"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
@@ -48,11 +55,19 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		MaxConcurrent: 20,
 		Timeout:       2 * time.Minute,
 	})
-	queryable := querier.NewQueryable(nil, nil, nil, 0)
-	ruler, err := NewRuler(cfg, engine, queryable, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return storage.NoopQuerier(), nil
+	})
+
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+	ruler, err := NewRuler(cfg, engine, noopQueryable, nil, prometheus.NewRegistry(), l)
+	require.NoError(t, err)
+
+	// Ensure all rules are loaded before usage
+	ruler.loadRules(context.Background())
+
 	return ruler
 }
 
@@ -73,10 +88,10 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	cfg.AlertmanagerDiscovery = false
 
 	r := newTestRuler(t, cfg)
+	defer r.Stop()
 	n, err := r.getOrCreateNotifier("1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	for _, not := range r.notifiers {
 		defer not.stop()
 	}
@@ -89,4 +104,45 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	})
 
 	wg.Wait()
+}
+
+func TestRuler_Rules(t *testing.T) {
+	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
+	defer os.RemoveAll(dir)
+
+	require.NoError(t, err)
+
+	cfg := defaultRulerConfig()
+	cfg.RulePath = dir
+
+	r := newTestRuler(t, cfg)
+	defer r.Stop()
+
+	// test user1
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	rls, err := r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg := rls.Groups[0]
+	expectedRg := mockRules["user1"][0]
+	compareRuleGroupDescs(t, rg, expectedRg)
+
+	// test user2
+	ctx = user.InjectOrgID(context.Background(), "user2")
+	rls, err = r.Rules(ctx, &RulesRequest{})
+	require.NoError(t, err)
+	require.Len(t, rls.Groups, 1)
+	rg = rls.Groups[0]
+	expectedRg = mockRules["user2"][0]
+	compareRuleGroupDescs(t, rg, expectedRg)
+}
+
+func compareRuleGroupDescs(t *testing.T, expected, got *rules.RuleGroupDesc) {
+	require.Equal(t, expected.Name, got.Name)
+	require.Equal(t, expected.Namespace, got.Namespace)
+	require.Len(t, got.Rules, len(expected.Rules))
+	for i := range got.Rules {
+		require.Equal(t, expected.Rules[i].Record, got.Rules[i].Record)
+		require.Equal(t, expected.Rules[i].Alert, got.Rules[i].Alert)
+	}
 }

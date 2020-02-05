@@ -17,6 +17,13 @@ APIs.  The encoding is Protobuf over http.
 
 Read is on `/api/prom/read` and write is on `/api/prom/push`.
 
+## Alerts & Rules API
+
+Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
+
+`GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
+
+`GET /api/prom/api/v1/alerts` - List of all active alerts
 
 ## Configs API
 
@@ -75,6 +82,17 @@ The following schema is used both when retrieving the current configs from the A
 
 - Normal Response Codes: NoContent(204)
 - Error Response Codes: Unauthorized(401), BadRequest(400)
+
+The POST request body is expected to be like the following example:
+```json
+{
+    "rule_format_version": "2",
+    "alertmanager_config": "global:\n  resolve_timeout: 10s\nroute: \n  receiver: webhook\nreceivers:\n  - name: webhook\n    webhook_configs: \n    - url: http://example.com",
+    "rules_files": {
+        "rules.yaml": "groups:\n- name: demo-service-alerts\n  interval: 1s\n  rules:\n  - alert: SomethingIsUp\n    expr: up == 1\n"
+    }
+}
+```
 
 `POST /api/prom/configs/alertmanager/validate` - Validate Alertmanager config
 

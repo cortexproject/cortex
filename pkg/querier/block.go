@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,6 +53,9 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometh
 
 // Get implements the ChunkStore interface. It makes a block query and converts the response into chunks
 func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	log, ctx := spanlogger.New(ctx, "BlockQuerier.Get")
+	defer log.Span.Finish()
+
 	client := b.us.client
 
 	// Convert matchers to LabelMatcher
@@ -100,7 +104,7 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 		// Convert Thanos store series into Cortex chunks
 		convertedChunks, err := seriesToChunks(userID, resp.GetSeries())
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed converting TSDB series to Cortex chunks", "err", err)
+			level.Error(log).Log("msg", "failed converting TSDB series to Cortex chunks", "err", err)
 			return nil, err
 		}
 

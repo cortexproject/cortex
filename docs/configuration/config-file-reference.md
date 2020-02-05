@@ -109,13 +109,29 @@ runtime_config:
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
 ```yaml
+# HTTP server listen address.
+# CLI flag: -server.http-listen-address
+[http_listen_address: <string> | default = ""]
+
 # HTTP server listen port.
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# Maximum number of simultaneous http connections, <=0 to disable
+# CLI flag: -server.http-conn-limit
+[http_listen_conn_limit: <int> | default = 0]
+
+# gRPC server listen address.
+# CLI flag: -server.grpc-listen-address
+[grpc_listen_address: <string> | default = ""]
+
 # gRPC server listen port.
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# Maximum number of simultaneous grpc connections, <=0 to disable
+# CLI flag: -server.grpc-conn-limit
+[grpc_listen_conn_limit: <int> | default = 0]
 
 # Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
@@ -148,6 +164,31 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
+
+# The duration after which an idle connection should be closed. Default:
+# infinity
+# CLI flag: -server.grpc.keepalive.max-connection-idle
+[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
+
+# The duration for the maximum amount of time a connection may exist before it
+# will be closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age
+[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
+
+# An additive period after max-connection-age after which the connection will be
+# forcibly closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age-grace
+[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
+
+# Duration after which a keepalive probe is sent in case of no activity over the
+# connection., Default: 2h
+# CLI flag: -server.grpc.keepalive.time
+[grpc_server_keepalive_time: <duration> | default = 2h0m0s]
+
+# After having pinged for keepalive check, the duration after which an idle
+# connection should be closed, Default: 20s
+# CLI flag: -server.grpc.keepalive.timeout
+[grpc_server_keepalive_timeout: <duration> | default = 20s]
 
 # Only log messages with the given severity or above. Valid levels: [debug,
 # info, warn, error]
@@ -508,7 +549,12 @@ The `querier_config` configures the Cortex querier.
 # Maximum lookback beyond which queries are not sent to ingester. 0 means all
 # queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
-[ingestermaxquerylookback: <duration> | default = 0s]
+[query_ingesters_within: <duration> | default = 0s]
+
+# The time after which a metric should only be queried from storage and not just
+# ingesters. 0 means all queries are sent to store.
+# CLI flag: -querier.query-store-after
+[query_store_after: <duration> | default = 0s]
 
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
@@ -545,7 +591,8 @@ The `queryrange_config` configures the query splitting and caching in the Cortex
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
 # should use an a multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks.
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
@@ -598,11 +645,6 @@ results_cache:
   # that might still be in flux.
   # CLI flag: -frontend.max-cache-freshness
   [max_freshness: <duration> | default = 1m0s]
-
-  # The maximum interval expected for each request, results will be cached per
-  # single interval.
-  # CLI flag: -frontend.cache-split-interval
-  [cache_split_interval: <duration> | default = 24h0m0s]
 
 # Cache query results.
 # CLI flag: -querier.cache-results
@@ -735,6 +777,10 @@ ring:
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flushcheckperiod: <duration> | default = 1m0s]
+
+# Enable the ruler api
+# CLI flag: -experimental.ruler.enable-api
+[enable_api: <boolean> | default = false]
 ```
 
 ## `alertmanager_config`
@@ -1383,6 +1429,18 @@ cassandra:
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 600ms]
 
+  # Number of retries to perform on a request. (Default is 0: no retries)
+  # CLI flag: -cassandra.max-retries
+  [max_retries: <int> | default = 0]
+
+  # Maximum time to wait before retrying a failed request. (Default = 10s)
+  # CLI flag: -cassandra.retry-max-backoff
+  [retry_max_backoff: <duration> | default = 10s]
+
+  # Minimum time to wait before retrying a failed request. (Default = 100ms)
+  # CLI flag: -cassandra.retry-min-backoff
+  [retry_min_backoff: <duration> | default = 100ms]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
@@ -1516,10 +1574,6 @@ write_dedupe_cache_config:
   # The fifo_cache_config configures the local in-memory cache.
   # The CLI flags prefix for this block config is: store.index-cache-write
   [fifocache: <fifo_cache_config>]
-
-# Minimum time between chunk update and being saved to the store.
-# CLI flag: -store.min-chunk-age
-[min_chunk_age: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
@@ -1810,6 +1864,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Enforce every sample has a metric name.
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
+
+# Per-user subring to shard metrics to ingesters. 0 is disabled.
+# CLI flag: -experimental.distributor.user-subring-size
+[user_subring_size: <int> | default = 0]
 
 # The maximum number of series that a query can return.
 # CLI flag: -ingester.max-series-per-query

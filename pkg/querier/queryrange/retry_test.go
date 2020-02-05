@@ -67,7 +67,7 @@ func TestRetry(t *testing.T) {
 	}
 }
 
-func Test_RetryMidlewareCancel(t *testing.T) {
+func Test_RetryMiddlewareCancel(t *testing.T) {
 	var try int32
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

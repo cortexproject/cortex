@@ -2710,14 +2710,15 @@ Cortex can also make use of external memcacheds for caching and although these a
 $ ./cortex -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./docs/configuration/single-process-config.yaml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code&gt;/tmp/cortex&lt;/code&gt;.
 It is not intended for production use.&lt;/p&gt;
+&lt;p&gt;Clone and build prometheus&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ git clone https://github.com/prometheus/prometheus
+$ &lt;span style=&#34;color:#204a87&#34;&gt;cd&lt;/span&gt; prometheus
+$ go build ./cmd/prometheus&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;remote_write&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;-&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;url&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;http&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;//localhost&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9009&lt;/span&gt;/api/prom/push&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;And start Prometheus with that config file:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ git clone https://github.com/prometheus/prometheus
-$ &lt;span style=&#34;color:#204a87&#34;&gt;cd&lt;/span&gt; prometheus
-$ go build ./cmd/prometheus
-$ ./prometheus --config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./documentation/examples/prometheus.yml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ ./prometheus --config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./documentation/examples/prometheus.yml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Your Prometheus instance will now start pushing data to Cortex. To query that data, start a Grafana instance:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;grafana -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3000&lt;/span&gt;:3000 grafana/grafana&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;In &lt;a href=&#34;http://localhost:3000&#34;&gt;the Grafana UI&lt;/a&gt; (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code&gt;http://host.docker.internal:9009/api/prom&lt;/code&gt;).&lt;/p&gt;
@@ -3750,4 +3751,18 @@ go get example.com/some/module/pkg@vX.Y.Z&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 go mod vendor
 git add go.mod go.sum vendor
 git commit&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;You have to commit the changes to &lt;code&gt;go.mod&lt;/code&gt; and &lt;code&gt;go.sum&lt;/code&gt; before submitting the pull request.&lt;/p&gt;</description></item></channel></rss>
+&lt;p&gt;You have to commit the changes to &lt;code&gt;go.mod&lt;/code&gt; and &lt;code&gt;go.sum&lt;/code&gt; before submitting the pull request.&lt;/p&gt;
+&lt;h3 id=&#34;documentation&#34;&gt;Documentation&lt;/h3&gt;
+&lt;p&gt;You will find a docs folder in this project that is turned into the website that you will find at &lt;a href=&#34;https://cortexmetrics.io/&#34;&gt;cortexmetrics.io&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Note:
+If you attempt to view pages on Github it&amp;rsquo;s likely that you might find broken links or pages. That is expected and should not be address unless
+it is causing issues with the site that is produced as part of the build.&lt;/p&gt;
+&lt;p&gt;To build the &lt;a href=&#34;https://gohugo.io/&#34;&gt;Hugo&lt;/a&gt; based documentation web site&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make clean-doc check-doc web-build&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;To run the site locally&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;After building the site above&lt;/li&gt;
+&lt;li&gt;Install &lt;a href=&#34;https://gohugo.io/&#34;&gt;Hugo&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Execute the following command to start the web server&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make web-serve&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
+&lt;/ol&gt;</description></item></channel></rss>

@@ -6,12 +6,12 @@ import (
 )
 
 var summableAggregates = map[promql.ItemType]struct{}{
-	promql.ItemSum:     {},
-	promql.ItemMin:     {},
-	promql.ItemMax:     {},
-	promql.ItemTopK:    {},
-	promql.ItemBottomK: {},
-	promql.ItemCount:   {},
+	promql.SUM:     {},
+	promql.MIN:     {},
+	promql.MAX:     {},
+	promql.TOPK:    {},
+	promql.BOTTOMK: {},
+	promql.COUNT:   {},
 }
 
 var nonParallelFuncs = []string{

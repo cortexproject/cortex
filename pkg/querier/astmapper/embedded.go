@@ -89,7 +89,7 @@ func OrSquasher(nodes ...promql.Node) (promql.Expr, error) {
 	combined := nodes[0]
 	for i := 1; i < len(nodes); i++ {
 		combined = &promql.BinaryExpr{
-			Op:  promql.ItemLOR,
+			Op:  promql.LOR,
 			LHS: combined.(promql.Expr),
 			RHS: nodes[i].(promql.Expr),
 		}

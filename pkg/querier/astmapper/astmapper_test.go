@@ -18,19 +18,19 @@ func TestCloneNode(t *testing.T) {
 		// simple unmodified case
 		{
 			&promql.BinaryExpr{
-				Op:  promql.ItemADD,
+				Op:  promql.ADD,
 				LHS: &promql.NumberLiteral{Val: 1},
 				RHS: &promql.NumberLiteral{Val: 1},
 			},
 			&promql.BinaryExpr{
-				Op:  promql.ItemADD,
+				Op:  promql.ADD,
 				LHS: &promql.NumberLiteral{Val: 1},
 				RHS: &promql.NumberLiteral{Val: 1},
 			},
 		},
 		{
 			&promql.AggregateExpr{
-				Op:      promql.ItemSum,
+				Op:      promql.SUM,
 				Without: true,
 				Expr: &promql.VectorSelector{
 					Name: "some_metric",
@@ -41,7 +41,7 @@ func TestCloneNode(t *testing.T) {
 				Grouping: []string{"foo"},
 			},
 			&promql.AggregateExpr{
-				Op:      promql.ItemSum,
+				Op:      promql.SUM,
 				Without: true,
 				Expr: &promql.VectorSelector{
 					Name: "some_metric",

@@ -59,7 +59,7 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 
 	switch n := node.(type) {
 	case *promql.AggregateExpr:
-		if CanParallel(n) && n.Op == promql.ItemSum {
+		if CanParallel(n) && n.Op == promql.SUM {
 			result, err := summer.shardSum(n)
 			return result, true, err
 		}

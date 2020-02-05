@@ -18,7 +18,7 @@ func TestCanParallel(t *testing.T) {
 		// simple sum
 		{
 			&promql.AggregateExpr{
-				Op:      promql.ItemSum,
+				Op:      promql.SUM,
 				Without: true,
 				Expr: &promql.VectorSelector{
 					Name: "some_metric",
@@ -39,11 +39,11 @@ func TestCanParallel(t *testing.T) {
 		*/
 		{
 			&promql.AggregateExpr{
-				Op: promql.ItemSum,
+				Op: promql.SUM,
 				Expr: &promql.BinaryExpr{
-					Op: promql.ItemDIV,
+					Op: promql.DIV,
 					LHS: &promql.AggregateExpr{
-						Op:       promql.ItemSum,
+						Op:       promql.SUM,
 						Grouping: []string{"foo"},
 						Expr: &promql.VectorSelector{
 							Name: "idk",
@@ -52,7 +52,7 @@ func TestCanParallel(t *testing.T) {
 							}},
 					},
 					RHS: &promql.AggregateExpr{
-						Op:       promql.ItemSum,
+						Op:       promql.SUM,
 						Grouping: []string{"foo"},
 						Expr: &promql.VectorSelector{
 							Name: "idk",
@@ -67,7 +67,7 @@ func TestCanParallel(t *testing.T) {
 		// sum by (foo) bar1{baz=”blip”}[1m]) ---- this is the first leg of the above
 		{
 			&promql.AggregateExpr{
-				Op:       promql.ItemSum,
+				Op:       promql.SUM,
 				Grouping: []string{"foo"},
 				Expr: &promql.VectorSelector{
 					Name: "idk",

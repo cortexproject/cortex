@@ -350,6 +350,18 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 			continue
 		}
 
+		/*
+		  We want to dequeue the next unexpired request from the chosen tenant queue.
+		  The chance of choosing a particular tenant for dequeueing is (1/active_tenants).
+		  This is probelmatic under load, especially with other middleware enabled such as
+		  querier.split-by-interval, where one request may fan out into many.
+		  If expired requests aren't exhausted before checking another tenant, it would take
+		  n_active_tenants * n_expired_requests_at_front_of_queue requests being processed
+		  before an active request was handled for the tenant in question.
+		  If this tenant meanwhile continued to queue requests,
+		  it's possible that it's own queue would perpetually contain only expired requests.
+		*/
+
 		// pull the next unexpired request from the queue
 		var request *request
 		for {

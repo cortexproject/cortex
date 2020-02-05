@@ -25,6 +25,7 @@
   * `-server.grpc.keepalive.time`
   * `-server.grpc.keepalive.timeout`
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
+* [BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. #2071
 
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
 

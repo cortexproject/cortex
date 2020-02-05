@@ -13,11 +13,11 @@ func TestWAL(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := defaultIngesterTestConfig()
-	cfg.WALConfig.walEnabled = true
-	cfg.WALConfig.checkpointEnabled = true
-	cfg.WALConfig.recover = true
-	cfg.WALConfig.dir = dirname
-	cfg.WALConfig.checkpointDuration = 100 * time.Millisecond
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.CheckpointEnabled = true
+	cfg.WALConfig.Recover = true
+	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.CheckpointDuration = 100 * time.Millisecond
 
 	numSeries := 100
 	numSamplesPerSeriesPerPush := 10
@@ -30,8 +30,8 @@ func TestWAL(t *testing.T) {
 
 	for r := 0; r < numRestarts; r++ {
 		if r == numRestarts-1 {
-			cfg.WALConfig.walEnabled = false
-			cfg.WALConfig.checkpointEnabled = false
+			cfg.WALConfig.WALEnabled = false
+			cfg.WALConfig.CheckpointEnabled = false
 		}
 		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())

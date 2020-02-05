@@ -256,6 +256,11 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
+		// a nil request and nil error means the chosen tenant queue is empty of unexpired requests
+		if req == nil {
+			continue
+		}
+
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
 		resps := make(chan *ProcessResponse, 1)
@@ -324,7 +329,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	}
 }
 
-// getQueue picks a random queue and takes the next request off of it, so we
+// getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
 func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
@@ -345,17 +350,35 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 			continue
 		}
 
-		request := <-queue
+		// pull the next unexpired request from the queue
+		var request *request
+		for {
+			request = <-queue
+
+			// Tell close() we've processed a request.
+			f.cond.Broadcast()
+
+			queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
+			queueLength.Add(-1)
+			request.queueSpan.Finish()
+
+			// first unexpired request found
+			if request.originalCtx.Err() == nil {
+				break
+			}
+
+			// there are no unexpired requests in the queue
+			if len(queue) == 0 {
+				request = nil
+				break
+			}
+
+			// request has expired but more remain in queue; check them
+		}
+
 		if len(queue) == 0 {
 			delete(f.queues, userID)
 		}
-
-		// Tell close() we've processed a request.
-		f.cond.Broadcast()
-
-		queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
-		queueLength.Add(-1)
-		request.queueSpan.Finish()
 
 		return request, nil
 	}

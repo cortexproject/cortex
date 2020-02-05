@@ -45,7 +45,7 @@ require (
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
-	github.com/opentracing/opentracing-go v1.1.0
+	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/alertmanager v0.19.0

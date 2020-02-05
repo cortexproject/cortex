@@ -3,6 +3,10 @@
 ## master / unreleased
 
 
+## 0.6.1 / 2020-02-05
+
+* [BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. #2071
+
 ## 0.6.0 / 2020-01-28
 
 Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that might need to be sharded.

@@ -3,6 +3,7 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"path"
@@ -17,7 +18,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-var bucketName = []byte("index")
+var (
+	bucketName          = []byte("index")
+	ErrUnexistentBoltDB = errors.New("boltdb file does not exist")
+)
 
 const (
 	separator      = "\000"
@@ -125,6 +129,8 @@ func (b *BoltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	}
 }
 
+// GetDB should always return a db for write operation unless an error occurs while doing so.
+// While for read operation it should throw ErrUnexistentBoltDB error if file does not exist for reading
 func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	b.dbsMtx.RLock()
 	db, ok := b.dbs[name]
@@ -133,26 +139,30 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 		return db, nil
 	}
 
-	if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err == nil || operation == DBOperationWrite {
-		b.dbsMtx.Lock()
-		defer b.dbsMtx.Unlock()
-		db, ok = b.dbs[name]
-		if ok {
-			return db, nil
-		}
-
-		// Open the database.
-		// Set Timeout to avoid obtaining file lock wait indefinitely.
-		db, err := OpenBoltdbFile(path.Join(b.cfg.Directory, name))
-		if err != nil {
+	// we do not want to create a new db for reading if it does not exist
+	if operation == DBOperationRead {
+		if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err != nil {
+			if os.IsNotExist(err) {
+				return nil, ErrUnexistentBoltDB
+			}
 			return nil, err
 		}
+	}
 
-		b.dbs[name] = db
+	b.dbsMtx.Lock()
+	defer b.dbsMtx.Unlock()
+	db, ok = b.dbs[name]
+	if ok {
 		return db, nil
 	}
 
-	return nil, nil
+	db, err := OpenBoltdbFile(path.Join(b.cfg.Directory, name))
+	if err != nil {
+		return nil, err
+	}
+
+	b.dbs[name] = db
+	return db, nil
 }
 
 func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -189,11 +199,11 @@ func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQ
 func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
 	db, err := b.GetDB(query.TableName, DBOperationRead)
 	if err != nil {
-		return err
-	}
+		if err == ErrUnexistentBoltDB {
+			return nil
+		}
 
-	if db == nil {
-		return nil
+		return err
 	}
 
 	return b.QueryDb(ctx, db, query, callback)
@@ -290,6 +300,8 @@ func (b *boltReadBatchIterator) Value() []byte {
 	return b.value
 }
 
+// Open the database.
+// Set Timeout to avoid obtaining file lock wait indefinitely.
 func OpenBoltdbFile(path string) (*bbolt.DB, error) {
 	return bbolt.Open(path, 0666, &bbolt.Options{Timeout: 5 * time.Second})
 }

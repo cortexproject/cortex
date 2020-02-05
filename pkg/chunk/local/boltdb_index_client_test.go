@@ -32,13 +32,12 @@ func setupDb(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 
 func TestBoltDBReload(t *testing.T) {
 	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	if err != nil {
-		return
-	}
+	require.NoError(t, err)
 
 	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
 	})
+	require.NoError(t, err)
 
 	testDb1 := "test1"
 	testDb2 := "test2"
@@ -69,4 +68,50 @@ func TestBoltDBReload(t *testing.T) {
 
 	boltdbIndexClient.Stop()
 	require.NoError(t, os.RemoveAll(dirname))
+}
+
+func TestBoltDB_GetDB(t *testing.T) {
+	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
+	if err != nil {
+		return
+	}
+
+	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
+		Directory: dirname,
+	})
+	require.NoError(t, err)
+
+	// setup a db to already exist
+	testDb1 := "test1"
+	setupDb(t, boltdbIndexClient, testDb1)
+
+	// check whether an existing db can be fetched for reading
+	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
+	require.NoError(t, err)
+
+	// check whether read operation throws ErrUnexistentBoltDB error for db which does not exists
+	unexistentDb := "unexistent-db"
+
+	_, err = boltdbIndexClient.GetDB(unexistentDb, DBOperationRead)
+	require.Equal(t, ErrUnexistentBoltDB, err)
+
+	// check whether write operation sets up a new db for writing
+	db, err := boltdbIndexClient.GetDB(unexistentDb, DBOperationWrite)
+	require.NoError(t, err)
+	require.NotEqual(t, nil, db)
+
+	// recreate index client to check whether we can read already created test1 db without writing first
+	boltdbIndexClient.Stop()
+	boltdbIndexClient, err = NewBoltDBIndexClient(BoltDBConfig{
+		Directory: dirname,
+	})
+	require.NoError(t, err)
+
+	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
+	require.NoError(t, err)
+
+	// clean up
+	boltdbIndexClient.Stop()
+	require.NoError(t, os.RemoveAll(dirname))
+
 }

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
-
 	"github.com/Azure/azure-storage-blob-go/azblob"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
@@ -199,6 +199,8 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 		},
 	}), nil
 }
+
+// List only objects from the store non-recursively
 func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
 	var storageObjects []chunk.StorageObject
 
@@ -207,7 +209,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 			return nil, ctx.Err()
 		}
 
-		listBlob, err := b.containerURL.ListBlobsFlatSegment(ctx, marker, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, chunk.DirDelim, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +219,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
 			storageObjects = append(storageObjects, chunk.StorageObject{
-				Key:        strings.TrimPrefix(blobInfo.Name, prefix),
+				Key:        blobInfo.Name,
 				ModifiedAt: blobInfo.Properties.LastModified,
 			})
 		}

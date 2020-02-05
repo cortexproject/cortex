@@ -197,15 +197,16 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
-// List objects from the store
+// List only objects from the store non-recursively
 func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
 	var storageObjects []chunk.StorageObject
 
 	for i := range a.bucketNames {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
-				Bucket: aws.String(a.bucketNames[i]),
-				Prefix: aws.String(prefix),
+				Bucket:    aws.String(a.bucketNames[i]),
+				Prefix:    aws.String(prefix),
+				Delimiter: aws.String(chunk.DirDelim),
 			}
 
 			for {
@@ -214,10 +215,10 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 					return err
 				}
 
-				for i := range output.Contents {
+				for _, content := range output.Contents {
 					storageObjects = append(storageObjects, chunk.StorageObject{
-						Key:        strings.TrimPrefix(*output.Contents[i].Key, prefix),
-						ModifiedAt: *output.Contents[i].LastModified,
+						Key:        *content.Key,
+						ModifiedAt: *content.LastModified,
 					})
 				}
 

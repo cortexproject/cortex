@@ -120,7 +120,7 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 	return err
 }
 
-// List objects from the store
+// List only objects from the store non-recursively
 func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
 	var storageObjects []chunk.StorageObject
 	folderPath := filepath.Join(f.cfg.Directory, prefix)
@@ -143,7 +143,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 			continue
 		}
 		storageObjects = append(storageObjects, chunk.StorageObject{
-			Key:        fileInfo.Name(),
+			Key:        filepath.Join(prefix, fileInfo.Name()),
 			ModifiedAt: fileInfo.ModTime(),
 		})
 	}

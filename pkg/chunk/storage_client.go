@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// DirDelim is the delimiter used to model a directory structure in an object store.
+const DirDelim = "/"
+
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
 	Stop()

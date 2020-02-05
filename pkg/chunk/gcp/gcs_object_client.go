@@ -6,12 +6,10 @@ import (
 	"flag"
 	"io"
 	"io/ioutil"
-	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"cloud.google.com/go/storage"
+	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -138,11 +136,11 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
-// List objects from the store
+// List only objects from the store non-recursively
 func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
 	var storageObjects []chunk.StorageObject
 
-	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix})
+	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: chunk.DirDelim})
 	for {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -156,11 +154,14 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 			return nil, err
 		}
 
-		if attr.Name == prefix {
+		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
+		// We do not want to consider those entries since we are doing only non-recursive listing of objects for now.
+		if attr.Name == "" {
 			continue
 		}
+
 		storageObjects = append(storageObjects, chunk.StorageObject{
-			Key:        strings.TrimPrefix(attr.Name, prefix),
+			Key:        attr.Name,
 			ModifiedAt: attr.Updated,
 		})
 	}

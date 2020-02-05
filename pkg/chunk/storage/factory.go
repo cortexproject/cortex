@@ -33,6 +33,11 @@ func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
 	customIndexClients[name] = factory
 }
 
+// useful for cleaning up state after tests
+func unregisterAllCustomIndexClients() {
+	customIndexClients = map[string]IndexClientFactoryFunc{}
+}
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int
@@ -124,7 +129,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	if factory, isOK := customIndexClients[name]; isOK {
+	if factory, ok := customIndexClients[name]; ok {
 		return factory()
 	}
 

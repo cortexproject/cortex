@@ -41,20 +41,25 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {
-		resp, err := r.next.Do(ctx, req)
-		if err == nil {
-			return resp, nil
-		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			resp, err := r.next.Do(ctx, req)
+			if err == nil {
+				return resp, nil
+			}
 
-		// Retry if we get a HTTP 500 or a non-HTTP error.
-		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
-		if !ok || httpResp.Code/100 == 5 {
-			lastErr = err
-			level.Error(r.log).Log("msg", "error processing request", "try", tries, "err", err)
-			continue
-		}
+			// Retry if we get a HTTP 500 or a non-HTTP error.
+			httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+			if !ok || httpResp.Code/100 == 5 {
+				lastErr = err
+				level.Error(r.log).Log("msg", "error processing request", "try", tries, "err", err)
+				continue
+			}
 
-		return nil, err
+			return nil, err
+		}
 	}
 	return nil, lastErr
 }

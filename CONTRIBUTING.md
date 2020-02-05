@@ -93,3 +93,25 @@ git commit
 ```
 
 You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
+
+### Documentation
+You will find a docs folder in this project that is turned into the website that you will find at [cortexmetrics.io](https://cortexmetrics.io/).
+
+Note: 
+If you attempt to view pages on Github it's likely that you might find broken links or pages. That is expected and should not be address unless 
+it is causing issues with the site that is produced as part of the build. 
+
+To build the [Hugo](https://gohugo.io/) based documentation web site
+
+```bash
+make clean-doc check-doc web-build
+``` 
+
+To run the site locally
+
+0. After building the site above
+1. Install [Hugo](https://gohugo.io/)
+2. Execute the following command to start the web server
+```bash
+make web-serve
+```

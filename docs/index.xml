@@ -3523,10 +3523,13 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;li&gt;&lt;code&gt;-server.grpc.keepalive.timeout&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed &lt;code&gt;/all_user_stats&lt;/code&gt; and &lt;code&gt;/api/prom/user_stats&lt;/code&gt; endpoints when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2042&#34;&gt;#2042&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2071&#34;&gt;#2071&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;Cortex 0.4.0 is the last version that can &lt;em&gt;write&lt;/em&gt; denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.&lt;/p&gt;
 &lt;p&gt;Cortex 0.6.0 is the last version that can &lt;em&gt;read&lt;/em&gt; denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with &lt;code&gt;-ingester.normalise-tokens=false&lt;/code&gt;) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.&lt;/p&gt;
+&lt;h2 id=&#34;0-6-1-2020-02-05&#34;&gt;0.6.1 / 2020-02-05&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2071&#34;&gt;#2071&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id=&#34;0-6-0-2020-01-28&#34;&gt;0.6.0 / 2020-01-28&lt;/h2&gt;
 &lt;p&gt;Note that the ruler flags need to be changed in this upgrade. You&amp;rsquo;re moving from a single node ruler to something that might need to be sharded.
 Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded the migration library and this requires some manual intervention. See full instructions below to upgrade your PostgreSQL.&lt;/p&gt;

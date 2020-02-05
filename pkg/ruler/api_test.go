@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,12 +12,8 @@ import (
 )
 
 func TestRuler_rules(t *testing.T) {
-	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
-	defer os.RemoveAll(dir)
-	require.NoError(t, err)
-
-	cfg := defaultRulerConfig()
-	cfg.RulePath = dir
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	defer cleanup()
 
 	r := newTestRuler(t, cfg)
 	defer r.Stop()
@@ -33,7 +28,7 @@ func TestRuler_rules(t *testing.T) {
 
 	// Check status code and status response
 	responseJSON := response{}
-	err = json.Unmarshal(body, &responseJSON)
+	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
@@ -72,12 +67,8 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
-	defer os.RemoveAll(dir)
-	require.NoError(t, err)
-
-	cfg := defaultRulerConfig()
-	cfg.RulePath = dir
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	defer cleanup()
 
 	r := newTestRuler(t, cfg)
 	defer r.Stop()
@@ -92,7 +83,7 @@ func TestRuler_alerts(t *testing.T) {
 
 	// Check status code and status response
 	responseJSON := response{}
-	err = json.Unmarshal(body, &responseJSON)
+	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")

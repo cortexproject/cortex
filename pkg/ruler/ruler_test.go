@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -28,28 +29,32 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func defaultRulerConfig() Config {
+func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
+	// Create a new temporary directory for the rules, so that
+	// each test will run in isolation.
+	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
+
 	codec := codec.Proto{Factory: ring.ProtoDescFactory}
 	consul := consul.NewInMemoryClient(codec)
-	cfg := Config{
-		StoreConfig: RuleStoreConfig{
-			mock: newMockRuleStore(),
-		},
-	}
+	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	flagext.DefaultValues(&cfg.Ring)
+	cfg.RulePath = rulesDir
+	cfg.StoreConfig.mock = store
 	cfg.Ring.KVStore.Mock = consul
 	cfg.Ring.NumTokens = 1
 	cfg.Ring.ListenPort = 0
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
-	return cfg
+
+	// Create a cleanup function that will be called at the end of the test
+	cleanup := func() {
+		defer os.RemoveAll(rulesDir)
+	}
+
+	return cfg, cleanup
 }
 
 func newTestRuler(t *testing.T, cfg Config) *Ruler {
-	// TODO: Populate distributor and chunk store arguments to enable
-	// other kinds of tests.
-
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:    1e6,
 		MaxConcurrent: 20,
@@ -60,9 +65,13 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		return storage.NoopQuerier(), nil
 	})
 
+	// Mock the pusher
+	pusher := newPusherMock()
+	pusher.MockPush(&client.WriteResponse{}, nil)
+
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
-	ruler, err := NewRuler(cfg, engine, noopQueryable, nil, prometheus.NewRegistry(), l)
+	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
 
 	// Ensure all rules are loaded before usage
@@ -73,7 +82,9 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 
 func TestNotifierSendsUserIDHeader(t *testing.T) {
 	var wg sync.WaitGroup
-	wg.Add(1) // We want one request to our test HTTP server.
+
+	// We do expect 1 API call for the user create with the getOrCreateNotifier()
+	wg.Add(1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 		assert.NoError(t, err)
@@ -82,7 +93,10 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cfg := defaultRulerConfig()
+	// We create an empty rule store so that the ruler will not load any rule from it.
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(nil))
+	defer cleanup()
+
 	err := cfg.AlertmanagerURL.Set(ts.URL)
 	require.NoError(t, err)
 	cfg.AlertmanagerDiscovery = false
@@ -107,13 +121,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	dir, err := ioutil.TempDir("/tmp", "ruler-tests")
-	defer os.RemoveAll(dir)
-
-	require.NoError(t, err)
-
-	cfg := defaultRulerConfig()
-	cfg.RulePath = dir
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	defer cleanup()
 
 	r := newTestRuler(t, cfg)
 	defer r.Stop()

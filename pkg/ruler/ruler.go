@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
@@ -132,7 +131,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -151,7 +150,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		notifierCfg:  ncfg,
 		notifiers:    map[string]*rulerNotifier{},
 		store:        ruleStore,
-		pusher:       d,
+		pusher:       pusher,
 		mapper:       newMapper(cfg.RulePath, logger),
 		userManagers: map[string]*promRules.Manager{},
 		done:         make(chan struct{}),

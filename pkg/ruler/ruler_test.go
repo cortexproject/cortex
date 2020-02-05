@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -54,9 +55,6 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 }
 
 func newTestRuler(t *testing.T, cfg Config) *Ruler {
-	// TODO: Populate distributor and chunk store arguments to enable
-	// other kinds of tests.
-
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:    1e6,
 		MaxConcurrent: 20,
@@ -67,9 +65,13 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		return storage.NoopQuerier(), nil
 	})
 
+	// Mock the pusher
+	pusher := newPusherMock()
+	pusher.MockPush(&client.WriteResponse{}, nil)
+
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
-	ruler, err := NewRuler(cfg, engine, noopQueryable, nil, prometheus.NewRegistry(), l)
+	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
 
 	// Ensure all rules are loaded before usage
@@ -91,6 +93,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	// We create an empty rule store so that the ruler will not load any rule from it.
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(nil))
 	defer cleanup()
 

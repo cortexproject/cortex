@@ -12,20 +12,21 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/stretchr/testify/require"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -54,10 +55,16 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 }
 
 func newTestRuler(t *testing.T, cfg Config) *Ruler {
+	dir, err := ioutil.TempDir("", t.Name())
+	testutil.Ok(t, err)
+	defer os.RemoveAll(dir)
+
+	tracker := promql.NewActiveQueryTracker(dir, 20, util.Logger)
+
 	engine := promql.NewEngine(promql.EngineOpts{
-		MaxSamples:    1e6,
-		MaxConcurrent: 20,
-		Timeout:       2 * time.Minute,
+		MaxSamples:         1e6,
+		ActiveQueryTracker: tracker,
+		Timeout:            2 * time.Minute,
 	})
 
 	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {

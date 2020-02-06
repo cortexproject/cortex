@@ -3,7 +3,6 @@ package frontend
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
@@ -65,25 +64,22 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.Equal(t, 4, len(f.queues[userID]))
 
 	// add one request to a second tenant queue
-	var touched bool
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		ctx2 := user.InjectOrgID(context.Background(), userID2)
-		err = f.queueRequest(ctx2, testReq(ctx2))
-		touched = true
-		require.Nil(t, err)
-	}()
+	ctx2 := user.InjectOrgID(context.Background(), userID2)
+	err = f.queueRequest(ctx2, testReq(ctx2))
+	require.Nil(t, err)
 
 	// there should be no more unexpired requests in queue until the second tenant enqueues one.
 	req, err = f.getNextRequest(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, true, touched)
 
-	// both queues should be removed due to first draining the first tenant
-	// and then the second tenant being populated/emptied
+	// ensure either one or two queues are fully drained, depending on which was requested first
 	_, ok := f.queues[userID]
-	require.Equal(t, false, ok)
+	if ok {
+		// if the second user's queue was chosen for the last request,
+		// the first queue should still contain 4 (expired) requests.
+		require.Equal(t, 4, len(f.queues[userID]))
+	}
 	_, ok = f.queues[userID2]
 	require.Equal(t, false, ok)
 }

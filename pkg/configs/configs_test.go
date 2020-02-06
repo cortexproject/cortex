@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -130,7 +130,7 @@ func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
-	rules := []legacy_rulefmt.Rule{
+	rules := []rulefmt.Rule{
 		{
 			Alert: "TestAlert",
 			Expr:  "up == 0",
@@ -146,7 +146,7 @@ func TestParseFormatted(t *testing.T) {
 
 	for i, tc := range []struct {
 		cfg      RulesConfig
-		expected map[string]legacy_rulefmt.RuleGroups
+		expected map[string]rulefmt.RuleGroups
 	}{
 		{
 			cfg: RulesConfig{
@@ -155,9 +155,9 @@ func TestParseFormatted(t *testing.T) {
 					"legacy.rules": legacyRulesFile,
 				},
 			},
-			expected: map[string]legacy_rulefmt.RuleGroups{
+			expected: map[string]rulefmt.RuleGroups{
 				"legacy.rules": {
-					Groups: []legacy_rulefmt.RuleGroup{
+					Groups: []rulefmt.RuleGroup{
 						{
 							Name:  "rg:legacy.rules",
 							Rules: rules,
@@ -173,9 +173,9 @@ func TestParseFormatted(t *testing.T) {
 					"alerts.yaml": ruleFile,
 				},
 			},
-			expected: map[string]legacy_rulefmt.RuleGroups{
+			expected: map[string]rulefmt.RuleGroups{
 				"alerts.yaml": {
-					Groups: []legacy_rulefmt.RuleGroup{
+					Groups: []rulefmt.RuleGroup{
 						{
 							Name:  "example",
 							Rules: rules,

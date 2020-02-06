@@ -124,7 +124,7 @@ func (s *Service) Kill() error {
 
 func (s *Service) Endpoint(port int) string {
 	// Map the container port to the local port
-	localPort, ok := s.networkPortsContainerToLocal[s.readiness.port]
+	localPort, ok := s.networkPortsContainerToLocal[port]
 	if !ok {
 		return ""
 	}

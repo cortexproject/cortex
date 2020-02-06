@@ -8,6 +8,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	MinioAccessKey = "cortex"
+	MinioSecretKey = "supersecret"
+)
+
 var (
 	nextScenarioID = 1
 )
@@ -96,8 +101,8 @@ func (s *Scenario) StartMinio() error {
 		s.networkName,
 		[]int{9000},
 		map[string]string{
-			"MINIO_ACCESS_KEY": "cortex",
-			"MINIO_SECRET_KEY": "supersecret",
+			"MINIO_ACCESS_KEY": MinioAccessKey,
+			"MINIO_SECRET_KEY": MinioSecretKey,
 			"MINIO_BROWSER":    "off",
 			"ENABLE_HTTPS":     "0",
 		},

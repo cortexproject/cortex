@@ -141,7 +141,7 @@ jobs:
         command: |
           export CORTEX_IMAGE="quay.io/cortexproject/cortex:${CIRCLE_TAG:-$(./tools/image-tag)}"
           export CORTEX_INTEGRATION_DIR="/home/circleci/.go_workspace/src/github.com/cortexproject/cortex/integration"
-          go test -timeout 60s -v -count=1 ./integration
+          go test -timeout 300s -v -count=1 ./integration
 
   build:
     <<: *defaults

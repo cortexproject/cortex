@@ -31,6 +31,17 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 	return logger, ctx
 }
 
+func FromContext(ctx context.Context) *SpanLogger {
+	sp := opentracing.SpanFromContext(ctx)
+	if sp == nil {
+		return noop
+	}
+	return &SpanLogger{
+		Logger: util.Logger,
+		Span:   sp,
+	}
+}
+
 // Log implements gokit's Logger interface; sends logs to underlying logger and
 // also puts the on the spans.
 func (s *SpanLogger) Log(kvps ...interface{}) error {

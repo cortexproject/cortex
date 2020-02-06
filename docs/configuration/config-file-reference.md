@@ -86,14 +86,11 @@ Supported contents and default values of the config file:
 # and used by the 'configs' service to expose APIs to manage them.
 [configdb: <configdb_config>]
 
-<<<<<<< HEAD
-=======
 # The configstore_config configures the config database storing rules and
 # alerts, and is used by the Cortex alertmanager.
 # The CLI flags prefix for this block config is: alertmanager
 [config_store: <configstore_config>]
 
->>>>>>> Removes proto compat go tests as everything looks good.
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
 
@@ -105,12 +102,6 @@ runtime_config:
   # File with the configuration that can be updated in runtime.
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
-<<<<<<< HEAD
-
-# The memberlist_config configures the Gossip memberlist.
-[memberlist: <memberlist_config>]
-=======
->>>>>>> Removes proto compat go tests as everything looks good.
 ```
 
 ## `server_config`
@@ -174,34 +165,6 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
-<<<<<<< HEAD
-# The duration after which an idle connection should be closed. Default:
-# infinity
-# CLI flag: -server.grpc.keepalive.max-connection-idle
-[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
-
-# The duration for the maximum amount of time a connection may exist before it
-# will be closed. Default: infinity
-# CLI flag: -server.grpc.keepalive.max-connection-age
-[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
-
-# An additive period after max-connection-age after which the connection will be
-# forcibly closed. Default: infinity
-# CLI flag: -server.grpc.keepalive.max-connection-age-grace
-[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
-
-# Duration after which a keepalive probe is sent in case of no activity over the
-# connection., Default: 2h
-# CLI flag: -server.grpc.keepalive.time
-[grpc_server_keepalive_time: <duration> | default = 2h0m0s]
-
-# After having pinged for keepalive check, the duration after which an idle
-# connection should be closed, Default: 20s
-# CLI flag: -server.grpc.keepalive.timeout
-[grpc_server_keepalive_timeout: <duration> | default = 20s]
-
-=======
->>>>>>> Removes proto compat go tests as everything looks good.
 # Only log messages with the given severity or above. Valid levels: [debug,
 # info, warn, error]
 # CLI flag: -log.level
@@ -283,13 +246,10 @@ ha_tracker:
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [etcd: <etcd_config>]
 
-<<<<<<< HEAD
-=======
     # The memberlist_config configures the Gossip memberlist.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [memberlist: <memberlist_config>]
 
->>>>>>> Removes proto compat go tests as everything looks good.
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -distributor.ha-tracker.multi.primary
@@ -343,13 +303,10 @@ ring:
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
 
-<<<<<<< HEAD
-=======
     # The memberlist_config configures the Gossip memberlist.
     # The CLI flags prefix for this block config is: distributor.ring
     [memberlist: <memberlist_config>]
 
->>>>>>> Removes proto compat go tests as everything looks good.
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -distributor.ring.multi.primary
@@ -421,12 +378,9 @@ lifecycler:
       # The etcd_config configures the etcd client.
       [etcd: <etcd_config>]
 
-<<<<<<< HEAD
-=======
       # The memberlist_config configures the Gossip memberlist.
       [memberlist: <memberlist_config>]
 
->>>>>>> Removes proto compat go tests as everything looks good.
       multi:
         # Primary backend storage used by multi-client.
         # CLI flag: -multi.primary
@@ -633,11 +587,7 @@ results_cache:
 
     # The default validity of entries for caches unless overridden.
     # CLI flag: -frontend.default-validity
-<<<<<<< HEAD
-    [default_validity: <duration> | default = 0s]
-=======
     [defaul_validity: <duration> | default = 0s]
->>>>>>> Removes proto compat go tests as everything looks good.
 
     background:
       # How many goroutines to use to write back to memcache.
@@ -686,16 +636,10 @@ results_cache:
 The `ruler_config` configures the Cortex ruler.
 
 ```yaml
-<<<<<<< HEAD
-# URL of alerts return path.
-# CLI flag: -ruler.external.url
-[externalurl: <url> | default = ]
-=======
 externalurl:
   # URL of alerts return path.
   # CLI flag: -ruler.external.url
   [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -719,16 +663,10 @@ storeconfig:
 # CLI flag: -ruler.rule-path
 [rulepath: <string> | default = "/rules"]
 
-<<<<<<< HEAD
-# URL of the Alertmanager to send notifications to.
-# CLI flag: -ruler.alertmanager-url
-[alertmanagerurl: <url> | default = ]
-=======
 alertmanagerurl:
   # URL of the Alertmanager to send notifications to.
   # CLI flag: -ruler.alertmanager-url
   [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
 # Use DNS SRV records to discover alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -777,13 +715,10 @@ ring:
     # The CLI flags prefix for this block config is: ruler.ring
     [etcd: <etcd_config>]
 
-<<<<<<< HEAD
-=======
     # The memberlist_config configures the Gossip memberlist.
     # The CLI flags prefix for this block config is: ruler.ring
     [memberlist: <memberlist_config>]
 
->>>>>>> Removes proto compat go tests as everything looks good.
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -ruler.ring.multi.primary
@@ -817,13 +752,6 @@ ring:
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flushcheckperiod: <duration> | default = 1m0s]
-<<<<<<< HEAD
-
-# Enable the ruler api
-# CLI flag: -experimental.ruler.enable-api
-[enable_api: <boolean> | default = false]
-=======
->>>>>>> Removes proto compat go tests as everything looks good.
 ```
 
 ## `alertmanager_config`
@@ -839,15 +767,6 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.storage.retention
 [retention: <duration> | default = 120h0m0s]
 
-<<<<<<< HEAD
-# The URL under which Alertmanager is externally reachable (for example, if
-# Alertmanager is served via a reverse proxy). Used for generating relative and
-# absolute links back to Alertmanager itself. If the URL has a path portion, it
-# will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
-# relevant URL components will be derived automatically.
-# CLI flag: -alertmanager.web.external-url
-[externalurl: <url> | default = ]
-=======
 externalurl:
   # The URL under which Alertmanager is externally reachable (for example, if
   # Alertmanager is served via a reverse proxy). Used for generating relative
@@ -857,7 +776,6 @@ externalurl:
   # automatically.
   # CLI flag: -alertmanager.web.external-url
   [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
 # How frequently to poll Cortex configs
 # CLI flag: -alertmanager.configs.poll-interval
@@ -886,25 +804,6 @@ externalurl:
 # Root of URL to generate if config is http://internal.monitor
 # CLI flag: -alertmanager.configs.auto-webhook-root
 [autowebhookroot: <string> | default = ""]
-<<<<<<< HEAD
-
-store:
-  # Type of backend to use to store alertmanager configs. Supported values are:
-  # "configdb", "local".
-  # CLI flag: -alertmanager.storage.type
-  [type: <string> | default = "configdb"]
-
-  # The configstore_config configures the config database storing rules and
-  # alerts, and is used by the Cortex alertmanager.
-  # The CLI flags prefix for this block config is: alertmanager
-  [configdb: <configstore_config>]
-
-  local:
-    # Path at which alertmanager configurations are stored.
-    # CLI flag: -alertmanager.storage.local.path
-    [path: <string> | default = ""]
-=======
->>>>>>> Removes proto compat go tests as everything looks good.
 ```
 
 ## `table_manager_config`
@@ -1249,20 +1148,12 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 
 aws:
   dynamodbconfig:
-<<<<<<< HEAD
-    # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
-    # is specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<table-name> to use a mock in-memory implementation.
-    # CLI flag: -dynamodb.url
-    [dynamodb: <url> | default = ]
-=======
     dynamodb:
       # DynamoDB endpoint URL with escaped Key and Secret encoded. If only
       # region is specified as a host, proper endpoint will be deduced. Use
       # inmemory:///<table-name> to use a mock in-memory implementation.
       # CLI flag: -dynamodb.url
       [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
     # DynamoDB table management requests per second limit.
     # CLI flag: -dynamodb.api-limit
@@ -1272,16 +1163,10 @@ aws:
     # CLI flag: -dynamodb.throttle-limit
     [throttlelimit: <float> | default = 10]
 
-<<<<<<< HEAD
-    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
-    # CLI flag: -applicationautoscaling.url
-    [applicationautoscaling: <url> | default = ]
-=======
     applicationautoscaling:
       # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
       # CLI flag: -applicationautoscaling.url
       [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
     metrics:
       # Use metrics-based autoscaling, via this query URL
@@ -1329,20 +1214,12 @@ aws:
     # CLI flag: -dynamodb.chunk.get.max.parallelism
     [chunkgetmaxparallelism: <int> | default = 32]
 
-<<<<<<< HEAD
-  # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-  # specified as a host, proper endpoint will be deduced. Use
-  # inmemory:///<bucket-name> to use a mock in-memory implementation.
-  # CLI flag: -s3.url
-  [s3: <url> | default = ]
-=======
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
     # specified as a host, proper endpoint will be deduced. Use
     # inmemory:///<bucket-name> to use a mock in-memory implementation.
     # CLI flag: -s3.url
     [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
   # Comma separated list of bucket names to evenly distribute chunks over.
   # Overrides any buckets specified in s3.url flag
@@ -1515,24 +1392,6 @@ cassandra:
   # CLI flag: -cassandra.password
   [password: <string> | default = ""]
 
-<<<<<<< HEAD
-  # File containing password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password-file
-  [password_file: <string> | default = ""]
-
-  # If set, when authenticating with cassandra a custom authenticator will be
-  # expected during the handshake. This flag can be set multiple times.
-  # CLI flag: -cassandra.custom-authenticator
-  [custom_authenticators: <list of string> | default = ]
-
-  # Timeout when connecting to cassandra.
-  # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 2s]
-
-  # Initial connection timeout, used during initial dial to server.
-  # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-=======
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
   [timeout: <duration> | default = 600ms]
@@ -1540,7 +1399,6 @@ cassandra:
   # Initial connection timeout, used during initial dial to server.
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 600ms]
->>>>>>> Removes proto compat go tests as everything looks good.
 
   # Number of retries to perform on a request. (Default is 0: no retries)
   # CLI flag: -cassandra.max-retries
@@ -1577,11 +1435,7 @@ index_queries_cache_config:
   # Cache config for index entry reading. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-read.default-validity
-<<<<<<< HEAD
-  [default_validity: <duration> | default = 0s]
-=======
   [defaul_validity: <duration> | default = 0s]
->>>>>>> Removes proto compat go tests as everything looks good.
 
   background:
     # Cache config for index entry reading. How many goroutines to use to write
@@ -1626,11 +1480,7 @@ chunk_cache_config:
   # Cache config for chunks. The default validity of entries for caches unless
   # overridden.
   # CLI flag: -default-validity
-<<<<<<< HEAD
-  [default_validity: <duration> | default = 0s]
-=======
   [defaul_validity: <duration> | default = 0s]
->>>>>>> Removes proto compat go tests as everything looks good.
 
   background:
     # Cache config for chunks. How many goroutines to use to write back to
@@ -1665,11 +1515,7 @@ write_dedupe_cache_config:
   # Cache config for index entry writing. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-write.default-validity
-<<<<<<< HEAD
-  [default_validity: <duration> | default = 0s]
-=======
   [defaul_validity: <duration> | default = 0s]
->>>>>>> Removes proto compat go tests as everything looks good.
 
   background:
     # Cache config for index entry writing. How many goroutines to use to write
@@ -1864,61 +1710,11 @@ The `memberlist_config` configures the Gossip memberlist.
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
-<<<<<<< HEAD
-# CLI flag: -memberlist.nodename
-=======
 # CLI flag: -<prefix>.memberlist.nodename
->>>>>>> Removes proto compat go tests as everything looks good.
 [node_name: <string> | default = ""]
 
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations. Uses memberlist LAN defaults if 0.
-<<<<<<< HEAD
-# CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 0s]
-
-# Multiplication factor used when sending out messages (factor * log(N+1)).
-# CLI flag: -memberlist.retransmit-factor
-[retransmit_factor: <int> | default = 0]
-
-# How often to use pull/push sync. Uses memberlist LAN defaults if 0.
-# CLI flag: -memberlist.pullpush-interval
-[pull_push_interval: <duration> | default = 0s]
-
-# How often to gossip. Uses memberlist LAN defaults if 0.
-# CLI flag: -memberlist.gossip-interval
-[gossip_interval: <duration> | default = 0s]
-
-# How many nodes to gossip to. Uses memberlist LAN defaults if 0.
-# CLI flag: -memberlist.gossip-nodes
-[gossip_nodes: <int> | default = 0]
-
-# How long to keep gossiping to dead nodes, to give them chance to refute their
-# death. Uses memberlist LAN defaults if 0.
-# CLI flag: -memberlist.gossip-to-dead-nodes-time
-[gossip_to_dead_nodes_time: <duration> | default = 0s]
-
-# How soon can dead node's name be reclaimed with new address. Defaults to 0,
-# which is disabled.
-# CLI flag: -memberlist.dead-node-reclaim-time
-[dead_node_reclaim_time: <duration> | default = 0s]
-
-# Other cluster members to join. Can be specified multiple times. Memberlist
-# store is EXPERIMENTAL.
-# CLI flag: -memberlist.join
-[join_members: <list of string> | default = ]
-
-# If this node fails to join memberlist cluster, abort.
-# CLI flag: -memberlist.abort-if-join-fails
-[abort_if_cluster_join_fails: <boolean> | default = true]
-
-# How long to keep LEFT ingesters in the ring.
-# CLI flag: -memberlist.left-ingesters-timeout
-[left_ingesters_timeout: <duration> | default = 5m0s]
-
-# Timeout for leaving memberlist cluster.
-# CLI flag: -memberlist.leave-timeout
-=======
 # CLI flag: -<prefix>.memberlist.stream-timeout
 [stream_timeout: <duration> | default = 0s]
 
@@ -1953,26 +1749,10 @@ The `memberlist_config` configures the Gossip memberlist.
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -<prefix>.memberlist.leave-timeout
->>>>>>> Removes proto compat go tests as everything looks good.
 [leave_timeout: <duration> | default = 5s]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
-<<<<<<< HEAD
-# CLI flag: -memberlist.bind-addr
-[bind_addr: <list of string> | default = ]
-
-# Port to listen on for gossip messages.
-# CLI flag: -memberlist.bind-port
-[bind_port: <int> | default = 7946]
-
-# Timeout used when connecting to other nodes to send packet.
-# CLI flag: -memberlist.packet-dial-timeout
-[packet_dial_timeout: <duration> | default = 5s]
-
-# Timeout for writing 'packet' data.
-# CLI flag: -memberlist.packet-write-timeout
-=======
 # CLI flag: -<prefix>.memberlist.bind-addr
 [bind_addr: <list of string> | default = ]
 
@@ -1986,7 +1766,6 @@ The `memberlist_config` configures the Gossip memberlist.
 
 # Timeout for writing 'packet' data.
 # CLI flag: -<prefix>.memberlist.packet-write-timeout
->>>>>>> Removes proto compat go tests as everything looks good.
 [packet_write_timeout: <duration> | default = 5s]
 ```
 
@@ -2241,16 +2020,10 @@ The `configdb_config` configures the config database storing rules and alerts, a
 The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager.
 
 ```yaml
-<<<<<<< HEAD
-# URL of configs API server.
-# CLI flag: -<prefix>.configs.url
-[configsapiurl: <url> | default = ]
-=======
 configsapiurl:
   # URL of configs API server.
   # CLI flag: -<prefix>.configs.url
   [url: <url> | default = ]
->>>>>>> Removes proto compat go tests as everything looks good.
 
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout

@@ -94,6 +94,10 @@ func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matche
 	return series.MatrixToSeriesSet(m.matrix), nil, nil
 }
 
+func (m mockQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return m.Select(sp, matchers...)
+}
+
 func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }

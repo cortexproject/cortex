@@ -72,6 +72,11 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 	return series.MatrixToSeriesSet(matrix), nil, nil
 }
 
+func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	// Select is already sorted, thanks to matrixToSeriesSet using newConcreteSeriesSet, which sorts series by labels.
+	return q.Select(sp, matchers...)
+}
+
 func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {

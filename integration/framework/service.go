@@ -63,35 +63,50 @@ func NewService(
 	}
 }
 
-func (s *Service) Start() error {
+func (s *Service) Start() (err error) {
+	// In case of any error, if the container was already created, we
+	// have to cleanup removing it. We ignore the error of the "docker rm"
+	// because we don't know if the container was created or not.
+	defer func() {
+		if err != nil {
+			_, _ = RunCommandAndGetOutput("docker", "rm", "--force", s.name)
+		}
+	}()
+
 	cmd := exec.Command("docker", s.buildDockerRunArgs()...)
 	cmd.Stdout = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stdout}
 	cmd.Stderr = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stderr}
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		return err
 	}
 
 	// Wait until the container has been started
-	if err := s.WaitStarted(); err != nil {
+	if err = s.WaitStarted(); err != nil {
 		return err
 	}
 
 	// Get the dynamic local ports mapped to the container
 	for _, containerPort := range s.networkPorts {
-		out, err := RunCommandAndGetOutput("docker", "port", s.name, strconv.Itoa(containerPort))
+		var out []byte
+		var localPort int
+
+		out, err = RunCommandAndGetOutput("docker", "port", s.name, strconv.Itoa(containerPort))
 		if err != nil {
-			return errors.Wrapf(err, "unable to get mapping for port %d", containerPort)
+			err = errors.Wrapf(err, "unable to get mapping for port %d", containerPort)
+			return err
 		}
 
 		stdout := strings.TrimSpace(string(out))
 		matches := dockerPortPattern.FindStringSubmatch(stdout)
 		if len(matches) != 2 {
-			return fmt.Errorf("unable to get mapping for port %d (output: %s)", containerPort, stdout)
+			err = fmt.Errorf("unable to get mapping for port %d (output: %s)", containerPort, stdout)
+			return err
 		}
 
-		localPort, err := strconv.Atoi(matches[1])
+		localPort, err = strconv.Atoi(matches[1])
 		if err != nil {
-			return errors.Wrapf(err, "unable to get mapping for port %d", containerPort)
+			err = errors.Wrapf(err, "unable to get mapping for port %d", containerPort)
+			return err
 		}
 
 		s.networkPortsContainerToLocal[containerPort] = localPort

@@ -121,14 +121,16 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 // Put object into the store
 func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	writer := s.bucket.Object(objectKey).NewWriter(ctx)
-	defer writer.Close()
-
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
 	// By setting it to 0, we just upload the object in a single a request
 	// which should work for our chunk sizes.
 	writer.ChunkSize = s.cfg.ChunkBufferSize
 
 	if _, err := io.Copy(writer, object); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
 		return err
 	}
 

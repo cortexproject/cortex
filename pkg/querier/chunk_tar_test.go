@@ -55,7 +55,7 @@ func runRangeQuery(t testing.TB, query string, from, through time.Time, step tim
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 1, nil)
+	queryTracker := promql.NewActiveQueryTracker(dir, 1, util.Logger)
 
 	if len(query) == 0 || store == nil {
 		return

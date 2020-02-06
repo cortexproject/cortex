@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -108,9 +109,12 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 
 	var tracker *promql.ActiveQueryTracker = nil
 
-	tempDir, err := ioutil.TempDir("", "querier")
-	if err != nil {
-		tracker = promql.NewActiveQueryTracker(tempDir, cfg.MaxConcurrent, util.Logger)
+	dir, err := ioutil.TempDir("", "querier")
+	if err == nil {
+		level.Debug(util.Logger).Log("msg", "directory used by activity tracker", "dir", dir)
+		tracker = promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
+	} else {
+		level.Error(util.Logger).Log("msg", "failed to create tempdir for activity tracker, -querier.max-concurrent will be ignored", "err", err)
 	}
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)

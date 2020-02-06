@@ -198,7 +198,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, nil)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
@@ -261,7 +261,7 @@ func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q quer
 	dir, err := ioutil.TempDir("", "test_query")
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, nil)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	engine := promql.NewEngine(promql.EngineOpts{
@@ -374,7 +374,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, nil)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,

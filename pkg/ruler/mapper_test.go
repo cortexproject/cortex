@@ -9,17 +9,17 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 var (
 	testUser = "user1"
 
-	initialRuleSet = map[string][]rulefmt.RuleGroup{
+	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -28,7 +28,7 @@ var (
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -38,11 +38,11 @@ var (
 		},
 	}
 
-	outOfOrderRuleSet = map[string][]rulefmt.RuleGroup{
+	outOfOrderRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -51,7 +51,7 @@ var (
 			},
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -61,11 +61,11 @@ var (
 		},
 	}
 
-	updatedRuleSet = map[string][]rulefmt.RuleGroup{
+	updatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -74,7 +74,7 @@ var (
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -83,7 +83,7 @@ var (
 			},
 			{
 				Name: "rulegroup_three",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -151,11 +151,11 @@ func Test_mapper_MapRules(t *testing.T) {
 }
 
 var (
-	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
+	twoFilesRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -164,7 +164,7 @@ var (
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -175,7 +175,7 @@ var (
 		"file_two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -185,11 +185,11 @@ var (
 		},
 	}
 
-	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
+	twoFilesUpdatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -198,7 +198,7 @@ var (
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -209,7 +209,7 @@ var (
 		"file_two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_ruleupdated",
 						Expr:   "example_exprupdated",
@@ -219,11 +219,11 @@ var (
 		},
 	}
 
-	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
+	twoFilesDeletedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",
@@ -232,7 +232,7 @@ var (
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.Rule{
+				Rules: []legacy_rulefmt.Rule{
 					{
 						Record: "example_rule",
 						Expr:   "example_expr",

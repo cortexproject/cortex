@@ -8,11 +8,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
-func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc {
+func ToProto(user string, namespace string, rl legacy_rulefmt.RuleGroup) *RuleGroupDesc {
 	rg := RuleGroupDesc{
 		Name:      rl.Name,
 		Namespace: namespace,
@@ -23,7 +23,7 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 	return &rg
 }
 
-func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
+func formattedRuleToProto(rls []legacy_rulefmt.Rule) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
 		rules[i] = &RuleDesc{
@@ -39,16 +39,16 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 	return rules
 }
 
-// FromProto generates a legacy_rulefmt RuleGroup
-func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
-	formattedRuleGroup := rulefmt.RuleGroup{
+// FromProto generates a rulefmt RuleGroup
+func FromProto(rg *RuleGroupDesc) legacy_rulefmt.RuleGroup {
+	formattedRuleGroup := legacy_rulefmt.RuleGroup{
 		Name:     rg.GetName(),
 		Interval: model.Duration(rg.Interval),
-		Rules:    make([]rulefmt.Rule, len(rg.GetRules())),
+		Rules:    make([]legacy_rulefmt.Rule, len(rg.GetRules())),
 	}
 
 	for i, rl := range rg.GetRules() {
-		newRule := rulefmt.Rule{
+		newRule := legacy_rulefmt.Rule{
 			Record:      rl.GetRecord(),
 			Alert:       rl.GetAlert(),
 			Expr:        rl.GetExpr(),

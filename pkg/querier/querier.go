@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io/ioutil"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -105,13 +106,20 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
+	var tracker *promql.ActiveQueryTracker = nil
+
+	tempDir, err := ioutil.TempDir("", "querier")
+	if err != nil {
+		tracker = promql.NewActiveQueryTracker(tempDir, cfg.MaxConcurrent, util.Logger)
+	}
+
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		Reg:           cfg.metricsRegisterer,
-		MaxConcurrent: cfg.MaxConcurrent,
-		MaxSamples:    cfg.MaxSamples,
-		Timeout:       cfg.Timeout,
+		Logger:             util.Logger,
+		Reg:                cfg.metricsRegisterer,
+		ActiveQueryTracker: tracker,
+		MaxSamples:         cfg.MaxSamples,
+		Timeout:            cfg.Timeout,
 	})
 	return lazyQueryable, engine
 }

@@ -1,0 +1,77 @@
+version: '3.4'
+services:
+
+  consul:
+    image: consul
+    command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
+    ports:
+      - 8500:8500
+
+  minio:
+    image: minio/minio
+    command: [ "server", "/data" ]
+    environment:
+      - MINIO_ACCESS_KEY=cortex
+      - MINIO_SECRET_KEY=supersecret
+    ports:
+      - 9000:9000
+    volumes:
+      - .data-minio:/data:delegated
+
+  distributor:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8001:8001
+    volumes:
+      - ./config:/cortex/config
+
+  ingester-1:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8002:8002
+    volumes:
+      - ./config:/cortex/config
+      - .data-ingester-1:/tmp/cortex-tsdb-ingester:delegated
+
+  ingester-2:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8003:8003
+    volumes:
+      - ./config:/cortex/config
+      - .data-ingester-2:/tmp/cortex-tsdb-ingester:delegated
+    
+  querier:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8004:8004
+    volumes:
+      - ./config:/cortex/config

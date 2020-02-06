@@ -3477,8 +3477,10 @@ cassandra:
 addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
+to find the latest stable version tag and use it in the command bellow. At the time of writing it was v0.6.1.&lt;/p&gt;
 &lt;p&gt;Run Cortex using the latest stable version:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex -config.file=/etc/single-process-config.yaml
+&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v0.6.1 -config.file=/etc/single-process-config.yaml
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;In case you prefer to run the master version, please follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md&#34;&gt;documentation&lt;/a&gt; on how to build Cortex from source.&lt;/p&gt;
 &lt;h2 id=&#34;configure-prometheus-to-send-series-to-cortex&#34;&gt;Configure Prometheus to send series to Cortex&lt;/h2&gt;

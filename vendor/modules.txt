@@ -452,26 +452,6 @@ github.com/prometheus/prometheus/discovery/zookeeper
 github.com/prometheus/prometheus/notifier
 github.com/prometheus/prometheus/pkg/exemplar
 github.com/prometheus/prometheus/pkg/gate
-# github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
-github.com/prometheus/prometheus/config
-github.com/prometheus/prometheus/discovery
-github.com/prometheus/prometheus/discovery/azure
-github.com/prometheus/prometheus/discovery/config
-github.com/prometheus/prometheus/discovery/consul
-github.com/prometheus/prometheus/discovery/dns
-github.com/prometheus/prometheus/discovery/ec2
-github.com/prometheus/prometheus/discovery/file
-github.com/prometheus/prometheus/discovery/gce
-github.com/prometheus/prometheus/discovery/kubernetes
-github.com/prometheus/prometheus/discovery/marathon
-github.com/prometheus/prometheus/discovery/openstack
-github.com/prometheus/prometheus/discovery/refresh
-github.com/prometheus/prometheus/discovery/targetgroup
-github.com/prometheus/prometheus/discovery/triton
-github.com/prometheus/prometheus/discovery/zookeeper
-github.com/prometheus/prometheus/notifier
-github.com/prometheus/prometheus/pkg/exemplar
-github.com/prometheus/prometheus/pkg/gate
 github.com/prometheus/prometheus/pkg/labels
 github.com/prometheus/prometheus/pkg/logging
 github.com/prometheus/prometheus/pkg/pool
@@ -538,6 +518,8 @@ github.com/spf13/pflag
 # github.com/stretchr/objx v0.2.0
 github.com/stretchr/objx
 # github.com/stretchr/testify v1.4.0
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 # github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d
 github.com/thanos-io/thanos/pkg/block
@@ -555,23 +537,6 @@ github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/model
 github.com/thanos-io/thanos/pkg/objstore
 github.com/thanos-io/thanos/pkg/objstore/azure
-github.com/thanos-io/thanos/pkg/objstore/gcs
-github.com/thanos-io/thanos/pkg/objstore/s3
-github.com/thanos-io/thanos/pkg/pool
-github.com/thanos-io/thanos/pkg/runutil
-github.com/stretchr/testify/mock
-github.com/stretchr/testify/assert
-github.com/stretchr/testify/mock
-github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
-github.com/thanos-io/thanos/pkg/block
-github.com/thanos-io/thanos/pkg/block/metadata
-github.com/thanos-io/thanos/pkg/compact
-github.com/thanos-io/thanos/pkg/compact/downsample
-github.com/thanos-io/thanos/pkg/component
-github.com/thanos-io/thanos/pkg/extprom
-github.com/thanos-io/thanos/pkg/model
-github.com/thanos-io/thanos/pkg/objstore
 github.com/thanos-io/thanos/pkg/objstore/gcs
 github.com/thanos-io/thanos/pkg/objstore/s3
 github.com/thanos-io/thanos/pkg/pool
@@ -609,13 +574,7 @@ github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 github.com/weaveworks/billing-client
-# github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
-github.com/weaveworks/common/aws
-# github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4 => github.com/cyriltovena/common v0.0.0-20200130195811-b9d950b97870
-github.com/weaveworks/common/tracing
-github.com/weaveworks/common/server
-github.com/weaveworks/common/user
-# github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1 => github.com/cyriltovena/common v0.0.0-20200130195811-b9d950b97870
+# github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/httpgrpc

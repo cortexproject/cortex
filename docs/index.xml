@@ -3516,7 +3516,7 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;li&gt;&lt;code&gt;-server.http-listen-address&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-server.http-conn-limit&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-server.grpc-listen-address&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;-server.grpc-conn-limit&lt;/code&gt; &lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-server.grpc-conn-limit&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-server.grpc.keepalive.max-connection-idle&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-server.grpc.keepalive.max-connection-age&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-server.grpc.keepalive.max-connection-age-grace&lt;/code&gt;&lt;/li&gt;
@@ -3524,6 +3524,7 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;li&gt;&lt;code&gt;-server.grpc.keepalive.timeout&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed &lt;code&gt;/all_user_stats&lt;/code&gt; and &lt;code&gt;/api/prom/user_stats&lt;/code&gt; endpoints when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2042&#34;&gt;#2042&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Azure Blob ChunkStore: Fixed issue causing &lt;code&gt;invalid chunk checksum&lt;/code&gt; errors. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2074&#34;&gt;#2074&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;Cortex 0.4.0 is the last version that can &lt;em&gt;write&lt;/em&gt; denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.&lt;/p&gt;
 &lt;p&gt;Cortex 0.6.0 is the last version that can &lt;em&gt;read&lt;/em&gt; denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with &lt;code&gt;-ingester.normalise-tokens=false&lt;/code&gt;) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.&lt;/p&gt;
@@ -3597,7 +3598,7 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;Install the migrate package cli tool: &lt;a href=&#34;https://github.com/golang-migrate/migrate/tree/master/cmd/migrate#installation&#34;&gt;https://github.com/golang-migrate/migrate/tree/master/cmd/migrate#installation&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Drop the &lt;code&gt;schema_migrations&lt;/code&gt; table: &lt;code&gt;DROP TABLE schema_migrations;&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;Run the migrate command:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;migrate -path &amp;lt;absolute_path_to_cortex&amp;gt;/cmd/cortex/migrations -database postgres://localhost:5432/database force &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;2&lt;/span&gt; &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;migrate -path &amp;lt;absolute_path_to_cortex&amp;gt;/cmd/cortex/migrations -database postgres://localhost:5432/database force &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;2&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
 &lt;ul&gt;
@@ -3638,10 +3639,12 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;[BUGFIX] Now support IAM roles in service accounts in AWS EKS. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1803&#34;&gt;#1803&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed duplicated series returned when querying both ingesters and store with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1778&#34;&gt;#1778&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;In this release we updated the following dependencies:
-- gRPC v1.25.0 (resulted in a drop of 30% CPU usage when compression is on)
-- jaeger-client v2.20.0
-- aws-sdk-go to v1.25.22&lt;/p&gt;
+&lt;p&gt;In this release we updated the following dependencies:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;gRPC v1.25.0 (resulted in a drop of 30% CPU usage when compression is on)&lt;/li&gt;
+&lt;li&gt;jaeger-client v2.20.0&lt;/li&gt;
+&lt;li&gt;aws-sdk-go to v1.25.22&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id=&#34;0-3-0-2019-10-11&#34;&gt;0.3.0 / 2019-10-11&lt;/h2&gt;
 &lt;p&gt;This release adds support for Redis as an alternative to Memcached, and also includes many optimisations which reduce CPU and memory usage.&lt;/p&gt;
 &lt;ul&gt;

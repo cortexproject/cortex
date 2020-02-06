@@ -235,7 +235,12 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 
 	for _, set := range sets {
 		if !set.Next() {
-			// nothing in this set
+			// nothing in this set. If it has no error, we can ignore it completely.
+			// If there is error, we better report it.
+			err := set.Err()
+			if err != nil {
+				otherSets = append(otherSets, errSeriesSet{err: err})
+			}
 			continue
 		}
 
@@ -297,5 +302,8 @@ func (pss *seriesSetWithFirstSeries) At() storage.Series {
 }
 
 func (pss *seriesSetWithFirstSeries) Err() error {
+	if pss.firstSeries != nil {
+		return nil
+	}
 	return pss.set.Err()
 }

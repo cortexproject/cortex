@@ -128,7 +128,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 	_, err := os.Stat(folderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return storageObjects, nil
 		}
 		return nil, err
 	}

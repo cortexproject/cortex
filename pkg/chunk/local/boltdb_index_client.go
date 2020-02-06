@@ -29,6 +29,8 @@ const (
 
 	DBOperationRead = iota
 	DBOperationWrite
+
+	openBoltDBFileTimeout = 5 * time.Second
 )
 
 // BoltDBConfig for a BoltDB index client.
@@ -156,7 +158,9 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 		return db, nil
 	}
 
-	db, err := OpenBoltdbFile(path.Join(b.cfg.Directory, name))
+	// Open the database.
+	// Set Timeout to avoid obtaining file lock wait indefinitely.
+	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, &bbolt.Options{Timeout: openBoltDBFileTimeout})
 	if err != nil {
 		return nil, err
 	}
@@ -206,10 +210,10 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 		return err
 	}
 
-	return b.QueryDb(ctx, db, query, callback)
+	return b.QueryDB(ctx, db, query, callback)
 }
 
-func (b *BoltIndexClient) QueryDb(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
 	var start []byte
 	if len(query.RangeValuePrefix) > 0 {
 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))

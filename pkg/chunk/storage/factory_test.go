@@ -46,7 +46,7 @@ type customBoltDBIndexClient struct {
 	*local.BoltIndexClient
 }
 
-func NewBoltDBCustomIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, error) {
+func newBoltDBCustomIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, error) {
 	boltdbClient, err := local.NewBoltDBIndexClient(cfg)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ type anotherIndexClient struct {
 	*local.BoltIndexClient
 }
 
-func NewAnotherIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, error) {
+func newAnotherIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, error) {
 	boltdbClient, err := local.NewBoltDBIndexClient(cfg)
 	if err != nil {
 		return nil, err
@@ -80,11 +80,11 @@ func TestCustomIndexClient(t *testing.T) {
 
 	// register custom index clients, overwriting boltdb client and a new one with different name
 	RegisterIndexClient("boltdb", func() (client chunk.IndexClient, e error) {
-		return NewBoltDBCustomIndexClient(cfg.BoltDBConfig)
+		return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
 	})
 
 	RegisterIndexClient("another-index-client", func() (client chunk.IndexClient, e error) {
-		return NewAnotherIndexClient(cfg.BoltDBConfig)
+		return newAnotherIndexClient(cfg.BoltDBConfig)
 	})
 
 	// try creating a new index client for boltdb

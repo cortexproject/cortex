@@ -15,7 +15,7 @@ var (
 	testValue = []byte("test-value")
 )
 
-func setupDb(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
+func setupDB(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 	db, err := boltdbIndexClient.GetDB(dbname, DBOperationWrite)
 	require.NoError(t, err)
 
@@ -34,17 +34,20 @@ func TestBoltDBReload(t *testing.T) {
 	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
 	require.NoError(t, err)
 
-	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
+	defer require.NoError(t, os.RemoveAll(dirname))
+
+	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
 	})
 	require.NoError(t, err)
 
+	defer boltdbIndexClient.Stop()
+
 	testDb1 := "test1"
 	testDb2 := "test2"
 
-	boltdbIndexClient := indexClient
-	setupDb(t, boltdbIndexClient, testDb1)
-	setupDb(t, boltdbIndexClient, testDb2)
+	setupDB(t, boltdbIndexClient, testDb1)
+	setupDB(t, boltdbIndexClient, testDb2)
 
 	boltdbIndexClient.reload()
 	require.Equal(t, 2, len(boltdbIndexClient.dbs), "There should be 2 boltdbs open")
@@ -66,15 +69,15 @@ func TestBoltDBReload(t *testing.T) {
 
 	require.Equal(t, 1, len(boltdbIndexClient.dbs), "There should be 1 boltdb open")
 
-	boltdbIndexClient.Stop()
-	require.NoError(t, os.RemoveAll(dirname))
+	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
+	require.Equal(t, ErrUnexistentBoltDB, err)
 }
 
 func TestBoltDB_GetDB(t *testing.T) {
 	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	if err != nil {
-		return
-	}
+	require.NoError(t, err)
+
+	defer require.NoError(t, os.RemoveAll(dirname))
 
 	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -83,7 +86,7 @@ func TestBoltDB_GetDB(t *testing.T) {
 
 	// setup a db to already exist
 	testDb1 := "test1"
-	setupDb(t, boltdbIndexClient, testDb1)
+	setupDB(t, boltdbIndexClient, testDb1)
 
 	// check whether an existing db can be fetched for reading
 	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
@@ -106,12 +109,8 @@ func TestBoltDB_GetDB(t *testing.T) {
 		Directory: dirname,
 	})
 	require.NoError(t, err)
+	defer boltdbIndexClient.Stop()
 
 	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
 	require.NoError(t, err)
-
-	// clean up
-	boltdbIndexClient.Stop()
-	require.NoError(t, os.RemoveAll(dirname))
-
 }

@@ -11,6 +11,7 @@ The supported backends for the blocks storage are:
 
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
+* [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
 _Internally, this storage engine is based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
 
@@ -27,7 +28,6 @@ When the blocks storage is used, each **ingester** creates a per-tenant TSDB and
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester append the received samples to the specific per-tenant TSDB. The received samples are both kept in-memory and written to a write-ahead log (WAL) stored on the local disk and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester upon the first push request is received for that tenant.
 
 The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is cut, which by default occurs every 2 hours. Each new Block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new Block from the storage and download its index header.
-
 
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent local disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters.
 
@@ -138,7 +138,7 @@ tsdb:
     # storage. 0 disables the limit.
     # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
     [max_sample_count: <int> | default = 0]
-    
+
     # Max number of concurrent queries to execute against the long-term storage
     # on a per-tenant basis.
     # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
@@ -189,6 +189,26 @@ tsdb:
     # Google SDK default logic.
     # CLI flag: -experimental.tsdb.gcs.service-account string
     [ service_account: <string>]
+
+  # Configures the Azure storage backend
+  # Required only when "azure" backend has been selected.
+  azure:
+    # Azure storage account name
+    # CLI flag: -experimental.tsdb.azure.account-name
+    account_name: <string>
+    # Azure storage account key
+    # CLI flag: -experimental.tsdb.azure.account-key
+    account_key: <string>
+    # Azure storage container name
+    # CLI flag: -experimental.tsdb.azure.container-name
+    container_name: <string>
+    # Azure storage endpoint suffix without schema.
+    # The account name will be prefixed to this value to create the FQDN
+    # CLI flag: -experimental.tsdb.azure.endpoint-suffix
+    endpoint_suffix: <string>
+    # Number of retries for recoverable errors
+    # CLI flag: -experimental.tsdb.azure.max-retries
+    [ max_retries: <int> | default=20 ]
 ```
 
 ### `compactor_config`

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
@@ -18,6 +19,9 @@ const (
 
 	// BackendGCS is the value for the GCS storage backend
 	BackendGCS = "gcs"
+
+	// BackendAzure is the value for the Azure storage backend
+	BackendAzure = "azure"
 
 	// TenantIDExternalLabel is the external label set when shipping blocks to the storage
 	TenantIDExternalLabel = "__org_id__"
@@ -43,8 +47,9 @@ type Config struct {
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
 
 	// Backends
-	S3  s3.Config  `yaml:"s3"`
-	GCS gcs.Config `yaml:"gcs"`
+	S3    s3.Config    `yaml:"s3"`
+	GCS   gcs.Config   `yaml:"gcs"`
+	Azure azure.Config `yaml:"azure"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -88,6 +93,7 @@ func (d *DurationList) ToMilliseconds() []int64 {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
+	cfg.Azure.RegisterFlags(f)
 	cfg.BucketStore.RegisterFlags(f)
 
 	if len(cfg.BlockRanges) == 0 {
@@ -105,7 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS {
+	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS && cfg.Backend != BackendAzure {
 		return errUnsupportedBackend
 	}
 

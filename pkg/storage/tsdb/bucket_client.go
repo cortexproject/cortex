@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 	"github.com/go-kit/kit/log"
@@ -16,6 +17,8 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 		return s3.NewBucketClient(cfg.S3, name, logger)
 	case BackendGCS:
 		return gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
+	case BackendAzure:
+		return azure.NewBucketClient(cfg.Azure, name, logger)
 	default:
 		return nil, errUnsupportedBackend
 	}

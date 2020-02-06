@@ -121,7 +121,7 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config) storage.Queryable {
+func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		q := querier{
 			ctx:         ctx,
@@ -130,7 +130,7 @@ func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn ch
 			chunkIterFn: chunkIterFn,
 		}
 
-		dqr, err := distribQuerier.Querier(ctx, mint, maxt)
+		dqr, err := distributor.Querier(ctx, mint, maxt)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func NewQueryable(distribQuerier, storeQuerier storage.Queryable, chunkIterFn ch
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
 		if cfg.QueryStoreAfter == 0 || mint <= int64(now.Add(-cfg.QueryStoreAfter)) {
-			cqr, err := storeQuerier.Querier(ctx, mint, maxt)
+			cqr, err := store.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}

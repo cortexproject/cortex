@@ -20,7 +20,7 @@ const (
 	// BackendGCS is the value for the GCS storage backend
 	BackendGCS = "gcs"
 
-	// BackendAzure is teh value for the Azure storage backend
+	// BackendAzure is the value for the Azure storage backend
 	BackendAzure = "azure"
 
 	// TenantIDExternalLabel is the external label set when shipping blocks to the storage

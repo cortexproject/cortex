@@ -6,9 +6,9 @@ import (
 
 // Config holds the config options for an Azure backend
 type Config struct {
-	StorageAccountName string `yaml:"storage_account"`
-	StorageAccountKey  string `yaml:"storage_account_key"`
-	ContainerName      string `yaml:"container"`
+	StorageAccountName string `yaml:"account_name"`
+	StorageAccountKey  string `yaml:"account_key"`
+	ContainerName      string `yaml:"container_name"`
 	Endpoint           string `yaml:"endpoint_suffix"`
 	MaxRetries         int    `yaml:"max_retries"`
 }
@@ -19,5 +19,5 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StorageAccountKey, "experimental.tsdb.azure.account-key", "", "Azure storage account key")
 	f.StringVar(&cfg.ContainerName, "experimental.tsdb.azure.container-name", "", "Azure storage container name")
 	f.StringVar(&cfg.Endpoint, "experimental.tsdb.azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
-	f.IntVar(&cfg.MaxRetries, "experimental.tsdb.azure.max-retries", 20, "Number of retries for recoverable errors (default 20)")
+	f.IntVar(&cfg.MaxRetries, "experimental.tsdb.azure.max-retries", 20, "Number of retries for recoverable errors")
 }

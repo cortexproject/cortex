@@ -206,7 +206,7 @@ tsdb:
     # The account name will be prefixed to this value to create the FQDN
     # CLI flag: -experimental.tsdb.azure.endpoint-suffix
     endpoint_suffix: <string>
-    # Number of retries for recoverable errors (default 20)
+    # Number of retries for recoverable errors
     # CLI flag: -experimental.tsdb.azure.max-retries
     [ max_retries: <int> | default=20 ]
 ```

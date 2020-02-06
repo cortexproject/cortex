@@ -195,13 +195,13 @@ tsdb:
   azure:
     # Azure storage account name
     # CLI flag: -experimental.tsdb.azure.account-name
-    storage_account: <string>
+    account_name: <string>
     # Azure storage account key
     # CLI flag: -experimental.tsdb.azure.account-key
-    storage_account_key: <string>
+    account_key: <string>
     # Azure storage container name
     # CLI flag: -experimental.tsdb.azure.container-name
-    container: <string>
+    container_name: <string>
     # Azure storage endpoint suffix without schema.
     # The account name will be prefixed to this value to create the FQDN
     # CLI flag: -experimental.tsdb.azure.endpoint-suffix

@@ -209,6 +209,11 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	return q.mergeSeriesSets(result), nil, nil
 }
 
+func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	// Select is already sorted, thanks to merging of sorted series.
+	return q.Select(sp, matchers...)
+}
+
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return q.metadataQuerier.LabelValues(name)

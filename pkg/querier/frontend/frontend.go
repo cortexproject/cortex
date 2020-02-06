@@ -256,11 +256,6 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		// a nil request and nil error means the chosen tenant queue is empty of unexpired requests
-		if req == nil {
-			continue
-		}
-
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
 		resps := make(chan *ProcessResponse, 1)
@@ -335,6 +330,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
+FindQueue:
 	for len(f.queues) == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
@@ -374,22 +370,21 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 			queueLength.Add(-1)
 			request.queueSpan.Finish()
 
-			// first unexpired request found
-			if request.originalCtx.Err() == nil {
-				break
-			}
+			expired := request.originalCtx.Err() != nil
 
 			// there are no unexpired requests in the queue
 			if len(queue) == 0 {
-				request = nil
-				break
+				delete(f.queues, userID)
+				if expired {
+					// there are no unexpired requests in the queue
+					goto FindQueue
+				}
 			}
 
-			// request has expired but more remain in queue; check them
-		}
-
-		if len(queue) == 0 {
-			delete(f.queues, userID)
+			// first unexpired request found
+			if !expired {
+				break
+			}
 		}
 
 		return request, nil

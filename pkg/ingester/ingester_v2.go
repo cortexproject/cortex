@@ -40,6 +40,7 @@ type Shipper interface {
 
 type userTSDB struct {
 	*tsdb.DB
+	refCache *cortex_tsdb.RefCache
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper       Shipper
@@ -126,16 +127,21 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	}
 
 	i.done.Add(1)
-	go i.rateUpdateLoop()
+	go i.updateLoop()
 
 	return i, nil
 }
 
-func (i *Ingester) rateUpdateLoop() {
+func (i *Ingester) updateLoop() {
 	defer i.done.Done()
 
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
+
+	// We use an hardcoded value for this ticker because there should be no
+	// real value in customizing it.
+	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
+	defer refCachePurgeTicker.Stop()
 
 	for {
 		select {
@@ -146,6 +152,13 @@ func (i *Ingester) rateUpdateLoop() {
 				db.ingestedRuleSamples.tick()
 			}
 			i.userStatesMtx.RUnlock()
+		case <-refCachePurgeTicker.C:
+			for _, userID := range i.getTSDBUsers() {
+				userDB := i.getTSDB(userID)
+				if userDB != nil {
+					userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
+				}
+			}
 		case <-i.quit:
 			return
 		}
@@ -190,18 +203,48 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	// successfully committed
 	succeededSamplesCount := 0
 	failedSamplesCount := 0
+	now := time.Now()
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
 	for _, ts := range req.Timeseries {
-		// Convert labels to the type expected by TSDB
-		lset := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+		// Check if we already have a cached reference for this series. Be aware
+		// that even if we have a reference it's not guaranteed to be still valid.
+		// The labels must be sorted (in our case, it's guaranteed a write request
+		// has sorted labels once hit the ingester).
+		cachedRef, cachedRefExists := db.refCache.Ref(now, client.FromLabelAdaptersToLabels(ts.Labels))
 
 		for _, s := range ts.Samples {
-			_, err := app.Add(lset, s.TimestampMs, s.Value)
-			if err == nil {
-				succeededSamplesCount++
-				continue
+			var err error
+
+			// If the cached reference exists, we try to use it.
+			if cachedRefExists {
+				if err = app.AddFast(cachedRef, s.TimestampMs, s.Value); err == nil {
+					succeededSamplesCount++
+					continue
+				}
+
+				if err == tsdb.ErrNotFound {
+					cachedRefExists = false
+					err = nil
+				}
+			}
+
+			// If the cached reference doesn't exist, we (re)try without using the reference.
+			if !cachedRefExists {
+				var ref uint64
+
+				// Copy the label set because both TSDB and the cache may retain it.
+				copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+
+				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
+					db.refCache.SetRef(now, copiedLabels, ref)
+					cachedRef = ref
+					cachedRefExists = true
+
+					succeededSamplesCount++
+					continue
+				}
 			}
 
 			failedSamplesCount++
@@ -212,7 +255,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 			// we actually ingested all samples which haven't failed.
 			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
 				if firstPartialErr == nil {
-					firstPartialErr = errors.Wrapf(err, "series=%s", lset.String())
+					firstPartialErr = errors.Wrapf(err, "series=%s", client.FromLabelAdaptersToLabels(ts.Labels).String())
 				}
 
 				continue
@@ -552,6 +595,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	userDB := &userTSDB{
 		DB:                  db,
+		refCache:            cortex_tsdb.NewRefCache(),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 	}

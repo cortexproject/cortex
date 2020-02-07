@@ -245,6 +245,61 @@ func TestIngester_v2Push(t *testing.T) {
 	}
 }
 
+func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer i.Shutdown()
+	defer cleanup()
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Set a wrong cached reference for the series we're going to push.
+	db, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+	db.refCache.SetRef(time.Now(), metricLabels, 12345)
+
+	// Push the same series multiple times, each time with an increasing timestamp
+	for j := 1; j <= 3; j++ {
+		req := client.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]client.Sample{{Value: float64(j), TimestampMs: int64(j)}},
+			client.API)
+
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Read back samples to see what has been really ingested
+	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, []client.TimeSeries{
+		{Labels: metricLabelAdapters, Samples: []client.Sample{
+			{Value: 1, TimestampMs: 1},
+			{Value: 2, TimestampMs: 2},
+			{Value: 3, TimestampMs: 3},
+		}},
+	}, res.Timeseries)
+}
+
 func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)

@@ -17,6 +17,13 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last config reload attempt was successful.",
 })
 
+// Initialize gauge in success state (1). That is, require
+// explicit transitioning into the error state (0). That helps
+// e.g. when `NewRuntimeConfigManager()` never gets called.
+func init() {
+	overridesReloadSuccess.Set(1)
+}
+
 // Loader loads the configuration from file.
 type Loader func(filename string) (interface{}, error)
 

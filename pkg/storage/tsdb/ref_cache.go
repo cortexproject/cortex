@@ -14,9 +14,9 @@ const (
 	// DefaultRefCacheTTL is the default RefCache purge TTL. We use a reasonable
 	// value that should cover most use cases. The cache would be ineffective if
 	// the scrape interval of a series is greater than this TTL.
-	DefaultRefCacheTTL = 5 * time.Minute
+	DefaultRefCacheTTL = 10 * time.Minute
 
-	refCacheStripes = 128
+	numRefCacheStripes = 128
 )
 
 // RefCache is a single-tenant cache mapping a labels set with the reference
@@ -26,7 +26,7 @@ const (
 type RefCache struct {
 	// The cache is split into stripes, each one with a dedicated lock, in
 	// order to reduce lock contention.
-	stripes [refCacheStripes]*refCacheStripe
+	stripes [numRefCacheStripes]*refCacheStripe
 }
 
 // refCacheStripe holds a subset of the series references for a single tenant.
@@ -47,7 +47,7 @@ func NewRefCache() *RefCache {
 	c := &RefCache{}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
-	for i := uint8(0); i < refCacheStripes; i++ {
+	for i := uint8(0); i < numRefCacheStripes; i++ {
 		c.stripes[i] = &refCacheStripe{
 			refs: map[model.Fingerprint][]*refCacheEntry{},
 		}
@@ -60,7 +60,7 @@ func NewRefCache() *RefCache {
 // is NOT retained.
 func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 	fp := client.Fingerprint(series)
-	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
+	stripeID := uint8(util.HashFP(fp) % numRefCacheStripes)
 
 	return c.stripes[stripeID].ref(now, series, fp)
 }
@@ -68,7 +68,7 @@ func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 // SetRef sets/updates the cached series reference. The input labels set IS retained.
 func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 	fp := client.Fingerprint(series)
-	stripeID := uint8(util.HashFP(fp) % refCacheStripes)
+	stripeID := uint8(util.HashFP(fp) % numRefCacheStripes)
 
 	c.stripes[stripeID].setRef(now, series, fp, ref)
 }
@@ -76,7 +76,7 @@ func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 // Purge removes expired entries from the cache. This function should be called
 // periodically to avoid memory leaks.
 func (c *RefCache) Purge(keepUntil time.Time) {
-	for s := uint8(0); s < refCacheStripes; s++ {
+	for s := uint8(0); s < numRefCacheStripes; s++ {
 		c.stripes[s].purge(keepUntil)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/compactor"
@@ -62,23 +63,24 @@ type Config struct {
 	PrintConfig bool       `yaml:"-"`
 	HTTPPrefix  string     `yaml:"http_prefix"`
 
-	Server         server.Config            `yaml:"server,omitempty"`
-	Distributor    distributor.Config       `yaml:"distributor,omitempty"`
-	Querier        querier.Config           `yaml:"querier,omitempty"`
-	IngesterClient client.Config            `yaml:"ingester_client,omitempty"`
-	Ingester       ingester.Config          `yaml:"ingester,omitempty"`
-	Storage        storage.Config           `yaml:"storage,omitempty"`
-	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig   validation.Limits        `yaml:"limits,omitempty"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
-	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
-	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
-	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
-	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
-	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb"`
-	Compactor      compactor.Config         `yaml:"compactor,omitempty"`
+	Server           server.Config            `yaml:"server,omitempty"`
+	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
+	Querier          querier.Config           `yaml:"querier,omitempty"`
+	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
+	Storage          storage.Config           `yaml:"storage,omitempty"`
+	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
+	Schema           chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig     validation.Limits        `yaml:"limits,omitempty"`
+	Prealloc         client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
+	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
+	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
+	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	TSDB             tsdb.Config              `yaml:"tsdb"`
+	Compactor        compactor.Config         `yaml:"compactor,omitempty"`
+	DataPurgerConfig purger.DataPurgerConfig  `yaml:"data_purger,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
@@ -114,6 +116,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Encoding.RegisterFlags(f)
 	c.TSDB.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
+	c.DataPurgerConfig.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
@@ -166,11 +169,13 @@ type Cortex struct {
 	distributor   *distributor.Distributor
 	ingester      *ingester.Ingester
 	store         chunk.Store
+	deleteStore   *chunk.DeleteStore
 	worker        frontend.Worker
 	frontend      *frontend.Frontend
 	tableManager  *chunk.TableManager
 	cache         cache.Cache
 	runtimeConfig *runtimeconfig.Manager
+	dataPurger    *purger.DataPurger
 
 	ruler             *ruler.Ruler
 	configAPI         *api.API

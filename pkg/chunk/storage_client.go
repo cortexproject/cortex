@@ -75,3 +75,9 @@ type StorageObject struct {
 	Key        string
 	ModifiedAt time.Time
 }
+
+// DeleteClient manages delete requests and their lifecycles
+type DeleteClient interface {
+	IndexClient
+	Update(ctx context.Context, tableName, hashValue string, rangeValue []byte, value []byte) error
+}

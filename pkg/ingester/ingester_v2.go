@@ -791,53 +791,27 @@ func (i *Ingester) shipBlocks() {
 		return
 	}
 
-	// Create a pool of workers which will synchronize blocks. The pool size
-	// is limited in order to avoid to concurrently sync a lot of tenants in
-	// a large cluster.
-	workersChan := make(chan string)
-	wg := &sync.WaitGroup{}
-	wg.Add(i.cfg.TSDBConfig.ShipConcurrency)
-
-	for j := 0; j < i.cfg.TSDBConfig.ShipConcurrency; j++ {
-		go func() {
-			defer wg.Done()
-
-			for userID := range workersChan {
-				// Get the user's DB. If the user doesn't exist, we skip it.
-				userDB := i.getTSDB(userID)
-				if userDB == nil || userDB.shipper == nil {
-					continue
-				}
-
-				// Skip if the shipper context has been canceled.
-				if userDB.shipperCtx.Err() != nil {
-					continue
-				}
-
-				// Run the shipper's Sync() to upload unshipped blocks.
-				if uploaded, err := userDB.shipper.Sync(userDB.shipperCtx); err != nil {
-					level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
-				} else {
-					level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
-				}
-			}
-		}()
-	}
-
-sendLoop:
-	for _, userID := range i.getTSDBUsers() {
-		select {
-		case workersChan <- userID:
-			// ok
-		case <-i.quit:
-			// don't start new shippings
-			break sendLoop
+	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
+	// of tenants in a large cluster.
+	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.ShipConcurrency, func(userID string) {
+		// Get the user's DB. If the user doesn't exist, we skip it.
+		userDB := i.getTSDB(userID)
+		if userDB == nil || userDB.shipper == nil {
+			return
 		}
-	}
-	close(workersChan)
 
-	// Wait until all workers completed.
-	wg.Wait()
+		// Skip if the shipper context has been canceled.
+		if userDB.shipperCtx.Err() != nil {
+			return
+		}
+
+		// Run the shipper's Sync() to upload unshipped blocks.
+		if uploaded, err := userDB.shipper.Sync(userDB.shipperCtx); err != nil {
+			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
+		} else {
+			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
+		}
+	})
 }
 
 func (i *Ingester) compactionLoop() {
@@ -864,26 +838,32 @@ func (i *Ingester) compactBlocks() {
 		return
 	}
 
+	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.CompactionConcurrency, func(userID string) {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			return
+		}
+
+		err := userDB.Compact()
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
+		} else {
+			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
+		}
+	})
+}
+
+func (i *Ingester) runConcurrentUserWorkers(concurrency int, userFunc func(userID string)) {
 	wg := sync.WaitGroup{}
 	ch := make(chan string)
 
-	for ix := 0; ix < i.cfg.TSDBConfig.CompactionConcurrency; ix++ {
+	for ix := 0; ix < concurrency; ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
 			for userID := range ch {
-				userDB := i.getTSDB(userID)
-				if userDB == nil {
-					continue
-				}
-
-				err := userDB.Compact()
-				if err != nil {
-					level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
-				} else {
-					level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
-				}
+				userFunc(userID)
 			}
 		}()
 	}
@@ -894,13 +874,13 @@ sendLoop:
 		case ch <- userID:
 			// ok
 		case <-i.quit:
-			// don't start new compactions.
+			// don't start new tasks.
 			break sendLoop
 		}
 	}
 
 	close(ch)
 
-	// wait for ongoing compactions to finish.
+	// wait for ongoing workers to finish.
 	wg.Wait()
 }

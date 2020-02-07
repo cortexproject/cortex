@@ -92,6 +92,7 @@ func (s *Scenario) StartConsul() error {
 	))
 }
 
+// StartMinio starts minio server, used as a local replacement for S3.
 func (s *Scenario) StartMinio() error {
 	return s.StartService(NewService(
 		"minio",

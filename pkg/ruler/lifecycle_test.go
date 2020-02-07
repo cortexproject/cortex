@@ -18,7 +18,8 @@ func TestRulerShutdown(t *testing.T) {
 	config.Ring.SkipUnregister = false
 	defer cleanup()
 
-	r := newTestRuler(t, config)
+	r, rcleanup := newTestRuler(t, config)
+	defer rcleanup()
 
 	// Wait until the tokens are registered in the ring
 	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() interface{} {
@@ -40,7 +41,8 @@ func TestRulerRestart(t *testing.T) {
 	config.EnableSharding = true
 	defer cleanup()
 
-	r := newTestRuler(t, config)
+	r, rcleanup := newTestRuler(t, config)
+	defer rcleanup()
 
 	// Wait until the tokens are registered in the ring
 	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() interface{} {
@@ -54,7 +56,8 @@ func TestRulerRestart(t *testing.T) {
 	assert.Equal(t, config.Ring.NumTokens, testutils.NumTokens(config.Ring.KVStore.Mock, "localhost", ring.RulerRingKey))
 
 	// Create a new ruler which is expected to pick up tokens from the ring.
-	r = newTestRuler(t, config)
+	r, rcleanup = newTestRuler(t, config)
+	defer rcleanup()
 	defer r.Stop()
 
 	// Wait until the ruler is ACTIVE in the ring.

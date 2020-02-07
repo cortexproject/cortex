@@ -15,7 +15,8 @@ func TestRuler_rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
 	defer r.Stop()
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/rules", nil)
@@ -70,7 +71,8 @@ func TestRuler_alerts(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
 	defer r.Stop()
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/alerts", nil)

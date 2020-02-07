@@ -54,10 +54,12 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-func newTestRuler(t *testing.T, cfg Config) *Ruler {
+func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
-	defer os.RemoveAll(dir)
+	cleanup := func() {
+		os.RemoveAll(dir)
+	}
 
 	tracker := promql.NewActiveQueryTracker(dir, 20, util.Logger)
 
@@ -83,7 +85,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	// Ensure all rules are loaded before usage
 	ruler.loadRules(context.Background())
 
-	return ruler
+	return ruler, cleanup
 }
 
 func TestNotifierSendsUserIDHeader(t *testing.T) {
@@ -107,7 +109,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	require.NoError(t, err)
 	cfg.AlertmanagerDiscovery = false
 
-	r := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
 	defer r.Stop()
 	n, err := r.getOrCreateNotifier("1")
 	require.NoError(t, err)
@@ -130,7 +133,8 @@ func TestRuler_Rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
 	defer r.Stop()
 
 	// test user1

@@ -15,7 +15,6 @@ const (
 )
 
 type Scenario struct {
-	id       int
 	services []*Service
 }
 

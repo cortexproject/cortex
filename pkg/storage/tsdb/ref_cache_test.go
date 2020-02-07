@@ -135,3 +135,32 @@ func BenchmarkRefCache_Ref(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkRefCache_purge(b *testing.B) {
+	const numSeries = 1000000      // 1M
+	const numExpiresSeries = 10000 // 10K
+
+	now := time.Now()
+	c := NewRefCache()
+
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+
+		// Prepare series
+		series := [numSeries]labels.Labels{}
+		for s := 0; s < numSeries; s++ {
+			series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+
+			if s < numExpiresSeries {
+				c.SetRef(now.Add(-time.Minute), series[s], uint64(s))
+			} else {
+				c.SetRef(now, series[s], uint64(s))
+			}
+		}
+
+		b.StartTimer()
+
+		// Purge everything
+		c.Purge(now)
+	}
+}

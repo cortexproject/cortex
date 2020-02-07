@@ -592,7 +592,12 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) 
 }
 
 func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
-	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	// Configure the lifecycler to not immediately join the ring, to make sure
+	// the ingester will NOT be in the ACTIVE state when we'll push samples.
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 10 * time.Second
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
 	defer i.Shutdown()
 	defer cleanup()

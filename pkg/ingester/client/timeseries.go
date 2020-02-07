@@ -73,6 +73,9 @@ func (bs *LabelAdapter) Marshal() ([]byte, error) {
 	size := bs.Size()
 	buf := make([]byte, size)
 	n, err := bs.MarshalToSizedBuffer(buf[:size])
+	if err != nil {
+		return nil, err
+	}
 	return buf[:n], err
 }
 

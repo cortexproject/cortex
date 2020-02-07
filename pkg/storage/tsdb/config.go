@@ -30,8 +30,10 @@ const (
 
 // Validation errors
 var (
-	errUnsupportedBackend     = errors.New("unsupported TSDB storage backend")
-	errInvalidShipConcurrency = errors.New("invalid TSDB ship concurrency")
+	errUnsupportedBackend           = errors.New("unsupported TSDB storage backend")
+	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
+	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
+	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 )
 
 // Config holds the config information for TSDB storage
@@ -125,12 +127,12 @@ func (cfg *Config) Validate() error {
 		return errInvalidShipConcurrency
 	}
 
-	if cfg.CompactionInterval <= 0 {
-		return errors.New("invalid TSDB compaction interval")
+	if cfg.CompactionInterval < 0 {
+		return errInvalidCompactionInterval
 	}
 
-	if cfg.CompactionConcurrency <= 0 {
-		return errors.New("invalid TSDB compaction concurrency")
+	if cfg.CompactionInterval > 0 && cfg.CompactionConcurrency <= 0 {
+		return errInvalidCompactionConcurrency
 	}
 
 	return nil

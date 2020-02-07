@@ -193,7 +193,7 @@ func (s *Service) WaitStarted() error {
 			return nil
 		}
 
-		s.retryBackoff.Reset()
+		s.retryBackoff.Wait()
 	}
 
 	return fmt.Errorf("docker container %s failed to start", s.name)

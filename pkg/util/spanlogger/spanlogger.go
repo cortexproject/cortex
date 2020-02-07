@@ -34,7 +34,10 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 func FromContext(ctx context.Context) *SpanLogger {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		return noop
+		return &SpanLogger{
+			Logger: util.Logger,
+			Span:   defaultNoopSpan,
+		}
 	}
 	return &SpanLogger{
 		Logger: util.Logger,

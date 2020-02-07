@@ -1,7 +1,6 @@
 package spanlogger
 
 import (
-	"github.com/cortexproject/cortex/pkg/util"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 )
@@ -15,7 +14,6 @@ var (
 	defaultNoopSpanContext = noopSpanContext{}
 	defaultNoopSpan        = noopSpan{}
 	defaultNoopTracer      = noopTracer{}
-	noop                   = &SpanLogger{Logger: util.Logger, Span: defaultNoopSpan}
 )
 
 const (

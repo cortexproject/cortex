@@ -2,7 +2,7 @@
 
 ## Supported environment variables
 
-- `CORTEX_IMAGE`: Docker image used to run Cortex in integration tests (defaults to `cortex:latest`)
+- `CORTEX_IMAGE`: Docker image used to run Cortex in integration tests (defaults to `quay.io/cortexproject/cortex:latest`)
 - `CORTEX_INTEGRATION_DIR`: Absolute path to the integration/ directory on the host (defaults to `$GOPATH/src/github.com/cortexproject/cortex/integration`)
 
 ## Mounting files to Cortex container

@@ -279,12 +279,12 @@ func (s *Scenario) Shutdown() {
 // getDefaultCortexImage returns the Docker image to use to run Cortex.
 func getDefaultCortexImage() string {
 	// Get the cortex image from the CORTEX_IMAGE env variable,
-	// falling back to "cortex:latest"
+	// falling back to "quay.io/cortexproject/cortex:latest"
 	if os.Getenv("CORTEX_IMAGE") != "" {
 		return os.Getenv("CORTEX_IMAGE")
 	}
 
-	return "cortex:latest"
+	return "quay.io/cortexproject/cortex:latest"
 }
 
 // getIntegrationDir returns the absolute path of the integration dir on the host.

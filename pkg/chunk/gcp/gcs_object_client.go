@@ -106,6 +106,10 @@ func (s *GCSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Dec
 	return input, nil
 }
 
+func (s *GCSObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 // Get object from the store
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if s.cfg.RequestTimeout > 0 {

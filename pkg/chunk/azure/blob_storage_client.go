@@ -122,6 +122,10 @@ func (b *BlobStorage) PutChunks(ctx context.Context, chunks []chunk.Chunk) error
 	return nil
 }
 
+func (b *BlobStorage) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	blockBlobURL, err := b.getBlobURL(objectKey)
 	if err != nil {

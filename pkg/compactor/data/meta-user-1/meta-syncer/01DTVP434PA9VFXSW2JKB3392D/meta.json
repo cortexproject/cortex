@@ -1,0 +1,20 @@
+{
+	"ulid": "01DTVP434PA9VFXSW2JKB3392D",
+	"minTime": 1574776800000,
+	"maxTime": 1574784000000,
+	"stats": {},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01DTVP434PA9VFXSW2JKB3392D"
+		]
+	},
+	"version": 1,
+	"thanos": {
+		"labels": null,
+		"downsample": {
+			"resolution": 0
+		},
+		"source": ""
+	}
+}

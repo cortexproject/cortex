@@ -150,6 +150,10 @@ func (a *S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) er
 	return lastErr
 }
 
+func (a *S3ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 // bucketFromKey maps a key to a bucket name
 func (a *S3ObjectClient) bucketFromKey(key string) string {
 	if len(a.bucketNames) == 0 {

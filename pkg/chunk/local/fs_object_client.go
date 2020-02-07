@@ -74,6 +74,10 @@ func (f *FSObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([
 	return util.GetParallelChunks(ctx, chunks, f.getChunk)
 }
 
+func (f *FSObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	return f.DeleteObject(ctx, chunkID)
+}
+
 func (f *FSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	filename := base64.StdEncoding.EncodeToString([]byte(c.ExternalKey()))
 
@@ -98,7 +102,12 @@ func (f *FSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Deco
 
 // Get object from the store
 func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	return os.Open(path.Join(f.cfg.Directory, objectKey))
+	fl, err := os.Open(path.Join(f.cfg.Directory, objectKey))
+	if err != nil && os.IsNotExist(err) {
+		return nil, chunk.ErrStorageObjectNotFound
+	}
+
+	return fl, err
 }
 
 // Put object into the store
@@ -149,6 +158,10 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 	}
 
 	return storageObjects, nil
+}
+
+func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	return os.Remove(path.Join(f.cfg.Directory, objectKey))
 }
 
 // DeleteChunksBefore implements BucketClient

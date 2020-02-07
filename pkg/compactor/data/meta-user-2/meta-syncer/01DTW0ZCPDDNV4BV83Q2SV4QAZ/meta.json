@@ -1,0 +1,20 @@
+{
+	"ulid": "01DTW0ZCPDDNV4BV83Q2SV4QAZ",
+	"minTime": 1574776800000,
+	"maxTime": 1574784000000,
+	"stats": {},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01DTW0ZCPDDNV4BV83Q2SV4QAZ"
+		]
+	},
+	"version": 1,
+	"thanos": {
+		"labels": null,
+		"downsample": {
+			"resolution": 0
+		},
+		"source": ""
+	}
+}

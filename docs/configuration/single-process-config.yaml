@@ -65,3 +65,9 @@ storage:
 
   filesystem:
     directory: /tmp/cortex/chunks
+
+  delete_store:
+    store: boltdb
+
+data_purger:
+  object_store_type: filesystem

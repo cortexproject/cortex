@@ -20,6 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -55,6 +56,7 @@ const (
 	Configs
 	AlertManager
 	Compactor
+	DataPurger
 	All
 )
 
@@ -88,6 +90,8 @@ func (m moduleName) String() string {
 		return "alertmanager"
 	case Compactor:
 		return "compactor"
+	case DataPurger:
+		return "data-purger"
 	case All:
 		return "all"
 	default:
@@ -135,6 +139,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "compactor":
 		*m = Compactor
+		return nil
+	case "data-purger":
+		*m = DataPurger
 		return nil
 	case "all":
 		*m = All
@@ -321,6 +328,14 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 	}
 
 	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	if err != nil {
+		return err
+	}
+
+	t.deleteStore, err = storage.NewDeleteStore(cfg.Storage)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -481,6 +496,41 @@ func (t *Cortex) stopCompactor() error {
 	return nil
 }
 
+func (t *Cortex) initDataPurger(cfg *Config) (err error) {
+	if !cfg.DataPurgerConfig.EnablePurger {
+		return nil
+	}
+
+	var storageClient chunk.StorageClient
+	storageClient, err = storage.NewStorageClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
+	if err != nil {
+		return
+	}
+
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deleteStore, t.store, storageClient)
+	if err != nil {
+		return
+	}
+
+	go t.dataPurger.Run()
+
+	var deleteRequestHandler *purger.DeleteRequestHandler
+	deleteRequestHandler, err = purger.NewDeleteRequestHandler(t.deleteStore)
+	if err != nil {
+		return
+	}
+
+	t.server.HTTP.Path("/delete_series").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
+	t.server.HTTP.Path("/get_all_delete_requests").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
+
+	return
+}
+
+func (t *Cortex) stopDataPurger() error {
+	t.dataPurger.Stop()
+	return nil
+}
+
 type module struct {
 	deps []moduleName
 	init func(t *Cortex, cfg *Config) error
@@ -568,7 +618,13 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopCompactor,
 	},
 
+	DataPurger: {
+		deps: []moduleName{Store, Server},
+		init: (*Cortex).initDataPurger,
+		stop: (*Cortex).stopDataPurger,
+	},
+
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
 	},
 }

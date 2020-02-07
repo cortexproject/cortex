@@ -598,6 +598,10 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	return result, nil
 }
 
+func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	panic("implement me")
+}
+
 func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]chunk.Chunk) ([]chunk.Chunk, error) {
 	result := []chunk.Chunk{}
 	decodeContext := chunk.NewDecodeContext()
@@ -747,6 +751,10 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 			Item: item,
 		},
 	})
+}
+
+func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.

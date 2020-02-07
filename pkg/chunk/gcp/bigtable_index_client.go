@@ -168,6 +168,10 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	mutation.Set(columnFamily, columnKey, 0, value)
 }
 
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	panic("implement me")
+}
+
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 

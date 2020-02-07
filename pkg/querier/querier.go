@@ -40,6 +40,13 @@ type Config struct {
 	// step if not specified.
 	DefaultEvaluationInterval time.Duration
 
+	// Directory for ActiveQueryTracker. If empty, temp dir is created, which defeats the purpose of
+	// query tracker -- it logs queries that were active during the last crash, but logs them on the next startup.
+	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
+	// engine.
+	// If creation of temp dir fails, query tracker is not created and MaxConcurrent is not applied. :-(
+	ActiveQueryTrackerDir string
+
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`
 }
@@ -62,6 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
+	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "", "Directory to put data for active query tracker into. If empty, new temporary directory is created.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -107,25 +115,32 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
-	var tracker *promql.ActiveQueryTracker = nil
-
-	dir, err := ioutil.TempDir("", "querier")
-	if err == nil {
-		level.Debug(util.Logger).Log("msg", "directory used by activity tracker", "dir", dir)
-		tracker = promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
-	} else {
-		level.Error(util.Logger).Log("msg", "failed to create tempdir for activity tracker, -querier.max-concurrent will be ignored", "err", err)
-	}
-
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
 		Reg:                cfg.metricsRegisterer,
-		ActiveQueryTracker: tracker,
+		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 	})
 	return lazyQueryable, engine
+}
+
+func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+	dir := cfg.ActiveQueryTrackerDir
+
+	if dir == "" {
+		var err error
+		dir, err = ioutil.TempDir("", "querier")
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to create temp dir for active query tracker, -querier.max-concurrent will be ignored", "err", err)
+			return nil
+		}
+
+		level.Debug(util.Logger).Log("msg", "directory used by active query tracker", "dir", dir)
+	}
+
+	return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
 }
 
 // NewQueryable creates a new Queryable for cortex.

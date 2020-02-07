@@ -31,6 +31,10 @@ Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.
 
 Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with `-ingester.normalise-tokens=false`) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.
 
+## 0.6.1 / 2020-02-05
+
+* [BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. #2071
+
 ## 0.6.0 / 2020-01-28
 
 Note that the ruler flags need to be changed in this upgrade. You're moving from a single node ruler to something that might need to be sharded.

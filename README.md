@@ -21,13 +21,13 @@ Cortex is primarily used as a [remote write](https://prometheus.io/docs/operatin
 
 ## Documentation
 
-Read the [getting started guide](docs/getting_started.md) if you're new to the
+Read the [getting started guide](https://cortexmetrics.io/docs/getting-started) if you're new to the
 project. Before deploying Cortex with a permanent storage backend you
 should read:
-1. [An overview of Cortex's architecture](docs/architecture.md)
-1. [A general guide to running Cortex](docs/guides/running.md)
-1. [Information regarding configuring Cortex](docs/configuration/arguments.md)
-1. [Steps to run Cortex with Cassandra](docs/guides/cortex-with-cassandra.md)
+1. [An overview of Cortex's architecture](https://cortexmetrics.io/docs/architecture/)
+1. [A general guide to running Cortex](https://cortexmetrics.io/docs/guides/running-in-production/)
+1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
+1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/cassandra/)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
 

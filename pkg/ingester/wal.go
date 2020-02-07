@@ -29,21 +29,21 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	walEnabled         bool          `yaml:"wal_enabled,omitempty"`
-	checkpointEnabled  bool          `yaml:"checkpoint_enabled,omitempty"`
-	recover            bool          `yaml:"recover_from_wal,omitempty"`
-	dir                string        `yaml:"wal_dir,omitempty"`
-	checkpointDuration time.Duration `yaml:"checkpoint_duration,omitempty"`
-	metricsRegisterer  prometheus.Registerer
+	WALEnabled         bool                  `yaml:"wal_enabled,omitempty"`
+	CheckpointEnabled  bool                  `yaml:"checkpoint_enabled,omitempty"`
+	Recover            bool                  `yaml:"recover_from_wal,omitempty"`
+	Dir                string                `yaml:"wal_dir,omitempty"`
+	CheckpointDuration time.Duration         `yaml:"checkpoint_duration,omitempty"`
+	metricsRegisterer  prometheus.Registerer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
-	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
-	f.BoolVar(&cfg.walEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
-	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
-	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
+	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
+	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
+	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
+	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
+	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -77,7 +77,7 @@ type walWrapper struct {
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
 func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
-	if !cfg.walEnabled {
+	if !cfg.WALEnabled {
 		return &noopWAL{}, nil
 	}
 
@@ -85,7 +85,7 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 	if cfg.metricsRegisterer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, cfg.metricsRegisterer)
 	}
-	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.dir, wal.DefaultSegmentSize/4, true)
+	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, true)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +158,11 @@ func (w *walWrapper) Log(record *Record) error {
 func (w *walWrapper) run() {
 	defer w.wait.Done()
 
-	if !w.cfg.checkpointEnabled {
+	if !w.cfg.CheckpointEnabled {
 		return
 	}
 
-	ticker := time.NewTicker(w.cfg.checkpointDuration)
+	ticker := time.NewTicker(w.cfg.CheckpointDuration)
 	defer ticker.Stop()
 
 	for {
@@ -190,7 +190,7 @@ func (w *walWrapper) run() {
 const checkpointPrefix = "checkpoint."
 
 func (w *walWrapper) performCheckpoint() (err error) {
-	if !w.cfg.checkpointEnabled {
+	if !w.cfg.CheckpointEnabled {
 		return nil
 	}
 
@@ -359,7 +359,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 }
 
 func recoverFromWAL(ingester *Ingester) (err error) {
-	walDir := ingester.cfg.WALConfig.dir
+	walDir := ingester.cfg.WALConfig.Dir
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(ingester.limiter, ingester.cfg, ingester.metrics)
 

@@ -49,9 +49,9 @@ var (
 	}
 )
 
-func newMockRuleStore() *mockRuleStore {
+func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 	return &mockRuleStore{
-		rules: mockRules,
+		rules: rules,
 	}
 }
 

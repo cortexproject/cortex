@@ -1423,11 +1423,11 @@ cassandra:
 
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 600ms]
+  [timeout: <duration> | default = 2s]
 
   # Initial connection timeout, used during initial dial to server.
   # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 600ms]
+  [connect_timeout: <duration> | default = 5s]
 
   # Number of retries to perform on a request. (Default is 0: no retries)
   # CLI flag: -cassandra.max-retries

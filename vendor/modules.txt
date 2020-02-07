@@ -359,7 +359,7 @@ github.com/oklog/ulid
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
 github.com/opentracing-contrib/go-stdlib/nethttp
-# github.com/opentracing/opentracing-go v1.1.0
+# github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log

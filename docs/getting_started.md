@@ -28,6 +28,13 @@ $ ./cortex -config.file=./docs/configuration/single-process-config.yaml
 This starts a single Cortex node storing chunks and index to your local filesystem in `/tmp/cortex`.
 It is not intended for production use.
 
+Clone and build prometheus
+```sh
+$ git clone https://github.com/prometheus/prometheus
+$ cd prometheus
+$ go build ./cmd/prometheus
+```
+
 Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):
 
 ```yaml
@@ -38,9 +45,6 @@ remote_write:
 And start Prometheus with that config file:
 
 ```sh
-$ git clone https://github.com/prometheus/prometheus
-$ cd prometheus
-$ go build ./cmd/prometheus
 $ ./prometheus --config.file=./documentation/examples/prometheus.yml
 ```
 

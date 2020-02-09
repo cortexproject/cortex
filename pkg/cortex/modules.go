@@ -457,6 +457,10 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+
+	t.tableManager.TargetModule = cfg.Target.String()
+	t.tableManager.Ring = t.ring
+	t.tableManager.Lifecycler = cfg.Ingester.LifecyclerConfig
 	t.tableManager.Start()
 	return nil
 }
@@ -638,7 +642,7 @@ var modules = map[moduleName]module{
 	},
 
 	TableManager: {
-		deps: []moduleName{Server},
+		deps: []moduleName{Server, Ring, Ingester},
 		init: (*Cortex).initTableManager,
 		stop: (*Cortex).stopTableManager,
 	},

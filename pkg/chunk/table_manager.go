@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 const (
@@ -116,13 +119,17 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client       TableClient
-	cfg          TableManagerConfig
-	schemaCfg    SchemaConfig
-	maxChunkAge  time.Duration
-	done         chan struct{}
-	wait         sync.WaitGroup
-	bucketClient BucketClient
+	Ring               *ring.Ring
+	client             TableClient
+	cfg                TableManagerConfig
+	schemaCfg          SchemaConfig
+	maxChunkAge        time.Duration
+	done               chan struct{}
+	wait               sync.WaitGroup
+	bucketClient       BucketClient
+	Lifecycler         ring.LifecyclerConfig
+	tableManagerStatus bool
+	TargetModule       string
 }
 
 // NewTableManager makes a new TableManager
@@ -158,6 +165,28 @@ func (m *TableManager) Start() {
 	}
 }
 
+func (m *TableManager) tableManagerOwnership() bool {
+	if m.TargetModule != "all" {
+		return true
+	}
+	lowestTokenIngester, err := m.Ring.Get(0, ring.Read, []ring.IngesterDesc{})
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to get lowest token owning cortex instance from ring", "err", err)
+	}
+	ownerInstance := lowestTokenIngester.Ingesters[0].Addr == m.Lifecycler.Addr+":"+strconv.Itoa(*m.Lifecycler.ListenPort)
+	if ownerInstance && !m.tableManagerStatus {
+		level.Info(util.Logger).Log("msg", "taking over the table-manager ownership")
+		m.tableManagerStatus = true
+		return true
+	} else if !ownerInstance && m.tableManagerStatus {
+		m.tableManagerStatus = false
+		level.Info(util.Logger).Log("msg", "passing over the table-manager ownership to ", lowestTokenIngester.Ingesters[0].Addr)
+		m.Stop()
+		return false
+	}
+	return false
+}
+
 // Stop the TableManager
 func (m *TableManager) Stop() {
 	close(m.done)
@@ -169,7 +198,10 @@ func (m *TableManager) loop() {
 
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
-
+	isOwner := m.tableManagerOwnership()
+	if !isOwner {
+		return
+	}
 	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
@@ -186,6 +218,7 @@ func (m *TableManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
+			m.tableManagerOwnership()
 			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {

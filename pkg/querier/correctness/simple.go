@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/api/prometheus/v1"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"

@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestFromValue(t *testing.T) {

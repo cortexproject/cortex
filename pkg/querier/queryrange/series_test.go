@@ -3,9 +3,10 @@ package queryrange
 import (
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func Test_ResponseToSamples(t *testing.T) {

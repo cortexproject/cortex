@@ -8,13 +8,14 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 )
 
 type ByHashRangeKey []IndexEntry

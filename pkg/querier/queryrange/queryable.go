@@ -3,10 +3,11 @@ package queryrange
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 )
 
 const (

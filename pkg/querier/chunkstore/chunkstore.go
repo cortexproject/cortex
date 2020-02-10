@@ -3,9 +3,10 @@ package chunkstore
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // ChunkStore is the read-interface to the Chunk Store.  Made an interface here

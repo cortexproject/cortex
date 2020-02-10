@@ -17,7 +17,6 @@
 * [ENHANCEMENT] Experimental TSDB: Reduced memory allocations in the ingesters when using the experimental blocks storage. #2057
 * [ENHANCEMENT] Cassandra Storage: added `max_retries`, `retry_min_backoff` and `retry_max_backoff` configuration options to enable retrying recoverable errors. #2054
 * [ENHANCEMENT] Allow to configure HTTP and gRPC server listen address, maximum number of simultaneous connections and connection keepalive settings.
-* [ENHANCEMENT] Cassandra Storage: added `passowrd_file` configuration options to enable reading Cassandra password from file. #2096
   * `-server.http-listen-address`
   * `-server.http-conn-limit`
   * `-server.grpc-listen-address`
@@ -27,6 +26,7 @@
   * `-server.grpc.keepalive.max-connection-age-grace`
   * `-server.grpc.keepalive.time`
   * `-server.grpc.keepalive.timeout`
+* [ENHANCEMENT] Cassandra Storage: added `passowrd_file` configuration options to enable reading Cassandra password from file. #2096
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Azure Blob ChunkStore: Fixed issue causing `invalid chunk checksum` errors. #2074
 

@@ -103,7 +103,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	}
 	if cfg.Auth {
 		if cfg.Password != "" && cfg.PasswordFile != "" {
-			return errors.New("-cassandra.password and -cassandra.password-file are mutually exclusive.")
+			return errors.Errorf("The -cassandra.password and -cassandra.password-file flags are mutually exclusive.")
 		}
 		password := cfg.Password
 		if password == "" {

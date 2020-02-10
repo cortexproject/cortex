@@ -9,9 +9,11 @@ import (
 
 	"strconv"
 
+	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -822,6 +824,17 @@ func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.Shard
 	for _, query := range queries {
 		s := strings.Split(query.HashValue, ":")[0]
 		n, err := strconv.Atoi(s)
+		if err != nil {
+			level.Error(util.Logger).Log(
+				"msg",
+				"Unable to determine shard from IndexQuery",
+				"HashValue",
+				query.HashValue,
+				"schema",
+				"v10",
+			)
+		}
+
 		if err == nil && n == shard.Shard {
 			matches = append(matches, query)
 		}
@@ -892,5 +905,4 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Inde
 			HashValue: string(seriesID),
 		},
 	}, nil
-
 }

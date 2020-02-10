@@ -9,6 +9,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// orSquasher is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
+// It's helpful for tests because of its intuitive & human readable output.
+func orSquasher(nodes ...promql.Node) (promql.Expr, error) {
+	combined := nodes[0]
+	for i := 1; i < len(nodes); i++ {
+		combined = &promql.BinaryExpr{
+			Op:  promql.LOR,
+			LHS: combined.(promql.Expr),
+			RHS: nodes[i].(promql.Expr),
+		}
+	}
+	return combined.(promql.Expr), nil
+}
+
 func TestShardSummer(t *testing.T) {
 	var testExpr = []struct {
 		shards   int
@@ -106,7 +120,7 @@ func TestShardSummer(t *testing.T) {
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 
-			summer, err := NewShardSummer(c.shards, OrSquasher)
+			summer, err := NewShardSummer(c.shards, orSquasher)
 			require.Nil(t, err)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)

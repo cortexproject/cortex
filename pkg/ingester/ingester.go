@@ -518,7 +518,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numChunks += len(wireChunks)
-
 		batch = append(batch, client.TimeSeriesChunk{
 			Labels: client.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,

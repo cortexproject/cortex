@@ -10,9 +10,6 @@ import (
 	"testing"
 	"time"
 
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +19,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestConfig_ShouldSupportYamlConfig(t *testing.T) {

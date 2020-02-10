@@ -3,11 +3,12 @@ package tsdb
 import (
 	"context"
 
+	"github.com/go-kit/kit/log"
+	"github.com/thanos-io/thanos/pkg/objstore"
+
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
-	"github.com/go-kit/kit/log"
-	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 // NewBucketClient creates a new bucket client based on the configured backend

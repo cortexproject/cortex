@@ -3,12 +3,13 @@ package querier
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )

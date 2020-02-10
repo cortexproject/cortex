@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestRulerShutdown tests shutting down ruler unregisters correctly

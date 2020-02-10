@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 )
 
 // traced adds log trace lines on each db call

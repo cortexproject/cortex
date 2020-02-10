@@ -6,14 +6,16 @@ package ruler
 import (
 	context "context"
 	fmt "fmt"
-	rules "github.com/cortexproject/cortex/pkg/ruler/rules"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	grpc "google.golang.org/grpc"
 	io "io"
 	math "math"
 	reflect "reflect"
 	strings "strings"
+
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	grpc "google.golang.org/grpc"
+
+	rules "github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

@@ -5,10 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{

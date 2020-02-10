@@ -6,14 +6,16 @@ package ingester
 import (
 	encoding_binary "encoding/binary"
 	fmt "fmt"
-	client "github.com/cortexproject/cortex/pkg/ingester/client"
-	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
 	reflect "reflect"
 	strings "strings"
+
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+
+	client "github.com/cortexproject/cortex/pkg/ingester/client"
+	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

@@ -14,9 +14,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/user"
 )
 
 var clients = promauto.NewGauge(prometheus.GaugeOpts{

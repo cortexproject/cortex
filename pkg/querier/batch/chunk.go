@@ -1,9 +1,10 @@
 package batch
 
 import (
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/prometheus/common/model"
 )
 
 // chunkIterator implement batchIterator over a chunk.  Its is designed to be

@@ -3,8 +3,9 @@ package querier
 import (
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // This struct aggregates metrics exported by Thanos Bucket Store

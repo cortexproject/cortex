@@ -8,9 +8,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (

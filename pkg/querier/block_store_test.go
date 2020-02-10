@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestUserStore_InitialSync(t *testing.T) {

@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 type testUserTSDB struct {

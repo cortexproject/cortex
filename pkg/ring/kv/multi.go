@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/uber-go/atomic"

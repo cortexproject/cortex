@@ -9,10 +9,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestRoundTrip(t *testing.T) {

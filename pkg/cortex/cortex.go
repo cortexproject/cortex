@@ -176,6 +176,10 @@ type Cortex struct {
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
 	compactor    *compactor.Compactor
+
+	// The chunk store that the querier should use to query the long
+	// term storage. It depends on the storage engine used.
+	querierChunkStore querier.ChunkStore
 }
 
 // New makes a new Cortex.

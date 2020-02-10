@@ -46,5 +46,12 @@ tsdb:
     secret_access_key: supersecret
     insecure:          true
 
+ruler:
+  enable_api: true
+  storeconfig:
+    type: configdb
+    configdb:
+      configsapiurl: http://configstore:80/
+
 storage:
   engine: tsdb

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type Config struct {
 	Auth                     bool          `yaml:"auth,omitempty"`
 	Username                 string        `yaml:"username,omitempty"`
 	Password                 string        `yaml:"password,omitempty"`
+	PasswordFile             string        `yaml:"password_file,omitempty"`
 	Timeout                  time.Duration `yaml:"timeout,omitempty"`
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
 	Retries                  int           `yaml:"max_retries"`
@@ -49,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
+	f.StringVar(&cfg.PasswordFile, "cassandra.password-file", "", "File containing password to use when connecting to cassandra.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
 	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 5*time.Second, "Initial connection timeout, used during initial dial to server.")
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
@@ -81,13 +84,15 @@ func (cfg *Config) session() (*gocql.Session, error) {
 			Max:        cfg.MaxBackoff,
 		}
 	}
-	cfg.setClusterConfig(cluster)
+	if err = cfg.setClusterConfig(cluster); err != nil {
+		return nil, errors.WithStack(err)
+	}
 
 	return cluster.CreateSession()
 }
 
 // apply config settings to a cassandra ClusterConfig
-func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
+func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
@@ -97,11 +102,23 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
 		}
 	}
 	if cfg.Auth {
+		if cfg.Password != "" && cfg.PasswordFile != "" {
+			return errors.New("The -cassandra.password and -cassandra.password-file are mutually exclusive.")
+		}
+		password := cfg.Password
+		if password == "" {
+			passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
+			if err != nil {
+				return errors.Errorf("Could not read Cassandra password file: %v", err)
+			}
+			password = string(passwordBytes)
+		}
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: cfg.Username,
-			Password: cfg.Password,
+			Password: password,
 		}
 	}
+	return nil
 }
 
 // createKeyspace will create the desired keyspace if it doesn't exist.
@@ -112,7 +129,9 @@ func (cfg *Config) createKeyspace() error {
 	cluster.Timeout = 20 * time.Second
 	cluster.ConnectTimeout = 20 * time.Second
 
-	cfg.setClusterConfig(cluster)
+	if err := cfg.setClusterConfig(cluster); err != nil {
+		return errors.WithStack(err)
+	}
 
 	session, err := cluster.CreateSession()
 	if err != nil {

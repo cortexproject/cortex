@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 )
 
 // LazyQueryable wraps a storage.Queryable

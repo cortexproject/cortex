@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	// Needed for gRPC compatibility.
-	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -272,7 +270,7 @@ func (i *Ingester) StopIncomingRequests() {
 }
 
 // Push implements client.IngesterServer
-func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2Push(ctx, req)
 	}
@@ -408,7 +406,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 }
 
 // Query implements service.IngesterServer
-func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2Query(ctx, req)
 	}
@@ -547,7 +545,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 }
 
 // LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelValues(ctx, req)
 	}
@@ -568,7 +566,7 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 }
 
 // LabelNames return all the label names.
-func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelNames(ctx, req)
 	}
@@ -589,7 +587,7 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2MetricsForLabelMatchers(ctx, req)
 	}
@@ -632,7 +630,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 }
 
 // UserStats returns ingestion statistics for the current user.
-func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2UserStats(ctx, req)
 	}
@@ -657,7 +655,7 @@ func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) 
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
-func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	if i.cfg.TSDBEnabled {
 		return i.v2AllUserStats(ctx, req)
 	}
@@ -686,7 +684,7 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 }
 
 // Check implements the grpc healthcheck
-func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 

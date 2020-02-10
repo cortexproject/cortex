@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	net_context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
@@ -293,7 +292,7 @@ type stream struct {
 	responses []*client.QueryStreamResponse
 }
 
-func (s *stream) Context() net_context.Context {
+func (s *stream) Context() context.Context {
 	return s.ctx
 }
 

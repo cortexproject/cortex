@@ -1421,6 +1421,10 @@ cassandra:
   # CLI flag: -cassandra.password
   [password: <string> | default = ""]
 
+  # File containing password to use when connecting to cassandra.
+  # CLI flag: -cassandra.password-file
+  [password_file: <string> | default = ""]
+
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
   [timeout: <duration> | default = 2s]

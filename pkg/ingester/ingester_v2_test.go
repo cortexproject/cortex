@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -26,7 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 )
 
 func TestIngester_v2Push(t *testing.T) {

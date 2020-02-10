@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 )
 
 // Test forSeriesMatching correctly batches up series.

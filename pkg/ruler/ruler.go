@@ -1,7 +1,7 @@
 package ruler
 
 import (
-	native_ctx "context"
+	"context"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -31,7 +31,6 @@ import (
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 	"google.golang.org/grpc"
 )
@@ -223,7 +222,7 @@ func (r *Ruler) Stop() {
 //
 // Copied from Prometheus's main.go.
 func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*promRules.Alert) {
+	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -401,7 +400,7 @@ func (r *Ruler) loadRules(ctx context.Context) {
 
 // syncManager maps the rule files to disk, detects any changes and will create/update the
 // the users Prometheus Rules Manager.
-func (r *Ruler) syncManager(ctx native_ctx.Context, user string, groups store.RuleGroupList) {
+func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleGroupList) {
 	// A lock is taken to ensure if syncManager is called concurrently, that each call
 	// returns after the call map files and check for updates
 	r.userManagerMtx.Lock()

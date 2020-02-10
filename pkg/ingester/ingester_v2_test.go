@@ -865,7 +865,12 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 	ingesterCfg.TSDBConfig.Backend = "s3"
 	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
 
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
+	ingester, errfut := NewV2(ingesterCfg, clientCfg, overrides, registerer)
+	_, err = errfut.WaitAndGet(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -945,7 +950,9 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
 
-			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+			ingester, errfut := NewV2(ingesterCfg, clientCfg, overrides, nil)
+			initDone, err := errfut.WaitAndGet(context.Background())
+			require.True(t, initDone)
 			require.NoError(t, err)
 
 			defer ingester.Shutdown()

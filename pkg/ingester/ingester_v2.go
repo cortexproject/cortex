@@ -66,11 +66,11 @@ type TSDBState struct {
 	tsdbMetrics *tsdbMetrics
 }
 
-// NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
-func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+// NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage.
+func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, *ErrorFuture) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create the bucket client")
+		return nil, NewFinishedErrorFuture(errors.Wrap(err, "failed to create the bucket client"))
 	}
 
 	if registerer != nil {
@@ -104,31 +104,40 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
 	if err != nil {
-		return nil, err
+		return nil, NewFinishedErrorFuture(err)
 	}
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
-	// Scan and open TSDB's that already exist on disk
-	if err := i.openExistingTSDB(context.Background()); err != nil {
-		return nil, err
-	}
+	errfut := NewErrorFuture()
+	// Run the rest of ingeters' initialization in goroutine.
+	go func() {
+		// Scan and open TSDB's that already exist on disk
+		if err := i.openExistingTSDB(context.Background()); err != nil {
+			errfut.Finish(err)
+			return
+		}
 
-	// Now that user states have been created, we can start the lifecycler
-	i.lifecycler.Start()
+		// Now that user states have been created, we can start the lifecycler
+		i.lifecycler.Start()
 
-	// Run the blocks shipping in a dedicated go routine.
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		// Run the blocks shipping in a dedicated go routine.
+		if i.cfg.TSDBConfig.ShipInterval > 0 {
+			i.done.Add(1)
+			go i.shipBlocksLoop()
+		}
+
 		i.done.Add(1)
-		go i.shipBlocksLoop()
-	}
+		go i.rateUpdateLoop()
 
-	i.done.Add(1)
-	go i.rateUpdateLoop()
+		// All fine now
+		errfut.Finish(nil)
+	}()
 
-	return i, nil
+	i.initDone = errfut
+	return i, errfut
 }
 
 func (i *Ingester) rateUpdateLoop() {
@@ -154,6 +163,10 @@ func (i *Ingester) rateUpdateLoop() {
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	var firstPartialErr error
 
 	defer client.ReuseSlice(req.Timeseries)
@@ -252,6 +265,10 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 }
 
 func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -307,6 +324,10 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 }
 
 func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -336,6 +357,10 @@ func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesReq
 }
 
 func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -365,6 +390,10 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -432,6 +461,10 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 }
 
 func (i *Ingester) v2UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -446,6 +479,10 @@ func (i *Ingester) v2UserStats(ctx old_ctx.Context, req *client.UserStatsRequest
 }
 
 func (i *Ingester) v2AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return nil, err
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 

@@ -44,7 +44,9 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, nil)
+	ing, errfut := New(cfg, clientConfig, overrides, store, nil)
+	initDone, err := errfut.WaitAndGet(context.Background())
+	require.True(t, initDone)
 	require.NoError(t, err)
 
 	return store, ing

@@ -293,10 +293,14 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
-	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
-	if err != nil {
-		return
+	var errfut *ingester.ErrorFuture
+	t.ingester, errfut = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
+	if done, err := errfut.Get(); done && err != nil {
+		return err
 	}
+
+	// if ingester initialization isn't done yet, we go ahead. Services that use ingester must check its
+	// readiness status and eventually wait for it to finish initialization.
 
 	client.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)

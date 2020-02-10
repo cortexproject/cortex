@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -124,6 +125,10 @@ type Ingester struct {
 
 	// Prometheus block storage
 	TSDBState TSDBState
+
+	// Initialization status. Can be checked to see if ingester is finished with its initialization,
+	// and if so, whether initialization failed or not.
+	initDone *ErrorFuture
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -132,7 +137,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, *ErrorFuture) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -162,6 +167,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		chunkStore:   chunkStore,
 		quit:         make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		initDone:     NewFinishedErrorFuture(nil), // initialization is finished once New is done.
 	}
 
 	var err error
@@ -170,7 +176,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	// The '!cfg.WALConfig.WALEnabled' argument says don't flush on shutdown if the WAL is enabled.
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled)
 	if err != nil {
-		return nil, err
+		return nil, NewFinishedErrorFuture(err)
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
@@ -179,7 +185,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
-			return nil, err
+			return nil, NewFinishedErrorFuture(err)
 		}
 		elapsed := time.Since(start)
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
@@ -193,7 +199,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
 	if err != nil {
-		return nil, err
+		return nil, NewFinishedErrorFuture(err)
 	}
 
 	// Now that user states have been created, we can start the lifecycler
@@ -208,7 +214,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i.done.Add(1)
 	go i.loop()
 
-	return i, nil
+	return i, NewFinishedErrorFuture(nil)
 }
 
 func (i *Ingester) loop() {
@@ -256,6 +262,11 @@ func (i *Ingester) Shutdown() {
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
@@ -687,6 +698,10 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 
 // Check implements the grpc healthcheck
 func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
+	}
+
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
@@ -699,9 +714,27 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if err := i.checkIngesterInitFinished(); err != nil {
+		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
 	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
+	}
+}
+
+func (i *Ingester) checkIngesterInitFinished() error {
+	done, err := i.initDone.Get()
+	switch {
+	case !done:
+		return errors.New("ingester init in progress")
+	case err != nil:
+		return errors.New("ingester init failed")
+	default:
+		// done and no error, all good.
+		return nil
 	}
 }

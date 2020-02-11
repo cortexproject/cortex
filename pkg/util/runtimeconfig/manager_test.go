@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/uber-go/atomic"
 	"gopkg.in/yaml.v2"
@@ -75,9 +74,7 @@ func TestNewOverridesManager(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	// registry implements both Registerer and Gatherer
-	registry := prometheus.NewRegistry()
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, registry)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// Cleaning up
@@ -111,8 +108,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	registry := prometheus.NewRegistry()
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, registry)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update
@@ -160,8 +156,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 		},
 	}
 
-	registry := prometheus.NewRegistry()
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, registry)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update
@@ -209,8 +204,8 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 			return val, nil
 		},
 	}
-	registry := prometheus.NewRegistry()
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, registry)
+
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update

@@ -54,13 +54,9 @@ func NewRuntimeConfigManager(cfg ManagerConfig, metricsRegisterer prometheus.Reg
 		}),
 	}
 
-	metricsRegisterer.MustRegister(mgr.configLoadSuccess)
-	// The prometheus client library implicitly initializes gauges at 0.
-	// Initialize gauge in success state (require explicit transitioning into
-	// the error state) instead. Note: it could be better to change the meaning
-	// of 0 to success, or to introduce a third state, or to use an error
-	// counter instead of a gauge.
-	mgr.configLoadSuccess.Set(1)
+	if metricsRegisterer != nil {
+		metricsRegisterer.MustRegister(mgr.configLoadSuccess)
+	}
 
 	if cfg.LoadPath != "" {
 		if err := mgr.loadConfig(); err != nil {

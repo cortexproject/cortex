@@ -27,6 +27,7 @@
   * `-server.grpc.keepalive.time`
   * `-server.grpc.keepalive.timeout`
 * [ENHANCEMENT] PostgreSQL: Bump up `github.com/lib/pq` from `v1.0.0` to `v1.3.0` to support PostgreSQL SCRAM-SHA-256 authentication. #2097
+* [ENHANCEMENT] Casandra: User no longer need `CREATE` privilege on `<all keyspaces>` if given keyspace exists. #2032
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101
 * [BUGFIX] Azure Blob ChunkStore: Fixed issue causing `invalid chunk checksum` errors. #2074

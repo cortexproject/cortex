@@ -169,7 +169,6 @@ type Cortex struct {
 	distributor   *distributor.Distributor
 	ingester      *ingester.Ingester
 	store         chunk.Store
-	deleteStore   *chunk.DeleteStore
 	worker        frontend.Worker
 	frontend      *frontend.Frontend
 	tableManager  *chunk.TableManager

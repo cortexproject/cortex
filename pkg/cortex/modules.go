@@ -392,10 +392,6 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 		return err
 	}
 
-	t.deleteStore, err = storage.NewDeleteStore(cfg.Storage)
-	if err != nil {
-		return
-	}
 	return
 }
 
@@ -617,7 +613,13 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 		return
 	}
 
-	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deleteStore, t.store, storageClient)
+	var deleteStore *chunk.DeleteStore
+	deleteStore, err = storage.NewDeleteStore(cfg.Storage)
+	if err != nil {
+		return
+	}
+
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, deleteStore, t.store, storageClient)
 	if err != nil {
 		return
 	}
@@ -625,7 +627,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 	go t.dataPurger.Run()
 
 	var deleteRequestHandler *purger.DeleteRequestHandler
-	deleteRequestHandler, err = purger.NewDeleteRequestHandler(t.deleteStore)
+	deleteRequestHandler, err = purger.NewDeleteRequestHandler(deleteStore)
 	if err != nil {
 		return
 	}

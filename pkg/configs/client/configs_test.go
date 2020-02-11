@@ -8,8 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 var response = `{

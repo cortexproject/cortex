@@ -9,12 +9,13 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
+
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config says where we can find the ruler configs.

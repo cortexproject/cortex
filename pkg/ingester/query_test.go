@@ -1,19 +1,18 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"

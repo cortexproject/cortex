@@ -14,10 +14,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (

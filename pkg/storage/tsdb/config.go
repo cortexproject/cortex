@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"

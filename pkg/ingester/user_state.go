@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -18,8 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 // userStates holds the userState object for all users (tenants),

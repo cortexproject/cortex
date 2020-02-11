@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
-	"github.com/weaveworks/common/logging"
 )
 
 var (

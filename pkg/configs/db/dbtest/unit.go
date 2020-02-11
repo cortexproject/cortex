@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	"github.com/weaveworks/common/logging"
 )
 
 // Setup sets up stuff for testing, creating a new database

@@ -3,9 +3,10 @@ package db
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
+
+	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 var (

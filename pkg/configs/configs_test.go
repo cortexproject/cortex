@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -15,6 +14,8 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var legacyRulesFile = `ALERT TestAlert

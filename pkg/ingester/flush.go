@@ -1,11 +1,10 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"

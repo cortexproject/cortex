@@ -19,9 +19,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/weaveworks/common/user"
 )
 
 const (

@@ -104,6 +104,8 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	err = ing1.Start(context.Background())
+	require.NoError(t, err)
 
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing1.lifecycler.GetState()
@@ -122,6 +124,8 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
+	require.NoError(t, err)
+	err = ing2.Start(context.Background())
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -167,6 +171,8 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
+	require.NoError(t, err)
+	err = ing.Start(context.Background())
 	require.NoError(t, err)
 
 	test.Poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
@@ -439,6 +445,8 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg1.MaxTransferRetries = 10
 			ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 			require.NoError(t, err)
+			err = ing1.Start(context.Background())
+			require.NoError(t, err)
 
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 				return ing1.lifecycler.GetState()
@@ -465,6 +473,8 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg2.LifecyclerConfig.Addr = "ingester2"
 			cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 			ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
+			require.NoError(t, err)
+			err = ing2.Start(context.Background())
 			require.NoError(t, err)
 
 			// Let ing1 send blocks/wal to ing2

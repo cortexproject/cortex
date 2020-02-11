@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -35,6 +37,8 @@ const (
 var (
 	// This is initialised if the WAL is enabled and the records are fetched from this pool.
 	recordPool sync.Pool
+
+	errIngesterNotStarted = errors.New("ingester not started")
 )
 
 // Config for an Ingester.
@@ -121,6 +125,9 @@ type Ingester struct {
 
 	// Prometheus block storage
 	TSDBState TSDBState
+
+	// Has start been called and finished successfully?
+	startDone *atomic.Bool
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -159,6 +166,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		chunkStore:   chunkStore,
 		quit:         make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		startDone:    atomic.NewBool(false),
 	}
 
 	var err error
@@ -206,6 +214,23 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	go i.loop()
 
 	return i, nil
+}
+
+func (i *Ingester) Start(ctx context.Context) error {
+	if i.cfg.TSDBEnabled {
+		err := i.startV2(ctx)
+		if err == nil {
+			i.startDone.Store(true)
+		}
+		return err
+	}
+
+	i.startDone.Store(true)
+	return nil
+}
+
+func (i *Ingester) ingesterStarted() bool {
+	return i.startDone.Load()
 }
 
 func (i *Ingester) loop() {
@@ -270,6 +295,10 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2Push(ctx, req)
 	}
@@ -406,6 +435,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2Query(ctx, req)
 	}
@@ -469,6 +502,10 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if !i.ingesterStarted() {
+		return errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return fmt.Errorf("Unimplemented for V2")
 	}
@@ -545,6 +582,10 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelValues(ctx, req)
 	}
@@ -566,6 +607,10 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelNames(ctx, req)
 	}
@@ -587,6 +632,10 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2MetricsForLabelMatchers(ctx, req)
 	}
@@ -630,6 +679,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2UserStats(ctx, req)
 	}
@@ -655,6 +708,10 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	if !i.ingesterStarted() {
+		return nil, errIngesterNotStarted
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2AllUserStats(ctx, req)
 	}
@@ -684,6 +741,10 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 
 // Check implements the grpc healthcheck
 func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	if !i.ingesterStarted() {
+		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
+	}
+
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
@@ -696,6 +757,11 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if !i.ingesterStarted() {
+		http.Error(w, "Not ready: "+errIngesterNotStarted.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
 	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
 		w.WriteHeader(http.StatusNoContent)
 	} else {

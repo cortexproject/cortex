@@ -45,6 +45,9 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
 
+	err = ing.Start(context.Background())
+	require.NoError(t, err)
+
 	return store, ing
 }
 

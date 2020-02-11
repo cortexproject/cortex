@@ -67,6 +67,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
+	go.uber.org/atomic v1.5.0
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0

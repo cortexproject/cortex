@@ -930,6 +930,10 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 	if err != nil {
 		return nil, nil, err
 	}
+	err = ingester.Start(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Create a cleanup function that the caller should call with defer
 	cleanup := func() {
@@ -1007,6 +1011,8 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			testData.setup(t, tempDir)
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+			require.NoError(t, err)
+			err = ingester.Start(context.Background())
 			require.NoError(t, err)
 
 			defer ingester.Shutdown()

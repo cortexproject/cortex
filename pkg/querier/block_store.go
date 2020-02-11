@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -21,12 +22,15 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
+
+var errStoreNotStarted = errors.New("user store not started")
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
@@ -46,7 +50,10 @@ type UserStore struct {
 
 	// Used to cancel workers and wait until done.
 	workers       sync.WaitGroup
+	workersCtx    context.Context
 	workersCancel context.CancelFunc
+
+	startDone *atomic.Bool
 
 	// Metrics.
 	syncTimes prometheus.Histogram
@@ -55,7 +62,6 @@ type UserStore struct {
 // NewUserStore returns a new UserStore
 func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
 	workersCtx, workersCancel := context.WithCancel(context.Background())
-
 	u := &UserStore{
 		logger:        logger,
 		cfg:           cfg,
@@ -63,12 +69,14 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		stores:        map[string]*store.BucketStore{},
 		logLevel:      logLevel,
 		tsdbMetrics:   newTSDBBucketStoreMetrics(),
+		workersCtx:    workersCtx,
 		workersCancel: workersCancel,
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
+		startDone: atomic.NewBool(false),
 	}
 
 	// Configure the time range to sync all blocks.
@@ -98,20 +106,29 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 
 	u.client = storepb.NewStoreClient(cc)
 
+	return u, nil
+}
+
+func (u *UserStore) Start(startCtx context.Context) error {
 	// If the sync is disabled we never sync blocks, which means the bucket store
 	// will be empty and no series will be returned once queried.
 	if u.cfg.BucketStore.SyncInterval > 0 {
 		// Run an initial blocks sync, required in order to be able to serve queries.
-		if err := u.initialSync(workersCtx); err != nil {
-			return nil, err
+		if err := u.initialSync(startCtx); err != nil {
+			return err
 		}
 
 		// Periodically sync the blocks.
 		u.workers.Add(1)
-		go u.syncStoresLoop(workersCtx)
+		go u.syncStoresLoop(u.workersCtx)
 	}
 
-	return u, nil
+	u.startDone.Store(true)
+	return nil
+}
+
+func (u *UserStore) storeStarted() bool {
+	return u.startDone.Load()
 }
 
 // Stop the blocks sync and waits until done.
@@ -235,6 +252,9 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 
 // Info makes an info request to the underlying user store
 func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	if !u.storeStarted() {
+		return nil, errStoreNotStarted
+	}
 	log, ctx := spanlogger.New(ctx, "UserStore.Info")
 	defer log.Span.Finish()
 
@@ -258,6 +278,10 @@ func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storep
 
 // Series makes a series request to the underlying user store
 func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
+	if !u.storeStarted() {
+		return errStoreNotStarted
+	}
+
 	log, ctx := spanlogger.New(srv.Context(), "UserStore.Series")
 	defer log.Span.Finish()
 
@@ -281,6 +305,10 @@ func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesS
 
 // LabelNames makes a labelnames request to the underlying user store
 func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	if !u.storeStarted() {
+		return nil, errStoreNotStarted
+	}
+
 	log, ctx := spanlogger.New(ctx, "UserStore.LabelNames")
 	defer log.Span.Finish()
 
@@ -304,6 +332,10 @@ func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReque
 
 // LabelValues makes a labelvalues request to the underlying user store
 func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	if !u.storeStarted() {
+		return nil, errStoreNotStarted
+	}
+
 	log, ctx := spanlogger.New(ctx, "UserStore.LabelValues")
 	defer log.Span.Finish()
 

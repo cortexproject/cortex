@@ -52,6 +52,10 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometh
 	return b, nil
 }
 
+func (b *BlockQuerier) Start(ctx context.Context) error {
+	return b.us.Start(ctx)
+}
+
 // Get implements the ChunkStore interface. It makes a block query and converts the response into chunks
 func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "BlockQuerier.Get")

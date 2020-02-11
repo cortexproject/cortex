@@ -1,9 +1,11 @@
 package cortex
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -251,6 +253,42 @@ func (t *Cortex) init(cfg *Config, m moduleName) error {
 	return t.initModule(cfg, m)
 }
 
+// calls start functions of modules. Functions are called concurrently.
+func (t *Cortex) start(target moduleName) error {
+	deps := orderedDeps(target)
+
+	wg := sync.WaitGroup{}
+	ch := make(chan error)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, m := range deps {
+		start := modules[m].start
+		if start != nil {
+			wg.Add(1)
+			go func(fn func(*Cortex, context.Context) error) {
+				defer wg.Done()
+				ch <- fn(t, ctx)
+			}(start)
+		}
+	}
+
+	go func() {
+		// this is mostly useful if there were no errors.
+		wg.Wait()
+		close(ch)
+	}()
+
+	for e := range ch {
+		if e != nil {
+			// return first error. This will also cancel context (via defer).
+			return e
+		}
+	}
+	return nil
+}
+
 func (t *Cortex) initModule(cfg *Config, m moduleName) error {
 	level.Info(util.Logger).Log("msg", "initialising", "module", m)
 	if modules[m].init != nil {
@@ -263,7 +301,28 @@ func (t *Cortex) initModule(cfg *Config, m moduleName) error {
 
 // Run starts Cortex running, and blocks until a signal is received.
 func (t *Cortex) Run() error {
-	return t.server.Run()
+	// all modules are initialized, let's call start functions as well.
+	// We do this at the same time as starting the server.
+	// The reason is that we want to perform additional startup tasks that can take a long time,
+	// but we also want to be able to collect the metrics in the meantime.
+	errs := make(chan error, 1)
+	go func() {
+		err := t.start(t.target)
+		if err != nil {
+			errs <- err
+		}
+	}()
+
+	go func() {
+		errs <- t.server.Run()
+	}()
+
+	err := <-errs
+
+	// if we have received error from calling start methods, stop the server.
+	// If it was server that signalled error, this is no-op.
+	t.server.Stop()
+	return err
 }
 
 // Stop gracefully stops a Cortex.

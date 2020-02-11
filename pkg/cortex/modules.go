@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -306,6 +307,14 @@ func (t *Cortex) initQuerierChunkStore(cfg *Config) error {
 	return fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
 }
 
+func (t *Cortex) startQuerierChunkStore(ctx context.Context) error {
+	if bq, ok := t.querierChunkStore.(*querier.BlockQuerier); ok {
+		// Blocks querier needs to be "started" before it can be used
+		return bq.Start(ctx)
+	}
+	return nil
+}
+
 func (t *Cortex) stopQuerierChunkStore() error {
 	return nil
 }
@@ -329,6 +338,10 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	return
+}
+
+func (t *Cortex) startIngester(ctx context.Context) (err error) {
+	return t.ingester.Start(ctx)
 }
 
 func (t *Cortex) stopIngester() error {
@@ -538,8 +551,16 @@ func (t *Cortex) stopMemberlistKV() (err error) {
 
 type module struct {
 	deps []moduleName
-	init func(t *Cortex, cfg *Config) error
-	stop func(t *Cortex) error
+
+	// Lifecycle:
+	//
+	// 1. init is called first for all modules sequentially.
+	// 2. after all modules are initialized, start functions are called concurrently.
+	// If any start function returns error, server is stopped. When start is called, HTTP requests are already handled.
+	// 3. stop is called on Cortex shutdown.
+	init  func(t *Cortex, cfg *Config) error
+	start func(t *Cortex, ctx context.Context) error
+	stop  func(t *Cortex) error
 }
 
 var modules = map[moduleName]module{
@@ -581,9 +602,10 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
-		init: (*Cortex).initIngester,
-		stop: (*Cortex).stopIngester,
+		deps:  []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
+		init:  (*Cortex).initIngester,
+		start: (*Cortex).startIngester,
+		stop:  (*Cortex).stopIngester,
 	},
 
 	Querier: {
@@ -593,9 +615,10 @@ var modules = map[moduleName]module{
 	},
 
 	QuerierChunkStore: {
-		deps: []moduleName{Store},
-		init: (*Cortex).initQuerierChunkStore,
-		stop: (*Cortex).stopQuerierChunkStore,
+		deps:  []moduleName{Store},
+		init:  (*Cortex).initQuerierChunkStore,
+		start: (*Cortex).startQuerierChunkStore,
+		stop:  (*Cortex).stopQuerierChunkStore,
 	},
 
 	QueryFrontend: {

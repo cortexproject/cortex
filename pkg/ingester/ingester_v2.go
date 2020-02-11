@@ -21,6 +21,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -86,6 +87,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		chunkStore:   nil,
 		quit:         make(chan struct{}),
 		wal:          &noopWAL{},
+		startDone:    atomic.NewBool(false),
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
@@ -112,9 +114,13 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
+	return i, nil
+}
+
+func (i *Ingester) startV2(ctx context.Context) error {
 	// Scan and open TSDB's that already exist on disk
-	if err := i.openExistingTSDB(context.Background()); err != nil {
-		return nil, err
+	if err := i.openExistingTSDB(ctx); err != nil {
+		return err
 	}
 
 	// Now that user states have been created, we can start the lifecycler
@@ -129,7 +135,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.done.Add(1)
 	go i.updateLoop()
 
-	return i, nil
+	return nil
 }
 
 func (i *Ingester) updateLoop() {

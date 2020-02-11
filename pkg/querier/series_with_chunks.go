@@ -1,8 +1,9 @@
 package querier
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // SeriesWithChunks extends storage.Series interface with direct access to Cortex chunks.

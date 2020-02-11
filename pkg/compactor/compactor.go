@@ -213,8 +213,7 @@ func (c *Compactor) run() {
 	defer c.runner.Done()
 
 	// If sharding is enabled we should wait until this instance is
-	// ACTIVE within the ring. This is particular important to avoid
-	// flaky tests.
+	// ACTIVE within the ring.
 	if c.compactorCfg.ShardingEnabled {
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
 		if err := c.waitRingActive(); err != nil {

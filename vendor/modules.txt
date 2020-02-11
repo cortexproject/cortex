@@ -176,7 +176,7 @@ github.com/go-openapi/swag
 github.com/go-openapi/validate
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/gocql/gocql v0.0.0-20190301043612-f6df8288f9b4
+# github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur

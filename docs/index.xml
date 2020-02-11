@@ -3552,6 +3552,7 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] PostgreSQL: Bump up &lt;code&gt;github.com/lib/pq&lt;/code&gt; from &lt;code&gt;v1.0.0&lt;/code&gt; to &lt;code&gt;v1.3.0&lt;/code&gt; to support PostgreSQL SCRAM-SHA-256 authentication. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2097&#34;&gt;#2097&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed &lt;code&gt;/all_user_stats&lt;/code&gt; and &lt;code&gt;/api/prom/user_stats&lt;/code&gt; endpoints when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2042&#34;&gt;#2042&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2101&#34;&gt;#2101&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Azure Blob ChunkStore: Fixed issue causing &lt;code&gt;invalid chunk checksum&lt;/code&gt; errors. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2074&#34;&gt;#2074&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;Cortex 0.4.0 is the last version that can &lt;em&gt;write&lt;/em&gt; denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.&lt;/p&gt;

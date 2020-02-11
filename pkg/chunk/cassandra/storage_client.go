@@ -1,6 +1,7 @@
 package cassandra
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -59,6 +60,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 }
 
+func (cfg *Config) Validate() error {
+	if cfg.Password != "" && cfg.PasswordFile != "" {
+		return errors.Errorf("The password and password_file flags are mutually exclusive.")
+	}
+	return nil
+}
+
 func (cfg *Config) session() (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
@@ -112,15 +120,13 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 		}
 	}
 	if cfg.Auth {
-		if cfg.Password != "" && cfg.PasswordFile != "" {
-			return errors.Errorf("The -cassandra.password and -cassandra.password-file flags are mutually exclusive.")
-		}
 		password := cfg.Password
-		if password == "" {
+		if cfg.PasswordFile != "" {
 			passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
 			if err != nil {
 				return errors.Errorf("Could not read Cassandra password file: %v", err)
 			}
+			passwordBytes = bytes.TrimRight(passwordBytes, "\n")
 			password = string(passwordBytes)
 		}
 		cluster.Authenticator = gocql.PasswordAuthenticator{

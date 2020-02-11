@@ -82,7 +82,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
 		return errors.New("unsupported storage engine")
 	}
-
+	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Cassandra Storage config")
+	}
 	return nil
 }
 

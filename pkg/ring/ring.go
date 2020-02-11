@@ -31,6 +31,9 @@ const (
 
 	// DistributorRingKey is the key under which we store the distributors ring in the KVStore.
 	DistributorRingKey = "distributor"
+
+	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
+	CompactorRingKey = "compactor"
 )
 
 // ReadRing represents the read interface to the ring.

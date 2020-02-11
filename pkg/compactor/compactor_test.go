@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +76,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	c, _, logs, registry := prepare(t, bucketClient)
+	c, _, logs, registry, cleanup := prepare(t, bucketClient)
+	defer cleanup()
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -162,7 +165,8 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, logs, registry := prepare(t, bucketClient)
+	c, _, logs, registry, cleanup := prepare(t, bucketClient)
+	defer cleanup()
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -261,7 +265,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 
-	c, tsdbCompactor, logs, registry := prepare(t, bucketClient)
+	c, tsdbCompactor, logs, registry, cleanup := prepare(t, bucketClient)
+	defer cleanup()
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -326,12 +331,21 @@ func removeMetaFetcherLogs(input []string) []string {
 	return out
 }
 
-func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer) {
+func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
 	compactorCfg := Config{}
 	storageCfg := cortex_tsdb.Config{}
 	flagext.DefaultValues(&compactorCfg, &storageCfg)
 	compactorCfg.retryMinBackoff = 0
 	compactorCfg.retryMaxBackoff = 0
+
+	// Create a temporary directory for compactor data.
+	dataDir, err := ioutil.TempDir(os.TempDir(), "compactor-test")
+	require.NoError(t, err)
+
+	compactorCfg.DataDir = dataDir
+	cleanup := func() {
+		os.RemoveAll(dataDir)
+	}
 
 	tsdbCompactor := &tsdbCompactorMock{}
 	logs := &bytes.Buffer{}
@@ -342,7 +356,7 @@ func prepare(t *testing.T, bucketClient *cortex_tsdb.BucketClientMock) (*Compact
 	c, err := newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registry)
 	require.NoError(t, err)
 
-	return c, tsdbCompactor, logs, registry
+	return c, tsdbCompactor, logs, registry, cleanup
 }
 
 type tsdbCompactorMock struct {

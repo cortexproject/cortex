@@ -18,6 +18,11 @@ services:
     volumes:
       - .data-minio:/data:delegated
 
+  configstore:
+    image: nginx
+    volumes:
+      - .data-configstore:/usr/share/nginx/html/private:ro
+
   distributor:
     build:
       context:    .
@@ -73,5 +78,19 @@ services:
       - minio
     ports:
       - 8004:8004
+    volumes:
+      - ./config:/cortex/config
+    
+  ruler:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8005 -server.grpc-listen-port=9005"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8005:8005
     volumes:
       - ./config:/cortex/config

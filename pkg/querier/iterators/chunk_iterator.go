@@ -1,9 +1,10 @@
 package iterators
 
 import (
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/prometheus/common/model"
 )
 
 type chunkIterator struct {

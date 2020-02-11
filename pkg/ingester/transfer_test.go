@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"io/ioutil"
@@ -10,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/shipper"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 type testUserTSDB struct {

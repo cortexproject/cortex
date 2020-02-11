@@ -18,11 +18,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/shipper"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/user"
 )
 
 var (

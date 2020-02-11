@@ -16,19 +16,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	net_context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 type testStore struct {
@@ -293,7 +293,7 @@ type stream struct {
 	responses []*client.QueryStreamResponse
 }
 
-func (s *stream) Context() net_context.Context {
+func (s *stream) Context() context.Context {
 	return s.ctx
 }
 

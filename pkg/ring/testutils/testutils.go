@@ -3,10 +3,11 @@ package testutils
 import (
 	"context"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 )
 
 // NumTokens determines the number of tokens owned by the specified

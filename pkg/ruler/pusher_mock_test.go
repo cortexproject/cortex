@@ -3,8 +3,9 @@ package ruler
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 type pusherMock struct {

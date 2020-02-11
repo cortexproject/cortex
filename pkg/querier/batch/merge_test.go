@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/prometheus/common/model"
 )
 
 func TestMergeIter(t *testing.T) {

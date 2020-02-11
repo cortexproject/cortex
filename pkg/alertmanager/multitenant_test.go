@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -69,13 +70,14 @@ func TestMultitenantAlertmanager_loadAllConfigs(t *testing.T) {
 		cfgs:             map[string]alerts.AlertConfigDesc{},
 		alertmanagersMtx: sync.Mutex{},
 		alertmanagers:    map[string]*Alertmanager{},
+		logger:           log.NewNopLogger(),
 		stop:             make(chan struct{}),
 		done:             make(chan struct{}),
 	}
 
 	// Ensure the configs are synced correctly
-	err = am.updateConfigs()
-	require.NoError(t, err)
+	require.NoError(t, am.updateConfigs())
+
 	require.Len(t, am.alertmanagers, 2)
 
 	currentConfig, exists := am.cfgs["user1"]
@@ -88,8 +90,9 @@ func TestMultitenantAlertmanager_loadAllConfigs(t *testing.T) {
 		RawConfig: simpleConfigOne,
 		Templates: []*alerts.TemplateDesc{},
 	}
-	err = am.updateConfigs()
-	require.NoError(t, err)
+
+	require.NoError(t, am.updateConfigs())
+
 	require.Len(t, am.alertmanagers, 3)
 
 	// Ensure the config is updated
@@ -98,10 +101,17 @@ func TestMultitenantAlertmanager_loadAllConfigs(t *testing.T) {
 		RawConfig: simpleConfigTwo,
 		Templates: []*alerts.TemplateDesc{},
 	}
-	err = am.updateConfigs()
-	require.NoError(t, err)
+
+	require.NoError(t, am.updateConfigs())
 
 	currentConfig, exists = am.cfgs["user1"]
 	require.True(t, exists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
+
+	// Test Delete User
+	delete(mockStore.configs, "user3")
+	require.NoError(t, am.updateConfigs())
+	currentConfig, exists = am.cfgs["user3"]
+	require.False(t, exists)
+	require.Equal(t, alerts.AlertConfigDesc{}, currentConfig)
 }

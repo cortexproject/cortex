@@ -40,25 +40,28 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 			return err
 		}
 
+		// Ignore files that are directories or not yaml files
 		ext := filepath.Ext(info.Name())
+		if info.IsDir() || (ext != ".yml" && ext != ".yaml") {
+			return nil
+		}
 
-		if !info.IsDir() && (ext == ".yml" || ext == ".yaml") {
-			_, err := config.LoadFile(f.cfg.Path + info.Name())
-			if err != nil {
-				return err
-			}
+		_, err = config.LoadFile(f.cfg.Path + info.Name())
+		if err != nil {
+			return err
+		}
 
-			content, err := ioutil.ReadFile(f.cfg.Path + info.Name())
-			if err != nil {
-				return err
-			}
+		content, err := ioutil.ReadFile(f.cfg.Path + info.Name())
+		if err != nil {
+			return err
+		}
 
-			user := strings.TrimSuffix(info.Name(), ext)
+		// The file name must correspond to the user tenant ID
+		user := strings.TrimSuffix(info.Name(), ext)
 
-			configs[user] = alerts.AlertConfigDesc{
-				User:      user,
-				RawConfig: string(content),
-			}
+		configs[user] = alerts.AlertConfigDesc{
+			User:      user,
+			RawConfig: string(content),
 		}
 		return nil
 	})

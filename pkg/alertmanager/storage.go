@@ -1,13 +1,20 @@
 package alertmanager
 
 import (
+	"context"
 	"flag"
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/alertmanager/local"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
+
+// AlertStore stores and configures users rule configs
+type AlertStore interface {
+	ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error)
+}
 
 // AlertStoreConfig configures the alertmanager backend
 type AlertStoreConfig struct {
@@ -20,21 +27,21 @@ type AlertStoreConfig struct {
 func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Local.RegisterFlags(f)
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Method to use for backend alertmanager configs storage (configdb, file)")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"local\".")
 }
 
 // NewAlertStore returns a new rule storage backend poller and store
-func NewAlertStore(cfg AlertStoreConfig) (alerts.AlertStore, error) {
+func NewAlertStore(cfg AlertStoreConfig) (AlertStore, error) {
 	switch cfg.Type {
 	case "configdb":
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
 		}
-		return alerts.NewConfigAlertStore(c), nil
+		return configdb.NewStore(c), nil
 	case "local":
 		return local.NewStore(cfg.Local)
 	default:
-		return nil, fmt.Errorf("Unrecognized alertmanager storage mode %v, choose one of: configdb, local", cfg.Type)
+		return nil, fmt.Errorf("unrecognized alertmanager storage backend %v, choose one of:  \"configdb\", \"local\"", cfg.Type)
 	}
 }

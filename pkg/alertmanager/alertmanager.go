@@ -191,8 +191,15 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	am.api.Update(conf, func(_ model.LabelSet) {})
 
-	am.inhibitor.Stop()
-	am.dispatcher.Stop()
+	// Ensure dispatcher is set before being called
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
+
+	// Ensure inhibitor is set before being called
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 

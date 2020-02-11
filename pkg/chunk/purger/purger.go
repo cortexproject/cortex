@@ -267,8 +267,8 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int) error {
 			err = dp.chunkStore.DeleteChunk(ctx, chunkRef.From, chunkRef.Through, chunkRef.UserID,
 				chunkDetails.ID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), partiallyDeletedInterval)
 			if err != nil {
-				if isMissingChunkErr(err) && partiallyDeletedInterval != nil {
-					level.Error(util.Logger).Log("msg", "partially deleted chunk missing. We may have already processed it",
+				if isMissingChunkErr(err) {
+					level.Error(util.Logger).Log("msg", "chunk not found for deletion. We may have already deleted it",
 						"request-id", requestID, "user-id", userID, "plan-no", planNo, "chunk-id", chunkDetails.ID)
 					continue
 				}

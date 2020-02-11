@@ -250,6 +250,8 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 // newDeleteClient makes a new delete client of the desired type.
 func newDeleteClient(cfg Config, deleteStoreConfig chunk.DeleteStoreConfig) (chunk.DeleteClient, error) {
 	switch deleteStoreConfig.Store {
+	case "inmemory":
+		return chunk.NewMockStorage(), nil
 	case "boltdb":
 		return local.NewBoltDBDeleteRequestsClient(cfg.BoltDBConfig, deleteStoreConfig.RequestsTableName)
 	default:
@@ -270,6 +272,8 @@ func NewDeleteStore(cfg Config) (*chunk.DeleteStore, error) {
 // NewStorageClient makes a new StorageClient of the desired types.
 func NewStorageClient(name string, cfg Config) (chunk.StorageClient, error) {
 	switch name {
+	case "inmemory":
+		return chunk.NewMockStorage(), nil
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
 	default:

@@ -40,7 +40,7 @@ type Manager struct {
 	configMtx sync.RWMutex
 	config    interface{}
 
-	overridesReloadSuccess prometheus.Gauge
+	configLoadSuccess prometheus.Gauge
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
@@ -48,19 +48,19 @@ func NewRuntimeConfigManager(cfg ManagerConfig, metricsRegisterer prometheus.Reg
 	mgr := Manager{
 		cfg:  cfg,
 		quit: make(chan struct{}),
-		overridesReloadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+		configLoadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_overrides_last_reload_successful",
 			Help: "Whether the last config reload attempt was successful (0: error, 1: successful).",
 		}),
 	}
 
-	metricsRegisterer.MustRegister(mgr.overridesReloadSuccess)
+	metricsRegisterer.MustRegister(mgr.configLoadSuccess)
 	// The prometheus client library implicitly initializes gauges at 0.
 	// Initialize gauge in success state (require explicit transitioning into
 	// the error state) instead. Note: it could be better to change the meaning
 	// of 0 to success, or to introduce a third state, or to use an error
 	// counter instead of a gauge.
-	mgr.overridesReloadSuccess.Set(1)
+	mgr.configLoadSuccess.Set(1)
 
 	if cfg.LoadPath != "" {
 		if err := mgr.loadConfig(); err != nil {
@@ -128,10 +128,10 @@ func (om *Manager) loop() {
 func (om *Manager) loadConfig() error {
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
-		om.overridesReloadSuccess.Set(0)
+		om.configLoadSuccess.Set(0)
 		return err
 	}
-	om.overridesReloadSuccess.Set(1)
+	om.configLoadSuccess.Set(1)
 
 	om.setConfig(cfg)
 	om.callListeners(cfg)

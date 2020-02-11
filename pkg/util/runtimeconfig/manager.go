@@ -7,22 +7,9 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_overrides_last_reload_successful",
-	Help: "Whether the last config reload attempt was successful.",
-})
-
-// Initialize gauge in success state (1). That is, require
-// explicit transitioning into the error state (0). That helps
-// e.g. when `NewRuntimeConfigManager()` never gets called.
-func init() {
-	overridesReloadSuccess.Set(1)
-}
 
 // Loader loads the configuration from file.
 type Loader func(filename string) (interface{}, error)
@@ -52,14 +39,28 @@ type Manager struct {
 
 	configMtx sync.RWMutex
 	config    interface{}
+
+	overridesReloadSuccess prometheus.Gauge
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
-func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
+func NewRuntimeConfigManager(cfg ManagerConfig, metricsRegisterer prometheus.Registerer) (*Manager, error) {
 	mgr := Manager{
 		cfg:  cfg,
 		quit: make(chan struct{}),
+		overridesReloadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_overrides_last_reload_successful",
+			Help: "Whether the last config reload attempt was successful (0: error, 1: successful).",
+		}),
 	}
+
+	metricsRegisterer.MustRegister(mgr.overridesReloadSuccess)
+	// The prometheus client library implicitly initializes gauges at 0.
+	// Initialize gauge in success state (require explicit transitioning into
+	// the error state) instead. Note: it could be better to change the meaning
+	// of 0 to success, or to introduce a third state, or to use an error
+	// counter instead of a gauge.
+	mgr.overridesReloadSuccess.Set(1)
 
 	if cfg.LoadPath != "" {
 		if err := mgr.loadConfig(); err != nil {
@@ -127,10 +128,10 @@ func (om *Manager) loop() {
 func (om *Manager) loadConfig() error {
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
-		overridesReloadSuccess.Set(0)
+		om.overridesReloadSuccess.Set(0)
 		return err
 	}
-	overridesReloadSuccess.Set(1)
+	om.overridesReloadSuccess.Set(1)
 
 	om.setConfig(cfg)
 	om.callListeners(cfg)

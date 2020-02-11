@@ -41,7 +41,7 @@ The blocks chunks and the entire index is never fully downloaded by the queriers
 
 The index header is also stored to the local disk, in order to avoid to re-download it on subsequent restarts of a querier. For this reason, it's recommended - but not required - to run the querier with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the queriers.
 
-### Sharding and Replication
+### Series sharding and replication
 
 The series sharding and replication doesn't change based on the storage engine, so the general overview provided by the "[Cortex architecture](../architecture.md)" documentation applies to the blocks storage as well.
 
@@ -59,6 +59,17 @@ The **vertical compaction** compacts all the Blocks of a tenant uploaded by any 
 The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index header kept in memory by queriers.
 
 The compactor is **stateless**.
+
+#### Compactor sharding
+
+The compactor optionally supports sharding. When sharding is enabled, multiple compactor instances can coordinate to split the workload and shard blocks by tenant. All the blocks of a tenant are processed by a single compactor instance at any given time, but compaction for different tenants may simultaneously run on different compactor instances.
+
+Whenever the pool of compactors increase or decrease (ie. following up a scale up/down), tenants are resharded across the available compactor instances without any manual intervention. Compactors coordinate via the Cortex [hash ring](../architecture.md#the-hash-ring).
+
+#### Compactor HTTP endpoints
+
+- `GET /compactor_ring`<br />
+  Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.
 
 ## Configuration
 
@@ -251,13 +262,66 @@ compactor:
     # interval.
     # CLI flag: -compactor.compaction-retries
     [compaction_retries: <int> | default = 3]
+
+    # Shard tenants across multiple compactor instances. Sharding is required if
+    # you run multiple compactor instances, in order to coordinate compactions
+    # and avoid race conditions leading to the same tenant blocks simultaneously
+    # compacted by different instances.
+    # CLI flag: -compactor.sharding-enabled
+    [sharding_enabled: <bool> | default = false]
+
+    # Configures the ring used when sharding is enabled.
+    sharding_ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul, etcd,
+        # inmemory, multi, memberlist (experimental).
+        # CLI flag: -compactor.ring.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -compactor.ring.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # The consul_config configures the consul client.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [consul: <consul_config>]
+
+        # The etcd_config configures the etcd client.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [etcd: <etcd_config>]
+
+        # The memberlist_config configures the Gossip memberlist.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [memberlist: <memberlist_config>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -compactor.ring.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -compactor.ring.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -compactor.ring.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -compactor.ring.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # Period at which to heartbeat to the ring.
+      # CLI flag: -compactor.ring.heartbeat-period
+      [heartbeat_period: <duration> | default = 5m]
+
+      # The heartbeat timeout after which compactors are considered unhealthy
+      # within the ring.
+      # CLI flag: -compactor.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
 ```
 
 ## Known issues
-
-### Horizontal scalability
-
-The compactor currently doesn't support horizontal scalability and only 1 replica of the compactor should run at any given time within a Cortex cluster.
 
 ### Migrating from the chunks to the blocks storage
 

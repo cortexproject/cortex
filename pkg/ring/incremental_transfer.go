@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // transferWorkload holds a set of ingester addresses to the set of

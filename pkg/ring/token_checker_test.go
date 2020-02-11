@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func makeSequentialTokenGenerator() TokenGeneratorFunc {

@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // TokenCheckerConfig is the config to configure a TokenChecker.

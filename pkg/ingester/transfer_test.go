@@ -17,14 +17,14 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type testUserTSDB struct {

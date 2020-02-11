@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
-
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 

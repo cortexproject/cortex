@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"

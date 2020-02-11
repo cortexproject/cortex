@@ -14,15 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"

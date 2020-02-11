@@ -183,16 +183,19 @@ func newCompactor(
 		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
-	// Start the compactor loop.
-	c.runner.Add(1)
-	go c.run()
-
 	return c, nil
 }
 
-// Shutdown the compactor and waits until done. This may take some time
+// Start the compactor.
+func (c *Compactor) Start() {
+	// Start the compactor loop.
+	c.runner.Add(1)
+	go c.run()
+}
+
+// Stop the compactor and waits until done. This may take some time
 // if there's a on-going compaction.
-func (c *Compactor) Shutdown() {
+func (c *Compactor) Stop() {
 	c.cancelCtx()
 	c.runner.Wait()
 
@@ -208,6 +211,17 @@ func (c *Compactor) Shutdown() {
 
 func (c *Compactor) run() {
 	defer c.runner.Done()
+
+	// If sharding is enabled we should wait until this instance is
+	// ACTIVE within the ring. This is particular important to avoid
+	// flaky tests.
+	if c.compactorCfg.ShardingEnabled {
+		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
+		if err := c.waitRingActive(); err != nil {
+			return
+		}
+		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
+	}
 
 	// Run an initial compaction before starting the interval.
 	c.compactUsersWithRetries(c.ctx)
@@ -366,4 +380,25 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	}
 
 	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func (c *Compactor) waitRingActive() error {
+	for {
+		// Check if the ingester is ACTIVE in the ring and our ring client
+		// has detected it.
+		if rs, err := c.ring.GetAll(); err == nil {
+			for _, i := range rs.Ingesters {
+				if i.GetAddr() == c.ringLifecycler.Addr && i.GetState() == ring.ACTIVE {
+					return nil
+				}
+			}
+		}
+
+		select {
+		case <-time.After(time.Second):
+			// Nothing to do
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		}
+	}
 }

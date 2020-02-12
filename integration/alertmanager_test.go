@@ -25,7 +25,10 @@ func TestAlertmanager(t *testing.T) {
 	require.NoError(t, s.Service("alertmanager").WaitMetric(80, "cortex_alertmanager_configs", 1))
 
 	c, err := framework.NewClient("", "", s.Endpoint("alertmanager", 80), "user-1")
+	require.NoError(t, err)
+
 	status, err := c.GetAlertmanagerStatus(context.Background())
+	require.NoError(t, err)
 
 	// Ensure the returned status config matches alertmanager_test_fixtures/user-1.yaml
 	require.NotNil(t, status)

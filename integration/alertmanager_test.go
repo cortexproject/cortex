@@ -18,7 +18,6 @@ func TestAlertmanager(t *testing.T) {
 		"-alertmanager.storage.local.path": "/integration/alertmanager_test_fixtures/",
 		"-alertmanager.storage.type":       "local",
 		"-alertmanager.web.external-url":   "http://localhost/api/prom",
-		"-log.level":                       "debug",
 	}
 
 	// Start Cortex components

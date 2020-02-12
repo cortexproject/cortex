@@ -221,7 +221,7 @@ func (s *Scenario) StartTableManager(name string, flags map[string]string, image
 
 func (s *Scenario) StartAlertmanager(name string, flags map[string]string, image string) error {
 	if image == "" {
-		image = getDefaultCortexImage()
+		image = GetDefaultCortexImage()
 	}
 
 	return s.StartService(NewService(

@@ -74,7 +74,7 @@ func TestNewOverridesManager(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// Cleaning up
@@ -108,7 +108,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update
@@ -156,7 +156,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 		},
 	}
 
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update
@@ -205,7 +205,7 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 		},
 	}
 
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 
 	// need to use buffer, otherwise loadConfig will throw away update

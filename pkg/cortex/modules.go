@@ -607,14 +607,20 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 		return nil
 	}
 
-	var storageClient chunk.StorageClient
-	storageClient, err = storage.NewStorageClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
+	var indexClient chunk.IndexClient
+	indexClient, err = storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
 	if err != nil {
 		return
 	}
 
 	var deleteStore *chunk.DeleteStore
-	deleteStore, err = storage.NewDeleteStore(cfg.Storage)
+	deleteStore, err = chunk.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
+	if err != nil {
+		return
+	}
+
+	var storageClient chunk.StorageClient
+	storageClient, err = storage.NewStorageClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
 	if err != nil {
 		return
 	}

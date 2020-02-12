@@ -247,28 +247,6 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 	return nil, nil
 }
 
-// newDeleteClient makes a new delete client of the desired type.
-func newDeleteClient(cfg Config, deleteStoreConfig chunk.DeleteStoreConfig) (chunk.DeleteClient, error) {
-	switch deleteStoreConfig.Store {
-	case "inmemory":
-		return chunk.NewMockStorage(), nil
-	case "boltdb":
-		return local.NewBoltDBDeleteRequestsClient(cfg.BoltDBConfig, deleteStoreConfig.RequestsTableName)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: boltdb", deleteStoreConfig.Store)
-	}
-}
-
-// NewDeleteStore creates a new chunk.DeleteStore
-func NewDeleteStore(cfg Config) (*chunk.DeleteStore, error) {
-	deleteClient, err := newDeleteClient(cfg, cfg.DeleteStoreConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return chunk.NewDeleteStore(cfg.DeleteStoreConfig, deleteClient)
-}
-
 // NewStorageClient makes a new StorageClient of the desired types.
 func NewStorageClient(name string, cfg Config) (chunk.StorageClient, error) {
 	switch name {

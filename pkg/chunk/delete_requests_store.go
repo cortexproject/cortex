@@ -41,8 +41,8 @@ type DeleteRequest struct {
 
 // DeleteStore provides all the methods required to manage lifecycle of delete request and things related to it
 type DeleteStore struct {
-	cfg          DeleteStoreConfig
-	deleteClient DeleteClient
+	cfg         DeleteStoreConfig
+	indexClient IndexClient
 }
 
 // DeleteStoreConfig holds configuration for delete store
@@ -58,10 +58,10 @@ func (cfg *DeleteStoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewDeleteStore creates a store for managing delete requests
-func NewDeleteStore(cfg DeleteStoreConfig, deleteClient DeleteClient) (*DeleteStore, error) {
+func NewDeleteStore(cfg DeleteStoreConfig, indexClient IndexClient) (*DeleteStore, error) {
 	ds := DeleteStore{
-		cfg:          cfg,
-		deleteClient: deleteClient,
+		cfg:         cfg,
+		indexClient: indexClient,
 	}
 
 	return &ds, nil
@@ -76,14 +76,14 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 
 	// Add an entry with userID, requestID as range key and status as value to make it easy to manage and lookup status
 	// We don't want to set anything in hash key here since we would want to find delete requests by just status
-	batch := ds.deleteClient.NewWriteBatch()
-	batch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(Received))
+	writeBatch := ds.indexClient.NewWriteBatch()
+	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(Received))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))
-	batch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, "&")))
+	writeBatch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, "&")))
 
-	return ds.deleteClient.BatchWrite(ctx, batch)
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
 // GetDeleteRequestsByStatus returns all delete requests for given status
@@ -108,7 +108,11 @@ func (ds *DeleteStore) GetAllDeleteRequestsForUser(ctx context.Context, userID s
 // UpdateStatus updates status of a delete request
 func (ds *DeleteStore) UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
-	return ds.deleteClient.Update(ctx, ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(newStatus))
+
+	writeBatch := ds.indexClient.NewWriteBatch()
+	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(newStatus))
+
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
 // GetDeleteRequest returns delete request with given requestID
@@ -147,7 +151,7 @@ func (ds *DeleteStore) GetPendingDeleteRequestsForUser(ctx context.Context, user
 
 func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []IndexQuery) ([]DeleteRequest, error) {
 	deleteRequests := []DeleteRequest{}
-	err := ds.deleteClient.QueryPages(ctx, deleteQuery, func(query IndexQuery, batch ReadBatch) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, deleteQuery, func(query IndexQuery, batch ReadBatch) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			split := strings.Split(string(itr.RangeValue()), ":")
@@ -167,7 +171,7 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []In
 		deleteRequestQuery := []IndexQuery{{TableName: ds.cfg.RequestsTableName, HashValue: fmt.Sprintf("%s:%s", deleteRequest.UserID, deleteRequest.RequestID)}}
 
 		var parseError error
-		err := ds.deleteClient.QueryPages(ctx, deleteRequestQuery, func(query IndexQuery, batch ReadBatch) (shouldContinue bool) {
+		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query IndexQuery, batch ReadBatch) (shouldContinue bool) {
 			itr := batch.Iterator()
 			itr.Next()
 

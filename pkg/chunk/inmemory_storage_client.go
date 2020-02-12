@@ -387,33 +387,6 @@ func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject,
 	return storageObjects, nil
 }
 
-func (m *MockStorage) Update(ctx context.Context, tableName, hashValue string, rangeValue []byte, value []byte) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	table, ok := m.tables[tableName]
-	if !ok {
-		return fmt.Errorf("table not found")
-	}
-
-	items, ok := table.items[hashValue]
-	if !ok {
-		return fmt.Errorf("hash value not found")
-	}
-
-	i := sort.Search(len(items), func(i int) bool {
-		return bytes.Compare(items[i].rangeValue, rangeValue) >= 0
-	})
-
-	if i >= len(items) || !bytes.Equal(items[i].rangeValue, rangeValue) {
-		return fmt.Errorf("item not found")
-	}
-
-	items[i].value = value
-
-	return nil
-}
-
 type mockWriteBatch struct {
 	inserts []struct {
 		tableName, hashValue string

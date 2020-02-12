@@ -85,7 +85,7 @@ type Config struct {
 	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
-	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist_kv"`
+	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
 }
 
 // RegisterFlags registers flag.

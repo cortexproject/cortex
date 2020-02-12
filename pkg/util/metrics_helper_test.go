@@ -105,13 +105,13 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 			Name: &metricName,
 			Type: &metricType,
 			Metric: []*dto.Metric{
-				&dto.Metric{
+				{
 					Label: []*dto.LabelPair{
-						&dto.LabelPair{
+						{
 							Name:  &labelOneName,
 							Value: &labelValueOne,
 						},
-						&dto.LabelPair{
+						{
 							Name:  &labelTwoName,
 							Value: &labelValueOne,
 						},
@@ -121,13 +121,13 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 					},
 					TimestampMs: &ts,
 				},
-				&dto.Metric{
+				{
 					Label: []*dto.LabelPair{
-						&dto.LabelPair{
+						{
 							Name:  &labelOneName,
 							Value: &labelValueOne,
 						},
-						&dto.LabelPair{
+						{
 							Name:  &labelTwoName,
 							Value: &labelValueTwo,
 						},

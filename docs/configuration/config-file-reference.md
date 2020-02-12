@@ -818,7 +818,8 @@ externalurl:
 [autowebhookroot: <string> | default = ""]
 
 store:
-  # Method to use for backend alertmanager configs storage (configdb, file)
+  # Type of backend to use to store alertmanager configs. Supported values are:
+  # "configdb", "local".
   # CLI flag: -alertmanager.storage.type
   [type: <string> | default = "configdb"]
 

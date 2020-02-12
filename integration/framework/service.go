@@ -239,11 +239,6 @@ func (s *Service) WaitMetric(port int, metric string, value float64) error {
 		mf, ok := families[metric]
 		if ok {
 			for _, m := range mf.Metric {
-				// ignore metrics with labels. Labels are not supported at the moment.
-				if len(m.Label) > 0 {
-					continue
-				}
-
 				if m.GetGauge() != nil {
 					lastFoundValue = m.GetGauge().GetValue()
 					if lastFoundValue == value {

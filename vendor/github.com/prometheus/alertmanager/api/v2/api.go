@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	prometheus_model "github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/rs/cors"
 
 	"github.com/prometheus/alertmanager/api/metrics"
@@ -43,7 +44,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
-	"github.com/prometheus/alertmanager/pkg/labels"
+	"github.com/prometheus/alertmanager/pkg/parse"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/silence/silencepb"
@@ -556,7 +557,7 @@ func (api *API) getSilencesHandler(params silence_ops.GetSilencesParams) middlew
 	matchers := []*labels.Matcher{}
 	if params.Filter != nil {
 		for _, matcherString := range params.Filter {
-			matcher, err := labels.ParseMatcher(matcherString)
+			matcher, err := parse.Matcher(matcherString)
 			if err != nil {
 				level.Error(api.logger).Log("msg", "failed to parse matchers", "err", err)
 				return alert_ops.NewGetAlertsBadRequest().WithPayload(err.Error())
@@ -636,6 +637,8 @@ func gettableSilenceMatchesFilterLabels(s open_api_models.GettableSilence, match
 
 	return matchFilterLabels(matchers, sms)
 }
+
+// func matchesFilterLabels(labels model.LabelSet, matchers []*labels.Matcher) bool {
 
 func (api *API) getSilenceHandler(params silence_ops.GetSilenceParams) middleware.Responder {
 	sils, _, err := api.silences.Query(silence.QIDs(params.SilenceID.String()))
@@ -773,7 +776,7 @@ func postableSilenceToProto(s *open_api_models.PostableSilence) (*silencepb.Sile
 func parseFilter(filter []string) ([]*labels.Matcher, error) {
 	matchers := make([]*labels.Matcher, 0, len(filter))
 	for _, matcherString := range filter {
-		matcher, err := labels.ParseMatcher(matcherString)
+		matcher, err := parse.Matcher(matcherString)
 		if err != nil {
 			return nil, err
 		}

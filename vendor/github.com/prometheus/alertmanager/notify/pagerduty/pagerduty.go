@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
@@ -137,22 +136,17 @@ func (n *Notifier) notifyV1(
 	}
 
 	if tmplErr != nil {
-		return false, errors.Wrap(tmplErr, "failed to template PagerDuty v1 message")
-	}
-
-	// Ensure that the service key isn't empty after templating.
-	if msg.ServiceKey == "" {
-		return false, errors.New("service key cannot be empty")
+		return false, fmt.Errorf("failed to template PagerDuty v1 message: %v", tmplErr)
 	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
-		return false, errors.Wrap(err, "failed to encode PagerDuty v1 message")
+		return false, err
 	}
 
 	resp, err := notify.PostJSON(ctx, n.client, n.apiV1, &buf)
 	if err != nil {
-		return true, errors.Wrap(err, "failed to post message to PagerDuty v1")
+		return true, err
 	}
 	defer notify.Drain(resp)
 
@@ -205,27 +199,22 @@ func (n *Notifier) notifyV2(
 	}
 
 	for index, item := range n.conf.Links {
-		msg.Links[index].HRef = tmpl(item.Href)
+		msg.Links[index].HRef = tmpl(item.HRef)
 		msg.Links[index].Text = tmpl(item.Text)
 	}
 
 	if tmplErr != nil {
-		return false, errors.Wrap(tmplErr, "failed to template PagerDuty v2 message")
-	}
-
-	// Ensure that the routing key isn't empty after templating.
-	if msg.RoutingKey == "" {
-		return false, errors.New("routing key cannot be empty")
+		return false, fmt.Errorf("failed to template PagerDuty v2 message: %v", tmplErr)
 	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
-		return false, errors.Wrap(err, "failed to encode PagerDuty v2 message")
+		return false, fmt.Errorf("failed to encode PagerDuty v2 message: %v", err)
 	}
 
 	resp, err := notify.PostJSON(ctx, n.client, n.conf.URL.String(), &buf)
 	if err != nil {
-		return true, errors.Wrap(err, "failed to post message to PagerDuty")
+		return true, fmt.Errorf("failed to post message to PagerDuty: %v", err)
 	}
 	defer notify.Drain(resp)
 
@@ -233,6 +222,8 @@ func (n *Notifier) notifyV2(
 }
 
 // Notify implements the Notifier interface.
+//
+// https://v2.developer.pagerduty.com/docs/events-api-v2
 func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	key, err := notify.ExtractGroupKey(ctx)
 	if err != nil {
@@ -254,7 +245,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	for k, v := range n.conf.Details {
 		detail, err := n.tmpl.ExecuteTextString(v, data)
 		if err != nil {
-			return false, errors.Wrapf(err, "%q: failed to template %q", k, v)
+			return false, fmt.Errorf("failed to template %q: %v", v, err)
 		}
 		details[k] = detail
 	}

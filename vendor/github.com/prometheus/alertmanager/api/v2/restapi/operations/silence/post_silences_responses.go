@@ -109,6 +109,7 @@ func (o *PostSilencesBadRequest) WriteResponse(rw http.ResponseWriter, producer 
 	if err := producer.Produce(rw, payload); err != nil {
 		panic(err) // let the recovery middleware deal with this
 	}
+
 }
 
 // PostSilencesNotFoundCode is the HTTP code returned for type PostSilencesNotFound
@@ -151,4 +152,5 @@ func (o *PostSilencesNotFound) WriteResponse(rw http.ResponseWriter, producer ru
 	if err := producer.Produce(rw, payload); err != nil {
 		panic(err) // let the recovery middleware deal with this
 	}
+
 }

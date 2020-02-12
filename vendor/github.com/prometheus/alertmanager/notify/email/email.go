@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"math/rand"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -26,7 +25,6 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
-	"os"
 	"strings"
 	"time"
 
@@ -43,10 +41,9 @@ import (
 
 // Email implements a Notifier for email notifications.
 type Email struct {
-	conf     *config.EmailConfig
-	tmpl     *template.Template
-	logger   log.Logger
-	hostname string
+	conf   *config.EmailConfig
+	tmpl   *template.Template
+	logger log.Logger
 }
 
 // New returns a new Email notifier.
@@ -60,13 +57,7 @@ func New(c *config.EmailConfig, t *template.Template, l log.Logger) *Email {
 	if _, ok := c.Headers["From"]; !ok {
 		c.Headers["From"] = c.From
 	}
-
-	h, err := os.Hostname()
-	// If we can't get the hostname, we'll use localhost
-	if err != nil {
-		h = "localhost.localdomain"
-	}
-	return &Email{conf: c, tmpl: t, logger: l, hostname: h}
+	return &Email{conf: c, tmpl: t, logger: l}
 }
 
 // auth resolves a string of authentication mechanisms.
@@ -243,10 +234,6 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 			return false, errors.Wrapf(err, "execute %q header template", header)
 		}
 		fmt.Fprintf(buffer, "%s: %s\r\n", header, mime.QEncoding.Encode("utf-8", value))
-	}
-
-	if _, ok := n.conf.Headers["Message-Id"]; !ok {
-		fmt.Fprintf(buffer, "Message-Id: %s\r\n", fmt.Sprintf("<%d.%d@%s>", time.Now().UnixNano(), rand.Uint64(), n.hostname))
 	}
 
 	multipartBuffer := &bytes.Buffer{}

@@ -141,9 +141,6 @@ var DefaultFuncs = FuncMap{
 		re := regexp.MustCompile(pattern)
 		return re.ReplaceAllString(text, repl)
 	},
-	"stringSlice": func(s ...string) []string {
-		return s
-	},
 }
 
 // Pair is a key/value string pair.

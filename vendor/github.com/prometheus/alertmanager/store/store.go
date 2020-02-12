@@ -33,16 +33,23 @@ var (
 // gcInterval. An optional callback can be set which receives a slice of all
 // resolved alerts that have been removed.
 type Alerts struct {
+	gcInterval time.Duration
+
 	sync.Mutex
 	c  map[model.Fingerprint]*types.Alert
 	cb func([]*types.Alert)
 }
 
 // NewAlerts returns a new Alerts struct.
-func NewAlerts() *Alerts {
+func NewAlerts(gcInterval time.Duration) *Alerts {
+	if gcInterval == 0 {
+		gcInterval = time.Minute
+	}
+
 	a := &Alerts{
-		c:  make(map[model.Fingerprint]*types.Alert),
-		cb: func(_ []*types.Alert) {},
+		c:          make(map[model.Fingerprint]*types.Alert),
+		cb:         func(_ []*types.Alert) {},
+		gcInterval: gcInterval,
 	}
 
 	return a
@@ -56,18 +63,18 @@ func (a *Alerts) SetGCCallback(cb func([]*types.Alert)) {
 	a.cb = cb
 }
 
-// Run starts the GC loop. The interval must be greater than zero; if not, the function will panic.
-func (a *Alerts) Run(ctx context.Context, interval time.Duration) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			a.gc()
+// Run starts the GC loop.
+func (a *Alerts) Run(ctx context.Context) {
+	go func(t *time.Ticker) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				a.gc()
+			}
 		}
-	}
+	}(time.NewTicker(a.gcInterval))
 }
 
 func (a *Alerts) gc() {

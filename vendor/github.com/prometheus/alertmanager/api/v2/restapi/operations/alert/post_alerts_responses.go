@@ -89,6 +89,7 @@ func (o *PostAlertsBadRequest) WriteResponse(rw http.ResponseWriter, producer ru
 	if err := producer.Produce(rw, payload); err != nil {
 		panic(err) // let the recovery middleware deal with this
 	}
+
 }
 
 // PostAlertsInternalServerErrorCode is the HTTP code returned for type PostAlertsInternalServerError
@@ -131,4 +132,5 @@ func (o *PostAlertsInternalServerError) WriteResponse(rw http.ResponseWriter, pr
 	if err := producer.Produce(rw, payload); err != nil {
 		panic(err) // let the recovery middleware deal with this
 	}
+
 }

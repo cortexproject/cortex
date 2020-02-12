@@ -66,12 +66,12 @@ func (o *GetAlertGroupsURL) Build() (*url.URL, error) {
 
 	qs := make(url.Values)
 
-	var activeQ string
+	var active string
 	if o.Active != nil {
-		activeQ = swag.FormatBool(*o.Active)
+		active = swag.FormatBool(*o.Active)
 	}
-	if activeQ != "" {
-		qs.Set("active", activeQ)
+	if active != "" {
+		qs.Set("active", active)
 	}
 
 	var filterIR []string
@@ -88,28 +88,28 @@ func (o *GetAlertGroupsURL) Build() (*url.URL, error) {
 		qs.Add("filter", qsv)
 	}
 
-	var inhibitedQ string
+	var inhibited string
 	if o.Inhibited != nil {
-		inhibitedQ = swag.FormatBool(*o.Inhibited)
+		inhibited = swag.FormatBool(*o.Inhibited)
 	}
-	if inhibitedQ != "" {
-		qs.Set("inhibited", inhibitedQ)
+	if inhibited != "" {
+		qs.Set("inhibited", inhibited)
 	}
 
-	var receiverQ string
+	var receiver string
 	if o.Receiver != nil {
-		receiverQ = *o.Receiver
+		receiver = *o.Receiver
 	}
-	if receiverQ != "" {
-		qs.Set("receiver", receiverQ)
+	if receiver != "" {
+		qs.Set("receiver", receiver)
 	}
 
-	var silencedQ string
+	var silenced string
 	if o.Silenced != nil {
-		silencedQ = swag.FormatBool(*o.Silenced)
+		silenced = swag.FormatBool(*o.Silenced)
 	}
-	if silencedQ != "" {
-		qs.Set("silenced", silencedQ)
+	if silenced != "" {
+		qs.Set("silenced", silenced)
 	}
 
 	_result.RawQuery = qs.Encode()

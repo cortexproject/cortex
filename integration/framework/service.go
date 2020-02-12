@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/expfmt"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (

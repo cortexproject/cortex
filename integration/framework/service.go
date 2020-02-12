@@ -1,4 +1,4 @@
-package framework
+package e2e
 
 import (
 	"context"
@@ -68,7 +68,7 @@ func (s *Service) SetBackoff(cfg util.BackoffConfig) {
 	s.retryBackoff = util.NewBackoff(context.Background(), cfg)
 }
 
-func (s *Service) Start() (err error) {
+func (s *Service) Start(sharedDir string) (err error) {
 	// In case of any error, if the container was already created, we
 	// have to cleanup removing it. We ignore the error of the "docker rm"
 	// because we don't know if the container was created or not.
@@ -78,7 +78,7 @@ func (s *Service) Start() (err error) {
 		}
 	}()
 
-	cmd := exec.Command("docker", s.buildDockerRunArgs()...)
+	cmd := exec.Command("docker", s.buildDockerRunArgs(sharedDir)...)
 	cmd.Stdout = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stdout}
 	cmd.Stderr = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stderr}
 	if err = cmd.Start(); err != nil {
@@ -220,7 +220,7 @@ func (s *Service) WaitReady() error {
 	return fmt.Errorf("the service %s is not ready", s.name)
 }
 
-func (s *Service) WaitMetric(port int, metric string, value float64) error {
+func (s *Service) WaitMetric(metric string, value float64) error {
 	lastFoundValue := 0.0
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
@@ -264,11 +264,11 @@ func (s *Service) WaitMetric(port int, metric string, value float64) error {
 	return fmt.Errorf("unable to find a metric %s with value %v. Last value found: %v", metric, value, lastFoundValue)
 }
 
-func (s *Service) buildDockerRunArgs() []string {
+func (s *Service) buildDockerRunArgs(sharedDir string) []string {
 	args := []string{"run", "--rm", "--net=" + s.networkName, "--name=" + s.name, "--hostname=" + s.name}
 
-	// Mount the integration/ directory into the container
-	args = append(args, "-v", fmt.Sprintf("%s:/integration", getIntegrationDir()))
+	// Mount the shared/ directory into the container
+	args = append(args, "-v", fmt.Sprintf("%s:%s", sharedDir, ContainerSharedDir))
 
 	// Environment variables
 	for name, value := range s.env {

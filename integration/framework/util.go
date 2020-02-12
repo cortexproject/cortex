@@ -1,18 +1,14 @@
-package framework
+package e2e
 
 import (
 	"math"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
-	awscommon "github.com/weaveworks/common/aws"
 )
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
@@ -59,26 +55,6 @@ func GetRequest(url string) (*http.Response, error) {
 func TimeToMilliseconds(t time.Time) int64 {
 	// The millisecond is rounded to the nearest
 	return int64(math.Round(float64(t.UnixNano()) / 1000000))
-}
-
-func NewDynamoClient(endpoint string) (*dynamodb.DynamoDB, error) {
-	dynamoURL, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	dynamoConfig, err := awscommon.ConfigFromURL(dynamoURL)
-	if err != nil {
-		return nil, err
-	}
-
-	dynamoConfig = dynamoConfig.WithMaxRetries(0)
-	dynamoSession, err := session.NewSession(dynamoConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return dynamodb.New(dynamoSession), nil
 }
 
 func GenerateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vector model.Vector) {

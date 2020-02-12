@@ -1,6 +1,28 @@
 package main
 
-import "github.com/cortexproject/cortex/integration/framework"
+import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
+
+	e2e "github.com/cortexproject/cortex/integration/framework"
+	e2edb "github.com/cortexproject/cortex/integration/framework/db"
+)
+
+const (
+	cortexConfigFile = "chunks-storage-schema-dynamodb.yaml"
+	cortexConfigYaml = `configs:
+- from: "2019-03-20"
+  store: aws-dynamo
+  schema: v9
+  index:
+    prefix: cortex_
+    period: 168h0m0s
+  chunks:
+    prefix: cortex_chunks_
+    period: 168h0m0s
+`
+)
 
 var (
 	BlocksStorage = map[string]string{
@@ -10,8 +32,8 @@ var (
 		"-experimental.tsdb.bucket-store.sync-interval": "5s",
 		"-experimental.tsdb.retention-period":           "5m",
 		"-experimental.tsdb.ship-interval":              "1m",
-		"-experimental.tsdb.s3.access-key-id":           framework.MinioAccessKey,
-		"-experimental.tsdb.s3.secret-access-key":       framework.MinioSecretKey,
+		"-experimental.tsdb.s3.access-key-id":           e2edb.MinioAccessKey,
+		"-experimental.tsdb.s3.secret-access-key":       e2edb.MinioSecretKey,
 		"-experimental.tsdb.s3.bucket-name":             "cortex",
 		"-experimental.tsdb.s3.endpoint":                "minio:9000",
 		"-experimental.tsdb.s3.insecure":                "true",
@@ -20,7 +42,11 @@ var (
 	ChunksStorage = map[string]string{
 		"-dynamodb.url":                   "dynamodb://u:p@dynamodb.:8000",
 		"-dynamodb.poll-interval":         "1m",
-		"-config-yaml":                    "/integration/chunks-storage-schema-dynamodb.yaml",
+		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, "shared", cortexConfigFile),
 		"-table-manager.retention-period": "168h",
 	}
 )
+
+func writeCortexConfigFile(s *e2e.Scenario) error {
+	return ioutil.WriteFile(filepath.Join(s.SharedDir(), cortexConfigFile), []byte(cortexConfigYaml), os.ModePerm)
+}

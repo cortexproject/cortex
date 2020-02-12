@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
@@ -80,4 +81,111 @@ func makeLabels(namesAndValues ...string) []*dto.LabelPair {
 	}
 
 	return out
+}
+
+// TestSendSumOfGaugesPerUserWithLabels tests to ensure multiple metrics for the same user with a matching label are
+// summed correctly
+func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
+	metricName := "test_metric"
+	metricType := dto.MetricType_GAUGE
+	labelOneName := "label_one"
+	labelTwoName := "label_two"
+	labelValueOne := "a"
+	labelValueTwo := "b"
+	ts := int64(1000)
+	val := float64(100)
+
+	desc := prometheus.NewDesc(
+		metricName,
+		"",
+		[]string{"user", labelOneName}, nil)
+
+	baseFamily := MetricFamilyMap{
+		"test_metric": &dto.MetricFamily{
+			Name: &metricName,
+			Type: &metricType,
+			Metric: []*dto.Metric{
+				&dto.Metric{
+					Label: []*dto.LabelPair{
+						&dto.LabelPair{
+							Name:  &labelOneName,
+							Value: &labelValueOne,
+						},
+						&dto.LabelPair{
+							Name:  &labelTwoName,
+							Value: &labelValueOne,
+						},
+					},
+					Gauge: &dto.Gauge{
+						Value: &val,
+					},
+					TimestampMs: &ts,
+				},
+				&dto.Metric{
+					Label: []*dto.LabelPair{
+						&dto.LabelPair{
+							Name:  &labelOneName,
+							Value: &labelValueOne,
+						},
+						&dto.LabelPair{
+							Name:  &labelTwoName,
+							Value: &labelValueTwo,
+						},
+					},
+					Gauge: &dto.Gauge{
+						Value: &val,
+					},
+					TimestampMs: &ts,
+				},
+			},
+		},
+	}
+
+	m := MetricFamiliesPerUser{
+		"user1": baseFamily,
+		"user2": baseFamily,
+	}
+	out := make(chan prometheus.Metric, 10)
+
+	go func() {
+		m.SendSumOfGaugesPerUserWithLabels(out, desc, metricName, labelOneName)
+		close(out)
+	}()
+
+	userOneMet := <-out
+	userOneBuf := &dto.Metric{}
+	err := userOneMet.Write(userOneBuf)
+	require.NoError(t, err)
+	userOneSummedVal := userOneBuf.GetGauge().GetValue()
+	require.Equal(t, val*2, userOneSummedVal)
+	for _, l := range userOneBuf.GetLabel() {
+		switch l.GetName() {
+		case "user":
+			require.Equal(t, "user1", l.GetValue())
+		case labelOneName:
+			require.Equal(t, labelValueOne, l.GetValue())
+		default:
+			require.FailNow(t, "unexpected label="+l.GetName())
+		}
+	}
+
+	userTwoMet := <-out
+	userTwoBuf := &dto.Metric{}
+	err = userTwoMet.Write(userTwoBuf)
+	require.NoError(t, err)
+	userTwoSummedVal := userTwoBuf.GetGauge().GetValue()
+	require.Equal(t, val*2, userTwoSummedVal)
+	for _, l := range userTwoBuf.GetLabel() {
+		switch l.GetName() {
+		case "user":
+			require.Equal(t, "user2", l.GetValue())
+		case labelOneName:
+			require.Equal(t, labelValueOne, l.GetValue())
+		default:
+			require.FailNow(t, "unexpected label="+l.GetName())
+		}
+	}
+
+	_, closed := <-out
+	require.False(t, closed)
 }

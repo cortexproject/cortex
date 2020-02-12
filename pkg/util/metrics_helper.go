@@ -150,21 +150,6 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Me
 	}
 }
 
-// SendSumOfCountersPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
-// first label on the provided metric Desc
-func (d MetricFamiliesPerUser) SendSumOfCountersPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
-	for user, userMetrics := range d {
-		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[metric], labelNames)
-		for _, mlv := range metricsPerLabelValue {
-			for _, m := range mlv.metrics {
-				val := counterValue(m)
-				labels := append([]string{user}, mlv.labelValues...)
-				out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, val, labels...)
-			}
-		}
-	}
-}
-
 func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
 	result := float64(0)
 	for _, userMetrics := range d {
@@ -183,11 +168,12 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prome
 	for user, userMetrics := range d {
 		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[metric], labelNames)
 		for _, mlv := range metricsPerLabelValue {
+			var val float64
+			labels := append([]string{user}, mlv.labelValues...)
 			for _, m := range mlv.metrics {
-				val := gaugeValue(m)
-				labels := append([]string{user}, mlv.labelValues...)
-				out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, val, labels...)
+				val += gaugeValue(m)
 			}
+			out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, val, labels...)
 		}
 	}
 }

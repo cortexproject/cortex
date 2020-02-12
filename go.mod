@@ -23,6 +23,7 @@ require (
 	github.com/fluent/fluent-logger-golang v1.2.1 // indirect
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.9.0
+	github.com/go-openapi/analysis v0.19.4 // indirect
 	github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
@@ -42,6 +43,7 @@ require (
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.3.0
+	github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e // indirect
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
@@ -49,7 +51,7 @@ require (
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.19.0
+	github.com/prometheus/alertmanager v0.20.0
 	github.com/prometheus/client_golang v1.2.1
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/common v0.7.0
@@ -72,6 +74,7 @@ require (
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.5
+	k8s.io/client-go v12.0.0+incompatible // indirect
 )
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible

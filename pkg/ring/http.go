@@ -66,12 +66,10 @@ const pageContent = `
 			{{ if .ShowTokens }}
 				{{ range $i, $ing := .Ingesters }}
 					<h2>Instance: {{ .ID }}</h2>
-					Tokens:<br />
-					<ul>
-						{{ range $token := .Tokens }}
-							<li>{{ $token }}</li>
-						{{ end }}
-					</ul>
+					<p>
+						Tokens:<br />
+						{{ range $token := .Tokens }}{{ $token }} {{ end }}
+					</p>
 				{{ end }}
 			{{ end }}
 		</form>

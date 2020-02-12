@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -114,7 +113,7 @@ func New(cfg Config, name, key string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-	codec := codec.Proto{Factory: ProtoDescFactory}
+	codec := GetCodec()
 	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
@@ -182,8 +181,6 @@ func (r *Ring) loop(ctx context.Context) {
 		r.ringTokens = ringTokens
 		return true
 	})
-
-	r.KVClient.Stop()
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.

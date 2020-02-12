@@ -64,6 +64,10 @@ func NewService(
 	}
 }
 
+func (s *Service) SetBackoff(cfg util.BackoffConfig) {
+	s.retryBackoff = util.NewBackoff(context.Background(), cfg)
+}
+
 func (s *Service) Start() (err error) {
 	// In case of any error, if the container was already created, we
 	// have to cleanup removing it. We ignore the error of the "docker rm"

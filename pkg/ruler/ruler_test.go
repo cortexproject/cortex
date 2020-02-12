@@ -24,7 +24,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -34,8 +33,7 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	// Create a new temporary directory for the rules, so that
 	// each test will run in isolation.
 	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
-
-	codec := codec.Proto{Factory: ring.ProtoDescFactory}
+	codec := ring.GetCodec()
 	consul := consul.NewInMemoryClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)

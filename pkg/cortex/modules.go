@@ -499,6 +499,7 @@ func (t *Cortex) stopAlertmanager() error {
 
 func (t *Cortex) initCompactor(cfg *Config) (err error) {
 	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {

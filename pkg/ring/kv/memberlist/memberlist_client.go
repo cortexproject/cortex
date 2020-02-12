@@ -264,9 +264,9 @@ func NewKV(cfg KVConfig) (*KV, error) {
 		}
 
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to join memberlist cluster", "err", err)
+			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
 		} else {
-			level.Info(util.Logger).Log("msg", "Joined memberlist cluster", "reached_nodes", reached)
+			level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		}
 	}
 
@@ -625,13 +625,13 @@ func (m *KV) NotifyMsg(msg []byte) {
 	kvPair := KeyValuePair{}
 	err := kvPair.Unmarshal(msg)
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "Failed to unmarshal received KV Pair", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to unmarshal received KV Pair", "err", err)
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
 
 	if len(kvPair.Key) == 0 {
-		level.Warn(util.Logger).Log("msg", "Invalid KV Pair, empty key")
+		level.Warn(util.Logger).Log("msg", "received an invalid KV Pair (empty key)")
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
@@ -694,7 +694,7 @@ func (m *KV) LocalState(join bool) []byte {
 	defer m.storeMu.Unlock()
 
 	// For each Key/Value pair in our store, we write
-	// [4-bytes length of KV pair] [KV pair]
+	// [4-bytes length of marshalled KV pair] [marshalled KV pair]
 
 	buf := bytes.Buffer{}
 
@@ -745,7 +745,7 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 
 	var err error
 	// Data contains individual KV pairs (encoded as protobuf messages), each prefixed with 4 bytes length of KV pair:
-	// [4-bytes length] [KV pair] [4-bytes length] [KV pair]...
+	// [4-bytes length of marshalled KV pair] [marshalled KV pair] [4-bytes length] [KV pair]...
 	for len(data) > 0 {
 		if len(data) < 4 {
 			err = fmt.Errorf("not enough data left for another KV Pair: %d", len(data))

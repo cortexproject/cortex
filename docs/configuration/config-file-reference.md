@@ -104,7 +104,7 @@ runtime_config:
   [file: <string> | default = ""]
 
 # The memberlist_config configures the Gossip memberlist.
-[memberlist_kv: <memberlist_config>]
+[memberlist: <memberlist_config>]
 ```
 
 ## `server_config`

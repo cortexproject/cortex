@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -10,12 +11,15 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-var retries = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "query_frontend_retries",
-	Help:      "Number of times a request is retried.",
-	Buckets:   []float64{0, 1, 2, 3, 4, 5},
-})
+var (
+	retries = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_retries",
+		Help:      "Number of times a request is retried.",
+		Buckets:   []float64{0, 1, 2, 3, 4, 5},
+	})
+	errCanceled = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
+)
 
 type retry struct {
 	log        log.Logger
@@ -42,7 +46,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, errCanceled
 		}
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {

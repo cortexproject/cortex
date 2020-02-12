@@ -126,7 +126,7 @@ func (s *Scenario) StartDynamoDB() error {
 
 func (s *Scenario) StartDistributor(name string, flags map[string]string, image string) error {
 	if image == "" {
-		image = getDefaultCortexImage()
+		image = GetDefaultCortexImage()
 	}
 
 	return s.StartService(NewService(
@@ -150,7 +150,7 @@ func (s *Scenario) StartDistributor(name string, flags map[string]string, image 
 
 func (s *Scenario) StartQuerier(name string, flags map[string]string, image string) error {
 	if image == "" {
-		image = getDefaultCortexImage()
+		image = GetDefaultCortexImage()
 	}
 
 	return s.StartService(NewService(
@@ -173,7 +173,7 @@ func (s *Scenario) StartQuerier(name string, flags map[string]string, image stri
 
 func (s *Scenario) StartIngester(name string, flags map[string]string, image string) error {
 	if image == "" {
-		image = getDefaultCortexImage()
+		image = GetDefaultCortexImage()
 	}
 
 	return s.StartService(NewService(
@@ -201,7 +201,7 @@ func (s *Scenario) StartIngester(name string, flags map[string]string, image str
 
 func (s *Scenario) StartTableManager(name string, flags map[string]string, image string) error {
 	if image == "" {
-		image = getDefaultCortexImage()
+		image = GetDefaultCortexImage()
 	}
 
 	return s.StartService(NewService(
@@ -305,8 +305,8 @@ func existDockerNetwork() (bool, error) {
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
-// getDefaultCortexImage returns the Docker image to use to run Cortex.
-func getDefaultCortexImage() string {
+// GetDefaultCortexImage returns the Docker image to use to run Cortex.
+func GetDefaultCortexImage() string {
 	// Get the cortex image from the CORTEX_IMAGE env variable,
 	// falling back to "quay.io/cortexproject/cortex:latest"
 	if os.Getenv("CORTEX_IMAGE") != "" {

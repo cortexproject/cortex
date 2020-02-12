@@ -1,8 +1,0 @@
-route:
-  receiver: "team-X-mails"
-  group_by: ["alertname", "cluster", "service"]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 3h
-receivers:
-  - name: "team-X-mails"

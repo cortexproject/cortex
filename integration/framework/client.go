@@ -9,6 +9,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	alertClient "github.com/prometheus/alertmanager/client"
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -17,6 +18,7 @@ import (
 
 // Client is a client used to interact with Cortex in integration tests
 type Client struct {
+	alertmanagerClient promapi.Client
 	distributorAddress string
 	timeout            time.Duration
 	httpClient         *http.Client
@@ -25,7 +27,7 @@ type Client struct {
 }
 
 // NewClient makes a new Cortex client
-func NewClient(distributorAddress string, querierAddress string, orgID string) (*Client, error) {
+func NewClient(distributorAddress string, querierAddress string, alertmanagerAddress string, orgID string) (*Client, error) {
 	// Create querier API client
 	querierAPIClient, err := promapi.NewClient(promapi.Config{
 		Address:      "http://" + querierAddress + "/api/prom",
@@ -41,6 +43,17 @@ func NewClient(distributorAddress string, querierAddress string, orgID string) (
 		httpClient:         &http.Client{},
 		querierClient:      promv1.NewAPI(querierAPIClient),
 		orgID:              orgID,
+	}
+
+	if alertmanagerAddress != "" {
+		alertmanagerAPIClient, err := promapi.NewClient(promapi.Config{
+			Address:      "http://" + alertmanagerAddress + "/api/prom",
+			RoundTripper: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
+		})
+		if err != nil {
+			return nil, err
+		}
+		c.alertmanagerClient = alertmanagerAPIClient
 	}
 
 	return c, nil
@@ -94,4 +107,10 @@ func (r *addOrgIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Set("X-Scope-OrgID", r.orgID)
 
 	return r.next.RoundTrip(req)
+}
+
+// GetAlertmanagerStatus gets the status of an alertmanager instance
+func (c *Client) GetAlertmanagerStatus(ctx context.Context) (*alertClient.ServerStatus, error) {
+	statusAPI := alertClient.NewStatusAPI(c.alertmanagerClient)
+	return statusAPI.Get(ctx)
 }

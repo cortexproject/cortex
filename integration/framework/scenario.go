@@ -219,6 +219,26 @@ func (s *Scenario) StartTableManager(name string, flags map[string]string, image
 	))
 }
 
+func (s *Scenario) StartAlertmanager(name string, flags map[string]string, image string) error {
+	if image == "" {
+		image = getDefaultCortexImage()
+	}
+
+	return s.StartService(NewService(
+		name,
+		image,
+		NetworkName,
+		[]int{80},
+		nil,
+		NewCommandWithoutEntrypoint("cortex", BuildArgs(MergeFlags(map[string]string{
+			"-target":    "alertmanager",
+			"-log.level": "warn",
+		}, flags))...),
+		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
+		NewReadinessProbe(80, "/", 404),
+	))
+}
+
 func (s *Scenario) StopService(name string) error {
 	service := s.Service(name)
 	if service == nil {

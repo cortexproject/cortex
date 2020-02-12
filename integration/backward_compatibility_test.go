@@ -44,7 +44,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	now := time.Now()
 	series, expectedVector := generateSeries("series_1", now)
 
-	c, err := framework.NewClient(s.Endpoint("distributor", 80), "", "user-1")
+	c, err := framework.NewClient(s.Endpoint("distributor", 80), "", "", "user-1")
 	require.NoError(t, err)
 
 	res, err := c.Push(series)
@@ -69,7 +69,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		require.NoError(t, s.Service("querier").WaitMetric(80, "cortex_ring_tokens_total", 512))
 
 		// Query the series
-		c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
+		c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "", "user-1")
 		require.NoError(t, err)
 
 		result, err := c.Query("series_1", now)

@@ -1,0 +1,5 @@
+route:
+  receiver: "example_receiver"
+  group_by: ["example_groupby"]
+receivers:
+  - name: "example_receiver"

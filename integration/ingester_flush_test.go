@@ -42,7 +42,7 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, s.Service("distributor").WaitMetric(80, "cortex_ring_tokens_total", 512))
 	require.NoError(t, s.Service("querier").WaitMetric(80, "cortex_ring_tokens_total", 512))
 
-	c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
+	c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "", "user-1")
 	require.NoError(t, err)
 
 	// Push some series to Cortex

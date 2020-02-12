@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
@@ -66,6 +67,9 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
+
+	activeMtx sync.Mutex
+	active    bool
 }
 
 var webReload = make(chan chan error)
@@ -81,17 +85,16 @@ func init() {
 }
 
 // New creates a new Alertmanager.
-func New(cfg *Config) (*Alertmanager, error) {
+func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am := &Alertmanager{
-		cfg:    cfg,
-		logger: log.With(cfg.Logger, "user", cfg.UserID),
-		stop:   make(chan struct{}),
+		cfg:       cfg,
+		logger:    log.With(cfg.Logger, "user", cfg.UserID),
+		stop:      make(chan struct{}),
+		active:    false,
+		activeMtx: sync.Mutex{},
 	}
 
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	am.registry = prometheus.NewRegistry()
+	am.registry = reg
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -173,7 +176,12 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	templateFiles := make([]string, len(conf.Templates))
+	// Ensure the alertmanager is set to active
+	am.activeMtx.Lock()
+	am.active = true
+	am.activeMtx.Unlock()
+
+	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
 			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)
@@ -236,9 +244,47 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	return nil
 }
 
+// Pause running jobs in the alertmanager that are able to be restarted and sets
+// to inactive
+func (am *Alertmanager) Pause() {
+	// Set to inactive
+	am.activeMtx.Lock()
+	am.active = false
+	am.activeMtx.Unlock()
+
+	// Ensure inhibitor is set before being called
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	// Ensure dispatcher is set before being called
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
+
+	// Remove all of the active silences from the alertmanager
+	silences, _, err := am.silences.Query()
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "unable to retrieve silences for removal", "err", err)
+	}
+	for _, si := range silences {
+		err = am.silences.Expire(si.Id)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "unable to remove silence", "err", err, "silence", si.Id)
+		}
+	}
+}
+
 // Stop stops the Alertmanager.
 func (am *Alertmanager) Stop() {
-	am.dispatcher.Stop()
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 	am.wg.Wait()

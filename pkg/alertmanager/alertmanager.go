@@ -84,17 +84,14 @@ func init() {
 }
 
 // New creates a new Alertmanager.
-func New(cfg *Config) (*Alertmanager, error) {
+func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am := &Alertmanager{
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
 	}
 
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	am.registry = prometheus.NewRegistry()
+	am.registry = reg
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -110,7 +107,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry) // TODO add gossip metrics
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 

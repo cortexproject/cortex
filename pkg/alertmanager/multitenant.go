@@ -140,6 +140,8 @@ type MultitenantAlertmanager struct {
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
+	metrics *alertmanagerMetrics
+
 	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
@@ -150,7 +152,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg configs_client.Config) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg configs_client.Config, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -177,7 +179,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 	if cfg.ClusterBindAddr != "" {
 		peer, err = cluster.Create(
 			log.With(util.Logger, "component", "cluster"),
-			prometheus.DefaultRegisterer,
+			registerer,
 			cfg.ClusterBindAddr,
 			cfg.ClusterAdvertiseAddr,
 			cfg.Peers,
@@ -204,10 +206,16 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]configs.Config{},
 		alertmanagers:  map[string]*Alertmanager{},
+		metrics:        newAlertmanagerMetrics(),
 		peer:           peer,
 		stop:           make(chan struct{}),
 		done:           make(chan struct{}),
 	}
+
+	if registerer != nil {
+		registerer.MustRegister(am.metrics)
+	}
+
 	return am, nil
 }
 
@@ -431,6 +439,8 @@ func (am *MultitenantAlertmanager) deleteUser(userID string) {
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	reg := prometheus.NewRegistry()
+	am.metrics.addUserRegistry(userID, reg)
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
@@ -439,7 +449,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		PeerTimeout: am.cfg.PeerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
-	})
+	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
 	}

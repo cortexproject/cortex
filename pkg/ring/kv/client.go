@@ -26,6 +26,8 @@ type StoreConfig struct {
 	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
 	Multi  MultiConfig   `yaml:"multi,omitempty"`
 
+	// Function that returns memberlist.KV store to use. By using a function, we can delay
+	// initialization of memberlist.KV until it is actually required.
 	MemberlistKV func() (*memberlist.KV, error) `yaml:"-"`
 }
 

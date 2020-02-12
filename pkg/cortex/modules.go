@@ -214,6 +214,7 @@ func (t *Cortex) initOverrides(cfg *Config) (err error) {
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -437,6 +438,7 @@ func (t *Cortex) stopTableManager() error {
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.querierChunkStore)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)

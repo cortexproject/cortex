@@ -490,12 +490,23 @@ func (t *Cortex) stopAlertmanager() error {
 }
 
 func (t *Cortex) initCompactor(cfg *Config) (err error) {
+	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
+
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
-	return err
+	if err != nil {
+		return err
+	}
+
+	t.compactor.Start()
+
+	// Expose HTTP endpoints.
+	t.server.HTTP.HandleFunc("/compactor_ring", t.compactor.RingHandler)
+
+	return nil
 }
 
 func (t *Cortex) stopCompactor() error {
-	t.compactor.Shutdown()
+	t.compactor.Stop()
 	return nil
 }
 

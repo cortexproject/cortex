@@ -44,18 +44,18 @@ type Manager struct {
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
-func NewRuntimeConfigManager(cfg ManagerConfig, metricsRegisterer prometheus.Registerer) (*Manager, error) {
+func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer) (*Manager, error) {
 	mgr := Manager{
 		cfg:  cfg,
 		quit: make(chan struct{}),
 		configLoadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_overrides_last_reload_successful",
-			Help: "Whether the last config reload attempt was successful (0: error, 1: successful).",
+			Help: "Whether the last config reload attempt was successful.",
 		}),
 	}
 
-	if metricsRegisterer != nil {
-		metricsRegisterer.MustRegister(mgr.configLoadSuccess)
+	if registerer != nil {
+		registerer.MustRegister(mgr.configLoadSuccess)
 	}
 
 	if cfg.LoadPath != "" {

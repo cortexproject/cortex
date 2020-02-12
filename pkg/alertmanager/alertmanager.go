@@ -107,7 +107,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry) // TODO add gossip metrics
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 

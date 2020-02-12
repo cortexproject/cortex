@@ -10,7 +10,7 @@ type Codec interface {
 	Decode([]byte) (interface{}, error)
 	Encode(interface{}) ([]byte, error)
 
-	// Short ID to communicate what codec should be used to decode the value.
+	// CodecID is a short identifier to communicate what codec should be used to decode the value.
 	// Once in use, this should be stable to avoid confusing other clients.
 	CodecID() string
 }

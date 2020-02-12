@@ -30,6 +30,7 @@
   * `-server.grpc.keepalive.timeout`
 * [ENHANCEMENT] PostgreSQL: Bump up `github.com/lib/pq` from `v1.0.0` to `v1.3.0` to support PostgreSQL SCRAM-SHA-256 authentication. #2097
 * [ENHANCEMENT] Casandra: User no longer need `CREATE` privilege on `<all keyspaces>` if given keyspace exists. #2032
+* [ENHANCEMENT] Add automatic repair for checkpoint and WAL. #2105
 * [BUGFIX] Alertmanager: fixed panic upon applying a new config, caused by duplicate metrics registration in the `NewPipelineBuilder` function. #211
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101

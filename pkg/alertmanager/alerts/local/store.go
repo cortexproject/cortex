@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/prometheus/alertmanager/config"
+
+	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 )
 
 // StoreConfig configures a static file alertmanager store

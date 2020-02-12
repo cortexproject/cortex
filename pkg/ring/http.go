@@ -68,7 +68,9 @@ const pageContent = `
 					<h2>Instance: {{ .ID }}</h2>
 					<p>
 						Tokens:<br />
-						{{ range $token := .Tokens }}{{ $token }} {{ end }}
+						{{ range $token := .Tokens }}
+							{{ $token }}
+						{{ end }}
 					</p>
 				{{ end }}
 			{{ end }}

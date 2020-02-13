@@ -256,6 +256,7 @@ func (t *Cortex) init(cfg *Config, m moduleName) error {
 // calls start functions of modules. Functions are called concurrently.
 func (t *Cortex) start(target moduleName) error {
 	deps := orderedDeps(target)
+	deps = append(deps, target) // target is not part of dependencies, make sure we call its start function too
 
 	grp, ctx := errgroup.WithContext(context.Background())
 

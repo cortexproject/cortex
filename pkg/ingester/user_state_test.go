@@ -52,7 +52,7 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 
 				total, batch, batches := 0, 0, 0
 				err = instance.forSeriesMatching(ctx, tc.matchers,
-					func(_ context.Context, _ model.Fingerprint, s *MemorySeries) error {
+					func(_ context.Context, _ model.Fingerprint, s *memorySeries) error {
 						batch++
 						return nil
 					},

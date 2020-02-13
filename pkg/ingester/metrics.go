@@ -16,7 +16,7 @@ const (
 	memSeriesRemovedTotalHelp = "The total number of series that were removed per user."
 )
 
-type Metrics struct {
+type ingesterMetrics struct {
 	flushQueueLength      prometheus.Gauge
 	ingestedSamples       prometheus.Counter
 	ingestedSamplesFail   prometheus.Counter
@@ -31,8 +31,8 @@ type Metrics struct {
 	walReplayDuration     prometheus.Gauge
 }
 
-func NewIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *Metrics {
-	m := &Metrics{
+func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
+	m := &ingesterMetrics{
 		flushQueueLength: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
 			Help: "The total number of series pending in the flush queue.",

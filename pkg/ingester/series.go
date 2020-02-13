@@ -24,11 +24,11 @@ func init() {
 	prometheus.MustRegister(createdChunks)
 }
 
-type MemorySeries struct {
+type memorySeries struct {
 	metric labels.Labels
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
-	chunkDescs []*Desc
+	chunkDescs []*desc
 
 	// Whether the current head chunk has already been finished.  If true,
 	// the current head chunk must not be modified anymore.
@@ -43,8 +43,8 @@ type MemorySeries struct {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labels.Labels) *MemorySeries {
-	return &MemorySeries{
+func newMemorySeries(m labels.Labels) *memorySeries {
+	return &memorySeries{
 		metric:   m,
 		lastTime: model.Earliest,
 	}
@@ -52,7 +52,7 @@ func newMemorySeries(m labels.Labels) *MemorySeries {
 
 // add adds a sample pair to the series, possibly creating a new chunk.
 // The caller must have locked the fingerprint of the series.
-func (s *MemorySeries) add(v model.SamplePair) error {
+func (s *memorySeries) add(v model.SamplePair) error {
 	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
 		// If we don't know what the last sample value is, silently discard.
@@ -126,7 +126,7 @@ func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 // closeHead marks the head chunk closed. The caller must have locked
 // the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
-func (s *MemorySeries) closeHead(reason flushReason) {
+func (s *memorySeries) closeHead(reason flushReason) {
 	s.chunkDescs[0].flushReason = reason
 	s.headChunkClosed = true
 }
@@ -134,14 +134,14 @@ func (s *MemorySeries) closeHead(reason flushReason) {
 // firstTime returns the earliest known time for the series. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
-func (s *MemorySeries) firstTime() model.Time {
+func (s *memorySeries) firstTime() model.Time {
 	return s.chunkDescs[0].FirstTime
 }
 
 // Returns time of oldest chunk in the series, that isn't flushed. If there are
 // no chunks, or all chunks are flushed, returns 0.
 // The caller must have locked the fingerprint of the memorySeries.
-func (s *MemorySeries) firstUnflushedChunkTime() model.Time {
+func (s *memorySeries) firstUnflushedChunkTime() model.Time {
 	for _, c := range s.chunkDescs {
 		if !c.flushed {
 			return c.FirstTime
@@ -154,11 +154,11 @@ func (s *MemorySeries) firstUnflushedChunkTime() model.Time {
 // head returns a pointer to the head chunk descriptor. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
-func (s *MemorySeries) head() *Desc {
+func (s *memorySeries) head() *desc {
 	return s.chunkDescs[len(s.chunkDescs)-1]
 }
 
-func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
+func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
 	// Find first chunk with start time after "from".
 	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
 		return s.chunkDescs[i].FirstTime.After(from)
@@ -199,7 +199,7 @@ func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 	return values, nil
 }
 
-func (s *MemorySeries) setChunks(descs []*Desc) error {
+func (s *memorySeries) setChunks(descs []*desc) error {
 	if len(s.chunkDescs) != 0 {
 		return fmt.Errorf("series already has chunks")
 	}
@@ -211,19 +211,11 @@ func (s *MemorySeries) setChunks(descs []*Desc) error {
 	return nil
 }
 
-func (s *MemorySeries) GetChunks() []*Desc {
-	return s.chunkDescs
-}
-
-func (s *MemorySeries) Metric() labels.Labels {
-	return s.metric
-}
-
-func (s *MemorySeries) isStale() bool {
+func (s *memorySeries) isStale() bool {
 	return s.lastSampleValueSet && value.IsStaleNaN(float64(s.lastSampleValue))
 }
 
-type Desc struct {
+type desc struct {
 	C           encoding.Chunk // nil if chunk is evicted.
 	FirstTime   model.Time     // Timestamp of first sample. Populated at creation. Immutable.
 	LastTime    model.Time     // Timestamp of last sample. Populated at creation & on append.
@@ -232,8 +224,8 @@ type Desc struct {
 	flushed     bool           // set to true when flush succeeds
 }
 
-func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *Desc {
-	return &Desc{
+func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc {
+	return &desc{
 		C:          c,
 		FirstTime:  firstTime,
 		LastTime:   lastTime,
@@ -244,7 +236,7 @@ func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *Desc 
 // Add adds a sample pair to the underlying chunk. For safe concurrent access,
 // The chunk must be pinned, and the caller must have locked the fingerprint of
 // the series.
-func (d *Desc) add(s model.SamplePair) (encoding.Chunk, error) {
+func (d *desc) add(s model.SamplePair) (encoding.Chunk, error) {
 	cs, err := d.C.Add(s)
 	if err != nil {
 		return nil, err
@@ -258,8 +250,8 @@ func (d *Desc) add(s model.SamplePair) (encoding.Chunk, error) {
 	return cs, nil
 }
 
-func (d *Desc) slice(start, end model.Time) *Desc {
-	return &Desc{
+func (d *desc) slice(start, end model.Time) *desc {
+	return &desc{
 		C:         d.C.Slice(start, end),
 		FirstTime: start,
 		LastTime:  end,

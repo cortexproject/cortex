@@ -119,13 +119,13 @@ func (i *Ingester) sweepUsers(immediate bool) {
 
 	oldest := model.Time(0)
 
-	for id, state := range i.userStates.Copy() {
-		for pair := range state.fpToSeries.Iter() {
-			state.fpLocker.Lock(pair.Fingerprint)
-			i.sweepSeries(id, pair.Fingerprint, pair.Series, immediate)
-			i.removeFlushedChunks(state, pair.Fingerprint, pair.Series)
-			first := pair.Series.firstUnflushedChunkTime()
-			state.fpLocker.Unlock(pair.Fingerprint)
+	for id, state := range i.userStates.cp() {
+		for pair := range state.fpToSeries.iter() {
+			state.fpLocker.Lock(pair.fp)
+			i.sweepSeries(id, pair.fp, pair.series, immediate)
+			i.removeFlushedChunks(state, pair.fp, pair.series)
+			first := pair.series.firstUnflushedChunkTime()
+			state.fpLocker.Unlock(pair.fp)
 
 			if first > 0 && (oldest == 0 || first < oldest) {
 				oldest = first
@@ -173,7 +173,7 @@ func (f flushReason) String() string {
 //
 // NB we don't close the head chunk here, as the series could wait in the queue
 // for some time, and we want to encourage chunks to be as full as possible.
-func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *MemorySeries, immediate bool) {
+func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) {
 	if len(series.chunkDescs) <= 0 {
 		return
 	}
@@ -191,7 +191,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *Memo
 	}
 }
 
-func (i *Ingester) shouldFlushSeries(series *MemorySeries, fp model.Fingerprint, immediate bool) flushReason {
+func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint, immediate bool) flushReason {
 	if len(series.chunkDescs) == 0 {
 		return noFlush
 	}
@@ -210,7 +210,7 @@ func (i *Ingester) shouldFlushSeries(series *MemorySeries, fp model.Fingerprint,
 	return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
 }
 
-func (i *Ingester) shouldFlushChunk(c *Desc, fp model.Fingerprint, lastValueIsStale bool) flushReason {
+func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint, lastValueIsStale bool) flushReason {
 	if c.flushed { // don't flush chunks we've already flushed
 		return noFlush
 	}
@@ -360,7 +360,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 }
 
 // must be called under fpLocker lock
-func (i *Ingester) removeFlushedChunks(userState *UserState, fp model.Fingerprint, series *MemorySeries) {
+func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprint, series *memorySeries) {
 	now := model.Now()
 	for len(series.chunkDescs) > 0 {
 		if series.chunkDescs[0].flushed && now.Sub(series.chunkDescs[0].LastUpdate) > i.cfg.RetainPeriod {
@@ -376,7 +376,7 @@ func (i *Ingester) removeFlushedChunks(userState *UserState, fp model.Fingerprin
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fingerprint, metric labels.Labels, chunkDescs []*Desc) error {
+func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fingerprint, metric labels.Labels, chunkDescs []*desc) error {
 	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
 		c := chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime)

@@ -81,7 +81,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      NewIngesterMetrics(registerer, false),
+		metrics:      newIngesterMetrics(registerer, false),
 		limits:       limits,
 		chunkStore:   nil,
 		quit:         make(chan struct{}),
@@ -110,7 +110,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = NewUserStates(i.limiter, cfg, i.metrics)
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	// Scan and open TSDB's that already exist on disk
 	if err := i.openExistingTSDB(context.Background()); err != nil {

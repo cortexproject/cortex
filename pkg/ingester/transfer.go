@@ -67,7 +67,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	fromIngesterID := ""
 	seriesReceived := 0
 	xfer := func() error {
-		userStates := NewUserStates(i.limiter, i.cfg, i.metrics)
+		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
 
 		for {
 			wireSeries, err := stream.Recv()
@@ -349,7 +349,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 }
 
 // The passed wireChunks slice is for re-use.
-func toWireChunks(descs []*Desc, wireChunks []client.Chunk) ([]client.Chunk, error) {
+func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	if cap(wireChunks) < len(descs) {
 		wireChunks = make([]client.Chunk, 0, len(descs))
 	}
@@ -372,10 +372,10 @@ func toWireChunks(descs []*Desc, wireChunks []client.Chunk) ([]client.Chunk, err
 	return wireChunks, nil
 }
 
-func fromWireChunks(wireChunks []client.Chunk) ([]*Desc, error) {
-	descs := make([]*Desc, 0, len(wireChunks))
+func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
+	descs := make([]*desc, 0, len(wireChunks))
 	for _, c := range wireChunks {
-		desc := &Desc{
+		desc := &desc{
 			FirstTime:  model.Time(c.StartTimestampMs),
 			LastTime:   model.Time(c.EndTimestampMs),
 			LastUpdate: model.Now(),
@@ -433,7 +433,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return i.v2TransferOut(ctx)
 	}
 
-	userStatesCopy := i.userStates.Copy()
+	userStatesCopy := i.userStates.cp()
 	if len(userStatesCopy) == 0 {
 		level.Info(util.Logger).Log("msg", "nothing to transfer")
 		return nil
@@ -459,27 +459,27 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	var chunks []client.Chunk
 	for userID, state := range userStatesCopy {
-		for pair := range state.fpToSeries.Iter() {
-			state.fpLocker.Lock(pair.Fingerprint)
+		for pair := range state.fpToSeries.iter() {
+			state.fpLocker.Lock(pair.fp)
 
-			if len(pair.Series.chunkDescs) == 0 { // Nothing to send?
-				state.fpLocker.Unlock(pair.Fingerprint)
+			if len(pair.series.chunkDescs) == 0 { // Nothing to send?
+				state.fpLocker.Unlock(pair.fp)
 				continue
 			}
 
-			chunks, err = toWireChunks(pair.Series.chunkDescs, chunks)
+			chunks, err = toWireChunks(pair.series.chunkDescs, chunks)
 			if err != nil {
-				state.fpLocker.Unlock(pair.Fingerprint)
+				state.fpLocker.Unlock(pair.fp)
 				return errors.Wrap(err, "toWireChunks")
 			}
 
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapters(pair.Series.metric),
+				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
 				Chunks:         chunks,
 			})
-			state.fpLocker.Unlock(pair.Fingerprint)
+			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return errors.Wrap(err, "Send")
 			}

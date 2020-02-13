@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -33,12 +34,12 @@ var (
 		"-experimental.tsdb.s3.access-key-id":           e2edb.MinioAccessKey,
 		"-experimental.tsdb.s3.secret-access-key":       e2edb.MinioSecretKey,
 		"-experimental.tsdb.s3.bucket-name":             "cortex",
-		"-experimental.tsdb.s3.endpoint":                "minio:9000",
+		"-experimental.tsdb.s3.endpoint":                fmt.Sprintf("%s-minio-9000:9000", networkName),
 		"-experimental.tsdb.s3.insecure":                "true",
 	}
 
 	ChunksStorage = map[string]string{
-		"-dynamodb.url":                   "dynamodb://u:p@dynamodb.:8000",
+		"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
 		"-dynamodb.poll-interval":         "1m",
 		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
 		"-table-manager.retention-period": "168h",

@@ -221,6 +221,8 @@ func (s *Service) WaitReady() error {
 }
 
 func (s *Service) WaitMetric(port int, metric string, value float64) error {
+	lastFoundValue := 0.0
+
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		metrics, err := s.Metrics(80)
 		if err != nil {
@@ -237,12 +239,21 @@ func (s *Service) WaitMetric(port int, metric string, value float64) error {
 		mf, ok := families[metric]
 		if ok {
 			for _, m := range mf.Metric {
-				if m.GetGauge() != nil && m.GetGauge().GetValue() == value {
-					return nil
-				} else if m.GetCounter() != nil && m.GetCounter().GetValue() == value {
-					return nil
-				} else if m.GetHistogram() != nil && float64(m.GetHistogram().GetSampleCount()) == value {
-					return nil
+				if m.GetGauge() != nil {
+					lastFoundValue = m.GetGauge().GetValue()
+					if lastFoundValue == value {
+						return nil
+					}
+				} else if m.GetCounter() != nil {
+					lastFoundValue = m.GetCounter().GetValue()
+					if lastFoundValue == value {
+						return nil
+					}
+				} else if m.GetHistogram() != nil {
+					lastFoundValue = float64(m.GetHistogram().GetSampleCount())
+					if lastFoundValue == value {
+						return nil
+					}
 				}
 			}
 		}
@@ -250,7 +261,7 @@ func (s *Service) WaitMetric(port int, metric string, value float64) error {
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find a metric %s with value %v", metric, value)
+	return fmt.Errorf("unable to find a metric %s with value %v. Last value found: %v", metric, value, lastFoundValue)
 }
 
 func (s *Service) buildDockerRunArgs() []string {

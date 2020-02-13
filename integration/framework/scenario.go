@@ -84,7 +84,7 @@ func (s *Scenario) StartService(service *Service) error {
 	}
 
 	// Start the service
-	if err := service.Start(s.SharedDir()); err != nil {
+	if err := service.start(s.SharedDir()); err != nil {
 		return err
 	}
 
@@ -99,7 +99,7 @@ func (s *Scenario) StopService(name string) error {
 		return fmt.Errorf("unable to stop service %s because does not exist", name)
 	}
 
-	if err := service.Stop(); err != nil {
+	if err := service.stop(); err != nil {
 		return err
 	}
 
@@ -151,7 +151,7 @@ func (s *Scenario) clean() {
 func (s *Scenario) shutdown() {
 	// Kill the services in the opposite order
 	for i := len(s.services) - 1; i >= 0; i-- {
-		if err := s.services[i].Kill(); err != nil {
+		if err := s.services[i].kill(); err != nil {
 			fmt.Println("Unable to kill service", s.services[i].name, ":", err.Error())
 		}
 	}

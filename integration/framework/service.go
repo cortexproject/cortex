@@ -70,7 +70,7 @@ func (s *Service) SetBackoff(cfg util.BackoffConfig) {
 	s.retryBackoff = util.NewBackoff(context.Background(), cfg)
 }
 
-func (s *Service) Start(sharedDir string) (err error) {
+func (s *Service) start(sharedDir string) (err error) {
 	// In case of any error, if the container was already created, we
 	// have to cleanup removing it. We ignore the error of the "docker rm"
 	// because we don't know if the container was created or not.
@@ -122,7 +122,7 @@ func (s *Service) Start(sharedDir string) (err error) {
 	return nil
 }
 
-func (s *Service) Stop() error {
+func (s *Service) stop() error {
 	fmt.Println("Stopping", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.name); err != nil {
@@ -133,7 +133,7 @@ func (s *Service) Stop() error {
 	return nil
 }
 
-func (s *Service) Kill() error {
+func (s *Service) kill() error {
 	fmt.Println("Killing", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.name); err != nil {

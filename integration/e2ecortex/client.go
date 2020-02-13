@@ -1,4 +1,4 @@
-package framework
+package e2ecortex
 
 import (
 	"bytes"

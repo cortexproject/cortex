@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,37 +15,44 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/integration/framework"
+	"github.com/cortexproject/cortex/integration/e2e"
+	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
+	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
 func TestIngesterFlushWithChunksStorage(t *testing.T) {
-	s, err := framework.NewScenario()
+	s, err := e2e.NewScenario()
 	require.NoError(t, err)
-	defer s.Shutdown()
+	defer s.Close()
 
 	// Start dependencies
-	require.NoError(t, s.StartDynamoDB())
-	require.NoError(t, s.StartConsul())
+	require.NoError(t, s.StartService(e2edb.NewDynamoDB()))
+	require.NoError(t, s.StartService(e2edb.NewConsul()))
 	require.NoError(t, s.WaitReady("consul", "dynamodb"))
 
 	// Start Cortex components
-	require.NoError(t, s.StartTableManager("table-manager", ChunksStorage, ""))
-	require.NoError(t, s.StartIngester("ingester-1", mergeFlags(ChunksStorage, map[string]string{
+	require.NoError(t, ioutil.WriteFile(
+		filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
+		[]byte(cortexSchemaConfigYaml),
+		os.ModePerm),
+	)
+	require.NoError(t, s.StartService(e2ecortex.NewTableManager("table-manager", ChunksStorage, "")))
+	require.NoError(t, s.StartService(e2ecortex.NewIngester("ingester-1", mergeFlags(ChunksStorage, map[string]string{
 		"-ingester.max-transfer-retries": "0",
-	}), ""))
-	require.NoError(t, s.StartQuerier("querier", ChunksStorage, ""))
-	require.NoError(t, s.StartDistributor("distributor", ChunksStorage, ""))
+	}), "")))
+	require.NoError(t, s.StartService(e2ecortex.NewQuerier("querier", ChunksStorage, "")))
+	require.NoError(t, s.StartService(e2ecortex.NewDistributor("distributor", ChunksStorage, "")))
 	require.NoError(t, s.WaitReady("distributor", "querier", "ingester-1", "table-manager"))
 
 	// Wait until the first table-manager sync has completed, so that we're
 	// sure the tables have been created
-	require.NoError(t, s.Service("table-manager").WaitMetric(80, "cortex_dynamo_sync_tables_seconds", 1))
+	require.NoError(t, s.Service("table-manager").WaitMetric("cortex_dynamo_sync_tables_seconds", 1))
 
 	// Wait until both the distributor and querier have updated the ring
-	require.NoError(t, s.Service("distributor").WaitMetric(80, "cortex_ring_tokens_total", 512))
-	require.NoError(t, s.Service("querier").WaitMetric(80, "cortex_ring_tokens_total", 512))
+	require.NoError(t, s.Service("distributor").WaitMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, s.Service("querier").WaitMetric("cortex_ring_tokens_total", 512))
 
-	c, err := framework.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
+	c, err := e2ecortex.NewClient(s.Endpoint("distributor", 80), s.Endpoint("querier", 80), "user-1")
 	require.NoError(t, err)
 
 	// Push some series to Cortex

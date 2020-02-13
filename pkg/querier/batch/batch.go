@@ -1,8 +1,6 @@
 package batch
 
 import (
-	"fmt"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
 

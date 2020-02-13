@@ -62,6 +62,7 @@ func startSingleBinary(s *framework.Scenario, name string, join string) error {
 		"-ingester.observe-period":       "5s", // to avoid conflicts in tokens
 		"-ring.store":                    "memberlist",
 		"-memberlist.bind-port":          "8000",
+		"-memberlist.pullpush-interval":  "3s", // speed up state convergence to make test faster and avoid flakiness
 	}
 
 	if join != "" {

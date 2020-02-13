@@ -64,6 +64,8 @@ func NewService(
 	}
 }
 
+func (s *Service) Name() string { return s.name }
+
 func (s *Service) SetBackoff(cfg util.BackoffConfig) {
 	s.retryBackoff = util.NewBackoff(context.Background(), cfg)
 }

@@ -3,8 +3,9 @@ package ingester
 import (
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (

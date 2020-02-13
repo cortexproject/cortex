@@ -13,7 +13,7 @@ type RuleStoreConfig struct {
 	Type     string `yaml:"type"`
 	ConfigDB client.Config
 
-	mock *mockRuleStore
+	mock rules.RuleStore
 }
 
 // RegisterFlags registers flags.

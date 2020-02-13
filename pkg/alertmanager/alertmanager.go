@@ -52,19 +52,20 @@ type Config struct {
 
 // An Alertmanager manages the alerts for one user.
 type Alertmanager struct {
-	cfg        *Config
-	api        *api.API
-	logger     log.Logger
-	nflog      *nflog.Log
-	silences   *silence.Silences
-	marker     types.Marker
-	alerts     *mem.Alerts
-	dispatcher *dispatch.Dispatcher
-	inhibitor  *inhibit.Inhibitor
-	stop       chan struct{}
-	wg         sync.WaitGroup
-	mux        *http.ServeMux
-	registry   *prometheus.Registry
+	cfg             *Config
+	api             *api.API
+	logger          log.Logger
+	nflog           *nflog.Log
+	silences        *silence.Silences
+	marker          types.Marker
+	alerts          *mem.Alerts
+	dispatcher      *dispatch.Dispatcher
+	inhibitor       *inhibit.Inhibitor
+	pipelineBuilder *notify.PipelineBuilder
+	stop            chan struct{}
+	wg              sync.WaitGroup
+	mux             *http.ServeMux
+	registry        *prometheus.Registry
 }
 
 var webReload = make(chan chan error)
@@ -129,6 +130,8 @@ func New(cfg *Config) (*Alertmanager, error) {
 		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 		am.silences.SetBroadcast(c.Broadcast)
 	}
+
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
 	am.wg.Add(1)
 	go func() {
@@ -205,8 +208,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	if err != nil {
 		return nil
 	}
-	pipelineBuilder := notify.NewPipelineBuilder(am.registry)
-	pipeline := pipelineBuilder.New(
+
+	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,

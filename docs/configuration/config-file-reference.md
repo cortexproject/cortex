@@ -115,6 +115,9 @@ runtime_config:
   # File with the configuration that can be updated in runtime.
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
+
+# The memberlist_config configures the Gossip memberlist.
+[memberlist: <memberlist_config>]
 ```
 
 ## `server_config`
@@ -284,10 +287,6 @@ ha_tracker:
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [etcd: <etcd_config>]
 
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: distributor.ha-tracker
-    [memberlist: <memberlist_config>]
-
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -distributor.ha-tracker.multi.primary
@@ -340,10 +339,6 @@ ring:
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
-
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
 
     multi:
       # Primary backend storage used by multi-client.
@@ -415,9 +410,6 @@ lifecycler:
 
       # The etcd_config configures the etcd client.
       [etcd: <etcd_config>]
-
-      # The memberlist_config configures the Gossip memberlist.
-      [memberlist: <memberlist_config>]
 
       multi:
         # Primary backend storage used by multi-client.
@@ -753,10 +745,6 @@ ring:
     # The CLI flags prefix for this block config is: ruler.ring
     [etcd: <etcd_config>]
 
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: ruler.ring
-    [memberlist: <memberlist_config>]
-
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -ruler.ring.multi.primary
@@ -790,6 +778,10 @@ ring:
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flushcheckperiod: <duration> | default = 1m0s]
+
+# Enable the ruler api
+# CLI flag: -experimental.ruler.enable-api
+[enable_api: <boolean> | default = false]
 ```
 
 ## `alertmanager_config`
@@ -1432,11 +1424,11 @@ cassandra:
 
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 600ms]
+  [timeout: <duration> | default = 2s]
 
   # Initial connection timeout, used during initial dial to server.
   # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 600ms]
+  [connect_timeout: <duration> | default = 5s]
 
   # Number of retries to perform on a request. (Default is 0: no retries)
   # CLI flag: -cassandra.max-retries
@@ -1748,62 +1740,62 @@ The `memberlist_config` configures the Gossip memberlist.
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
-# CLI flag: -<prefix>.memberlist.nodename
+# CLI flag: -memberlist.nodename
 [node_name: <string> | default = ""]
 
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.stream-timeout
+# CLI flag: -memberlist.stream-timeout
 [stream_timeout: <duration> | default = 0s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
-# CLI flag: -<prefix>.memberlist.retransmit-factor
+# CLI flag: -memberlist.retransmit-factor
 [retransmit_factor: <int> | default = 0]
 
 # How often to use pull/push sync. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.pullpush-interval
+# CLI flag: -memberlist.pullpush-interval
 [pull_push_interval: <duration> | default = 0s]
 
 # How often to gossip. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.gossip-interval
+# CLI flag: -memberlist.gossip-interval
 [gossip_interval: <duration> | default = 0s]
 
 # How many nodes to gossip to. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.gossip-nodes
+# CLI flag: -memberlist.gossip-nodes
 [gossip_nodes: <int> | default = 0]
 
 # Other cluster members to join. Can be specified multiple times. Memberlist
 # store is EXPERIMENTAL.
-# CLI flag: -<prefix>.memberlist.join
+# CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
 # If this node fails to join memberlist cluster, abort.
-# CLI flag: -<prefix>.memberlist.abort-if-join-fails
+# CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = true]
 
 # How long to keep LEFT ingesters in the ring.
-# CLI flag: -<prefix>.memberlist.left-ingesters-timeout
+# CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m0s]
 
 # Timeout for leaving memberlist cluster.
-# CLI flag: -<prefix>.memberlist.leave-timeout
+# CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
-# CLI flag: -<prefix>.memberlist.bind-addr
+# CLI flag: -memberlist.bind-addr
 [bind_addr: <list of string> | default = ]
 
 # Port to listen on for gossip messages.
-# CLI flag: -<prefix>.memberlist.bind-port
+# CLI flag: -memberlist.bind-port
 [bind_port: <int> | default = 7946]
 
 # Timeout used when connecting to other nodes to send packet.
-# CLI flag: -<prefix>.memberlist.packet-dial-timeout
+# CLI flag: -memberlist.packet-dial-timeout
 [packet_dial_timeout: <duration> | default = 5s]
 
 # Timeout for writing 'packet' data.
-# CLI flag: -<prefix>.memberlist.packet-write-timeout
+# CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 ```
 

@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/weaveworks/common/server"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -24,7 +26,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/server"
 )
 
 const (
@@ -113,7 +114,7 @@ var (
 		},
 		{
 			name:       "memberlist_config",
-			structType: reflect.TypeOf(memberlist.Config{}),
+			structType: reflect.TypeOf(memberlist.KVConfig{}),
 			desc:       "The memberlist_config configures the Gossip memberlist.",
 		},
 		{

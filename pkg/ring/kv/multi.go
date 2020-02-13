@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/uber-go/atomic"
@@ -348,14 +349,5 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		} else {
 			level.Debug(m.logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
 		}
-	}
-}
-
-// Stop the multiClient and all configured clients.
-func (m *MultiClient) Stop() {
-	m.cancel()
-
-	for _, kv := range m.clients {
-		kv.client.Stop()
 	}
 }

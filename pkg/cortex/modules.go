@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -50,6 +51,7 @@ const (
 	Ingester
 	Flusher
 	Querier
+	QuerierChunkStore
 	QueryFrontend
 	Store
 	TableManager
@@ -57,6 +59,7 @@ const (
 	Configs
 	AlertManager
 	Compactor
+	MemberlistKV
 	All
 )
 
@@ -80,6 +83,8 @@ func (m moduleName) String() string {
 		return "flusher"
 	case Querier:
 		return "querier"
+	case QuerierChunkStore:
+		return "querier-chunk-store"
 	case QueryFrontend:
 		return "query-frontend"
 	case TableManager:
@@ -92,6 +97,8 @@ func (m moduleName) String() string {
 		return "alertmanager"
 	case Compactor:
 		return "compactor"
+	case MemberlistKV:
+		return "memberlist-kv"
 	case All:
 		return "all"
 	default:
@@ -124,6 +131,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "querier":
 		*m = Querier
+		return nil
+	case "querier-chunk-store":
+		*m = QuerierChunkStore
 		return nil
 	case "query-frontend":
 		*m = QueryFrontend
@@ -184,6 +194,7 @@ func (t *Cortex) stopServer() (err error) {
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
@@ -203,7 +214,7 @@ func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
 
-	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig)
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	return err
 }
 
@@ -219,6 +230,7 @@ func (t *Cortex) initOverrides(cfg *Config) (err error) {
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -242,18 +254,7 @@ func (t *Cortex) stopDistributor() (err error) {
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
-	var store querier.ChunkStore
-
-	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		store, err = querier.NewBlockQuerier(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
-		if err != nil {
-			return err
-		}
-	} else {
-		store = t.store
-	}
-
-	queryable, engine := querier.New(cfg.Querier, t.distributor, store)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.querierChunkStore)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -302,8 +303,32 @@ func (t *Cortex) stopQuerier() error {
 	return nil
 }
 
+func (t *Cortex) initQuerierChunkStore(cfg *Config) error {
+	if cfg.Storage.Engine == storage.StorageEngineChunks {
+		t.querierChunkStore = t.store
+		return nil
+	}
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+		store, err := querier.NewBlockQuerier(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		if err != nil {
+			return err
+		}
+
+		t.querierChunkStore = store
+		return nil
+	}
+
+	return fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
+}
+
+func (t *Cortex) stopQuerierChunkStore() error {
+	return nil
+}
+
 func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -451,11 +476,18 @@ func (t *Cortex) stopTableManager() error {
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
+	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.querierChunkStore)
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
-		return
+		return err
+	}
+
+	if cfg.Ruler.EnableAPI {
+		subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
+		t.ruler.RegisterRoutes(subrouter)
+		ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
 	}
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
@@ -504,12 +536,41 @@ func (t *Cortex) stopAlertmanager() error {
 }
 
 func (t *Cortex) initCompactor(cfg *Config) (err error) {
+	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
-	return err
+	if err != nil {
+		return err
+	}
+
+	t.compactor.Start()
+
+	// Expose HTTP endpoints.
+	t.server.HTTP.HandleFunc("/compactor_ring", t.compactor.RingHandler)
+
+	return nil
 }
 
 func (t *Cortex) stopCompactor() error {
-	t.compactor.Shutdown()
+	t.compactor.Stop()
+	return nil
+}
+
+func (t *Cortex) initMemberlistKV(cfg *Config) (err error) {
+	cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+	}
+	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
+	return nil
+}
+
+func (t *Cortex) stopMemberlistKV() (err error) {
+	kv := t.memberlistKVState.kv
+	if kv != nil {
+		kv.Stop()
+	}
 	return nil
 }
 
@@ -530,8 +591,13 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopRuntimeConfig,
 	},
 
+	MemberlistKV: {
+		init: (*Cortex).initMemberlistKV,
+		stop: (*Cortex).stopMemberlistKV,
+	},
+
 	Ring: {
-		deps: []moduleName{Server, RuntimeConfig},
+		deps: []moduleName{Server, RuntimeConfig, MemberlistKV},
 		init: (*Cortex).initRing,
 	},
 
@@ -553,7 +619,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server, RuntimeConfig},
+		deps: []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},
@@ -565,9 +631,15 @@ var modules = map[moduleName]module{
 	},
 
 	Querier: {
-		deps: []moduleName{Distributor, Store, Ring, Server},
+		deps: []moduleName{Distributor, Store, Ring, Server, QuerierChunkStore},
 		init: (*Cortex).initQuerier,
 		stop: (*Cortex).stopQuerier,
+	},
+
+	QuerierChunkStore: {
+		deps: []moduleName{Store},
+		init: (*Cortex).initQuerierChunkStore,
+		stop: (*Cortex).stopQuerierChunkStore,
 	},
 
 	QueryFrontend: {
@@ -583,7 +655,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ruler: {
-		deps: []moduleName{Distributor, Store},
+		deps: []moduleName{Distributor, Store, QuerierChunkStore},
 		init: (*Cortex).initRuler,
 		stop: (*Cortex).stopRuler,
 	},

@@ -16,6 +16,10 @@ a piece of work is finished it should:
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
 * If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
+## Formatting
+
+Cortex projects uses `goimports` tool (`go get golang.org/x/tools/cmd/goimports` to install) to format the Go files, and sort imports. We use goimports with `-local github.com/cortexproject/cortex` parameter, to put Cortex internal imports into a separate group. We try to keep imports sorted into three groups: imports from standard library, imports of 3rd party packages and internal Cortex imports. Goimports will fix the order, but will keep existing newlines between imports in the groups. We try to avoid extra newlines like that.
+
 ## Developer Certificates of Origin (DCOs)
 
 Before submitting your work in a pull request, make sure that *all* commits are signed off with a **Developer Certificate of Origin** (DCO). Here's an example:
@@ -93,3 +97,25 @@ git commit
 ```
 
 You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
+
+### Documentation
+You will find a docs folder in this project that is turned into the website that you will find at [cortexmetrics.io](https://cortexmetrics.io/).
+
+Note: 
+If you attempt to view pages on Github it's likely that you might find broken links or pages. That is expected and should not be address unless 
+it is causing issues with the site that is produced as part of the build. 
+
+To build the [Hugo](https://gohugo.io/) based documentation web site
+
+```bash
+make clean-doc check-doc web-build
+``` 
+
+To run the site locally
+
+0. After building the site above
+1. Install [Hugo](https://gohugo.io/)
+2. Execute the following command to start the web server
+```bash
+make web-serve
+```

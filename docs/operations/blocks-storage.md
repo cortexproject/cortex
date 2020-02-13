@@ -11,6 +11,7 @@ The supported backends for the blocks storage are:
 
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
+* [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
 _Internally, this storage engine is based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
 
@@ -28,7 +29,6 @@ When the blocks storage is used, each **ingester** creates a per-tenant TSDB and
 
 The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is cut, which by default occurs every 2 hours. Each new Block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new Block from the storage and download its index header.
 
-
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent local disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters.
 
 ### The read path
@@ -41,7 +41,7 @@ The blocks chunks and the entire index is never fully downloaded by the queriers
 
 The index header is also stored to the local disk, in order to avoid to re-download it on subsequent restarts of a querier. For this reason, it's recommended - but not required - to run the querier with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the queriers.
 
-### Sharding and Replication
+### Series sharding and replication
 
 The series sharding and replication doesn't change based on the storage engine, so the general overview provided by the "[Cortex architecture](../architecture.md)" documentation applies to the blocks storage as well.
 
@@ -59,6 +59,17 @@ The **vertical compaction** compacts all the Blocks of a tenant uploaded by any 
 The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index header kept in memory by queriers.
 
 The compactor is **stateless**.
+
+#### Compactor sharding
+
+The compactor optionally supports sharding. When sharding is enabled, multiple compactor instances can coordinate to split the workload and shard blocks by tenant. All the blocks of a tenant are processed by a single compactor instance at any given time, but compaction for different tenants may simultaneously run on different compactor instances.
+
+Whenever the pool of compactors increase or decrease (ie. following up a scale up/down), tenants are resharded across the available compactor instances without any manual intervention. Compactors coordinate via the Cortex [hash ring](../architecture.md#the-hash-ring).
+
+#### Compactor HTTP endpoints
+
+- `GET /compactor_ring`<br />
+  Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.
 
 ## Configuration
 
@@ -138,7 +149,7 @@ tsdb:
     # storage. 0 disables the limit.
     # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
     [max_sample_count: <int> | default = 0]
-    
+
     # Max number of concurrent queries to execute against the long-term storage
     # on a per-tenant basis.
     # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
@@ -189,6 +200,26 @@ tsdb:
     # Google SDK default logic.
     # CLI flag: -experimental.tsdb.gcs.service-account string
     [ service_account: <string>]
+
+  # Configures the Azure storage backend
+  # Required only when "azure" backend has been selected.
+  azure:
+    # Azure storage account name
+    # CLI flag: -experimental.tsdb.azure.account-name
+    account_name: <string>
+    # Azure storage account key
+    # CLI flag: -experimental.tsdb.azure.account-key
+    account_key: <string>
+    # Azure storage container name
+    # CLI flag: -experimental.tsdb.azure.container-name
+    container_name: <string>
+    # Azure storage endpoint suffix without schema.
+    # The account name will be prefixed to this value to create the FQDN
+    # CLI flag: -experimental.tsdb.azure.endpoint-suffix
+    endpoint_suffix: <string>
+    # Number of retries for recoverable errors
+    # CLI flag: -experimental.tsdb.azure.max-retries
+    [ max_retries: <int> | default=20 ]
 ```
 
 ### `compactor_config`
@@ -201,10 +232,15 @@ compactor:
     # CLI flag: -compactor.block-ranges
     [block_ranges: <list of duration> | default = [2h,12h,24h]]
 
-    # Number of Go routines to use when syncing block metadata from the long-term
-    # storage.
+    # Number of Go routines to use when syncing block index and chunks files
+    # from the long term storage.
     # CLI flag: -compactor.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
+
+    # Number of Go routines to use when syncing block meta files from the long
+    # term storage.
+    # CLI flag: -compactor.meta-sync-concurrency
+    [meta_sync_concurrency: <int> | default = 20]
 
     # Minimum age of fresh (non-compacted) blocks before they are being processed,
     # in order to skip blocks that are still uploading from ingesters. Malformed
@@ -226,13 +262,66 @@ compactor:
     # interval.
     # CLI flag: -compactor.compaction-retries
     [compaction_retries: <int> | default = 3]
+
+    # Shard tenants across multiple compactor instances. Sharding is required if
+    # you run multiple compactor instances, in order to coordinate compactions
+    # and avoid race conditions leading to the same tenant blocks simultaneously
+    # compacted by different instances.
+    # CLI flag: -compactor.sharding-enabled
+    [sharding_enabled: <bool> | default = false]
+
+    # Configures the ring used when sharding is enabled.
+    sharding_ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul, etcd,
+        # inmemory, multi, memberlist (experimental).
+        # CLI flag: -compactor.ring.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -compactor.ring.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # The consul_config configures the consul client.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [consul: <consul_config>]
+
+        # The etcd_config configures the etcd client.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [etcd: <etcd_config>]
+
+        # The memberlist_config configures the Gossip memberlist.
+        # The CLI flags prefix for this block config is: compactor.ring
+        [memberlist: <memberlist_config>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -compactor.ring.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -compactor.ring.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -compactor.ring.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -compactor.ring.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # Period at which to heartbeat to the ring.
+      # CLI flag: -compactor.ring.heartbeat-period
+      [heartbeat_period: <duration> | default = 5m]
+
+      # The heartbeat timeout after which compactors are considered unhealthy
+      # within the ring.
+      # CLI flag: -compactor.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
 ```
 
 ## Known issues
-
-### Horizontal scalability
-
-The compactor currently doesn't support horizontal scalability and only 1 replica of the compactor should run at any given time within a Cortex cluster.
 
 ### Migrating from the chunks to the blocks storage
 

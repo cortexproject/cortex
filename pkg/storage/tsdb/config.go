@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
@@ -18,6 +20,9 @@ const (
 
 	// BackendGCS is the value for the GCS storage backend
 	BackendGCS = "gcs"
+
+	// BackendAzure is the value for the Azure storage backend
+	BackendAzure = "azure"
 
 	// TenantIDExternalLabel is the external label set when shipping blocks to the storage
 	TenantIDExternalLabel = "__org_id__"
@@ -43,8 +48,9 @@ type Config struct {
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
 
 	// Backends
-	S3  s3.Config  `yaml:"s3"`
-	GCS gcs.Config `yaml:"gcs"`
+	S3    s3.Config    `yaml:"s3"`
+	GCS   gcs.Config   `yaml:"gcs"`
+	Azure azure.Config `yaml:"azure"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -88,6 +94,7 @@ func (d *DurationList) ToMilliseconds() []int64 {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
+	cfg.Azure.RegisterFlags(f)
 	cfg.BucketStore.RegisterFlags(f)
 
 	if len(cfg.BlockRanges) == 0 {
@@ -105,7 +112,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS {
+	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS && cfg.Backend != BackendAzure {
 		return errUnsupportedBackend
 	}
 
@@ -126,6 +133,7 @@ type BucketStoreConfig struct {
 	MaxConcurrent         int           `yaml:"max_concurrent"`
 	TenantSyncConcurrency int           `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency  int           `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency   int           `yaml:"meta_sync_concurrency"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -138,6 +146,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConcurrent, "experimental.tsdb.bucket-store.max-concurrent", 20, "Max number of concurrent queries to the storage per tenant.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "experimental.tsdb.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
+	f.IntVar(&cfg.MetaSyncConcurrency, "experimental.tsdb.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

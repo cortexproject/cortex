@@ -1,16 +1,15 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 )
 
 // Test forSeriesMatching correctly batches up series.

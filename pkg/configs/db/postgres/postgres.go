@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import the postgres migrations driver
@@ -18,6 +16,9 @@ import (
 	"github.com/lib/pq"
 	_ "github.com/lib/pq" // Import the postgres sql driver
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (

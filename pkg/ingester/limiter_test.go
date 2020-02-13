@@ -5,10 +5,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {

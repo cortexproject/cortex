@@ -1,12 +1,12 @@
 package tsdb
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"golang.org/x/net/context"
 )
 
 // UserBucketClient is a wrapper around a objstore.Bucket that prepends writes with a userID

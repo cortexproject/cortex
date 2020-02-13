@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {

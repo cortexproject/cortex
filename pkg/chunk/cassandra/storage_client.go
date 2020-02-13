@@ -49,8 +49,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
-	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 600*time.Millisecond, "Timeout when connecting to cassandra.")
-	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 600*time.Millisecond, "Initial connection timeout, used during initial dial to server.")
+	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
+	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 5*time.Second, "Initial connection timeout, used during initial dial to server.")
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
@@ -59,10 +59,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) session() (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	if err := cfg.createKeyspace(); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -83,7 +79,21 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	}
 	cfg.setClusterConfig(cluster)
 
-	return cluster.CreateSession()
+	session, err := cluster.CreateSession()
+	if err == nil {
+		return session, nil
+	}
+	// ErrNoConnectionsStarted will be returned if keyspace don't exist or is invalid.
+	// ref. https://github.com/gocql/gocql/blob/07ace3bab0f84bb88477bab5d79ba1f7e1da0169/cassandra_test.go#L85-L97
+	if err != gocql.ErrNoConnectionsStarted {
+		return nil, errors.WithStack(err)
+	}
+	// keyspace not exist
+	if err := cfg.createKeyspace(); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	session, err = cluster.CreateSession()
+	return session, errors.WithStack(err)
 }
 
 // apply config settings to a cassandra ClusterConfig

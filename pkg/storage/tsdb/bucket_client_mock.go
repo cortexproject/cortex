@@ -82,6 +82,10 @@ func (m *BucketClientMock) Exists(ctx context.Context, name string) (bool, error
 
 // IsObjNotFoundErr mocks objstore.Bucket.IsObjNotFoundErr()
 func (m *BucketClientMock) IsObjNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
 	args := m.Called(err)
 	return args.Bool(0)
 }

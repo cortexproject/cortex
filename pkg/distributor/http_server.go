@@ -6,10 +6,10 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/httpgrpc"
 )
 
 // PushHandler is a http.Handler which accepts WriteRequests.

@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const seriesMapShards = 128

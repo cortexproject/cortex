@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -127,7 +126,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 	start := mtime.Now()
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -269,7 +268,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -328,7 +327,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -409,7 +408,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Init HA tracker
-			codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+			codec := GetReplicaDescCodec()
 			mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 			c, err := newClusterTracker(HATrackerConfig{
 				EnableHATracker:        true,

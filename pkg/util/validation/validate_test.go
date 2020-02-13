@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 type validateLabelsCfg struct {

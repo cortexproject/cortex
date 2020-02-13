@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/status"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -19,6 +18,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -296,7 +296,7 @@ func (i *Ingester) StopIncomingRequests() {
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -436,7 +436,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -503,7 +503,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
 	if !i.ingesterStarted() {
-		return errIngesterNotStarted
+		return status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -583,7 +583,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -608,7 +608,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -633,7 +633,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -680,7 +680,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {
@@ -709,7 +709,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	if !i.ingesterStarted() {
-		return nil, errIngesterNotStarted
+		return nil, status.Error(codes.Unavailable, errIngesterNotStarted.Error())
 	}
 
 	if i.cfg.TSDBEnabled {

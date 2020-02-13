@@ -24,7 +24,9 @@ import (
 	"github.com/weaveworks/common/logging"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -253,7 +255,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 // Info makes an info request to the underlying user store
 func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	if !u.storeStarted() {
-		return nil, errStoreNotStarted
+		return nil, status.Error(codes.Unavailable, errStoreNotStarted.Error())
 	}
 	log, ctx := spanlogger.New(ctx, "UserStore.Info")
 	defer log.Span.Finish()
@@ -279,7 +281,7 @@ func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storep
 // Series makes a series request to the underlying user store
 func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
 	if !u.storeStarted() {
-		return errStoreNotStarted
+		return status.Error(codes.Unavailable, errStoreNotStarted.Error())
 	}
 
 	log, ctx := spanlogger.New(srv.Context(), "UserStore.Series")
@@ -306,7 +308,7 @@ func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesS
 // LabelNames makes a labelnames request to the underlying user store
 func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	if !u.storeStarted() {
-		return nil, errStoreNotStarted
+		return nil, status.Error(codes.Unavailable, errStoreNotStarted.Error())
 	}
 
 	log, ctx := spanlogger.New(ctx, "UserStore.LabelNames")
@@ -333,7 +335,7 @@ func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReque
 // LabelValues makes a labelvalues request to the underlying user store
 func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	if !u.storeStarted() {
-		return nil, errStoreNotStarted
+		return nil, status.Error(codes.Unavailable, errStoreNotStarted.Error())
 	}
 
 	log, ctx := spanlogger.New(ctx, "UserStore.LabelValues")

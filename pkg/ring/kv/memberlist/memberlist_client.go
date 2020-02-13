@@ -314,7 +314,7 @@ func (m *KV) Stop() {
 	}
 
 	if cnt := m.broadcasts.NumQueued(); cnt > 0 {
-		level.Warn(util.Logger).Log("msg", "broadcast message left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
+		level.Warn(util.Logger).Log("msg", "broadcast messages left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
 	}
 
 	err := m.memberlist.Leave(m.cfg.LeaveTimeout)
@@ -549,7 +549,7 @@ outer:
 			if m.casBroadcastsEnabled.Load() {
 				m.broadcastNewValue(key, change, newver, codec)
 			} else {
-				level.Error(util.Logger).Log("msg", "CAS with broadcasts disabled", "key", key)
+				level.Warn(util.Logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)
 			}
 		}
 

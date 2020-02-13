@@ -18,7 +18,7 @@ const (
 type Scenario struct {
 	services []*Service
 
-	dir string
+	sharedDir string
 }
 
 func NewScenario() (*Scenario, error) {
@@ -26,22 +26,14 @@ func NewScenario() (*Scenario, error) {
 		services: []*Service{},
 	}
 
-	if os.Getenv("E2E_INTEGRATION_TEST_DIR") != "" {
-		s.dir = os.Getenv("E2E_INTEGRATION_TEST_DIR")
-		if err := os.MkdirAll(s.dir, os.ModePerm); err != nil {
-			return nil, err
-		}
-
-	} else {
-		tmpDir, err := ioutil.TempDir(".", "e2e_integration_test")
-		if err != nil {
-			return nil, err
-		}
-		s.dir, err = filepath.Abs(tmpDir)
-		if err != nil {
-			_ = os.RemoveAll(tmpDir)
-			return nil, err
-		}
+	tmpDir, err := ioutil.TempDir("", "e2e_integration_test")
+	if err != nil {
+		return nil, err
+	}
+	s.sharedDir, err = filepath.Abs(tmpDir)
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return nil, err
 	}
 
 	// Force a shutdown in order to cleanup from a spurious situation in case
@@ -51,7 +43,7 @@ func NewScenario() (*Scenario, error) {
 	// Setup the docker network
 	if out, err := RunCommandAndGetOutput("docker", "network", "create", NetworkName); err != nil {
 		fmt.Println(string(out))
-		_ = os.RemoveAll(s.dir)
+		_ = os.RemoveAll(s.sharedDir)
 		return nil, errors.Wrapf(err, "create docker network '%s'", NetworkName)
 	}
 
@@ -60,7 +52,7 @@ func NewScenario() (*Scenario, error) {
 
 // GetSharedDir returns the absolute path of the directory on the host that is shared with all services in docker.
 func (s *Scenario) SharedDir() string {
-	return s.dir
+	return s.sharedDir
 }
 
 func (s *Scenario) Service(name string) *Service {
@@ -149,10 +141,10 @@ func (s *Scenario) Close() {
 	s.clean()
 }
 
-// TODO(bwplotka): Add comments. Return err?
+// TODO(bwplotka): Add comments.
 func (s *Scenario) clean() {
-	if err := os.RemoveAll(s.dir); err != nil {
-		fmt.Println("error while removing dir", s.dir, "err:", err)
+	if err := os.RemoveAll(s.sharedDir); err != nil {
+		fmt.Println("error while removing sharedDir", s.sharedDir, "err:", err)
 	}
 }
 

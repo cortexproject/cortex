@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +17,7 @@ import (
 
 func TestSingleBinaryWithMemberlist(t *testing.T) {
 	s, err := e2e.NewScenario()
-	defer s.Close() // lint:ignore SA5001
+	defer s.Close() //nolint
 	require.NoError(t, err)
 
 	// Start dependencies.
@@ -22,7 +25,11 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	// Look ma, no Consul!
 	require.NoError(t, s.WaitReady("dynamodb"))
 
-	require.NoError(t, writeCortexConfigFile(s))
+	require.NoError(t, ioutil.WriteFile(
+		filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
+		[]byte(cortexSchemaConfigYaml),
+		os.ModePerm),
+	)
 	require.NoError(t, startSingleBinary(s, "cortex-1", ""))
 	require.NoError(t, startSingleBinary(s, "cortex-2", "cortex-1:8000"))
 	require.NoError(t, startSingleBinary(s, "cortex-3", "cortex-2:8000"))
@@ -78,7 +85,7 @@ func startSingleBinary(s *e2e.Scenario, name string, join string) error {
 		e2e.NetworkName,
 		[]int{80, 8000},
 		nil,
-		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(ChunksStorage, flags))...),
+		e2e.NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(ChunksStorage, flags))...),
 		e2e.NewReadinessProbe(80, "/ready", 204),
 	)
 

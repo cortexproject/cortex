@@ -11,4 +11,5 @@ var (
 	mergeFlags      = e2e.MergeFlags
 	newDynamoClient = e2edb.NewDynamoClient
 	generateSeries  = e2e.GenerateSeries
+	buildArgs       = e2e.BuildArgs
 )

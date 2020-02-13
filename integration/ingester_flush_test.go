@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,7 +22,7 @@ import (
 
 func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	s, err := e2e.NewScenario()
-	defer s.Close() // lint:ignore SA5001
+	defer s.Close() //nolint
 	require.NoError(t, err)
 
 	// Start dependencies
@@ -28,7 +31,11 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, s.WaitReady("consul", "dynamodb"))
 
 	// Start Cortex components
-	require.NoError(t, writeCortexConfigFile(s))
+	require.NoError(t, ioutil.WriteFile(
+		filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
+		[]byte(cortexSchemaConfigYaml),
+		os.ModePerm),
+	)
 	require.NoError(t, s.StartService(e2ecortex.NewTableManager("table-manager", ChunksStorage, "")))
 	require.NoError(t, s.StartService(e2ecortex.NewIngester("ingester-1", mergeFlags(ChunksStorage, map[string]string{
 		"-ingester.max-transfer-retries": "0",

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,7 +24,6 @@ func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
 		require.NoError(t, s.WaitReady("consul", "minio"))
 
 		// Start Cortex components.
-		require.NoError(t, writeCortexConfigFile(s))
 		require.NoError(t, s.StartService(e2ecortex.NewIngester("ingester-1", BlocksStorage, "")))
 		require.NoError(t, s.StartService(e2ecortex.NewQuerier("querier", BlocksStorage, "")))
 		require.NoError(t, s.StartService(e2ecortex.NewDistributor("distributor", BlocksStorage, "")))
@@ -37,7 +39,11 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 		require.NoError(t, s.WaitReady("consul", "dynamodb"))
 
 		// Start Cortex components.
-		require.NoError(t, writeCortexConfigFile(s))
+		require.NoError(t, ioutil.WriteFile(
+			filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
+			[]byte(cortexSchemaConfigYaml),
+			os.ModePerm),
+		)
 		require.NoError(t, s.StartService(e2ecortex.NewTableManager("table-manager", ChunksStorage, "")))
 		require.NoError(t, s.StartService(e2ecortex.NewIngester("ingester-1", ChunksStorage, "")))
 		require.NoError(t, s.StartService(e2ecortex.NewQuerier("querier", ChunksStorage, "")))
@@ -52,7 +58,7 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 
 func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
 	s, err := e2e.NewScenario()
-	defer s.Close() // lint:ignore SA5001
+	defer s.Close() //nolint
 	require.NoError(t, err)
 
 	setup(t, s)

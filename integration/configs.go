@@ -1,8 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"os"
 	"path/filepath"
 
 	e2e "github.com/cortexproject/cortex/integration/framework"
@@ -10,8 +8,8 @@ import (
 )
 
 const (
-	cortexConfigFile = "chunks-storage-schema-dynamodb.yaml"
-	cortexConfigYaml = `configs:
+	cortexSchemaConfigFile = "chunks-storage-schema-dynamodb.yaml"
+	cortexSchemaConfigYaml = `configs:
 - from: "2019-03-20"
   store: aws-dynamo
   schema: v9
@@ -42,11 +40,7 @@ var (
 	ChunksStorage = map[string]string{
 		"-dynamodb.url":                   "dynamodb://u:p@dynamodb.:8000",
 		"-dynamodb.poll-interval":         "1m",
-		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, "shared", cortexConfigFile),
+		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, "shared", cortexSchemaConfigFile),
 		"-table-manager.retention-period": "168h",
 	}
 )
-
-func writeCortexConfigFile(s *e2e.Scenario) error {
-	return ioutil.WriteFile(filepath.Join(s.SharedDir(), cortexConfigFile), []byte(cortexConfigYaml), os.ModePerm)
-}

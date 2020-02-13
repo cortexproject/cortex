@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/pkg/errors"
 )
 
 // KeyEncoder is used to encode chunk keys before writing/retrieving chunks
@@ -91,18 +92,18 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	readCloser, err := o.store.GetObject(ctx, key)
 	if err != nil {
-		return chunk.Chunk{}, err
+		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	defer readCloser.Close()
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return chunk.Chunk{}, err
+		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	if err := c.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
+		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil
 }

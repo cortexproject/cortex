@@ -50,7 +50,7 @@ func NewScenario() (*Scenario, error) {
 	return s, nil
 }
 
-// GetSharedDir returns the absolute path of the directory on the host that is shared with all services in docker.
+// SharedDir returns the absolute path of the directory on the host that is shared with all services in docker.
 func (s *Scenario) SharedDir() string {
 	return s.sharedDir
 }

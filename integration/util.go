@@ -1,8 +1,8 @@
 package main
 
 import (
-	e2e "github.com/cortexproject/cortex/integration/framework"
-	e2edb "github.com/cortexproject/cortex/integration/framework/db"
+	"github.com/cortexproject/cortex/integration/e2e"
+	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 )
 
 var (

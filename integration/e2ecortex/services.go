@@ -3,7 +3,7 @@ package e2ecortex
 import (
 	"os"
 
-	e2e "github.com/cortexproject/cortex/integration/framework"
+	"github.com/cortexproject/cortex/integration/e2e"
 )
 
 // GetDefaultImage returns the Docker image to use to run Cortex.

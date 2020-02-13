@@ -7,7 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	awscommon "github.com/weaveworks/common/aws"
 
-	e2e "github.com/cortexproject/cortex/integration/framework"
+	"github.com/cortexproject/cortex/integration/e2e"
 )
 
 const (

@@ -11,11 +11,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -62,11 +62,11 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(start, labels.Labels{
+		chunk := dummyChunkFor(from, through, labels.Labels{
 			{Name: model.MetricNameLabel, Value: "foo"},
 			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
 		})
@@ -76,9 +76,9 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 	return keys, chunks, nil
 }
 
-func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
+func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	cs := promchunk.New()
-	_, err := cs.Add(model.SamplePair{Timestamp: now, Value: 0})
+	_, err = cs.Add(model.SamplePair{Timestamp: through, Value: 0})
 	if err != nil {
 		panic(err)
 	}
@@ -87,8 +87,8 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 		client.Fingerprint(metric),
 		metric,
 		cs,
-		now.Add(-time.Hour),
-		now,
+		from,
+		through,
 	)
 	// Force checksum calculation.
 	err = chunk.Encode()
@@ -100,4 +100,61 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 
 func TeardownFixture(t *testing.T, fixture Fixture) {
 	require.NoError(t, fixture.Teardown())
+}
+
+func SetupTestChunkStore() (chunk.Store, error) {
+	var (
+		tbmConfig chunk.TableManagerConfig
+		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
+	)
+	flagext.DefaultValues(&tbmConfig)
+	storage := chunk.NewMockStorage()
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tableManager.SyncTables(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.MaxQueryLength = 30 * 24 * time.Hour
+	overrides, err := validation.NewOverrides(limits, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var storeCfg chunk.StoreConfig
+	flagext.DefaultValues(&storeCfg)
+
+	store := chunk.NewCompositeStore()
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
+}
+
+func SetupTestDeleteStore() (*chunk.DeleteStore, error) {
+	var deleteStoreConfig chunk.DeleteStoreConfig
+	flagext.DefaultValues(&deleteStoreConfig)
+
+	mockStorage := chunk.NewMockStorage()
+
+	err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
+		Name: deleteStoreConfig.RequestsTableName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return chunk.NewDeleteStore(deleteStoreConfig, mockStorage)
+}
+
+func SetupTestObjectStore() (chunk.StorageClient, error) {
+	return chunk.NewMockStorage(), nil
 }

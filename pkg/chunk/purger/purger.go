@@ -224,7 +224,7 @@ func (dp *DataPurger) worker() {
 }
 
 func (dp *DataPurger) executePlan(userID, requestID string, planNo int) error {
-	pb, err := dp.getDeletePlan(context.Background(), userID, requestID, planNo)
+	plan, err := dp.getDeletePlan(context.Background(), userID, requestID, planNo)
 	if err != nil {
 		if err == chunk.ErrStorageObjectNotFound {
 			level.Info(util.Logger).Log("msg", "plan not found, must have been executed already",
@@ -237,12 +237,6 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int) error {
 
 	level.Info(util.Logger).Log("msg", "executing plan",
 		"request-id", requestID, "user-id", userID, "plan-no", planNo)
-
-	var plan purgeplan.Plan
-	err = proto.Unmarshal(pb, &plan)
-	if err != nil {
-		return err
-	}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -309,6 +303,10 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error building delete plan", "request-id", deleteRequest.RequestID, "err", err)
 		}
+
+		level.Info(util.Logger).Log("msg", "sending delete request for execution",
+			"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
+		dp.executePlansChan <- deleteRequest
 	}
 
 	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.Deleting)
@@ -362,11 +360,16 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 
 		level.Info(util.Logger).Log("msg", "building plan for a new delete request",
 			"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
+
 		err := dp.buildDeletePlan(deleteRequest)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error building delete plan", "request-id", deleteRequest.RequestID, "err", err)
 			return err
 		}
+
+		level.Info(util.Logger).Log("msg", "sending delete request for execution",
+			"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID)
+		dp.executePlansChan <- deleteRequest
 	}
 
 	return nil
@@ -382,10 +385,10 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 
 	perDayTimeRange := splitByDay(deleteRequest.StartTime, deleteRequest.EndTime)
 	level.Info(util.Logger).Log("msg", "building delete plan",
-		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange)-1)
+		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange))
 
-	plans := make([][]byte, len(perDayTimeRange)-1)
-	for i := 0; i < len(perDayTimeRange)-1; i++ {
+	plans := make([][]byte, len(perDayTimeRange))
+	for i, planRange := range perDayTimeRange {
 		chunksGroups := []purgeplan.ChunksGroup{}
 
 		for _, selector := range deleteRequest.Selectors {
@@ -393,7 +396,9 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 			if err != nil {
 				return err
 			}
-			chunks, err := dp.chunkStore.Get(ctx, deleteRequest.UserID, perDayTimeRange[i], perDayTimeRange[i+1], matchers...)
+
+			// ToDo: remove duplicate chunks
+			chunks, err := dp.chunkStore.Get(ctx, deleteRequest.UserID, planRange.Start, planRange.End, matchers...)
 			if err != nil {
 				return err
 			}
@@ -402,8 +407,8 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 		}
 
 		plan := purgeplan.Plan{
-			StartTimestampMs: int64(perDayTimeRange[i]),
-			EndTimestampMs:   int64(perDayTimeRange[i+1]),
+			StartTimestampMs: int64(planRange.Start),
+			EndTimestampMs:   int64(planRange.End),
 			ChunksGroup:      chunksGroups,
 		}
 
@@ -425,9 +430,8 @@ func (dp *DataPurger) buildDeletePlan(deleteRequest chunk.DeleteRequest) error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", "built delete plans and sending delete request for execution",
-		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange)-1)
-	dp.executePlansChan <- deleteRequest
+	level.Info(util.Logger).Log("msg", "built delete plans",
+		"request-id", deleteRequest.RequestID, "user-id", deleteRequest.UserID, "num-plans", len(perDayTimeRange))
 
 	return nil
 }
@@ -447,7 +451,7 @@ func (dp *DataPurger) putDeletePlans(ctx context.Context, userID, requestID stri
 	return nil
 }
 
-func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID string, planNo int) ([]byte, error) {
+func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID string, planNo int) (*purgeplan.Plan, error) {
 	objectKey := fmt.Sprintf("%s:%s/%d", userID, requestID, planNo)
 
 	readCloser, err := dp.storageClient.GetObject(ctx, objectKey)
@@ -457,7 +461,18 @@ func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID strin
 
 	defer readCloser.Close()
 
-	return ioutil.ReadAll(readCloser)
+	buf, err := ioutil.ReadAll(readCloser)
+	if err != nil {
+		return nil, err
+	}
+
+	var plan purgeplan.Plan
+	err = proto.Unmarshal(buf, &plan)
+	if err != nil {
+		return nil, err
+	}
+
+	return &plan, nil
 }
 
 func (dp *DataPurger) removeDeletePlan(ctx context.Context, userID, requestID string, planNo int) error {
@@ -466,28 +481,34 @@ func (dp *DataPurger) removeDeletePlan(ctx context.Context, userID, requestID st
 }
 
 // returns start, [start of each following days before last day...], end
-func splitByDay(start, end model.Time) []model.Time {
+func splitByDay(start, end model.Time) []model.Interval {
 	numOfDays := numOfPlans(start, end)
 
-	perDayTimeRange := make([]model.Time, numOfDays+1)
+	perDayTimeRange := make([]model.Interval, numOfDays)
+	startOfNextDay := model.Time(((int64(start) / millisecondPerDay) + 1) * millisecondPerDay)
+	perDayTimeRange[0] = model.Interval{Start: start, End: startOfNextDay - 1}
 
-	for i := 0; i < numOfDays; i++ {
-		perDayTimeRange[i] = start
-		start = model.Time(((int64(start) / millisecondPerDay) + 1) * millisecondPerDay)
+	for i := 1; i < numOfDays; i++ {
+		interval := model.Interval{Start: startOfNextDay}
+		startOfNextDay += model.Time(millisecondPerDay)
+		interval.End = startOfNextDay - 1
+		perDayTimeRange[i] = interval
 	}
 
-	perDayTimeRange[numOfDays] = end
+	perDayTimeRange[numOfDays-1].End = end
 
 	return perDayTimeRange
 }
 
 func numOfPlans(start, end model.Time) int {
-	numOfDays := int(int64(end-start) / millisecondPerDay)
-	if int64(start)%millisecondPerDay != 0 {
-		numOfDays++
+	if start%model.Time(millisecondPerDay) != 0 {
+		start = model.Time((int64(start) / millisecondPerDay) * millisecondPerDay)
+	}
+	if end%model.Time(millisecondPerDay) != 0 {
+		end = model.Time((int64(end)/millisecondPerDay)*millisecondPerDay + millisecondPerDay)
 	}
 
-	return numOfDays
+	return int(int64(end-start) / millisecondPerDay)
 }
 
 // groups chunks together by unique label sets i.e all the chunks with same labels would be stored in a group

@@ -5,13 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
@@ -257,36 +257,18 @@ func (t *Cortex) init(cfg *Config, m moduleName) error {
 func (t *Cortex) start(target moduleName) error {
 	deps := orderedDeps(target)
 
-	wg := sync.WaitGroup{}
-	ch := make(chan error)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	grp, ctx := errgroup.WithContext(context.Background())
 
 	for _, m := range deps {
 		start := modules[m].start
 		if start != nil {
-			wg.Add(1)
-			go func(fn func(*Cortex, context.Context) error) {
-				defer wg.Done()
-				ch <- fn(t, ctx)
-			}(start)
+			grp.Go(func() error {
+				return start(t, ctx)
+			})
 		}
 	}
 
-	go func() {
-		// this is mostly useful if there were no errors.
-		wg.Wait()
-		close(ch)
-	}()
-
-	for e := range ch {
-		if e != nil {
-			// return first error. This will also cancel context (via defer).
-			return e
-		}
-	}
-	return nil
+	return grp.Wait()
 }
 
 func (t *Cortex) initModule(cfg *Config, m moduleName) error {

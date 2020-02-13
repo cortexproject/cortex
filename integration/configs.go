@@ -40,7 +40,7 @@ var (
 	ChunksStorage = map[string]string{
 		"-dynamodb.url":                   "dynamodb://u:p@dynamodb.:8000",
 		"-dynamodb.poll-interval":         "1m",
-		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, "shared", cortexSchemaConfigFile),
+		"-config-yaml":                    filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
 		"-table-manager.retention-period": "168h",
 	}
 )

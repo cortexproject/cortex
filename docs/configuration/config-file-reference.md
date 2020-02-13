@@ -1756,6 +1756,16 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.gossip-nodes
 [gossip_nodes: <int> | default = 0]
 
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 0s]
+
+# How soon can dead node's name be reclaimed with new address. Defaults to 0,
+# which is disabled.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
+
 # Other cluster members to join. Can be specified multiple times. Memberlist
 # store is EXPERIMENTAL.
 # CLI flag: -memberlist.join

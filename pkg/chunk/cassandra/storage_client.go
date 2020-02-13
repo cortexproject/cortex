@@ -29,7 +29,7 @@ type Config struct {
 	Auth                     bool                `yaml:"auth,omitempty"`
 	Username                 string              `yaml:"username,omitempty"`
 	Password                 string              `yaml:"password,omitempty"`
-	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticator"`
+	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
 	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
 	ConnectTimeout           time.Duration       `yaml:"connect_timeout,omitempty"`
 	Retries                  int                 `yaml:"max_retries"`

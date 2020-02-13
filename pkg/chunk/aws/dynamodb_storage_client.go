@@ -155,7 +155,7 @@ func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (c
 }
 
 // NewDynamoDBObjectClient makes a new DynamoDB-backed ObjectClient.
-func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
@@ -461,7 +461,7 @@ type chunksPlusError struct {
 	err    error
 }
 
-// GetChunks implements chunk.ObjectClient.
+// GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer log.Span.Finish()
@@ -639,7 +639,7 @@ func (a dynamoDBStorageClient) PutChunkAndIndex(ctx context.Context, c chunk.Chu
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-// PutChunks implements chunk.ObjectClient.
+// PutChunks implements chunk.Client.
 func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {

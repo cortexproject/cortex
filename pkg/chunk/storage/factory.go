@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -164,13 +165,12 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 }
 
 // NewObjectClient makes a new ObjectClient of the desired types.
-func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	switch name {
 	case "inmemory":
-		store := chunk.NewMockStorage()
-		return store, nil
+		return chunk.NewMockStorage(), nil
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -181,20 +181,31 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		}
 		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
-		return local.NewFSObjectClient(cfg.FSConfig)
+		store, err := local.NewFSObjectClient(cfg.FSConfig)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
+}
+
+func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client, error) {
+	if err != nil {
+		return nil, err
+	}
+	return objectclient.NewClient(store, nil), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.

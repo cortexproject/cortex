@@ -182,6 +182,10 @@ Flags for configuring KV store based on memberlist library. This feature is expe
    Timeout for writing 'packet' data.
 - `memberlist.transport-debug`
    Log debug transport messages. Note: global log.level must be at debug level as well.
+- `memberlist.gossip-to-dead-nodes-time`
+   How long to keep gossiping to the nodes that seem to be dead. After this time, dead node is removed from list of nodes.
+- `memberlist.dead-node-reclaim-time`
+   How soon can node name be reused by a new node (using different IP). Disabled by default, name reclaim is not allowed until `gossip-to-dead-nodes-time` expires. This can be useful to set to low numbers when reusing node names, eg. in stateful sets.
    
 #### Multi KV
 

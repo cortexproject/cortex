@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io/ioutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/pkg/errors"
 )
 
 // KeyEncoder is used to encode chunk keys before writing/retrieving chunks

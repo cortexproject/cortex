@@ -24,8 +24,8 @@ const (
 
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	s, err := e2e.NewScenario()
-	defer s.Close() //nolint
 	require.NoError(t, err)
+	defer s.Close()
 
 	// Start dependencies.
 	require.NoError(t, s.StartService(e2edb.NewDynamoDB()))

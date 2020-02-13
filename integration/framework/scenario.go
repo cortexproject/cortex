@@ -43,7 +43,7 @@ func NewScenario() (*Scenario, error) {
 	// Setup the docker network
 	if out, err := RunCommandAndGetOutput("docker", "network", "create", NetworkName); err != nil {
 		fmt.Println(string(out))
-		_ = os.RemoveAll(s.sharedDir)
+		s.clean()
 		return nil, errors.Wrapf(err, "create docker network '%s'", NetworkName)
 	}
 

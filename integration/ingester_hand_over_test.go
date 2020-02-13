@@ -19,7 +19,7 @@ import (
 func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
 	runIngesterHandOverTest(t, BlocksStorage, func(t *testing.T, s *e2e.Scenario) {
 		// Start dependencies.
-		require.NoError(t, s.StartService(e2edb.NewMinio()))
+		require.NoError(t, s.StartService(e2edb.NewMinio(BlocksStorage["-experimental.tsdb.s3.bucket-name"])))
 		require.NoError(t, s.StartService(e2edb.NewConsul()))
 		require.NoError(t, s.WaitReady("consul", "minio"))
 
@@ -58,8 +58,8 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 
 func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
 	s, err := e2e.NewScenario()
-	defer s.Close() //nolint
 	require.NoError(t, err)
+	defer s.Close()
 
 	setup(t, s)
 

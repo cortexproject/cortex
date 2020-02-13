@@ -16,7 +16,7 @@ const (
 )
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio() *e2e.Service {
+func NewMinio(bktName string) *e2e.Service {
 	return e2e.NewService(
 		"minio",
 		// If you change the image tag, remember to update it in the preloading done
@@ -31,7 +31,7 @@ func NewMinio() *e2e.Service {
 			"ENABLE_HTTPS":     "0",
 		},
 		// Create the "cortex" bucket before starting minio
-		e2e.NewCommandWithoutEntrypoint("sh", "-c", "mkdir -p /data/e2e-minio && minio server --quiet /data"),
+		e2e.NewCommandWithoutEntrypoint("sh", "-c", "mkdir -p /data/"+bktName+" && minio server --quiet /data"),
 		e2e.NewReadinessProbe(9000, "/minio/health/ready", 200),
 	)
 }

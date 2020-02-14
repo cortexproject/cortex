@@ -1409,6 +1409,11 @@ cassandra:
   # CLI flag: -cassandra.password
   [password: <string> | default = ""]
 
+  # If set, when authenticating with cassandra a custom authenticator will be
+  # expected during the handshake. This flag can be set multiple times.
+  # CLI flag: -cassandra.custom-authenticator
+  [custom_authenticators: <list of string> | default = ]
+
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
   [timeout: <duration> | default = 2s]

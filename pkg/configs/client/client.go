@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -30,7 +31,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientTimeout, prefix+"configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 }
 
-var configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "configs_request_duration_seconds",
 	Help:      "Time spent requesting configs.",

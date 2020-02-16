@@ -110,6 +110,7 @@ func (dp *DataPurger) Stop() {
 
 func (dp *DataPurger) loop() {
 	dp.wg.Add(1)
+	defer dp.wg.Done()
 
 	pullDeleteRequestsToPlanDeletesTicker := time.NewTicker(time.Hour)
 	defer pullDeleteRequestsToPlanDeletesTicker.Stop()
@@ -122,7 +123,6 @@ func (dp *DataPurger) loop() {
 				level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
 			}
 		case <-dp.quit:
-			dp.wg.Done()
 			return
 		}
 	}
@@ -178,12 +178,13 @@ func (dp *DataPurger) jobScheduler() {
 				}
 			case <-dp.quit:
 				dp.wg.Done()
-				break
+				return
 			}
 		}
 	}()
 
 	dp.wg.Add(1)
+	defer dp.wg.Done()
 
 	for {
 		select {
@@ -201,20 +202,19 @@ func (dp *DataPurger) jobScheduler() {
 			}
 		case <-dp.quit:
 			close(dp.workerJobChan)
-			dp.wg.Done()
-			break
+			return
 		}
 	}
 }
 
 func (dp *DataPurger) runWorkers() {
 	for i := 0; i < dp.cfg.NumWorkers; i++ {
+		dp.wg.Add(1)
 		go dp.worker()
 	}
 }
 
 func (dp *DataPurger) worker() {
-	dp.wg.Add(1)
 	defer dp.wg.Done()
 
 	for job := range dp.workerJobChan {
@@ -558,6 +558,9 @@ func metricToUniqueString(m labels.Labels) string {
 }
 
 func isMissingChunkErr(err error) bool {
+	if err == chunk.ErrStorageObjectNotFound {
+		return true
+	}
 	if promqlStorageErr, ok := err.(promql.ErrStorage); ok && promqlStorageErr.Err == chunk.ErrStorageObjectNotFound {
 		return true
 	}

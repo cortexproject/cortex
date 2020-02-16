@@ -604,7 +604,7 @@ results_cache:
 
     # The default validity of entries for caches unless overridden.
     # CLI flag: -frontend.default-validity
-    [defaul_validity: <duration> | default = 0s]
+    [default_validity: <duration> | default = 0s]
 
     background:
       # How many goroutines to use to write back to memcache.
@@ -1457,7 +1457,7 @@ index_queries_cache_config:
   # Cache config for index entry reading. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-read.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry reading. How many goroutines to use to write
@@ -1502,7 +1502,7 @@ chunk_cache_config:
   # Cache config for chunks. The default validity of entries for caches unless
   # overridden.
   # CLI flag: -default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for chunks. How many goroutines to use to write back to
@@ -1537,7 +1537,7 @@ write_dedupe_cache_config:
   # Cache config for index entry writing. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-write.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry writing. How many goroutines to use to write

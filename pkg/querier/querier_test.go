@@ -139,7 +139,7 @@ func TestQuerier(t *testing.T) {
 						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						queryable, _ := New(cfg, distributor, chunkStore)
+						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore))
 						testQuery(t, queryable, through, query)
 					})
 				}
@@ -207,7 +207,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, chunkStore)
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore))
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -374,7 +374,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, chunkStore)
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore))
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 

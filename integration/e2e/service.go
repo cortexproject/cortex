@@ -129,10 +129,9 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		if err != nil {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
 		}
-
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
-
+	fmt.Println("Ports for container:", s.containerName(networkName), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 

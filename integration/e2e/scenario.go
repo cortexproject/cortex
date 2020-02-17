@@ -121,7 +121,6 @@ func (s *Scenario) Stop(services ...Service) error {
 	return nil
 }
 
-// TODO: If service is not ready, test failed or service failed unexpectedly.
 func (s *Scenario) WaitReady(services ...Service) error {
 	for _, service := range services {
 		if !s.isRegistered(service.Name()) {

@@ -36,7 +36,7 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *chunkStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
 		return nil, nil, err
@@ -49,9 +49,8 @@ func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
 }
 
-func (q *chunkStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	// Select already returns sorted series.
-	return q.Select(sp, matchers...)
+func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 // Series in the returned set are sorted alphabetically by labels.

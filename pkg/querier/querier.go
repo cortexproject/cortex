@@ -184,8 +184,8 @@ type querier struct {
 	mint, maxt  int64
 }
 
-// Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// SelectSorted implements storage.Querier.
+func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
@@ -225,12 +225,13 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 
 	// we have all the sets from different sources (chunk from store, chunks from ingesters,
 	// time series from store and time series from ingesters).
+	// mergeSeriesSets will return sorted set.
 	return q.mergeSeriesSets(result), nil, nil
 }
 
-func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	// Select is already sorted, thanks to merging of sorted series.
-	return q.Select(sp, matchers...)
+// Select implements storage.Querier.
+func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 // LabelsValue implements storage.Querier.

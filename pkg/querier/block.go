@@ -98,7 +98,6 @@ func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Mat
 	}
 
 	return &blockQuerierSeriesSet{
-		ctx:          ctx,
 		seriesClient: seriesClient,
 	}, nil, nil
 }
@@ -165,10 +164,16 @@ func (b *blocksQuerier) Close() error {
 	return nil
 }
 
+// This is super-interface of storepb.Store_SeriesClient
+// blockQuerierSeriesSet only uses this single method, so to simplify tests, we
+// use this simplified interface.
+type Store_SeriesClient interface {
+	Recv() (*storepb.SeriesResponse, error)
+}
+
 // implementation of storage.SeriesSet, based streamed responses from store client.
 type blockQuerierSeriesSet struct {
-	ctx          context.Context
-	seriesClient storepb.Store_SeriesClient
+	seriesClient Store_SeriesClient
 
 	err error
 
@@ -215,7 +220,7 @@ func (bqss *blockQuerierSeriesSet) Next() bool {
 			bqss.currChunks = append(bqss.currChunks, s.Chunks...)
 			// Scan for more chunks in subsequent responses
 		} else if storepb.CompareLabels(bqss.currSeries.Labels, s.Labels) == 0 {
-			bqss.currChunks = append(bqss.currChunks, bqss.currSeries.Chunks...)
+			bqss.currChunks = append(bqss.currChunks, s.Chunks...)
 		} else {
 			// We have received chunks for next series. Keep it for later, and
 			// stop collecting chunks for the current one.

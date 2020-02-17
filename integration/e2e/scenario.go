@@ -11,20 +11,28 @@ import (
 )
 
 const (
-	NetworkName        = "e2e-test"
 	ContainerSharedDir = "/shared"
 )
 
-type Scenario struct {
-	services []*Service
+type Service interface {
+	Name() string
+	Start(networkName, dir string) error
+	WaitReady() error
 
-	sharedDir string
+	// It should be ok to Stop and Kill more than once, with next invokes being noop.
+	Kill(networkName string) error
+	Stop(networkName string) error
 }
 
-func NewScenario() (*Scenario, error) {
-	s := &Scenario{
-		services: []*Service{},
-	}
+type Scenario struct {
+	services []Service
+
+	networkName string
+	sharedDir   string
+}
+
+func NewScenario(networkName string) (*Scenario, error) {
+	s := &Scenario{networkName: networkName}
 
 	tmpDir, err := ioutil.TempDir("", "e2e_integration_test")
 	if err != nil {
@@ -37,14 +45,14 @@ func NewScenario() (*Scenario, error) {
 	}
 
 	// Force a shutdown in order to cleanup from a spurious situation in case
-	// the previous tests run didn't cleanup correctly
+	// the previous tests run didn't cleanup correctly.
 	s.shutdown()
 
-	// Setup the docker network
-	if out, err := RunCommandAndGetOutput("docker", "network", "create", NetworkName); err != nil {
+	// Setup the docker network.
+	if out, err := RunCommandAndGetOutput("docker", "network", "create", networkName); err != nil {
 		fmt.Println(string(out))
 		s.clean()
-		return nil, errors.Wrapf(err, "create docker network '%s'", NetworkName)
+		return nil, errors.Wrapf(err, "create docker network '%s'", networkName)
 	}
 
 	return s, nil
@@ -55,80 +63,73 @@ func (s *Scenario) SharedDir() string {
 	return s.sharedDir
 }
 
-func (s *Scenario) Service(name string) *Service {
+func (s *Scenario) isRegistered(name string) bool {
 	for _, service := range s.services {
-		if service.name == name {
-			return service
+		if service.Name() == name {
+			return true
 		}
 	}
-
-	return nil
+	return false
 }
 
-func (s *Scenario) Endpoint(name string, port int) string {
-	service := s.Service(name)
-	if service == nil {
-		return ""
-	}
-
-	return service.Endpoint(port)
-}
-
-func (s *Scenario) StartService(service *Service) error {
-	// TODO(bwplotka): Some basic logger would be nice.
-	fmt.Println("Starting", service.name)
-
-	// Ensure another service with the same name doesn't exist
-	if s.Service(service.name) != nil {
-		return fmt.Errorf("another service with the same name '%s' has already been started", service.name)
-	}
-
-	// Start the service
-	if err := service.start(s.SharedDir()); err != nil {
+func (s *Scenario) StartAndWaitReady(services ...Service) error {
+	if err := s.Start(services...); err != nil {
 		return err
 	}
+	return s.WaitReady(services...)
+}
 
-	// Add to the list of services
-	s.services = append(s.services, service)
+func (s *Scenario) Start(services ...Service) error {
+	for _, service := range services {
+		// TODO(bwplotka): Some basic logger would be nice.
+		fmt.Println("Starting", service.Name())
+
+		// Ensure another service with the same name doesn't exist.
+		if s.isRegistered(service.Name()) {
+			return fmt.Errorf("another service with the same name '%s' has already been started", service.Name())
+		}
+
+		// Start the service.
+		if err := service.Start(s.networkName, s.SharedDir()); err != nil {
+			return err
+		}
+
+		// Add to the list of services.
+		s.services = append(s.services, service)
+	}
+
 	return nil
 }
 
-func (s *Scenario) StopService(name string) error {
-	service := s.Service(name)
-	if service == nil {
-		return fmt.Errorf("unable to stop service %s because does not exist", name)
-	}
+func (s *Scenario) Stop(services ...Service) error {
+	for _, service := range services {
+		if !s.isRegistered(service.Name()) {
+			return fmt.Errorf("unable to stop service %s because it does not exist", service.Name())
+		}
+		if err := service.Stop(s.networkName); err != nil {
+			return err
+		}
 
-	if err := service.stop(); err != nil {
-		return err
-	}
-
-	// Remove the service from the list of services
-	for i, entry := range s.services {
-		if entry.name == name {
-			s.services = append(s.services[:i], s.services[i+1:]...)
-			break
+		// Remove the service from the list of services.
+		for i, entry := range s.services {
+			if entry.Name() == service.Name() {
+				s.services = append(s.services[:i], s.services[i+1:]...)
+				break
+			}
 		}
 	}
-
 	return nil
 }
 
-// WaitReady waits until one or more services are ready. A service
-// is ready when its readiness probe succeed. If a service has no
-// readiness probe, it's considered ready without doing any check.
-func (s *Scenario) WaitReady(services ...string) error {
-	for _, name := range services {
-		service := s.Service(name)
-		if service == nil {
-			return fmt.Errorf("unable to wait for service '%s' ready because the service does not exist", name)
+func (s *Scenario) WaitReady(services ...Service) error {
+	for _, service := range services {
+		if !s.isRegistered(service.Name()) {
+			return fmt.Errorf("unable to wait for service %s because it does not exist", service.Name())
 		}
-
 		if err := service.WaitReady(); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -136,7 +137,6 @@ func (s *Scenario) Close() {
 	if s == nil {
 		return
 	}
-
 	s.shutdown()
 	s.clean()
 }
@@ -149,21 +149,21 @@ func (s *Scenario) clean() {
 }
 
 func (s *Scenario) shutdown() {
-	// Kill the services in the opposite order
+	// Kill the services in the opposite order.
 	for i := len(s.services) - 1; i >= 0; i-- {
-		if err := s.services[i].kill(); err != nil {
-			fmt.Println("Unable to kill service", s.services[i].name, ":", err.Error())
+		if err := s.services[i].Kill(s.networkName); err != nil {
+			fmt.Println("Unable to kill service", s.services[i].Name(), ":", err.Error())
 		}
 	}
 
-	// Ensure there are no leftover containers
+	// Ensure there are no leftover containers.
 	if out, err := RunCommandAndGetOutput(
 		"docker",
 		"ps",
 		"-a",
 		"--quiet",
 		"--filter",
-		fmt.Sprintf("network=%s", NetworkName),
+		fmt.Sprintf("network=%s", s.networkName),
 	); err == nil {
 		for _, containerID := range strings.Split(string(out), "\n") {
 			containerID = strings.TrimSpace(containerID)
@@ -184,19 +184,19 @@ func (s *Scenario) shutdown() {
 	// Teardown the docker network. In case the network does not exists (ie. this function
 	// is called during the setup of the scenario) we skip the removal in order to not log
 	// an error which may be misleading.
-	if ok, err := existDockerNetwork(); ok || err != nil {
-		if out, err := RunCommandAndGetOutput("docker", "network", "rm", NetworkName); err != nil {
+	if ok, err := existDockerNetwork(s.networkName); ok || err != nil {
+		if out, err := RunCommandAndGetOutput("docker", "network", "rm", s.networkName); err != nil {
 			fmt.Println(string(out))
-			fmt.Println("Unable to remove docker network", NetworkName, ":", err.Error())
+			fmt.Println("Unable to remove docker network", s.networkName, ":", err.Error())
 		}
 	}
 }
 
-func existDockerNetwork() (bool, error) {
-	out, err := RunCommandAndGetOutput("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", NetworkName))
+func existDockerNetwork(networkName string) (bool, error) {
+	out, err := RunCommandAndGetOutput("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", networkName))
 	if err != nil {
 		fmt.Println(string(out))
-		fmt.Println("Unable to check if docker network", NetworkName, "exists:", err.Error())
+		fmt.Println("Unable to check if docker network", networkName, "exists:", err.Error())
 	}
 
 	return strings.TrimSpace(string(out)) != "", nil

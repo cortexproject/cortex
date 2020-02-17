@@ -17,17 +17,14 @@ func GetDefaultImage() string {
 	return "quay.io/cortexproject/cortex:latest"
 }
 
-func NewDistributor(name string, flags map[string]string, image string) *e2e.Service {
+func NewDistributor(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewService(
+	return e2e.NewHTTPService(
 		name,
 		image,
-		e2e.NetworkName,
-		[]int{80},
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "distributor",
 			"-log.level":                      "warn",
@@ -35,46 +32,42 @@ func NewDistributor(name string, flags map[string]string, image string) *e2e.Ser
 			"-distributor.replication-factor": "1",
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
-			"-consul.hostname": "consul:8500",
+			"-consul.hostname": consulAddress,
 		}, flags))...),
 		e2e.NewReadinessProbe(80, "/ring", 200),
+		80,
 	)
 }
 
-func NewQuerier(name string, flags map[string]string, image string) *e2e.Service {
+func NewQuerier(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewService(
+	return e2e.NewHTTPService(
 		name,
 		image,
-		e2e.NetworkName,
-		[]int{80},
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "querier",
 			"-log.level":                      "warn",
 			"-distributor.replication-factor": "1",
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
-			"-consul.hostname": "consul:8500",
+			"-consul.hostname": consulAddress,
 		}, flags))...),
 		e2e.NewReadinessProbe(80, "/ready", 204),
+		80,
 	)
 }
 
-func NewIngester(name string, flags map[string]string, image string) *e2e.Service {
+func NewIngester(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewService(
+	return e2e.NewHTTPService(
 		name,
 		image,
-		e2e.NetworkName,
-		[]int{80},
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                        "ingester",
 			"-log.level":                     "warn",
@@ -86,28 +79,27 @@ func NewIngester(name string, flags map[string]string, image string) *e2e.Servic
 			"-ingester.num-tokens":           "512",
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
-			"-consul.hostname": "consul:8500",
+			"-consul.hostname": consulAddress,
 		}, flags))...),
 		e2e.NewReadinessProbe(80, "/ready", 204),
+		80,
 	)
 }
 
-func NewTableManager(name string, flags map[string]string, image string) *e2e.Service {
+func NewTableManager(name string, flags map[string]string, image string) *e2e.HTTPService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewService(
+	return e2e.NewHTTPService(
 		name,
 		image,
-		e2e.NetworkName,
-		[]int{80},
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "table-manager",
 			"-log.level": "warn",
 		}, flags))...),
 		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
 		e2e.NewReadinessProbe(80, "/", 404),
+		80,
 	)
 }

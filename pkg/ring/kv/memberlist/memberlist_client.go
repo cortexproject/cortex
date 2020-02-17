@@ -70,12 +70,14 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 // KVConfig is a config for memberlist.KV
 type KVConfig struct {
 	// Memberlist options.
-	NodeName         string        `yaml:"node_name"`
-	StreamTimeout    time.Duration `yaml:"stream_timeout"`
-	RetransmitMult   int           `yaml:"retransmit_factor"`
-	PushPullInterval time.Duration `yaml:"pull_push_interval"`
-	GossipInterval   time.Duration `yaml:"gossip_interval"`
-	GossipNodes      int           `yaml:"gossip_nodes"`
+	NodeName            string        `yaml:"node_name"`
+	StreamTimeout       time.Duration `yaml:"stream_timeout"`
+	RetransmitMult      int           `yaml:"retransmit_factor"`
+	PushPullInterval    time.Duration `yaml:"pull_push_interval"`
+	GossipInterval      time.Duration `yaml:"gossip_interval"`
+	GossipNodes         int           `yaml:"gossip_nodes"`
+	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time"`
+	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -110,6 +112,8 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", 0, "How often to gossip. Uses memberlist LAN defaults if 0.")
 	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", 0, "How many nodes to gossip to. Uses memberlist LAN defaults if 0.")
 	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", 0, "How often to use pull/push sync. Uses memberlist LAN defaults if 0.")
+	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", 0, "How long to keep gossiping to dead nodes, to give them chance to refute their death. Uses memberlist LAN defaults if 0.")
+	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", 0, "How soon can dead node's name be reclaimed with new address. Defaults to 0, which is disabled.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
@@ -216,6 +220,12 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	}
 	if cfg.GossipNodes != 0 {
 		mlCfg.GossipNodes = cfg.GossipNodes
+	}
+	if cfg.GossipToTheDeadTime > 0 {
+		mlCfg.GossipToTheDeadTime = cfg.GossipToTheDeadTime
+	}
+	if cfg.DeadNodeReclaimTime > 0 {
+		mlCfg.DeadNodeReclaimTime = cfg.DeadNodeReclaimTime
 	}
 	if cfg.NodeName != "" {
 		mlCfg.Name = cfg.NodeName

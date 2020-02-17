@@ -33,8 +33,8 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	// Start Cortex components (ingester running on previous version).
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorage, previousVersionImage)
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), ChunksStorage, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorage, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -55,7 +55,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(networkName), mergeFlags(ChunksStorage, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorage, map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	// Start ingester-2 on new version, to ensure the transfer is backward compatible.
@@ -67,7 +67,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 
 	// Query the new ingester both with the old and the new querier.
 	for _, image := range []string{previousVersionImage, ""} {
-		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, image)
+		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorage, image)
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.

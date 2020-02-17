@@ -26,6 +26,9 @@ var (
 
 // ConcreteService represents microservice with optional ports which will be discoverable from docker
 // with <name>:<port>. For connecting from test, use `Endpoint` method.
+//
+// ConcreteService can be reused (started and stopped many time), but it can represent only one running container
+// at the time.
 type ConcreteService struct {
 	name         string
 	image        string
@@ -41,7 +44,9 @@ type ConcreteService struct {
 	// Generic retry backoff.
 	retryBackoff *util.Backoff
 
-	stopped bool
+	// docker NetworkName used to start this container.
+	// If empty it means service is stopped.
+	usedNetworkName string
 }
 
 func NewConcreteService(
@@ -63,8 +68,11 @@ func NewConcreteService(
 			MaxBackoff: 600 * time.Millisecond,
 			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯
 		}),
-		stopped: true,
 	}
+}
+
+func (s *ConcreteService) isExpectedRunning() bool {
+	return s.usedNetworkName != ""
 }
 
 func (s *ConcreteService) Name() string { return s.name }
@@ -99,10 +107,10 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	if err = cmd.Start(); err != nil {
 		return err
 	}
-	s.stopped = false
+	s.usedNetworkName = networkName
 
 	// Wait until the container has been started.
-	if err = s.WaitStarted(networkName); err != nil {
+	if err = s.WaitStarted(); err != nil {
 		return err
 	}
 
@@ -111,11 +119,11 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		var out []byte
 		var localPort int
 
-		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(networkName), strconv.Itoa(containerPort))
+		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
 		if err != nil {
 			// Catch init errors.
-			if werr := s.WaitStarted(networkName); werr != nil {
-				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(networkName), err)
+			if werr := s.WaitStarted(); werr != nil {
+				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(), err)
 			}
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
 		}
@@ -132,44 +140,44 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		}
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
-	fmt.Println("Ports for container:", s.containerName(networkName), "Mapping:", s.networkPortsContainerToLocal)
+	fmt.Println("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 
-func (s *ConcreteService) Stop(networkName string) error {
-	if s.stopped {
+func (s *ConcreteService) Stop() error {
+	if !s.isExpectedRunning() {
 		return nil
 	}
 
 	fmt.Println("Stopping", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName(networkName)); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
-	s.stopped = true
+	s.usedNetworkName = ""
 
 	return nil
 }
 
-func (s *ConcreteService) Kill(networkName string) error {
-	if s.stopped {
+func (s *ConcreteService) Kill() error {
+	if !s.isExpectedRunning() {
 		return nil
 	}
 
 	fmt.Println("Killing", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName(networkName)); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
-	s.stopped = true
+	s.usedNetworkName = ""
 
 	return nil
 }
 
 func (s *ConcreteService) Endpoint(port int) string {
-	if s.stopped {
+	if !s.isExpectedRunning() {
 		return "stopped"
 	}
 
@@ -183,13 +191,17 @@ func (s *ConcreteService) Endpoint(port int) string {
 	return fmt.Sprintf("127.0.0.1:%d", localPort)
 }
 
-func (s *ConcreteService) NetworkEndpoint(networkName string, port int) string {
-	return fmt.Sprintf("%s:%d", s.containerName(networkName), port)
+func (s *ConcreteService) NetworkEndpoint(port int) string {
+	return fmt.Sprintf("%s:%d", s.containerName(), port)
+}
+
+func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) string {
+	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
 func (s *ConcreteService) Ready() error {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	// Ensure the service has a readiness probe configure.
@@ -206,17 +218,21 @@ func (s *ConcreteService) Ready() error {
 	return s.readiness.Ready(localPort)
 }
 
-func (s *ConcreteService) containerName(networkName string) string {
-	return fmt.Sprintf("%s-%s", networkName, s.name)
+func containerName(netName string, name string) string {
+	return fmt.Sprintf("%s-%s", netName, name)
 }
 
-func (s *ConcreteService) WaitStarted(networkName string) (err error) {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+func (s *ConcreteService) containerName() string {
+	return containerName(s.usedNetworkName, s.name)
+}
+
+func (s *ConcreteService) WaitStarted() (err error) {
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		err = exec.Command("docker", "inspect", s.containerName(networkName)).Run()
+		err = exec.Command("docker", "inspect", s.containerName()).Run()
 		if err == nil {
 			return nil
 		}
@@ -227,8 +243,8 @@ func (s *ConcreteService) WaitStarted(networkName string) (err error) {
 }
 
 func (s *ConcreteService) WaitReady() (err error) {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
@@ -394,8 +410,12 @@ func (s *HTTPService) HTTPEndpoint() string {
 	return s.Endpoint(s.httpPort)
 }
 
-func (s *HTTPService) NetworkHTTPEndpoint(networkName string) string {
-	return s.NetworkEndpoint(networkName, s.httpPort)
+func (s *HTTPService) NetworkHTTPEndpoint() string {
+	return s.NetworkEndpoint(s.httpPort)
+}
+
+func (s *HTTPService) NetworkHTTPEndpointFor(networkName string) string {
+	return s.NetworkEndpointFor(networkName, s.httpPort)
 }
 
 func (s *HTTPService) WaitSumMetric(metric string, value float64) error {

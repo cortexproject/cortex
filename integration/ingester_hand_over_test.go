@@ -47,9 +47,9 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	setup(t, s)
 
 	// Start Cortex components.
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
 
 	// Wait until both the distributor and querier have updated the ring.
@@ -74,7 +74,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
 	// Start ingester-2.
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(networkName), mergeFlags(flags, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	require.NoError(t, s.Start(ingester2))

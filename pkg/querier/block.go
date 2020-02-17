@@ -99,9 +99,36 @@ func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Mat
 		return nil, nil, err
 	}
 
+	series := []*storepb.Series(nil)
+	warnings := storage.Warnings(nil)
+
+	// only very basic processing of responses is done here. Dealing with multiple responses
+	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
+	resp, err := seriesClient.Recv()
+	for err == nil {
+		// response may either contain series or warning. If it's warning, we get nil here.
+		s := resp.GetSeries()
+		if s != nil {
+			series = append(series, s)
+		}
+
+		// collect and return warnings too
+		w := resp.GetWarning()
+		if w != "" {
+			warnings = append(warnings, errors.New(w))
+		}
+
+		resp, err = seriesClient.Recv()
+		// err will be io.EOF after last response.
+	}
+
+	if err != io.EOF {
+		return nil, nil, err
+	}
+
 	return &blockQuerierSeriesSet{
-		seriesClient: seriesClient,
-	}, nil, nil
+		series: series,
+	}, warnings, nil
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
@@ -143,91 +170,50 @@ func (b *blocksQuerier) Close() error {
 	return nil
 }
 
-// This is super-interface of storepb.Store_SeriesClient
-// blockQuerierSeriesSet only uses this single method, so to simplify tests, we
-// use this simplified interface.
-type Store_SeriesClient interface {
-	Recv() (*storepb.SeriesResponse, error)
-}
-
-// implementation of storage.SeriesSet, based streamed responses from store client.
+// Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
-	seriesClient Store_SeriesClient
+	series []*storepb.Series
 
-	err error
+	// next response to process
+	next int
 
-	currSeries *storepb.Series
+	currLabels []storepb.Label
 	currChunks []storepb.AggrChunk
-
-	nextSeries *storepb.Series
 }
 
 func (bqss *blockQuerierSeriesSet) Next() bool {
-	if bqss.err != nil {
+	bqss.currChunks = nil
+	bqss.currLabels = nil
+
+	if bqss.next >= len(bqss.series) {
 		return false
 	}
 
-	bqss.currSeries, bqss.currChunks = nil, nil
+	bqss.currLabels = bqss.series[bqss.next].Labels
+	bqss.currChunks = bqss.series[bqss.next].Chunks
 
-	// if there was any cached 'next' series, let's use it.
-	if bqss.nextSeries != nil {
-		bqss.currSeries = bqss.nextSeries
-		bqss.currChunks = append(bqss.currChunks, bqss.currSeries.Chunks...)
-		bqss.nextSeries = nil
-	}
+	bqss.next++
 
-	// collect chunks for current series. Chunks may come in multiple responses, but as soon
+	// Merge chunks for current series. Chunks may come in multiple responses, but as soon
 	// as the response has chunks for a new series, we can stop searching. Series are sorted.
 	// See documentation for StoreClient.Series call for details.
-	for {
-		r, err := bqss.seriesClient.Recv()
-		if err != nil {
-			bqss.err = err
-			break
-		}
-
-		s := r.GetSeries()
-		// response may either contain series or warning. If it's warning, we get nil here. We ignore warnings, as it's
-		// too late to return them.
-		if s == nil {
-			continue
-		}
-
-		// check if it's still the same series as the 'current' one
-		if bqss.currSeries == nil {
-			bqss.currSeries = s
-			bqss.currChunks = append(bqss.currChunks, s.Chunks...)
-			// Scan for more chunks in subsequent responses
-		} else if storepb.CompareLabels(bqss.currSeries.Labels, s.Labels) == 0 {
-			bqss.currChunks = append(bqss.currChunks, s.Chunks...)
-		} else {
-			// We have received chunks for next series. Keep it for later, and
-			// stop collecting chunks for the current one.
-			bqss.nextSeries = s
-			break
-		}
+	for bqss.next < len(bqss.series) && storepb.CompareLabels(bqss.currLabels, bqss.series[bqss.next].Labels) == 0 {
+		bqss.currChunks = append(bqss.currChunks, bqss.series[bqss.next].Chunks...)
+		bqss.next++
 	}
 
-	if bqss.err != nil && bqss.err != io.EOF {
-		return false
-	}
-
-	return bqss.currSeries != nil && len(bqss.currChunks) > 0
+	return true
 }
 
 func (bqss *blockQuerierSeriesSet) At() storage.Series {
-	if bqss.currSeries == nil {
+	if bqss.currLabels == nil {
 		return nil
 	}
 
-	return newBlockQuerierSeries(bqss.currSeries.Labels, bqss.currChunks)
+	return newBlockQuerierSeries(bqss.currLabels, bqss.currChunks)
 }
 
 func (bqss *blockQuerierSeriesSet) Err() error {
-	if bqss.err != nil && bqss.err != io.EOF {
-		return bqss.err
-	}
-
 	return nil
 }
 

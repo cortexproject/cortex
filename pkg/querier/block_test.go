@@ -1,8 +1,6 @@
 package querier
 
 import (
-	"errors"
-	"io"
 	"math"
 	"testing"
 	"time"
@@ -114,86 +112,82 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 	// it as is, to also test transitions between series.
 
 	bss := &blockQuerierSeriesSet{
-		seriesClient: &mockSeriesClient{responses: []*storepb.SeriesResponse{
-			storepb.NewSeriesResponse(&storepb.Series{
-				// labels are not sorted, but blockQuerierSeriesSet will sort it.
+		series: []*storepb.Series{
+			// labels here are not sorted, but blockQuerierSeriesSet will sort it.
+			{
 				Labels: mkLabels("a", "a", "__name__", "first"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(100*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples (= 33334)
 				},
-			}),
+			},
 
-			// warning series response is ignored
-			storepb.NewWarnSeriesResponse(errors.New("test error")),
-
-			// continuation of previous series
-			storepb.NewSeriesResponse(&storepb.Series{
+			// continuation of previous series. Must have exact same labels.
+			{
 				Labels: mkLabels("a", "a", "__name__", "first"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now.Add(100*time.Second), now.Add(200*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples more, 66668 in total
 				},
-			}),
+			},
 
-			// second
-			storepb.NewSeriesResponse(&storepb.Series{
+			// second, with multiple chunks
+			{
 				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed"),
 				Chunks: []storepb.AggrChunk{
-					createChunkWithSineSamples(now, now.Add(200*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples)
+					createChunkWithSineSamples(now, now.Add(200*time.Second), 5*time.Millisecond),                      // 200 / 0.005 (= 40000 samples)
+					createChunkWithSineSamples(now.Add(200*time.Second), now.Add(400*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples)
+					createChunkWithSineSamples(now.Add(400*time.Second), now.Add(600*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples, = 120000 in total)
 				},
-			}),
+			},
 
 			// overlapping
-			storepb.NewSeriesResponse(&storepb.Series{
+			{
 				Labels: mkLabels("__name__", "overlapping"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(10*time.Second), 5*time.Millisecond), // 10 / 0.005 = 2000 samples
 				},
-			}),
-
-			storepb.NewSeriesResponse(&storepb.Series{
+			},
+			{
 				Labels: mkLabels("__name__", "overlapping"),
 				Chunks: []storepb.AggrChunk{
 					// 10 / 0.005 = 2000 samples, but first 1000 are overlapping with previous series, so this chunk only contributes 1000
 					createChunkWithSineSamples(now.Add(5*time.Second), now.Add(15*time.Second), 5*time.Millisecond),
 				},
-			}),
+			},
 
 			// overlapping 2
-			storepb.NewSeriesResponse(&storepb.Series{
+			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(10*time.Second), 5*time.Millisecond), // 10 / 0.005 = 2000 samples
 				},
-			}),
-
-			storepb.NewSeriesResponse(&storepb.Series{
+			},
+			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
 					// entire range overlaps with previous chunk, so this chunks contributes 0 samples
 					createChunkWithSineSamples(now.Add(3*time.Second), now.Add(7*time.Second), 5*time.Millisecond),
 				},
-			}),
-
-			storepb.NewSeriesResponse(&storepb.Series{
+			},
+			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
 					// no samples
 					createChunkWithSineSamples(now, now, 5*time.Millisecond),
 				},
-			}),
+			},
 
-			storepb.NewSeriesResponse(&storepb.Series{
+			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
 					// 2000 samples more (10 / 0.005)
 					createChunkWithSineSamples(now.Add(20*time.Second), now.Add(30*time.Second), 5*time.Millisecond),
 				},
-			}),
-		}},
+			},
+		},
 	}
 
 	verifyNextSeries(t, bss, labels.FromStrings("__name__", "first", "a", "a"), 66668)
-	verifyNextSeries(t, bss, labels.FromStrings("__name__", "second"), 40000)
+	verifyNextSeries(t, bss, labels.FromStrings("__name__", "second"), 120000)
 	verifyNextSeries(t, bss, labels.FromStrings("__name__", "overlapping"), 3000)
 	verifyNextSeries(t, bss, labels.FromStrings("__name__", "overlapping2"), 4000)
 	require.False(t, bss.Next())
@@ -213,21 +207,6 @@ func verifyNextSeries(t *testing.T, ss storage.SeriesSet, labels labels.Labels, 
 	}
 
 	require.Equal(t, samples, count)
-}
-
-type mockSeriesClient struct {
-	responses []*storepb.SeriesResponse
-
-	ix int
-}
-
-func (m *mockSeriesClient) Recv() (*storepb.SeriesResponse, error) {
-	if m.ix < len(m.responses) {
-		ix := m.ix
-		m.ix++
-		return m.responses[ix], nil
-	}
-	return nil, io.EOF
 }
 
 func createChunkWithSineSamples(minTime, maxTime time.Time, step time.Duration) storepb.AggrChunk {

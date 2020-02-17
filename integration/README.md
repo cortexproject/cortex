@@ -6,4 +6,4 @@
 
 ## Owners
 
-This package is used by other pojects than Cortex. When modifying please ask @pracucci @bwplotka for review.
+This package is used by other projects than Cortex. When modifying please ask @pracucci @bwplotka for review.

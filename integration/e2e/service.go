@@ -98,10 +98,6 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 
 	// Get the dynamic local ports mapped to the container.
 	for _, containerPort := range s.networkPorts {
-		if containerPort == 0 {
-			continue
-		}
-
 		var out []byte
 		var localPort int
 

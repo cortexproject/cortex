@@ -48,7 +48,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	// sure the tables have been created.
 	require.NoError(t, tableManager.WaitMetric("cortex_dynamo_sync_tables_seconds", 1))
 
-	// Wait until both the distributor and querier have updated the ring.
+	// Wait until the distributor has updated the ring.
 	require.NoError(t, distributor.WaitMetric("cortex_ring_tokens_total", 512))
 
 	// Push some series to Cortex.

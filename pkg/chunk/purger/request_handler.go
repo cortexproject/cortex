@@ -54,7 +54,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	startParam := params.Get("start")
 	startTime := int64(0)
 	if startParam != "" {
-		var err error
 		startTime, err = queryrange.ParseTime(startParam)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -66,7 +65,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	endTime := int64(model.Now())
 
 	if endParam != "" {
-		var err error
 		endTime, err = queryrange.ParseTime(endParam)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

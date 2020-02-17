@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger/purgeplan"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -157,7 +158,9 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				err = dataPurger.buildDeletePlan(deleteRequest)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+
+				err = dataPurger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 				planPath := fmt.Sprintf("%s:%s/", userID, deleteRequest.RequestID)
 
@@ -247,12 +250,13 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				err = dataPurger.buildDeletePlan(deleteRequest)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+				err = dataPurger.buildDeletePlan(makeDeleteRequestWithLogger(deleteRequest, util.Logger))
 				require.NoError(t, err)
 
 				// execute all the plans
 				for i := 0; i < tc.expectedNumberOfPlans; i++ {
-					err := dataPurger.executePlan(userID, deleteRequest.RequestID, i)
+					err := dataPurger.executePlan(userID, deleteRequest.RequestID, i, requestWithLogger.logger)
 					require.NoError(t, err)
 				}
 

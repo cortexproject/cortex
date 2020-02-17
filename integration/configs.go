@@ -22,9 +22,22 @@ const (
     prefix: cortex_chunks_
     period: 168h0m0s
 `
+
+	cortexAlertmanagerUserConfigYaml = `route:
+  receiver: "example_receiver"
+  group_by: ["example_groupby"]
+receivers:
+  - name: "example_receiver"
+`
 )
 
 var (
+	AlertmanagerConfigs = map[string]string{
+		"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+		"-alertmanager.storage.type":       "local",
+		"-alertmanager.web.external-url":   "http://localhost/api/prom",
+	}
+
 	BlocksStorage = map[string]string{
 		"-store.engine":                                 "tsdb",
 		"-experimental.tsdb.backend":                    "s3",

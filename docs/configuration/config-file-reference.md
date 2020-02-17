@@ -86,11 +86,6 @@ Supported contents and default values of the config file:
 # and used by the 'configs' service to expose APIs to manage them.
 [configdb: <configdb_config>]
 
-# The configstore_config configures the config database storing rules and
-# alerts, and is used by the Cortex alertmanager.
-# The CLI flags prefix for this block config is: alertmanager
-[config_store: <configstore_config>]
-
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
 
@@ -821,6 +816,22 @@ externalurl:
 # Root of URL to generate if config is http://internal.monitor
 # CLI flag: -alertmanager.configs.auto-webhook-root
 [autowebhookroot: <string> | default = ""]
+
+store:
+  # Type of backend to use to store alertmanager configs. Supported values are:
+  # "configdb", "local".
+  # CLI flag: -alertmanager.storage.type
+  [type: <string> | default = "configdb"]
+
+  # The configstore_config configures the config database storing rules and
+  # alerts, and is used by the Cortex alertmanager.
+  # The CLI flags prefix for this block config is: alertmanager
+  [configdb: <configstore_config>]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager.storage.local.path
+    [path: <string> | default = ""]
 ```
 
 ## `table_manager_config`

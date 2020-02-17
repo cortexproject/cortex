@@ -46,10 +46,10 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 
 	// Wait until the first table-manager sync has completed, so that we're
 	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitMetric("cortex_dynamo_sync_tables_seconds", 1))
+	require.NoError(t, tableManager.WaitSumMetric("cortex_dynamo_sync_tables_seconds", 1))
 
 	// Wait until the distributor has updated the ring.
-	require.NoError(t, distributor.WaitMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
 
 	// Push some series to Cortex.
 	now := time.Now()
@@ -78,7 +78,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.
-		require.NoError(t, querier.WaitMetric("cortex_ring_tokens_total", 512))
+		require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
 
 		// Query the series
 		c, err := e2ecortex.NewClient(distributor.Endpoint(80), querier.Endpoint(80), "user-1")

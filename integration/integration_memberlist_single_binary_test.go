@@ -38,24 +38,24 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2, cortex3))
 
 	// All three Cortex serves should see each other.
-	require.NoError(t, cortex1.WaitMetric("memberlist_client_cluster_members_count", 3))
-	require.NoError(t, cortex2.WaitMetric("memberlist_client_cluster_members_count", 3))
-	require.NoError(t, cortex3.WaitMetric("memberlist_client_cluster_members_count", 3))
+	require.NoError(t, cortex1.WaitSumMetric("memberlist_client_cluster_members_count", 3))
+	require.NoError(t, cortex2.WaitSumMetric("memberlist_client_cluster_members_count", 3))
+	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 3))
 
 	// All Cortex servers should have 512 tokens, altogether 3 * 512.
-	require.NoError(t, cortex1.WaitMetric("cortex_ring_tokens_total", 3*512))
-	require.NoError(t, cortex2.WaitMetric("cortex_ring_tokens_total", 3*512))
-	require.NoError(t, cortex3.WaitMetric("cortex_ring_tokens_total", 3*512))
+	require.NoError(t, cortex1.WaitSumMetric("cortex_ring_tokens_total", 3*512))
+	require.NoError(t, cortex2.WaitSumMetric("cortex_ring_tokens_total", 3*512))
+	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 3*512))
 
 	require.NoError(t, s.Stop(cortex1))
-	require.NoError(t, cortex2.WaitMetric("cortex_ring_tokens_total", 2*512))
-	require.NoError(t, cortex2.WaitMetric("memberlist_client_cluster_members_count", 2))
-	require.NoError(t, cortex3.WaitMetric("cortex_ring_tokens_total", 2*512))
-	require.NoError(t, cortex3.WaitMetric("memberlist_client_cluster_members_count", 2))
+	require.NoError(t, cortex2.WaitSumMetric("cortex_ring_tokens_total", 2*512))
+	require.NoError(t, cortex2.WaitSumMetric("memberlist_client_cluster_members_count", 2))
+	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 2*512))
+	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 2))
 
 	require.NoError(t, s.Stop(cortex2))
-	require.NoError(t, cortex3.WaitMetric("cortex_ring_tokens_total", 1*512))
-	require.NoError(t, cortex3.WaitMetric("memberlist_client_cluster_members_count", 1))
+	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 1*512))
+	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 1))
 
 	require.NoError(t, s.Stop(cortex3))
 }

@@ -397,8 +397,8 @@ func (s *HTTPService) NetworkHTTPEndpoint(networkName string) string {
 	return s.NetworkEndpoint(networkName, s.httpPort)
 }
 
-func (s *HTTPService) WaitMetric(metric string, value float64) error {
-	lastFoundValue := 0.0
+func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
+	lastValue := 0.0
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		metrics, err := s.metrics()
@@ -412,31 +412,28 @@ func (s *HTTPService) WaitMetric(metric string, value float64) error {
 			return err
 		}
 
-		// Check if the metric is exported
+		sum := 0.0
+		// Check if the metric is exported.
 		mf, ok := families[metric]
 		if ok {
 			for _, m := range mf.Metric {
 				if m.GetGauge() != nil {
-					lastFoundValue = m.GetGauge().GetValue()
-					if lastFoundValue == value {
-						return nil
-					}
+					sum += m.GetGauge().GetValue()
 				} else if m.GetCounter() != nil {
-					lastFoundValue = m.GetCounter().GetValue()
-					if lastFoundValue == value {
-						return nil
-					}
+					sum += m.GetCounter().GetValue()
 				} else if m.GetHistogram() != nil {
-					lastFoundValue = float64(m.GetHistogram().GetSampleCount())
-					if lastFoundValue == value {
-						return nil
-					}
+					sum += float64(m.GetHistogram().GetSampleCount())
 				}
 			}
 		}
 
+		if sum == value {
+			return nil
+		}
+		lastValue = sum
+
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find a metric %s with value %v. Last value found: %v", metric, value, lastFoundValue)
+	return fmt.Errorf("unable to find a metric %s with value %v. LastValue: %v", metric, value, lastValue)
 }

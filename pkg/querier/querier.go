@@ -6,7 +6,6 @@ import (
 	"flag"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -128,7 +127,6 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		level.Debug(util.Logger).Log("msg", "directory used by active query tracker", "dir", dir)
 		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
 	}
 

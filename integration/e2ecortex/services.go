@@ -103,3 +103,20 @@ func NewTableManager(name string, flags map[string]string, image string) *e2e.HT
 		80,
 	)
 }
+
+func NewSingleBinary(name string, flags map[string]string, image string, httpPort int, otherPorts ...int) *e2e.HTTPService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return e2e.NewHTTPService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-log.level": "warn",
+		}, flags))...),
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
+		otherPorts...,
+	)
+}

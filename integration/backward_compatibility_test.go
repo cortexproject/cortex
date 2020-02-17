@@ -1,9 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -34,11 +31,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
 	// Start Cortex components (ingester running on previous version).
-	require.NoError(t, ioutil.WriteFile(
-		filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
-		[]byte(cortexSchemaConfigYaml),
-		os.ModePerm),
-	)
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorage, previousVersionImage)
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")

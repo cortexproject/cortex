@@ -1,9 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,11 +22,7 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	// Look ma, no Consul!
 	require.NoError(t, s.StartAndWaitReady(dynamo))
 
-	require.NoError(t, ioutil.WriteFile(
-		filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
-		[]byte(cortexSchemaConfigYaml),
-		os.ModePerm),
-	)
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 	cortex1 := newSingleBinary("cortex-1", "")
 	cortex2 := newSingleBinary("cortex-2", networkName+"-cortex-1:8000")
@@ -80,11 +73,10 @@ func newSingleBinary(name string, join string) *e2e.HTTPService {
 		flags["-memberlist.join"] = join
 	}
 
-	serv := e2e.NewHTTPService(
+	serv := e2ecortex.NewSingleBinary(
 		name,
-		e2ecortex.GetDefaultImage(),
-		e2e.NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(ChunksStorage, flags))...),
-		e2e.NewReadinessProbe(80, "/ready", 204),
+		mergeFlags(ChunksStorage, flags),
+		"",
 		80,
 		8000,
 	)

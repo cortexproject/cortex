@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	cortexSchemaConfigFile = "chunks-storage-schema-dynamodb.yaml"
+	cortexConfigFile       = "config.yaml"
+	cortexSchemaConfigFile = "schema.yaml"
 	cortexSchemaConfigYaml = `configs:
 - from: "2019-03-20"
   store: aws-dynamo

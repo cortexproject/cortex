@@ -1,9 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -28,11 +25,8 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		require.NoError(t, ioutil.WriteFile(
-			filepath.Join(s.SharedDir(), cortexSchemaConfigFile),
-			[]byte(cortexSchemaConfigYaml),
-			os.ModePerm),
-		)
+		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+
 		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorage, "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 

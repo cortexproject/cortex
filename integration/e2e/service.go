@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -427,7 +428,7 @@ func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
 			}
 		}
 
-		if sum == value {
+		if sum == value || math.IsNaN(sum) && math.IsNaN(value) {
 			return nil
 		}
 		lastValue = sum

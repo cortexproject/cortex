@@ -154,12 +154,12 @@ func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (c
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// NewDynamoDBObjectClient makes a new DynamoDB-backed ObjectClient.
-func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
+// NewDynamoDBChunkClient makes a new DynamoDB-backed chunk.Client.
+func NewDynamoDBChunkClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and ObjectClient.
+// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and chunk.Client.
 func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (*dynamoDBStorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {

@@ -115,7 +115,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if objectStoreType == "" {
 			objectStoreType = s.IndexType
 		}
-		chunks, err := NewObjectClient(objectStoreType, cfg, schemaCfg)
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
@@ -164,8 +164,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	}
 }
 
-// NewObjectClient makes a new ObjectClient of the desired types.
-func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
+// NewChunkClient makes a new chunk.Client of the desired types.
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -179,7 +179,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
 		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
 	case "gcp":

@@ -184,10 +184,6 @@ func (s *ConcreteService) Endpoint(port int) string {
 }
 
 func (s *ConcreteService) NetworkEndpoint(networkName string, port int) string {
-	if s.stopped {
-		return "stopped"
-	}
-
 	return fmt.Sprintf("%s:%d", s.containerName(networkName), port)
 }
 

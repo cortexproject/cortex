@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"io/ioutil"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -40,12 +39,11 @@ type Config struct {
 	// step if not specified.
 	DefaultEvaluationInterval time.Duration
 
-	// Directory for ActiveQueryTracker. If empty, temp dir is created, which defeats the purpose of
-	// query tracker -- it logs queries that were active during the last crash, but logs them on the next startup.
+	// Directory for ActiveQueryTracker. If empty, ActiveQueryTracker will be disabled and MaxConcurrent will not be applied (!).
+	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
 	// engine.
-	// If creation of temp dir fails, query tracker is not created and MaxConcurrent is not applied. :-(
-	ActiveQueryTrackerDir string
+	ActiveQueryTrackerDir string `yaml:"active_query_tracking_dir"`
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`
@@ -69,7 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
-	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "", "Directory to put data for active query tracker into. If empty, new temporary directory is created.")
+	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -129,18 +127,12 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
-	if dir == "" {
-		var err error
-		dir, err = ioutil.TempDir("", "querier")
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to create temp dir for active query tracker, -querier.max-concurrent will be ignored", "err", err)
-			return nil
-		}
-
+	if dir != "" {
 		level.Debug(util.Logger).Log("msg", "directory used by active query tracker", "dir", dir)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
 	}
 
-	return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
+	return nil
 }
 
 // NewQueryable creates a new Queryable for cortex.

@@ -55,7 +55,7 @@ metric_b 1000
 	defer srv.Close()
 
 	go func() {
-		srv.ListenAndServe()
+		_ = srv.ListenAndServe()
 	}()
 
 	s := &HTTPService{
@@ -112,7 +112,7 @@ metric_b 1000
 	defer srv.Close()
 
 	go func() {
-		srv.ListenAndServe()
+		_ = srv.ListenAndServe()
 	}()
 
 	s := &HTTPService{

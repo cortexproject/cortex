@@ -48,7 +48,7 @@ echo "$(cat <<EOT
 ---
 title: Contributing
 type: docs
-original_path: CONTRIBUTING.md
+originalpath: CONTRIBUTING.md
 menu:
   contributing:
     weight: 3

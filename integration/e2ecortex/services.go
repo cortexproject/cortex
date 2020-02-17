@@ -25,7 +25,6 @@ func NewDistributor(name string, consulAddress string, flags map[string]string, 
 	return e2e.NewHTTPService(
 		name,
 		image,
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "distributor",
 			"-log.level":                      "warn",
@@ -48,7 +47,6 @@ func NewQuerier(name string, consulAddress string, flags map[string]string, imag
 	return e2e.NewHTTPService(
 		name,
 		image,
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "querier",
 			"-log.level":                      "warn",
@@ -70,7 +68,6 @@ func NewIngester(name string, consulAddress string, flags map[string]string, ima
 	return e2e.NewHTTPService(
 		name,
 		image,
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                        "ingester",
 			"-log.level":                     "warn",
@@ -97,7 +94,6 @@ func NewTableManager(name string, flags map[string]string, image string) *e2e.HT
 	return e2e.NewHTTPService(
 		name,
 		image,
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "table-manager",
 			"-log.level": "warn",

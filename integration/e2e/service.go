@@ -30,6 +30,7 @@ type ConcreteService struct {
 	image        string
 	networkPorts []int
 	env          map[string]string
+	user         string
 	command      *Command
 	readiness    *ReadinessProbe
 
@@ -45,7 +46,6 @@ type ConcreteService struct {
 func NewConcreteService(
 	name string,
 	image string,
-	env map[string]string,
 	command *Command,
 	readiness *ReadinessProbe,
 	networkPorts ...int,
@@ -54,7 +54,6 @@ func NewConcreteService(
 		name:                         name,
 		image:                        image,
 		networkPorts:                 networkPorts,
-		env:                          env,
 		command:                      command,
 		networkPortsContainerToLocal: map[int]int{},
 		readiness:                    readiness,
@@ -69,8 +68,18 @@ func NewConcreteService(
 
 func (s *ConcreteService) Name() string { return s.name }
 
+// Less often used options.
+
 func (s *ConcreteService) SetBackoff(cfg util.BackoffConfig) {
 	s.retryBackoff = util.NewBackoff(context.Background(), cfg)
+}
+
+func (s *ConcreteService) SetEnvVars(env map[string]string) {
+	s.env = env
+}
+
+func (s *ConcreteService) SetUser(user string) {
+	s.user = user
 }
 
 func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
@@ -249,6 +258,10 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 		args = append(args, "-e", name+"="+value)
 	}
 
+	if s.user != "" {
+		args = append(args, "--user", s.user)
+	}
+
 	// Published ports
 	for _, port := range s.networkPorts {
 		args = append(args, "-p", strconv.Itoa(port))
@@ -349,14 +362,13 @@ type HTTPService struct {
 func NewHTTPService(
 	name string,
 	image string,
-	env map[string]string,
 	command *Command,
 	readiness *ReadinessProbe,
 	httpPort int,
 	otherPorts ...int,
 ) *HTTPService {
 	return &HTTPService{
-		ConcreteService: NewConcreteService(name, image, env, command, readiness, append(otherPorts, httpPort)...),
+		ConcreteService: NewConcreteService(name, image, command, readiness, append(otherPorts, httpPort)...),
 		httpPort:        httpPort,
 	}
 }

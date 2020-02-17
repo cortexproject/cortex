@@ -83,7 +83,6 @@ func newSingleBinary(name string, join string) *e2e.HTTPService {
 	serv := e2e.NewHTTPService(
 		name,
 		e2ecortex.GetDefaultImage(),
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", buildArgs(mergeFlags(ChunksStorage, flags))...),
 		e2e.NewReadinessProbe(80, "/ready", 204),
 		80,

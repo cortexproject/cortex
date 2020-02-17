@@ -570,10 +570,12 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.default-evaluation-interval
 [defaultevaluationinterval: <duration> | default = 1m0s]
 
-# Directory to put data for active query tracker into. If empty, new temporary
-# directory is created.
+# Active query tracker monitors active queries, and writes them to the file in
+# given directory. If Cortex discovers any queries in this log during startup,
+# it will log them to the log file. Setting to empty value disables active query
+# tracker, which also disables -querier.max-concurrent option.
 # CLI flag: -querier.active-query-tracker-dir
-[activequerytrackerdir: <string> | default = ""]
+[active_query_tracking_dir: <string> | default = "./active-query-tracker"]
 ```
 
 ## `query_frontend_config`

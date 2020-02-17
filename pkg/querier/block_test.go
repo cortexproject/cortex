@@ -113,7 +113,8 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 	bss := &blockQuerierSeriesSet{
 		seriesClient: &mockSeriesClient{responses: []*storepb.SeriesResponse{
 			storepb.NewSeriesResponse(&storepb.Series{
-				Labels: mkLabels("__name__", "first"),
+				// labels are not sorted, but blockQuerierSeriesSet will sort it.
+				Labels: mkLabels("a", "a", "__name__", "first"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(100*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples (= 33334)
 				},
@@ -124,7 +125,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// continuation of previous series
 			storepb.NewSeriesResponse(&storepb.Series{
-				Labels: mkLabels("__name__", "first"),
+				Labels: mkLabels("a", "a", "__name__", "first"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now.Add(100*time.Second), now.Add(200*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples more, 66668 in total
 				},
@@ -132,7 +133,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// new series
 			storepb.NewSeriesResponse(&storepb.Series{
-				Labels: mkLabels("__name__", "second"),
+				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(200*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples)
 				},
@@ -140,7 +141,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 		}},
 	}
 
-	verifyNextSeries(t, bss, labels.FromStrings("__name__", "first"), 66668)
+	verifyNextSeries(t, bss, labels.FromStrings("__name__", "first", "a", "a"), 66668)
 	verifyNextSeries(t, bss, labels.FromStrings("__name__", "second"), 40000)
 	require.False(t, bss.Next())
 }

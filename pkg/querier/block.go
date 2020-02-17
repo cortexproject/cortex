@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -252,29 +253,36 @@ func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
-func newBlockQuerierSeries(labels []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
+func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].MinTime < chunks[j].MinTime
 	})
 
-	return &blockQuerierSeries{labels: labels, chunks: chunks}
-}
-
-type blockQuerierSeries struct {
-	labels []storepb.Label
-	chunks []storepb.AggrChunk
-}
-
-func (bqs *blockQuerierSeries) Labels() labels.Labels {
-	res := make(labels.Labels, 0, len(bqs.labels))
-	for _, l := range bqs.labels {
+	// precompute labels
+	modLabels := make(labels.Labels, 0, len(lbls))
+	for _, l := range lbls {
 		// We have to remove the external label set by the shipper
 		if l.Name == tsdb.TenantIDExternalLabel {
 			continue
 		}
-		res = append(res, labels.Label{Name: l.Name, Value: l.Value})
+		modLabels = append(modLabels, labels.Label{Name: l.Name, Value: l.Value})
 	}
-	return res
+
+	// sort labels to make sure we obey labels.Labels contract.
+	sort.Slice(modLabels, func(i, j int) bool {
+		return strings.Compare(modLabels[i].Name, modLabels[j].Name) < 0
+	})
+
+	return &blockQuerierSeries{labels: modLabels, chunks: chunks}
+}
+
+type blockQuerierSeries struct {
+	labels labels.Labels
+	chunks []storepb.AggrChunk
+}
+
+func (bqs *blockQuerierSeries) Labels() labels.Labels {
+	return bqs.labels
 }
 
 func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {

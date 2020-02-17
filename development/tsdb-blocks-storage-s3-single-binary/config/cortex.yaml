@@ -1,0 +1,50 @@
+auth_enabled: false
+
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+ingester_client:
+  grpc_client_config:
+    # Configure the client to allow messages up to 100MB.
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    use_gzip_compression: true
+
+ingester:
+  max_transfer_retries: 1
+
+  lifecycler:
+    # We want to start immediately.
+    join_after: 0
+    claim_on_rollout: false
+    final_sleep: 0s
+    num_tokens: 512
+
+    ring:
+      kvstore:
+        store: consul
+        consul:
+          host: consul:8500
+      replication_factor: 1
+
+tsdb:
+  dir: /data/cortex-tsdb-ingester
+  ship_interval: 1m
+  block_ranges_period: [ 2h ]
+  retention_period: 3h
+  backend: s3
+  
+  bucket_store:
+    sync_dir: /data/cortex-tsdb-querier
+
+  s3:
+    endpoint:          minio:9000
+    bucket_name:       cortex-tsdb
+    access_key_id:     cortex
+    secret_access_key: supersecret
+    insecure:          true
+
+storage:
+  engine: tsdb

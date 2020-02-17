@@ -129,36 +129,13 @@ func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMa
 }
 
 func (b *blocksQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.LabelValues")
-	defer log.Span.Finish()
-
-	ctx = b.addUserToContext(ctx)
-	resp, err := b.client.LabelValues(ctx, &storepb.LabelValuesRequest{
-		Label:                   name,
-		PartialResponseDisabled: false,
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return resp.Values, nil, nil
+	// Cortex doesn't use this. It will ask ingesters for metadata.
+	return nil, nil, errors.New("not implemented")
 }
 
 func (b *blocksQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.LabelValues")
-	defer log.Span.Finish()
-
-	ctx = b.addUserToContext(ctx)
-	resp, err := b.client.LabelNames(ctx, &storepb.LabelNamesRequest{
-		PartialResponseDisabled: false,
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return resp.Names, nil, nil
+	// Cortex doesn't use this. It will ask ingesters for metadata.
+	return nil, nil, errors.New("not implemented")
 }
 
 func (b *blocksQuerier) Close() error {

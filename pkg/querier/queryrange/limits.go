@@ -37,7 +37,7 @@ func LimitsMiddleware(l Limits) Middleware {
 func (l limits) Do(ctx context.Context, r Request) (Response, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	maxQueryLen := l.MaxQueryLength(userid)
@@ -58,7 +58,7 @@ type RequestResponse struct {
 func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	// If one of the requests fail, we want to be able to cancel the rest of them.

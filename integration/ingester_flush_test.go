@@ -40,7 +40,7 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 
 	// Wait until the first table-manager sync has completed, so that we're
 	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetrics(e2e.Equals(1), "cortex_dynamo_sync_tables_seconds"))
+	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
 
 	// Wait until both the distributor and querier have updated the ring.
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))

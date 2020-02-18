@@ -177,6 +177,10 @@ func (s *ConcreteService) Kill() error {
 	return nil
 }
 
+// Endpoint returns external (from host perspective) service endpoint (host:port) for given internal port.
+// External means that it will be accessible only from host, but not from docker containers.
+//
+// If your service is not running, this method returns incorrect `stopped` endpoint.
 func (s *ConcreteService) Endpoint(port int) string {
 	if !s.isExpectedRunning() {
 		return "stopped"
@@ -192,10 +196,24 @@ func (s *ConcreteService) Endpoint(port int) string {
 	return fmt.Sprintf("127.0.0.1:%d", localPort)
 }
 
+// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
+// Internal means that it will be accessible only from docker containers within the network that this
+// service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
+// as well. Use `Endpoint` for host access.
+//
+// If your service is not running, use `NetworkEndpointFor` instead.
 func (s *ConcreteService) NetworkEndpoint(port int) string {
-	return fmt.Sprintf("%s:%d", s.containerName(), port)
+	if s.usedNetworkName == "" {
+		return "stopped"
+	}
+	return s.NetworkEndpointFor(s.usedNetworkName, port)
 }
 
+// NetworkEndpointFor returns internal service endpoint (host:port) for given internal port and network.
+// Internal means that it will be accessible only from docker containers within the given network. If you configure
+// your local resolver with docker DNS namespace you can access it from host as well.
+//
+// This method return correct endpoint for the service in any state.
 func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) string {
 	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
@@ -444,6 +462,24 @@ func Equals(value float64) func(sums ...float64) bool {
 	}
 }
 
+func Greater(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("greater: expected one value")
+		}
+		return sums[0] > value
+	}
+}
+
+func Less(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("less: expected one value")
+		}
+		return sums[0] < value
+	}
+}
+
 // EqualsAmongTwo returns true if first sum is equal to the second.
 // NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
 // usually not atomic.
@@ -506,5 +542,5 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find a metrics %s with expected values. LastValues: %v", metricNames, sums)
+	return fmt.Errorf("unable to find metrics %s with expected values. LastValues: %v", metricNames, sums)
 }

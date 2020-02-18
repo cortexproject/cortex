@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
-func Test_seriesToChunks(t *testing.T) {
+func TestBlockQuerierSeries(t *testing.T) {
 	t.Parallel()
 
 	// Init some test fixtures

@@ -33,10 +33,10 @@ func TestWaitSumMetric(t *testing.T) {
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`
 # HELP metric_c cheescake
-# TYPE metric_c GAUGE
+# TYPE metric_c gauge
 metric_c 20
 # HELP metric_a cheescake
-# TYPE metric_a GAUGE
+# TYPE metric_a gauge
 metric_a 1
 metric_a{first="value1"} 10
 metric_a{first="value1", something="x"} 4
@@ -44,8 +44,21 @@ metric_a{first="value1", something2="a"} 203
 metric_a{first="value2"} 2
 metric_a{second="value1"} 1
 # HELP metric_b cheescake
-# TYPE metric_b GAUGE
+# TYPE metric_b gauge
 metric_b 1000
+# HELP metric_b_counter cheescake
+# TYPE metric_b_counter counter
+metric_b_counter 1020
+# HELP metric_b_hist cheescake
+# TYPE metric_b_hist histogram
+metric_b_hist_count 5
+metric_b_hist_sum 124
+metric_b_hist_bucket{le="5.36870912e+08"} 1
+metric_b_hist_bucket{le="+Inf"} 5
+# HELP metric_b_summary cheescake
+# TYPE metric_b_summary summary
+metric_b_summary_sum 22
+metric_b_summary_count 1
 `))
 		}),
 	}
@@ -78,6 +91,11 @@ metric_b 1000
 		MaxRetries: 1,
 	})
 	require.Error(t, s.WaitSumMetrics(Equals(16), "metric_a"))
+
+	require.NoError(t, s.WaitSumMetrics(Equals(1000), "metric_b"))
+	require.NoError(t, s.WaitSumMetrics(Equals(1020), "metric_b_counter"))
+	require.NoError(t, s.WaitSumMetrics(Equals(124), "metric_b_hist"))
+	require.NoError(t, s.WaitSumMetrics(Equals(22), "metric_b_summary"))
 
 	require.NoError(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_a"))
 	require.Error(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_b"))

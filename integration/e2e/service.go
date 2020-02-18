@@ -427,7 +427,9 @@ func sumValues(family *io_prometheus_client.MetricFamily) float64 {
 		} else if m.GetCounter() != nil {
 			sum += m.GetCounter().GetValue()
 		} else if m.GetHistogram() != nil {
-			sum += float64(m.GetHistogram().GetSampleCount())
+			sum += m.GetHistogram().GetSampleSum()
+		} else if m.GetSummary() != nil {
+			sum += m.GetSummary().GetSampleSum()
 		}
 	}
 	return sum

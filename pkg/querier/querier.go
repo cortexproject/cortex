@@ -42,7 +42,7 @@ type Config struct {
 	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
 	// engine.
-	ActiveQueryTrackerDir string `yaml:"active_query_tracking_dir"`
+	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`

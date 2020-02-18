@@ -575,7 +575,7 @@ The `querier_config` configures the Cortex querier.
 # it will log them to the log file. Setting to empty value disables active query
 # tracker, which also disables -querier.max-concurrent option.
 # CLI flag: -querier.active-query-tracker-dir
-[active_query_tracking_dir: <string> | default = "./active-query-tracker"]
+[active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 ```
 
 ## `query_frontend_config`

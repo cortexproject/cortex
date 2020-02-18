@@ -358,7 +358,7 @@ FindQueue:
 			// Tell close() we've processed a request.
 			f.cond.Broadcast()
 
-			queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
+			queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
 			queueLength.Add(-1)
 			request.queueSpan.Finish()
 

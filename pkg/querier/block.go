@@ -5,7 +5,6 @@ import (
 	"io"
 	"math"
 	"sort"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -222,22 +221,15 @@ func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *bl
 		return chunks[i].MinTime < chunks[j].MinTime
 	})
 
-	// precompute labels
-	modLabels := make(labels.Labels, 0, len(lbls))
+	b := labels.NewBuilder(nil)
 	for _, l := range lbls {
-		// We have to remove the external label set by the shipper
-		if l.Name == tsdb.TenantIDExternalLabel {
-			continue
+		// Ignore external label set by the shipper
+		if l.Name != tsdb.TenantIDExternalLabel {
+			b.Set(l.Name, l.Value)
 		}
-		modLabels = append(modLabels, labels.Label{Name: l.Name, Value: l.Value})
 	}
 
-	// sort labels to make sure we obey labels.Labels contract.
-	sort.Slice(modLabels, func(i, j int) bool {
-		return strings.Compare(modLabels[i].Name, modLabels[j].Name) < 0
-	})
-
-	return &blockQuerierSeries{labels: modLabels, chunks: chunks}
+	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}
 }
 
 type blockQuerierSeries struct {

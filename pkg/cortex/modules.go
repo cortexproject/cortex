@@ -262,7 +262,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	api.Register(promRouter)
 
 	subrouter := t.server.HTTP.PathPrefix("/api/prom").Subrouter()
-	subrouter.PathPrefix("/api/v1").Handler(t.httpAuthMiddleware.Wrap(promRouter))
+	subrouter.PathPrefix("/api/v1").Handler(fakeRemoteAddr(t.httpAuthMiddleware.Wrap(promRouter)))
 	subrouter.Path("/read").Handler(t.httpAuthMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
@@ -281,6 +281,18 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	}))
 
 	return
+}
+
+// Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
+// Requests to Querier sometimes doesn't have that (if they are fetched from Query-Frontend).
+// Prometheus uses this when logging queries to QueryLogger, but Cortex doesn't call engine.SetQueryLogger to set one.
+func fakeRemoteAddr(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RemoteAddr == "" {
+			r.RemoteAddr = "127.0.0.1:8888"
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func (t *Cortex) stopQuerier() error {

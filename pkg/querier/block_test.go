@@ -133,9 +133,10 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 			{
 				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed"),
 				Chunks: []storepb.AggrChunk{
-					createChunkWithSineSamples(now, now.Add(200*time.Second), 5*time.Millisecond),                      // 200 / 0.005 (= 40000 samples)
-					createChunkWithSineSamples(now.Add(200*time.Second), now.Add(400*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples)
+					// unordered chunks
 					createChunkWithSineSamples(now.Add(400*time.Second), now.Add(600*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples, = 120000 in total)
+					createChunkWithSineSamples(now.Add(200*time.Second), now.Add(400*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples)
+					createChunkWithSineSamples(now, now.Add(200*time.Second), 5*time.Millisecond),                      // 200 / 0.005 (= 40000 samples)
 				},
 			},
 
@@ -154,18 +155,19 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 				},
 			},
 
-			// overlapping 2
+			// overlapping 2. Chunks here come in wrong order.
 			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
-					createChunkWithSineSamples(now, now.Add(10*time.Second), 5*time.Millisecond), // 10 / 0.005 = 2000 samples
+					// entire range overlaps with the next chunk, so this chunks contributes 0 samples (it will be sorted as second)
+					createChunkWithSineSamples(now.Add(3*time.Second), now.Add(7*time.Second), 5*time.Millisecond),
 				},
 			},
 			{
 				Labels: mkLabels("__name__", "overlapping2"),
 				Chunks: []storepb.AggrChunk{
-					// entire range overlaps with previous chunk, so this chunks contributes 0 samples
-					createChunkWithSineSamples(now.Add(3*time.Second), now.Add(7*time.Second), 5*time.Millisecond),
+					// this chunk has completely overlaps previous chunk. Since its minTime is lower, it will be sorted as first.
+					createChunkWithSineSamples(now, now.Add(10*time.Second), 5*time.Millisecond), // 10 / 0.005 = 2000 samples
 				},
 			},
 			{
@@ -199,11 +201,14 @@ func verifyNextSeries(t *testing.T, ss storage.SeriesSet, labels labels.Labels, 
 	s := ss.At()
 	require.Equal(t, labels, s.Labels())
 
+	prevTS := int64(0)
 	count := 0
 	for it := s.Iterator(); it.Next(); {
 		count++
 		ts, v := it.At()
 		require.Equal(t, math.Sin(float64(ts)), v)
+		require.Greater(t, ts, prevTS, "timestamps are increasing")
+		prevTS = ts
 	}
 
 	require.Equal(t, samples, count)

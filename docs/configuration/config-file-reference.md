@@ -648,10 +648,9 @@ results_cache:
 The `ruler_config` configures the Cortex ruler.
 
 ```yaml
-externalurl:
-  # URL of alerts return path.
-  # CLI flag: -ruler.external.url
-  [url: <url> | default = ]
+# URL of alerts return path.
+# CLI flag: -ruler.external.url
+[externalurl: <url> | default = ]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -675,10 +674,9 @@ storeconfig:
 # CLI flag: -ruler.rule-path
 [rulepath: <string> | default = "/rules"]
 
-alertmanagerurl:
-  # URL of the Alertmanager to send notifications to.
-  # CLI flag: -ruler.alertmanager-url
-  [url: <url> | default = ]
+# URL of the Alertmanager to send notifications to.
+# CLI flag: -ruler.alertmanager-url
+[alertmanagerurl: <url> | default = ]
 
 # Use DNS SRV records to discover alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -779,15 +777,13 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.storage.retention
 [retention: <duration> | default = 120h0m0s]
 
-externalurl:
-  # The URL under which Alertmanager is externally reachable (for example, if
-  # Alertmanager is served via a reverse proxy). Used for generating relative
-  # and absolute links back to Alertmanager itself. If the URL has a path
-  # portion, it will be used to prefix all HTTP endpoints served by
-  # Alertmanager. If omitted, relevant URL components will be derived
-  # automatically.
-  # CLI flag: -alertmanager.web.external-url
-  [url: <url> | default = ]
+# The URL under which Alertmanager is externally reachable (for example, if
+# Alertmanager is served via a reverse proxy). Used for generating relative and
+# absolute links back to Alertmanager itself. If the URL has a path portion, it
+# will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
+# relevant URL components will be derived automatically.
+# CLI flag: -alertmanager.web.external-url
+[externalurl: <url> | default = ]
 
 # How frequently to poll Cortex configs
 # CLI flag: -alertmanager.configs.poll-interval
@@ -1176,12 +1172,11 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 
 aws:
   dynamodbconfig:
-    dynamodb:
-      # DynamoDB endpoint URL with escaped Key and Secret encoded. If only
-      # region is specified as a host, proper endpoint will be deduced. Use
-      # inmemory:///<table-name> to use a mock in-memory implementation.
-      # CLI flag: -dynamodb.url
-      [url: <url> | default = ]
+    # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
+    # is specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<table-name> to use a mock in-memory implementation.
+    # CLI flag: -dynamodb.url
+    [dynamodb: <url> | default = ]
 
     # DynamoDB table management requests per second limit.
     # CLI flag: -dynamodb.api-limit
@@ -1191,10 +1186,9 @@ aws:
     # CLI flag: -dynamodb.throttle-limit
     [throttlelimit: <float> | default = 10]
 
-    applicationautoscaling:
-      # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
-      # CLI flag: -applicationautoscaling.url
-      [url: <url> | default = ]
+    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
+    # CLI flag: -applicationautoscaling.url
+    [applicationautoscaling: <url> | default = ]
 
     metrics:
       # Use metrics-based autoscaling, via this query URL
@@ -1242,12 +1236,11 @@ aws:
     # CLI flag: -dynamodb.chunk.get.max.parallelism
     [chunkgetmaxparallelism: <int> | default = 32]
 
-  s3:
-    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-    # specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<bucket-name> to use a mock in-memory implementation.
-    # CLI flag: -s3.url
-    [url: <url> | default = ]
+  # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+  # specified as a host, proper endpoint will be deduced. Use
+  # inmemory:///<bucket-name> to use a mock in-memory implementation.
+  # CLI flag: -s3.url
+  [s3: <url> | default = ]
 
   # Comma separated list of bucket names to evenly distribute chunks over.
   # Overrides any buckets specified in s3.url flag
@@ -2063,10 +2056,9 @@ The `configdb_config` configures the config database storing rules and alerts, a
 The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager.
 
 ```yaml
-configsapiurl:
-  # URL of configs API server.
-  # CLI flag: -<prefix>.configs.url
-  [url: <url> | default = ]
+# URL of configs API server.
+# CLI flag: -<prefix>.configs.url
+[configsapiurl: <url> | default = ]
 
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout

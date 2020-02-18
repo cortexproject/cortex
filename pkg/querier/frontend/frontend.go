@@ -358,10 +358,14 @@ FindQueue:
 		  it's possible that it's own queue would perpetually contain only expired requests.
 		*/
 
-		// pull the next unexpired request from the queue
-		var request *request
+		// Pick the first non-expired request from this user's queue (if any).
 		for {
-			request = <-queue
+			lastRequest := false
+			request := <-queue
+			if len(queue) == 0 {
+				delete(f.queues, userID)
+				lastRequest = true
+			}
 
 			// Tell close() we've processed a request.
 			f.cond.Broadcast()
@@ -370,25 +374,19 @@ FindQueue:
 			queueLength.Add(-1)
 			request.queueSpan.Finish()
 
-			expired := request.originalCtx.Err() != nil
-
-			// there are no unexpired requests in the queue
-			if len(queue) == 0 {
-				delete(f.queues, userID)
-				if expired {
-					// there are no unexpired requests in the queue
-					goto FindQueue
-				}
+			// Ensure the request has not already expired.
+			if request.originalCtx.Err() == nil {
+				return request, nil
 			}
 
-			// first unexpired request found
-			if !expired {
+			// Stop iterating on this queue if we've just consumed the last request.
+			if lastRequest {
 				break
 			}
 		}
-
-		return request, nil
 	}
 
-	panic("should never happen")
+	// There are no unexpired requests, so we can get back
+	// and wait for more requests.
+	goto FindQueue
 }

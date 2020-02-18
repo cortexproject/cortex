@@ -223,7 +223,7 @@ func (s *ConcreteService) WaitStarted(networkName string) (err error) {
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("docker container %s failed to start: %w", s.name, err)
+	return fmt.Errorf("docker container %s failed to start: %v", s.name, err)
 }
 
 func (s *ConcreteService) WaitReady() (err error) {

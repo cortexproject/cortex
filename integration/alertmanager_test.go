@@ -31,7 +31,7 @@ func TestAlertmanager(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
 	require.NoError(t, alertmanager.WaitSumMetric("cortex_alertmanager_configs", 1))
 
-	c, err := e2ecortex.NewClient("", "", alertmanager.Endpoint(80), "user-1")
+	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "user-1")
 	require.NoError(t, err)
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())

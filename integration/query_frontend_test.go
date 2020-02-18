@@ -13,15 +13,15 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, BlocksStorage, func(t *testing.T, s *e2e.Scenario) {
+func TestQueryFrontendWithBlocksStorage(t *testing.T) {
+	runQueryFrontendTest(t, BlocksStorage, func(t *testing.T, s *e2e.Scenario) {
 		minio := e2edb.NewMinio(9000, BlocksStorage["-experimental.tsdb.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 	})
 }
 
-func TestIngesterHandOverWithChunksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, ChunksStorage, func(t *testing.T, s *e2e.Scenario) {
+func TestQueryFrontendWithChunksStorage(t *testing.T) {
+	runQueryFrontendTest(t, ChunksStorage, func(t *testing.T, s *e2e.Scenario) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
@@ -36,7 +36,7 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 	})
 }
 
-func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
+func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -47,16 +47,19 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	setup(t, s)
 
 	// Start Cortex components.
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), flags, "")
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(networkName), flags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkEndpoint(networkName, e2ecortex.GRPCPort),
+	}), "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
+	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, querier, ingester))
 
 	// Wait until both the distributor and querier have updated the ring.
 	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
 	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
 
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
 
 	// Push some series to Cortex.
@@ -71,20 +74,5 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	result, err := c.Query("series_1", now)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
-	assert.Equal(t, expectedVector, result.(model.Vector))
-
-	// Start ingester-2.
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(networkName), mergeFlags(flags, map[string]string{
-		"-ingester.join-after": "10s",
-	}), "")
-	require.NoError(t, s.Start(ingester2))
-
-	// Stop ingester-1. This function will return once the ingester-1 is successfully
-	// stopped, which means the transfer to ingester-2 is completed.
-	require.NoError(t, s.Stop(ingester1))
-
-	// Query the series again.
-	result, err = c.Query("series_1", now)
-	require.NoError(t, err)
 	assert.Equal(t, expectedVector, result.(model.Vector))
 }

@@ -159,6 +159,6 @@ func SetupTestDeleteStore() (*chunk.DeleteStore, error) {
 	return chunk.NewDeleteStore(deleteStoreConfig, mockStorage)
 }
 
-func SetupTestObjectStore() (chunk.StorageClient, error) {
+func SetupTestObjectStore() (chunk.ObjectClient, error) {
 	return chunk.NewMockStorage(), nil
 }

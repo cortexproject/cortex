@@ -619,7 +619,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 		return
 	}
 
-	var storageClient chunk.StorageClient
+	var storageClient chunk.ObjectClient
 	storageClient, err = storage.NewStorageClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
 	if err != nil {
 		return

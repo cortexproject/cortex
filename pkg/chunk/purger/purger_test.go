@@ -24,7 +24,7 @@ const (
 	modelTimeHour = model.Time(time.Hour / time.Millisecond)
 )
 
-func setupStoresAndPurger(t *testing.T) (*chunk.DeleteStore, chunk.Store, chunk.StorageClient, *DataPurger) {
+func setupStoresAndPurger(t *testing.T) (*chunk.DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
 	deleteStore, err := testutils.SetupTestDeleteStore()
 	require.NoError(t, err)
 

@@ -64,7 +64,7 @@ type DataPurger struct {
 	cfg           DataPurgerConfig
 	deleteStore   *chunk.DeleteStore
 	chunkStore    chunk.Store
-	storageClient chunk.StorageClient
+	storageClient chunk.ObjectClient
 
 	executePlansChan             chan deleteRequestWithLogger
 	workerJobChan                chan workerJob
@@ -80,7 +80,7 @@ type DataPurger struct {
 }
 
 // NewDataPurger creates a new DataPurger
-func NewDataPurger(cfg DataPurgerConfig, deleteStore *chunk.DeleteStore, chunkStore chunk.Store, storageClient chunk.StorageClient) (*DataPurger, error) {
+func NewDataPurger(cfg DataPurgerConfig, deleteStore *chunk.DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient) (*DataPurger, error) {
 	dataPurger := DataPurger{
 		cfg:                          cfg,
 		deleteStore:                  deleteStore,

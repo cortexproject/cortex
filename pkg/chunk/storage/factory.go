@@ -248,7 +248,7 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 }
 
 // NewStorageClient makes a new StorageClient of the desired types.
-func NewStorageClient(name string, cfg Config) (chunk.StorageClient, error) {
+func NewStorageClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil

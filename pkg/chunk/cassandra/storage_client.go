@@ -62,7 +62,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if cfg.Password != "" && cfg.PasswordFile != "" {
-		return errors.Errorf("The password and password_file flags are mutually exclusive.")
+		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
 	return nil
 }

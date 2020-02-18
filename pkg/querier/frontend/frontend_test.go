@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	jaeger "github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
+	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -143,6 +144,7 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 		{http.StatusInternalServerError, errors.New("unknown")},
 		{http.StatusGatewayTimeout, context.DeadlineExceeded},
 		{499, context.Canceled},
+		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()

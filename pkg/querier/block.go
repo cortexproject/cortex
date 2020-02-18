@@ -103,8 +103,15 @@ func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Mat
 
 	// only very basic processing of responses is done here. Dealing with multiple responses
 	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
-	resp, err := seriesClient.Recv()
-	for err == nil {
+	for {
+		resp, err := seriesClient.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+
 		// response may either contain series or warning. If it's warning, we get nil here.
 		s := resp.GetSeries()
 		if s != nil {
@@ -116,13 +123,6 @@ func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Mat
 		if w != "" {
 			warnings = append(warnings, errors.New(w))
 		}
-
-		resp, err = seriesClient.Recv()
-		// err will be io.EOF after last response.
-	}
-
-	if err != io.EOF {
-		return nil, nil, err
 	}
 
 	return &blockQuerierSeriesSet{

@@ -180,7 +180,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record, token uint32) (
 	series, ok := u.fpToSeries.get(fp)
 	if ok {
 		if token != series.token {
-			level.Warn(util.Logger).Log("msg", fmt.Sprintf("new token value for metric %s", metric), "previous", series.token, "new", token)
+			level.Debug(util.Logger).Log("msg", fmt.Sprintf("new token value for metric %s", metric), "previous", series.token, "new", token)
 			series.token = token
 		}
 

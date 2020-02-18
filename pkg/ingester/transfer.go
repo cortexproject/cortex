@@ -113,7 +113,7 @@ func (i *Ingester) acceptChunksFromStream(opts acceptChunksOptions) (fromIngeste
 			return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: fromWireChunks")
 		}
 
-		if wireSeries.Token == 0 {
+		if i.cfg.CheckTokens && wireSeries.Token == 0 {
 			level.Warn(util.Logger).Log("msg", "unexpected token 0 in wireSeries")
 		}
 

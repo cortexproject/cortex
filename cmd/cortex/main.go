@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -139,6 +140,8 @@ func LoadConfig(filename string, cfg *cortex.Config) error {
 		return errors.Wrap(err, "Error reading config file")
 	}
 
+	buf = expandEnv(buf)
+
 	err = yaml.UnmarshalStrict(buf, cfg)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing config file")
@@ -154,4 +157,20 @@ func DumpYaml(cfg *cortex.Config) {
 	} else {
 		fmt.Printf("%s\n", out)
 	}
+}
+
+// expandEnv replaces ${var} or $var in config according to the values of the current environment variables.
+// The replacement is case-sensitive. References to undefined variables are replaced by the empty string.
+// A default value can be given by using the form ${var:default value}.
+func expandEnv(config []byte) []byte {
+	return []byte(os.Expand(string(config), func(key string) string {
+		keyAndDefault := strings.SplitN(key, ":", 2)
+		key = keyAndDefault[0]
+
+		v := os.Getenv(key)
+		if v == "" && len(keyAndDefault) == 2 {
+			v = keyAndDefault[1] // Set value to the default.
+		}
+		return v
+	}))
 }

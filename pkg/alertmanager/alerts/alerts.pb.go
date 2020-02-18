@@ -9,6 +9,7 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -22,7 +23,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type AlertConfigDesc struct {
 	User      string          `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
@@ -43,7 +44,7 @@ func (m *AlertConfigDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return xxx_messageInfo_AlertConfigDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +102,7 @@ func (m *TemplateDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_TemplateDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +260,7 @@ func valueToGoStringAlerts(v interface{}, typ string) string {
 func (m *AlertConfigDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -267,41 +268,50 @@ func (m *AlertConfigDesc) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *AlertConfigDesc) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *AlertConfigDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.User) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintAlerts(dAtA, i, uint64(len(m.User)))
-		i += copy(dAtA[i:], m.User)
-	}
-	if len(m.RawConfig) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintAlerts(dAtA, i, uint64(len(m.RawConfig)))
-		i += copy(dAtA[i:], m.RawConfig)
-	}
 	if len(m.Templates) > 0 {
-		for _, msg := range m.Templates {
-			dAtA[i] = 0x1a
-			i++
-			i = encodeVarintAlerts(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Templates) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Templates[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintAlerts(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x1a
 		}
 	}
-	return i, nil
+	if len(m.RawConfig) > 0 {
+		i -= len(m.RawConfig)
+		copy(dAtA[i:], m.RawConfig)
+		i = encodeVarintAlerts(dAtA, i, uint64(len(m.RawConfig)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.User) > 0 {
+		i -= len(m.User)
+		copy(dAtA[i:], m.User)
+		i = encodeVarintAlerts(dAtA, i, uint64(len(m.User)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *TemplateDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -309,33 +319,42 @@ func (m *TemplateDesc) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TemplateDesc) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TemplateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Filename) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintAlerts(dAtA, i, uint64(len(m.Filename)))
-		i += copy(dAtA[i:], m.Filename)
-	}
 	if len(m.Body) > 0 {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Body)
+		copy(dAtA[i:], m.Body)
 		i = encodeVarintAlerts(dAtA, i, uint64(len(m.Body)))
-		i += copy(dAtA[i:], m.Body)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if len(m.Filename) > 0 {
+		i -= len(m.Filename)
+		copy(dAtA[i:], m.Filename)
+		i = encodeVarintAlerts(dAtA, i, uint64(len(m.Filename)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintAlerts(dAtA []byte, offset int, v uint64) int {
+	offset -= sovAlerts(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *AlertConfigDesc) Size() (n int) {
 	if m == nil {
@@ -378,14 +397,7 @@ func (m *TemplateDesc) Size() (n int) {
 }
 
 func sovAlerts(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozAlerts(x uint64) (n int) {
 	return sovAlerts(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -394,10 +406,15 @@ func (this *AlertConfigDesc) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForTemplates := "[]*TemplateDesc{"
+	for _, f := range this.Templates {
+		repeatedStringForTemplates += strings.Replace(f.String(), "TemplateDesc", "TemplateDesc", 1) + ","
+	}
+	repeatedStringForTemplates += "}"
 	s := strings.Join([]string{`&AlertConfigDesc{`,
 		`User:` + fmt.Sprintf("%v", this.User) + `,`,
 		`RawConfig:` + fmt.Sprintf("%v", this.RawConfig) + `,`,
-		`Templates:` + strings.Replace(fmt.Sprintf("%v", this.Templates), "TemplateDesc", "TemplateDesc", 1) + `,`,
+		`Templates:` + repeatedStringForTemplates + `,`,
 		`}`,
 	}, "")
 	return s

@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -18,7 +17,6 @@ var (
 		Help:      "Number of times a request is retried.",
 		Buckets:   []float64{0, 1, 2, 3, 4, 5},
 	})
-	errCanceled = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
 )
 
 type retry struct {
@@ -46,7 +44,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {
 		if ctx.Err() != nil {
-			return nil, errCanceled
+			return nil, ctx.Err()
 		}
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {

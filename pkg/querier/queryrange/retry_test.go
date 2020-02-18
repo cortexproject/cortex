@@ -78,7 +78,7 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 		}),
 	).Do(ctx, nil)
 	require.Equal(t, int32(0), try)
-	require.Equal(t, errCanceled, err)
+	require.Equal(t, ctx.Err(), err)
 
 	ctx, cancel = context.WithCancel(context.Background())
 	_, err = NewRetryMiddleware(log.NewNopLogger(), 5).Wrap(
@@ -89,5 +89,5 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 		}),
 	).Do(ctx, nil)
 	require.Equal(t, int32(1), try)
-	require.Equal(t, errCanceled, err)
+	require.Equal(t, ctx.Err(), err)
 }

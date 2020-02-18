@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
@@ -418,8 +419,61 @@ func (s *HTTPService) NetworkHTTPEndpointFor(networkName string) string {
 	return s.NetworkEndpointFor(networkName, s.httpPort)
 }
 
-func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
-	lastValue := 0.0
+func sumValues(family *io_prometheus_client.MetricFamily) float64 {
+	sum := 0.0
+	for _, m := range family.Metric {
+		if m.GetGauge() != nil {
+			sum += m.GetGauge().GetValue()
+		} else if m.GetCounter() != nil {
+			sum += m.GetCounter().GetValue()
+		} else if m.GetHistogram() != nil {
+			sum += float64(m.GetHistogram().GetSampleCount())
+		}
+	}
+	return sum
+}
+
+func Equals(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("equals: expected one value")
+		}
+		return sums[0] == value || math.IsNaN(sums[0]) && math.IsNaN(value)
+	}
+}
+
+// EqualsAmongTwo returns true if first sum is equal to the second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func EqualsAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("equalsAmongTwo: expected two values")
+	}
+	return sums[0] == sums[1]
+}
+
+// GreaterAmongTwo returns true if first sum is greater than second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func GreaterAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("greaterAmongTwo: expected two values")
+	}
+	return sums[0] > sums[1]
+}
+
+// LessAmongTwo returns true if first sum is smaller than second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func LessAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("lessAmongTwo: expected two values")
+	}
+	return sums[0] < sums[1]
+}
+
+func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
+	sums := make([]float64, len(metricNames))
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		metrics, err := s.metrics()
@@ -433,28 +487,22 @@ func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
 			return err
 		}
 
-		sum := 0.0
-		// Check if the metric is exported.
-		mf, ok := families[metric]
-		if ok {
-			for _, m := range mf.Metric {
-				if m.GetGauge() != nil {
-					sum += m.GetGauge().GetValue()
-				} else if m.GetCounter() != nil {
-					sum += m.GetCounter().GetValue()
-				} else if m.GetHistogram() != nil {
-					sum += float64(m.GetHistogram().GetSampleCount())
-				}
+		for i, m := range metricNames {
+			sums[i] = 0.0
+
+			// Check if the metric is exported.
+			mf, ok := families[m]
+			if ok {
+				sums[i] = sumValues(mf)
 			}
 		}
 
-		if sum == value || math.IsNaN(sum) && math.IsNaN(value) {
+		if isExpected(sums...) {
 			return nil
 		}
-		lastValue = sum
 
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find a metric %s with value %v. LastValue: %v", metric, value, lastValue)
+	return fmt.Errorf("unable to find a metrics %s with expected values. LastValues: %v", metricNames, sums)
 }

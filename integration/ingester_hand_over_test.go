@@ -32,7 +32,7 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 
 		// Wait until the first table-manager sync has completed, so that we're
 		// sure the tables have been created.
-		require.NoError(t, tableManager.WaitSumMetric("cortex_dynamo_sync_tables_seconds", 1))
+		require.NoError(t, tableManager.WaitSumMetrics(e2e.Equals(1), "cortex_dynamo_sync_tables_seconds"))
 	})
 }
 
@@ -53,8 +53,8 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
 
 	// Wait until both the distributor and querier have updated the ring.
-	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
-	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)

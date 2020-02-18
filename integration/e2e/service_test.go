@@ -69,7 +69,7 @@ metric_b 1000
 		MaxBackoff: 600 * time.Millisecond,
 		MaxRetries: 50,
 	})
-	require.NoError(t, s.WaitSumMetric("metric_a", 221))
+	require.NoError(t, s.WaitSumMetrics(Equals(221), "metric_a"))
 
 	// No retry.
 	s.SetBackoff(util.BackoffConfig{
@@ -77,7 +77,16 @@ metric_b 1000
 		MaxBackoff: 0,
 		MaxRetries: 1,
 	})
-	require.Error(t, s.WaitSumMetric("metric_a", 16))
+	require.Error(t, s.WaitSumMetrics(Equals(16), "metric_a"))
+
+	require.NoError(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_a"))
+	require.Error(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_b"))
+
+	require.NoError(t, s.WaitSumMetrics(GreaterAmongTwo, "metric_b", "metric_a"))
+	require.Error(t, s.WaitSumMetrics(GreaterAmongTwo, "metric_a", "metric_b"))
+
+	require.NoError(t, s.WaitSumMetrics(LessAmongTwo, "metric_a", "metric_b"))
+	require.Error(t, s.WaitSumMetrics(LessAmongTwo, "metric_b", "metric_a"))
 }
 
 func TestWaitSumMetric_Nan(t *testing.T) {
@@ -137,13 +146,5 @@ metric_b 1000
 		MaxBackoff: 600 * time.Millisecond,
 		MaxRetries: 50,
 	})
-	require.NoError(t, s.WaitSumMetric("metric_a", math.NaN()))
-
-	// No retry.
-	s.SetBackoff(util.BackoffConfig{
-		MinBackoff: 0,
-		MaxBackoff: 0,
-		MaxRetries: 1,
-	})
-	require.Error(t, s.WaitSumMetric("metric_a", 16))
+	require.NoError(t, s.WaitSumMetrics(Equals(math.NaN()), "metric_a"))
 }

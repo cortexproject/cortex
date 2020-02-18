@@ -1413,6 +1413,10 @@ cassandra:
   # CLI flag: -cassandra.password
   [password: <string> | default = ""]
 
+  # File containing password to use when connecting to cassandra.
+  # CLI flag: -cassandra.password-file
+  [password_file: <string> | default = ""]
+
   # If set, when authenticating with cassandra a custom authenticator will be
   # expected during the handshake. This flag can be set multiple times.
   # CLI flag: -cassandra.custom-authenticator

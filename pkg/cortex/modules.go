@@ -262,7 +262,6 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	subrouter := t.server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(t.httpAuthMiddleware.Wrap(promRouter))
 	subrouter.Path("/read").Handler(t.httpAuthMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
-	subrouter.Path("/validate_expr").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.ValidateExprHandler)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
 

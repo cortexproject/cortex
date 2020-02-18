@@ -13,9 +13,18 @@ Cortex supports Prometheus'
 [`remote_read`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read)
 and
 [`remote_write`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write)
-APIs.  The encoding is Protobuf over http.
+APIs.
 
-Read is on `/api/prom/read` and write is on `/api/prom/push`.
+The API for writes accepts a HTTP POST request with a body containing a request encoded with [Protocol Buffers](https://developers.google.com/protocol-buffers) and compressed with [Snappy](https://github.com/google/snappy).
+The HTTP path for writes is `/api/prom/push`.
+The definition of the protobuf message can be found in the [Cortex codebase](https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L30) or in the [Prometheus codebase](https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto#L22).
+The HTTP request should contain the header `X-Prometheus-Remote-Write-Version` set to `0.1.0`.
+
+The API for reads also accepts HTTP/protobuf/snappy, and the path is `/api/prom/read`.
+
+See the Prometheus documentation for [more information on the Prometheus remote write format](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations).
+
+
 
 ## Alerts & Rules API
 

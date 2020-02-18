@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-// TimeSeriesSeriesSet is a wrapper around a client.TimeSeries slice to implement to SeriesSet interface
-type TimeSeriesSeriesSet struct {
+// timeSeriesSeriesSet is a wrapper around a client.TimeSeries slice to implement to SeriesSet interface
+type timeSeriesSeriesSet struct {
 	ts []client.TimeSeries
 	i  int
 }
@@ -33,22 +33,22 @@ func (b byTimeSeriesLabels) Less(i, j int) bool {
 	return labels.Compare(client.FromLabelAdaptersToLabels(b[i].Labels), client.FromLabelAdaptersToLabels(b[j].Labels)) < 0
 }
 
-func newTimeSeriesSeriesSet(series []client.TimeSeries) *TimeSeriesSeriesSet {
+func newTimeSeriesSeriesSet(series []client.TimeSeries) *timeSeriesSeriesSet {
 	sort.Sort(byTimeSeriesLabels(series))
-	return &TimeSeriesSeriesSet{
+	return &timeSeriesSeriesSet{
 		ts: series,
 		i:  -1,
 	}
 }
 
 // Next implements SeriesSet interface
-func (t *TimeSeriesSeriesSet) Next() bool { t.i++; return t.i < len(t.ts) }
+func (t *timeSeriesSeriesSet) Next() bool { t.i++; return t.i < len(t.ts) }
 
 // At implements SeriesSet interface
-func (t *TimeSeriesSeriesSet) At() storage.Series { return &Timeseries{series: t.ts[t.i]} }
+func (t *timeSeriesSeriesSet) At() storage.Series { return &Timeseries{series: t.ts[t.i]} }
 
 // Err implements SeriesSet interface
-func (t *TimeSeriesSeriesSet) Err() error { return nil }
+func (t *timeSeriesSeriesSet) Err() error { return nil }
 
 // Labels implements the storage.Series interface
 func (t *Timeseries) Labels() labels.Labels {

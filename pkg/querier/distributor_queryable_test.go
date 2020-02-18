@@ -68,18 +68,20 @@ func TestIngesterStreaming(t *testing.T) {
 	require.NoError(t, err)
 
 	d := &mockDistributor{
-		r: []client.TimeSeriesChunk{
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "bar", Value: "baz"},
+		r: &client.QueryStreamResponse{
+			Chunkseries: []client.TimeSeriesChunk{
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "bar", Value: "baz"},
+					},
+					Chunks: clientChunks,
 				},
-				Chunks: clientChunks,
-			},
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "foo", Value: "bar"},
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
+					},
+					Chunks: clientChunks,
 				},
-				Chunks: clientChunks,
 			},
 		},
 	}

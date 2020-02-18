@@ -2,10 +2,12 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,6 +133,23 @@ func TestFrontendCancel(t *testing.T) {
 		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
 	}
 	testFrontend(t, handler, test)
+}
+
+func TestFrontendCancelStatusCode(t *testing.T) {
+	for _, test := range []struct {
+		status int
+		err    error
+	}{
+		{http.StatusInternalServerError, errors.New("unknown")},
+		{http.StatusGatewayTimeout, context.DeadlineExceeded},
+		{statusRequestCanceled, context.Canceled},
+	} {
+		t.Run(test.err.Error(), func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeError(w, test.err)
+			require.Equal(t, test.status, w.Result().StatusCode)
+		})
+	}
 }
 
 func defaultOverrides(t *testing.T) *validation.Overrides {

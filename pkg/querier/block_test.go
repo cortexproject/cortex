@@ -31,7 +31,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 	}{
 		"empty series": {
 			series:         &storepb.Series{},
-			expectedMetric: labels.Labels{},
+			expectedMetric: labels.Labels(nil),
 			expectedErr:    "no chunks",
 		},
 		"should remove the external label added by the shipper": {
@@ -82,6 +82,8 @@ func TestBlockQuerierSeries(t *testing.T) {
 				assert.Equal(t, float64(testData.expectedSamples[sampleIx].Value), val)
 				sampleIx++
 			}
+			// make sure we've got all expected samples
+			require.Equal(t, sampleIx, len(testData.expectedSamples))
 
 			if testData.expectedErr != "" {
 				require.EqualError(t, it.Err(), testData.expectedErr)

@@ -38,8 +38,9 @@ var (
 		Help:      "Number of queries in the queue.",
 	})
 
-	errTooManyRequest     = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	statusRequestCanceled = 499
+	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
+	errCanceled         = httpgrpc.Errorf(499, context.Canceled.Error())
+	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 )
 
 // Config for a Frontend.
@@ -173,9 +174,9 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 func writeError(w http.ResponseWriter, err error) {
 	switch err {
 	case context.Canceled:
-		err = httpgrpc.Errorf(statusRequestCanceled, err.Error())
+		err = errCanceled
 	case context.DeadlineExceeded:
-		err = httpgrpc.Errorf(http.StatusGatewayTimeout, err.Error())
+		err = errDeadlineExceeded
 	default:
 	}
 	server.WriteError(w, err)

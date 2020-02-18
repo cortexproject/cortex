@@ -142,7 +142,7 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}{
 		{http.StatusInternalServerError, errors.New("unknown")},
 		{http.StatusGatewayTimeout, context.DeadlineExceeded},
-		{statusRequestCanceled, context.Canceled},
+		{499, context.Canceled},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()

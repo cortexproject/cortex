@@ -7,15 +7,9 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_overrides_last_reload_successful",
-	Help: "Whether the last config reload attempt was successful.",
-})
 
 // Loader loads the configuration from file.
 type Loader func(filename string) (interface{}, error)
@@ -45,13 +39,23 @@ type Manager struct {
 
 	configMtx sync.RWMutex
 	config    interface{}
+
+	configLoadSuccess prometheus.Gauge
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
-func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
+func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer) (*Manager, error) {
 	mgr := Manager{
 		cfg:  cfg,
 		quit: make(chan struct{}),
+		configLoadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_overrides_last_reload_successful",
+			Help: "Whether the last config reload attempt was successful.",
+		}),
+	}
+
+	if registerer != nil {
+		registerer.MustRegister(mgr.configLoadSuccess)
 	}
 
 	if cfg.LoadPath != "" {
@@ -120,10 +124,10 @@ func (om *Manager) loop() {
 func (om *Manager) loadConfig() error {
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
-		overridesReloadSuccess.Set(0)
+		om.configLoadSuccess.Set(0)
 		return err
 	}
-	overridesReloadSuccess.Set(1)
+	om.configLoadSuccess.Set(1)
 
 	om.setConfig(cfg)
 	om.callListeners(cfg)

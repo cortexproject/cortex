@@ -86,11 +86,6 @@ Supported contents and default values of the config file:
 # and used by the 'configs' service to expose APIs to manage them.
 [configdb: <configdb_config>]
 
-# The configstore_config configures the config database storing rules and
-# alerts, and is used by the Cortex alertmanager.
-# The CLI flags prefix for this block config is: alertmanager
-[config_store: <configstore_config>]
-
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
 
@@ -102,6 +97,9 @@ runtime_config:
   # File with the configuration that can be updated in runtime.
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
+
+# The memberlist_config configures the Gossip memberlist.
+[memberlist: <memberlist_config>]
 ```
 
 ## `server_config`
@@ -271,10 +269,6 @@ ha_tracker:
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [etcd: <etcd_config>]
 
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: distributor.ha-tracker
-    [memberlist: <memberlist_config>]
-
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -distributor.ha-tracker.multi.primary
@@ -327,10 +321,6 @@ ring:
     # The etcd_config configures the etcd client.
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
-
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
 
     multi:
       # Primary backend storage used by multi-client.
@@ -402,9 +392,6 @@ lifecycler:
 
       # The etcd_config configures the etcd client.
       [etcd: <etcd_config>]
-
-      # The memberlist_config configures the Gossip memberlist.
-      [memberlist: <memberlist_config>]
 
       multi:
         # Primary backend storage used by multi-client.
@@ -612,7 +599,7 @@ results_cache:
 
     # The default validity of entries for caches unless overridden.
     # CLI flag: -frontend.default-validity
-    [defaul_validity: <duration> | default = 0s]
+    [default_validity: <duration> | default = 0s]
 
     background:
       # How many goroutines to use to write back to memcache.
@@ -740,10 +727,6 @@ ring:
     # The CLI flags prefix for this block config is: ruler.ring
     [etcd: <etcd_config>]
 
-    # The memberlist_config configures the Gossip memberlist.
-    # The CLI flags prefix for this block config is: ruler.ring
-    [memberlist: <memberlist_config>]
-
     multi:
       # Primary backend storage used by multi-client.
       # CLI flag: -ruler.ring.multi.primary
@@ -833,6 +816,22 @@ externalurl:
 # Root of URL to generate if config is http://internal.monitor
 # CLI flag: -alertmanager.configs.auto-webhook-root
 [autowebhookroot: <string> | default = ""]
+
+store:
+  # Type of backend to use to store alertmanager configs. Supported values are:
+  # "configdb", "local".
+  # CLI flag: -alertmanager.storage.type
+  [type: <string> | default = "configdb"]
+
+  # The configstore_config configures the config database storing rules and
+  # alerts, and is used by the Cortex alertmanager.
+  # The CLI flags prefix for this block config is: alertmanager
+  [configdb: <configstore_config>]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager.storage.local.path
+    [path: <string> | default = ""]
 ```
 
 ## `table_manager_config`
@@ -1425,6 +1424,11 @@ cassandra:
   # CLI flag: -cassandra.password-file
   [password_file: <string> | default = ""]
 
+  # If set, when authenticating with cassandra a custom authenticator will be
+  # expected during the handshake. This flag can be set multiple times.
+  # CLI flag: -cassandra.custom-authenticator
+  [custom_authenticators: <list of string> | default = ]
+
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
   [timeout: <duration> | default = 2s]
@@ -1468,7 +1472,7 @@ index_queries_cache_config:
   # Cache config for index entry reading. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-read.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry reading. How many goroutines to use to write
@@ -1513,7 +1517,7 @@ chunk_cache_config:
   # Cache config for chunks. The default validity of entries for caches unless
   # overridden.
   # CLI flag: -default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for chunks. How many goroutines to use to write back to
@@ -1548,7 +1552,7 @@ write_dedupe_cache_config:
   # Cache config for index entry writing. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-write.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry writing. How many goroutines to use to write
@@ -1743,62 +1747,72 @@ The `memberlist_config` configures the Gossip memberlist.
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
-# CLI flag: -<prefix>.memberlist.nodename
+# CLI flag: -memberlist.nodename
 [node_name: <string> | default = ""]
 
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.stream-timeout
+# CLI flag: -memberlist.stream-timeout
 [stream_timeout: <duration> | default = 0s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
-# CLI flag: -<prefix>.memberlist.retransmit-factor
+# CLI flag: -memberlist.retransmit-factor
 [retransmit_factor: <int> | default = 0]
 
 # How often to use pull/push sync. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.pullpush-interval
+# CLI flag: -memberlist.pullpush-interval
 [pull_push_interval: <duration> | default = 0s]
 
 # How often to gossip. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.gossip-interval
+# CLI flag: -memberlist.gossip-interval
 [gossip_interval: <duration> | default = 0s]
 
 # How many nodes to gossip to. Uses memberlist LAN defaults if 0.
-# CLI flag: -<prefix>.memberlist.gossip-nodes
+# CLI flag: -memberlist.gossip-nodes
 [gossip_nodes: <int> | default = 0]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 0s]
+
+# How soon can dead node's name be reclaimed with new address. Defaults to 0,
+# which is disabled.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
 
 # Other cluster members to join. Can be specified multiple times. Memberlist
 # store is EXPERIMENTAL.
-# CLI flag: -<prefix>.memberlist.join
+# CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
 # If this node fails to join memberlist cluster, abort.
-# CLI flag: -<prefix>.memberlist.abort-if-join-fails
+# CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = true]
 
 # How long to keep LEFT ingesters in the ring.
-# CLI flag: -<prefix>.memberlist.left-ingesters-timeout
+# CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m0s]
 
 # Timeout for leaving memberlist cluster.
-# CLI flag: -<prefix>.memberlist.leave-timeout
+# CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
-# CLI flag: -<prefix>.memberlist.bind-addr
+# CLI flag: -memberlist.bind-addr
 [bind_addr: <list of string> | default = ]
 
 # Port to listen on for gossip messages.
-# CLI flag: -<prefix>.memberlist.bind-port
+# CLI flag: -memberlist.bind-port
 [bind_port: <int> | default = 7946]
 
 # Timeout used when connecting to other nodes to send packet.
-# CLI flag: -<prefix>.memberlist.packet-dial-timeout
+# CLI flag: -memberlist.packet-dial-timeout
 [packet_dial_timeout: <duration> | default = 5s]
 
 # Timeout for writing 'packet' data.
-# CLI flag: -<prefix>.memberlist.packet-write-timeout
+# CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 ```
 

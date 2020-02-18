@@ -55,3 +55,14 @@ ruler:
 
 storage:
   engine: tsdb
+
+compactor:
+  compaction_interval: 30s
+  data_dir:            /tmp/cortex-compactor
+  consistency_delay:   1m
+  sharding_enabled:    true
+  sharding_ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500

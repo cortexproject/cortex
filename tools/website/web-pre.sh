@@ -22,6 +22,7 @@ echo "$(cat <<EOT
 ---
 title: Code of Conduct
 type: docs
+originalpath: code-of-conduct.md
 menu:
   contributing:
     weight: 1
@@ -34,6 +35,7 @@ echo "$(cat <<EOT
 ---
 title: Changelog
 type: docs
+originalpath: CHANGELOG.md
 menu:
   main:
     weight: 2
@@ -46,6 +48,7 @@ echo "$(cat <<EOT
 ---
 title: Contributing
 type: docs
+originalpath: CONTRIBUTING.md
 menu:
   contributing:
     weight: 3

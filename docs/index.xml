@@ -3281,8 +3281,13 @@ and development.&lt;/p&gt;
 &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read&#34;&gt;&lt;code&gt;remote_read&lt;/code&gt;&lt;/a&gt;
 and
 &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write&#34;&gt;&lt;code&gt;remote_write&lt;/code&gt;&lt;/a&gt;
-APIs. The encoding is Protobuf over http.&lt;/p&gt;
-&lt;p&gt;Read is on &lt;code&gt;/api/prom/read&lt;/code&gt; and write is on &lt;code&gt;/api/prom/push&lt;/code&gt;.&lt;/p&gt;
+APIs.&lt;/p&gt;
+&lt;p&gt;The API for writes accepts a HTTP POST request with a body containing a request encoded with &lt;a href=&#34;https://developers.google.com/protocol-buffers&#34;&gt;Protocol Buffers&lt;/a&gt; and compressed with &lt;a href=&#34;https://github.com/google/snappy&#34;&gt;Snappy&lt;/a&gt;.
+The HTTP path for writes is &lt;code&gt;/api/prom/push&lt;/code&gt;.
+The definition of the protobuf message can be found in the &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L30&#34;&gt;Cortex codebase&lt;/a&gt; or in the &lt;a href=&#34;https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto#L22&#34;&gt;Prometheus codebase&lt;/a&gt;.
+The HTTP request should contain the header &lt;code&gt;X-Prometheus-Remote-Write-Version&lt;/code&gt; set to &lt;code&gt;0.1.0&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The API for reads also accepts HTTP/protobuf/snappy, and the path is &lt;code&gt;/api/prom/read&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;See the Prometheus documentation for &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations&#34;&gt;more information on the Prometheus remote write format&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;alerts-rules-api&#34;&gt;Alerts &amp;amp; Rules API&lt;/h2&gt;
 &lt;p&gt;Cortex supports the Prometheus&amp;rsquo; &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/querying/api/#alerts&#34;&gt;alerts&lt;/a&gt; and &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/querying/api/#rules&#34;&gt;rules&lt;/a&gt; api endpoints. This is supported in the Ruler service and can be enabled using the &lt;code&gt;experimental.ruler.enable-api&lt;/code&gt; flag.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;GET /api/prom/api/v1/rules&lt;/code&gt; - List of alerting and recording rules that are currently loaded&lt;/p&gt;

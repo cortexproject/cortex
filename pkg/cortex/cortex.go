@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
@@ -178,9 +179,9 @@ type Cortex struct {
 	compactor         *compactor.Compactor
 	memberlistKVState *memberlistKVState
 
-	// The chunk store that the querier should use to query the long
+	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	querierChunkStore querier.ChunkStore
+	storeQueryable prom_storage.Queryable
 }
 
 // New makes a new Cortex.

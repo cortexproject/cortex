@@ -49,7 +49,7 @@ const (
 	Distributor
 	Ingester
 	Querier
-	QuerierChunkStore
+	StoreQueryable
 	QueryFrontend
 	Store
 	TableManager
@@ -79,8 +79,8 @@ func (m moduleName) String() string {
 		return "ingester"
 	case Querier:
 		return "querier"
-	case QuerierChunkStore:
-		return "querier-chunk-store"
+	case StoreQueryable:
+		return "store-queryable"
 	case QueryFrontend:
 		return "query-frontend"
 	case TableManager:
@@ -125,8 +125,8 @@ func (m *moduleName) Set(s string) error {
 	case "querier":
 		*m = Querier
 		return nil
-	case "querier-chunk-store":
-		*m = QuerierChunkStore
+	case "store-queryable":
+		*m = StoreQueryable
 		return nil
 	case "query-frontend":
 		*m = QueryFrontend
@@ -238,7 +238,7 @@ func (t *Cortex) stopDistributor() (err error) {
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
-	queryable, engine := querier.New(cfg.Querier, t.distributor, querier.NewChunkStoreQueryable(cfg.Querier, t.querierChunkStore))
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -286,26 +286,25 @@ func (t *Cortex) stopQuerier() error {
 	return nil
 }
 
-func (t *Cortex) initQuerierChunkStore(cfg *Config) error {
+func (t *Cortex) initStoreQueryable(cfg *Config) error {
 	if cfg.Storage.Engine == storage.StorageEngineChunks {
-		t.querierChunkStore = t.store
+		t.storeQueryable = querier.NewChunkStoreQueryable(cfg.Querier, t.store)
 		return nil
 	}
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		store, err := querier.NewBlockQuerier(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		storeQueryable, err := querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}
-
-		t.querierChunkStore = store
+		t.storeQueryable = storeQueryable
 		return nil
 	}
 
 	return fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
 }
 
-func (t *Cortex) stopQuerierChunkStore() error {
+func (t *Cortex) stopStoreQueryable() error {
 	return nil
 }
 
@@ -438,7 +437,7 @@ func (t *Cortex) stopTableManager() error {
 func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
-	queryable, engine := querier.New(cfg.Querier, t.distributor, querier.NewChunkStoreQueryable(cfg.Querier, t.querierChunkStore))
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -586,15 +585,15 @@ var modules = map[moduleName]module{
 	},
 
 	Querier: {
-		deps: []moduleName{Distributor, Store, Ring, Server, QuerierChunkStore},
+		deps: []moduleName{Distributor, Store, Ring, Server, StoreQueryable},
 		init: (*Cortex).initQuerier,
 		stop: (*Cortex).stopQuerier,
 	},
 
-	QuerierChunkStore: {
+	StoreQueryable: {
 		deps: []moduleName{Store},
-		init: (*Cortex).initQuerierChunkStore,
-		stop: (*Cortex).stopQuerierChunkStore,
+		init: (*Cortex).initStoreQueryable,
+		stop: (*Cortex).stopStoreQueryable,
 	},
 
 	QueryFrontend: {
@@ -610,7 +609,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ruler: {
-		deps: []moduleName{Distributor, Store, QuerierChunkStore},
+		deps: []moduleName{Distributor, Store, StoreQueryable},
 		init: (*Cortex).initRuler,
 		stop: (*Cortex).stopRuler,
 	},

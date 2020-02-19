@@ -195,6 +195,9 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Replicas:             replicas,
 	}
 
+	// pool cannot fail to start, so just ignore errors.
+	_ = d.ingesterPool.StartAsync(context.Background())
+
 	return d, nil
 }
 

@@ -80,7 +80,8 @@ func TestIngesterCache(t *testing.T) {
 		RemoteTimeout:       50 * time.Millisecond,
 		ClientCleanupPeriod: 10 * time.Second,
 	}, mockReadRing{}, factory, log.NewNopLogger())
-	defer pool.Stop()
+	require.NoError(t, pool.StartAsync(context.Background()))
+	defer pool.StopAsync()
 
 	_, err := pool.GetClientFor("1")
 	require.NoError(t, err)

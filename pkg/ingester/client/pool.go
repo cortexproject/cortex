@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -43,13 +44,12 @@ func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Pool holds a cache of grpc_health_v1 clients.
 type Pool struct {
+	services.BasicService
+
 	cfg     PoolConfig
 	ring    ring.ReadRing
 	factory Factory
 	logger  log.Logger
-
-	quit chan struct{}
-	done sync.WaitGroup
 
 	sync.RWMutex
 	clients map[string]grpc_health_v1.HealthClient
@@ -62,19 +62,15 @@ func NewPool(cfg PoolConfig, ring ring.ReadRing, factory Factory, logger log.Log
 		ring:    ring,
 		factory: factory,
 		logger:  logger,
-		quit:    make(chan struct{}),
 
 		clients: map[string]grpc_health_v1.HealthClient{},
 	}
 
-	p.done.Add(1)
-	go p.loop()
+	services.InitBasicService(&p.BasicService, nil, p.loop, nil)
 	return p
 }
 
-func (p *Pool) loop() {
-	defer p.done.Done()
-
+func (p *Pool) loop(ctx context.Context) error {
 	cleanupClients := time.NewTicker(p.cfg.ClientCleanupPeriod)
 	defer cleanupClients.Stop()
 
@@ -85,16 +81,10 @@ func (p *Pool) loop() {
 			if p.cfg.HealthCheckIngesters {
 				p.cleanUnhealthy()
 			}
-		case <-p.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
-}
-
-// Stop the pool's background cleanup goroutine.
-func (p *Pool) Stop() {
-	close(p.quit)
-	p.done.Wait()
 }
 
 func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {

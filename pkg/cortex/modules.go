@@ -338,26 +338,22 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 	})
 }
 
-func (t *Cortex) initStoreQueryable(cfg *Config) error {
+func (t *Cortex) storeQueryableService(cfg *Config) (services.Service, error) {
 	if cfg.Storage.Engine == storage.StorageEngineChunks {
 		t.storeQueryable = querier.NewChunkStoreQueryable(cfg.Querier, t.store)
-		return nil
+		return nil, nil
 	}
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		storeQueryable, err := querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		t.storeQueryable = storeQueryable
-		return nil
+		return storeQueryable, nil
 	}
 
-	return fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
-}
-
-func (t *Cortex) stopStoreQueryable() error {
-	return nil
+	return nil, fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
 }
 
 func (t *Cortex) ingesterService(cfg *Config) (serv services.Service, err error) {
@@ -717,9 +713,8 @@ var modules = map[moduleName]module{
 	},
 
 	StoreQueryable: {
-		deps: []moduleName{Store},
-		init: (*Cortex).initStoreQueryable,
-		stop: (*Cortex).stopStoreQueryable,
+		deps:           []moduleName{Store},
+		wrappedService: (*Cortex).storeQueryableService,
 	},
 
 	QueryFrontend: {

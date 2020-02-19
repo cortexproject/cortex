@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -32,6 +33,8 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
+	services.BasicService
+
 	logger             log.Logger
 	cfg                tsdb.Config
 	bucket             objstore.Bucket
@@ -50,9 +53,7 @@ type UserStore struct {
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
 
-	// Used to cancel workers and wait until done.
-	workers       sync.WaitGroup
-	workersCancel context.CancelFunc
+	serv *grpc.Server
 
 	// Metrics.
 	syncTimes prometheus.Histogram
@@ -60,9 +61,6 @@ type UserStore struct {
 
 // NewUserStore returns a new UserStore
 func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
-	var err error
-
-	workersCtx, workersCancel := context.WithCancel(context.Background())
 	indexCacheRegistry := prometheus.NewRegistry()
 
 	u := &UserStore{
@@ -73,7 +71,6 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		logLevel:           logLevel,
 		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
 		indexCacheMetrics:  newTSDBIndexCacheMetrics(indexCacheRegistry),
-		workersCancel:      workersCancel,
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -82,6 +79,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	}
 
 	// Configure the time range to sync all blocks.
+	var err error
 	if err = u.syncMint.Set("0000-01-01T00:00:00Z"); err != nil {
 		return nil, err
 	}
@@ -98,41 +96,39 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		registerer.MustRegister(u.syncTimes, u.bucketStoreMetrics, u.indexCacheMetrics)
 	}
 
-	serv := grpc.NewServer()
-	storepb.RegisterStoreServer(serv, u)
+	services.InitBasicService(&u.BasicService, u.starting, u.syncStoresLoop, u.stopping)
+	return u, nil
+}
+
+func (u *UserStore) starting(ctx context.Context) error {
+	u.serv = grpc.NewServer()
+	storepb.RegisterStoreServer(u.serv, u)
 	l, err := net.Listen("tcp", "")
 	if err != nil {
-		return nil, err
+		return err
 	}
-	go serv.Serve(l) //nolint:errcheck
+	go u.serv.Serve(l) //nolint:errcheck
 
 	cc, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	u.client = storepb.NewStoreClient(cc)
 
-	// If the sync is disabled we never sync blocks, which means the bucket store
-	// will be empty and no series will be returned once queried.
 	if u.cfg.BucketStore.SyncInterval > 0 {
 		// Run an initial blocks sync, required in order to be able to serve queries.
-		if err := u.initialSync(workersCtx); err != nil {
-			return nil, err
+		if err := u.initialSync(ctx); err != nil {
+			return err
 		}
-
-		// Periodically sync the blocks.
-		u.workers.Add(1)
-		go u.syncStoresLoop(workersCtx)
 	}
 
-	return u, nil
+	return nil
 }
 
-// Stop the blocks sync and waits until done.
-func (u *UserStore) Stop() {
-	u.workersCancel()
-	u.workers.Wait()
+func (u *UserStore) stopping() error {
+	u.serv.Stop()
+	return nil
 }
 
 // initialSync iterates over the storage bucket creating user bucket stores, and calling initialSync on each of them
@@ -151,8 +147,13 @@ func (u *UserStore) initialSync(ctx context.Context) error {
 }
 
 // syncStoresLoop periodically calls syncStores() to synchronize the blocks for all tenants.
-func (u *UserStore) syncStoresLoop(ctx context.Context) {
-	defer u.workers.Done()
+func (u *UserStore) syncStoresLoop(ctx context.Context) error {
+	// If the sync is disabled we never sync blocks, which means the bucket store
+	// will be empty and no series will be returned once queried.
+	if u.cfg.BucketStore.SyncInterval <= 0 {
+		<-ctx.Done()
+		return nil
+	}
 
 	syncInterval := u.cfg.BucketStore.SyncInterval
 
@@ -160,7 +161,7 @@ func (u *UserStore) syncStoresLoop(ctx context.Context) {
 	// sync interval before resynching.
 	select {
 	case <-ctx.Done():
-		return
+		return nil
 	case <-time.After(syncInterval):
 	}
 
@@ -175,12 +176,10 @@ func (u *UserStore) syncStoresLoop(ctx context.Context) {
 		return nil
 	})
 
-	if err != nil {
-		// This should never occur because the rununtil.Repeat() returns error
-		// only if the callback function returns error (which doesn't), but since
-		// we have to handle the error because of the linter, it's better to log it.
-		level.Error(u.logger).Log("msg", "blocks synchronization has been halted due to an unexpected error", "err", err)
-	}
+	// This should never occur because the rununtil.Repeat() returns error
+	// only if the callback function returns error (which doesn't), but since
+	// we have to handle the error because of the linter, it's better to log it.
+	return errors.Wrap(err, "blocks synchronization has been halted due to an unexpected error")
 }
 
 // syncStores iterates over the storage bucket creating user bucket stores

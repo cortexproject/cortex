@@ -64,11 +64,19 @@ func TestUserStore_InitialSync(t *testing.T) {
 			testData.setup(bucketClient)
 
 			us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
-			if us != nil {
-				defer us.Stop()
+			if err == nil {
+				err = us.StartAsync(context.Background())
+				if err == nil {
+					err = us.AwaitRunning(context.Background())
+					if us.FailureCase() != nil {
+						err = us.FailureCase()
+					}
+				}
+
+				defer us.StopAsync()
 			}
 
-			require.Equal(t, err, testData.expectedErr)
+			require.Equal(t, testData.expectedErr, err)
 			bucketClient.AssertNumberOfCalls(t, "Iter", testData.expectedIter)
 		})
 	}
@@ -87,7 +95,9 @@ func TestUserStore_syncUserStores(t *testing.T) {
 
 	us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
-	defer us.Stop()
+	require.NoError(t, us.StartAsync(context.Background()))
+	require.NoError(t, us.AwaitRunning(context.Background()))
+	defer us.StopAsync()
 
 	// Sync user stores and count the number of times the callback is called.
 	storesCount := int32(0)

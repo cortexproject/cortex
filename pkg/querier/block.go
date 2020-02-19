@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -26,6 +27,8 @@ import (
 
 // BlockQueryable is a storage.Queryable implementation for blocks storage
 type BlockQueryable struct {
+	services.BasicService
+
 	us *UserStore
 }
 
@@ -46,12 +49,31 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 	}
 
 	b := &BlockQueryable{us: us}
+	services.InitIdleService(&b.BasicService, b.starting, b.stopping)
 
 	return b, nil
 }
 
+func (b *BlockQueryable) starting(ctx context.Context) error {
+	err := b.us.StartAsync(ctx)
+	if err != nil {
+		return err
+	}
+
+	return errors.Wrap(b.us.AwaitRunning(ctx), "failed to start UserStore")
+}
+
+func (b *BlockQueryable) stopping() error {
+	b.us.StopAsync()
+	return errors.Wrap(b.us.AwaitTerminated(context.Background()), "stopping UserStore")
+}
+
 // Querier returns a new Querier on the storage.
 func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	if s := b.State(); s != services.Running {
+		return nil, errors.Errorf("BlockQueryable is in invalid state: %v", s)
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, promql.ErrStorage{Err: err}

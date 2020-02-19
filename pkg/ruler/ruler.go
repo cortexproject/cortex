@@ -174,6 +174,10 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		if err != nil {
 			return nil, err
 		}
+		err = ruler.ring.StartAsync(context.Background())
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to start ruler ring")
+		}
 	}
 
 	go ruler.run()
@@ -198,7 +202,7 @@ func (r *Ruler) Stop() {
 		level.Info(r.logger).Log("msg", "attempting shutdown lifecycle")
 		r.lifecycler.Shutdown()
 		level.Info(r.logger).Log("msg", "shutting down the ring")
-		r.ring.Stop()
+		r.ring.StopAsync()
 	}
 
 	level.Info(r.logger).Log("msg", "stopping user managers")

@@ -58,7 +58,8 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	defer r.StopAsync()
 
 	// Add the first ingester to the ring
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
@@ -165,7 +166,8 @@ func TestRingRestart(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	defer r.StopAsync()
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
@@ -241,7 +243,8 @@ func TestCheckReady(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	defer r.StopAsync()
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
@@ -269,7 +272,8 @@ func TestTokensOnDisk(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	defer r.StopAsync()
 
 	tokenDir, err := ioutil.TempDir(os.TempDir(), "tokens_on_disk")
 	require.NoError(t, err)
@@ -341,7 +345,8 @@ func TestJoinInLeavingState(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	defer r.StopAsync()
 
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
 	cfg.NumTokens = 2

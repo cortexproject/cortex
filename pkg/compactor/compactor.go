@@ -173,6 +173,10 @@ func newCompactor(
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize compactor ring")
 		}
+		err = ring.StartAsync(context.Background())
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to start compactor ring")
+		}
 
 		c.ring = ring
 	}
@@ -205,7 +209,7 @@ func (c *Compactor) Stop() {
 	}
 
 	if c.ring != nil {
-		c.ring.Stop()
+		c.ring.StopAsync()
 	}
 }
 

@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -93,6 +94,8 @@ func TestReplicationStrategy(t *testing.T) {
 			ReplicationFactor: tc.RF,
 		}, "ingester", IngesterRingKey)
 		require.NoError(t, err)
+		require.NoError(t, r.StartAsync(context.Background()))
+		defer r.StopAsync()
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, tc.op)

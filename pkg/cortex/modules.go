@@ -218,16 +218,16 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 	return services.NewService(nil, runFn, nil), nil
 }
 
-func (t *Cortex) initRing(cfg *Config) (err error) {
+func (t *Cortex) ringService(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
-		return
+		return nil, err
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
-	return
+	return t.ring, nil
 }
 
 func (t *Cortex) runtimeConfigService(cfg *Config) (services.Service, error) {
@@ -693,8 +693,8 @@ var modules = map[moduleName]module{
 	},
 
 	Ring: {
-		deps: []moduleName{Server, RuntimeConfig, MemberlistKV},
-		init: (*Cortex).initRing,
+		deps:           []moduleName{Server, RuntimeConfig, MemberlistKV},
+		wrappedService: (*Cortex).ringService,
 	},
 
 	Overrides: {

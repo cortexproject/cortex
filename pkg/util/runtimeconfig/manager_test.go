@@ -1,6 +1,7 @@
 package runtimeconfig
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -76,9 +77,11 @@ func TestNewOverridesManager(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, overridesManager.StartAsync(context.Background()))
 
 	// Cleaning up
-	overridesManager.Stop()
+	overridesManager.StopAsync()
+	require.NoError(t, overridesManager.AwaitTerminated(context.Background()))
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
@@ -110,6 +113,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, overridesManager.StartAsync(context.Background()))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
@@ -137,7 +141,8 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.Equal(t, 100, to.Overrides["user2"].Limit1) // from defaults
 
 	// Cleaning up
-	overridesManager.Stop()
+	overridesManager.StopAsync()
+	require.NoError(t, overridesManager.AwaitTerminated(context.Background()))
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
@@ -158,6 +163,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, overridesManager.StartAsync(context.Background()))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
@@ -207,11 +213,13 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, overridesManager.StartAsync(context.Background()))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(0)
 
-	overridesManager.Stop()
+	overridesManager.StopAsync()
+	require.NoError(t, overridesManager.AwaitTerminated(context.Background()))
 
 	select {
 	case _, ok := <-ch:

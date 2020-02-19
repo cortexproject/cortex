@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/pstibrany/services"
@@ -36,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -165,7 +167,8 @@ type Cortex struct {
 	httpAuthMiddleware middleware.Interface
 
 	// set during initialization
-	serviceMap map[moduleName]services.Service
+	serviceMap     map[moduleName]services.Service
+	serviceManager *services.Manager // set in Run method
 
 	server        *server.Server
 	ring          *ring.Ring
@@ -316,6 +319,10 @@ func (t *Cortex) Run() error {
 		return err
 	}
 
+	t.serviceManager = sm
+	// Let's listen for errors from this manager, and log them.
+	sm.AddListener(t)
+
 	err = sm.StartAsync(context.Background())
 	if err != nil {
 		return err
@@ -328,6 +335,30 @@ func (t *Cortex) Run() error {
 	// Stop all the other services.
 	sm.StopAsync()
 	return sm.AwaitStopped(context.Background())
+}
+
+// services.ManagerListener methods
+func (t *Cortex) Healthy() {
+	level.Info(util.Logger).Log("msg", "Cortex started, all services running")
+}
+
+func (t *Cortex) Stopped() {
+	level.Info(util.Logger).Log("msg", "Cortex stopped")
+}
+
+func (t *Cortex) Failure(service services.Service) {
+	// on any failure, stop entire Cortex
+	t.serviceManager.StopAsync()
+
+	// let's find out which module failed
+	for m, s := range t.serviceMap {
+		if s == service {
+			level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+			return
+		}
+	}
+
+	level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

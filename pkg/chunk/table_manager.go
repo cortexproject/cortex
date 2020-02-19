@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
@@ -178,7 +177,11 @@ func (m *TableManager) loop() {
 	}
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
-	time.Sleep(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval))))
+	select {
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval)))):
+	case <-m.done:
+		return
+	}
 
 	for {
 		select {

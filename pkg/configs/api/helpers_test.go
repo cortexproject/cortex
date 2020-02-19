@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/configs"

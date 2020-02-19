@@ -316,6 +316,22 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}
+	if field.Type == reflect.TypeOf(flagext.URLValue{}) {
+		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "url",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
 
 	return nil, nil
 }

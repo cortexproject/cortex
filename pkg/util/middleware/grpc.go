@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-
-	"github.com/weaveworks/common/instrument"
 )
 
 // PrometheusGRPCUnaryInstrumentation records duration of gRPC requests client side.

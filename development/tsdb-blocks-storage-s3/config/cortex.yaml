@@ -46,5 +46,23 @@ tsdb:
     secret_access_key: supersecret
     insecure:          true
 
+ruler:
+  enable_api: true
+  storeconfig:
+    type: configdb
+    configdb:
+      configsapiurl: http://configstore:80/
+
 storage:
   engine: tsdb
+
+compactor:
+  compaction_interval: 30s
+  data_dir:            /tmp/cortex-compactor
+  consistency_delay:   1m
+  sharding_enabled:    true
+  sharding_ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500

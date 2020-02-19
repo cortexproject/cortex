@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"path"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -33,6 +35,10 @@ type Config struct {
 	CompactionInterval   time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries    int                      `yaml:"compaction_retries"`
 
+	// Compactors sharding.
+	ShardingEnabled bool       `yaml:"sharding_enabled"`
+	ShardingRing    RingConfig `yaml:"sharding_ring"`
+
 	// No need to add options to customize the retry backoff,
 	// given the defaults should be fine, but allow to override
 	// it in tests.
@@ -42,6 +48,8 @@ type Config struct {
 
 // RegisterFlags registers the Compactor flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ShardingRing.RegisterFlags(f)
+
 	cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
 	cfg.retryMinBackoff = 10 * time.Second
 	cfg.retryMaxBackoff = time.Minute
@@ -53,6 +61,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
+	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
@@ -74,6 +83,10 @@ type Compactor struct {
 	// safely interrupt it on shutdown.
 	ctx       context.Context
 	cancelCtx context.CancelFunc
+
+	// Ring used for sharding compactions.
+	ringLifecycler *ring.Lifecycler
+	ring           *ring.Ring
 
 	// Metrics.
 	compactionRunsStarted   prometheus.Counter
@@ -104,7 +117,13 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 		return nil, errors.Wrap(err, "failed to create TSDB compactor")
 	}
 
-	return newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registerer)
+	cortexCompactor, err := newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registerer)
+	if err != nil {
+		cancelCtx()
+		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
+	}
+
+	return cortexCompactor, nil
 }
 
 func newCompactor(
@@ -139,28 +158,69 @@ func newCompactor(
 		}),
 	}
 
+	// Initialize the compactors ring if sharding is enabled.
+	if compactorCfg.ShardingEnabled {
+		lifecyclerCfg := compactorCfg.ShardingRing.ToLifecyclerConfig()
+		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to initialize compactor ring lifecycler")
+		}
+
+		lifecycler.Start()
+		c.ringLifecycler = lifecycler
+
+		ring, err := ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to initialize compactor ring")
+		}
+
+		c.ring = ring
+	}
+
 	// Register metrics.
 	if registerer != nil {
 		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed)
 		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
-	// Start the compactor loop.
-	c.runner.Add(1)
-	go c.run()
-
 	return c, nil
 }
 
-// Shutdown the compactor and waits until done. This may take some time
+// Start the compactor.
+func (c *Compactor) Start() {
+	// Start the compactor loop.
+	c.runner.Add(1)
+	go c.run()
+}
+
+// Stop the compactor and waits until done. This may take some time
 // if there's a on-going compaction.
-func (c *Compactor) Shutdown() {
+func (c *Compactor) Stop() {
 	c.cancelCtx()
 	c.runner.Wait()
+
+	// Shutdown the ring lifecycler (if any)
+	if c.ringLifecycler != nil {
+		c.ringLifecycler.Shutdown()
+	}
+
+	if c.ring != nil {
+		c.ring.Stop()
+	}
 }
 
 func (c *Compactor) run() {
 	defer c.runner.Done()
+
+	// If sharding is enabled we should wait until this instance is
+	// ACTIVE within the ring.
+	if c.compactorCfg.ShardingEnabled {
+		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
+		if err := c.waitRingActive(); err != nil {
+			return
+		}
+		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
+	}
 
 	// Run an initial compaction before starting the interval.
 	c.compactUsersWithRetries(c.ctx)
@@ -213,6 +273,17 @@ func (c *Compactor) compactUsers(ctx context.Context) bool {
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
 			return false
+		}
+
+		// If sharding is enabled, ensure the user ID belongs to our shard.
+		if c.compactorCfg.ShardingEnabled {
+			if owned, err := c.ownUser(userID); err != nil {
+				level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
+				continue
+			} else if !owned {
+				level.Debug(c.logger).Log("msg", "skipping user because not owned by this shard", "user", userID)
+				continue
+			}
 		}
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
@@ -289,4 +360,44 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 	})
 
 	return users, err
+}
+
+func (c *Compactor) ownUser(userID string) (bool, error) {
+	// Hash the user ID.
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(userID))
+	userHash := hasher.Sum32()
+
+	// Check whether this compactor instance owns the user.
+	rs, err := c.ring.Get(userHash, ring.Read, []ring.IngesterDesc{})
+	if err != nil {
+		return false, err
+	}
+
+	if len(rs.Ingesters) != 1 {
+		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Ingesters))
+	}
+
+	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func (c *Compactor) waitRingActive() error {
+	for {
+		// Check if the ingester is ACTIVE in the ring and our ring client
+		// has detected it.
+		if rs, err := c.ring.GetAll(); err == nil {
+			for _, i := range rs.Ingesters {
+				if i.GetAddr() == c.ringLifecycler.Addr && i.GetState() == ring.ACTIVE {
+					return nil
+				}
+			}
+		}
+
+		select {
+		case <-time.After(time.Second):
+			// Nothing to do
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		}
+	}
 }

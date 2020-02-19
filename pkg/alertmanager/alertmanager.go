@@ -52,19 +52,20 @@ type Config struct {
 
 // An Alertmanager manages the alerts for one user.
 type Alertmanager struct {
-	cfg        *Config
-	api        *api.API
-	logger     log.Logger
-	nflog      *nflog.Log
-	silences   *silence.Silences
-	marker     types.Marker
-	alerts     *mem.Alerts
-	dispatcher *dispatch.Dispatcher
-	inhibitor  *inhibit.Inhibitor
-	stop       chan struct{}
-	wg         sync.WaitGroup
-	mux        *http.ServeMux
-	registry   *prometheus.Registry
+	cfg             *Config
+	api             *api.API
+	logger          log.Logger
+	nflog           *nflog.Log
+	silences        *silence.Silences
+	marker          types.Marker
+	alerts          *mem.Alerts
+	dispatcher      *dispatch.Dispatcher
+	inhibitor       *inhibit.Inhibitor
+	pipelineBuilder *notify.PipelineBuilder
+	stop            chan struct{}
+	wg              sync.WaitGroup
+	mux             *http.ServeMux
+	registry        *prometheus.Registry
 }
 
 var webReload = make(chan chan error)
@@ -130,6 +131,8 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.silences.SetBroadcast(c.Broadcast)
 	}
 
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
+
 	am.wg.Add(1)
 	go func() {
 		am.silences.Maintenance(15*time.Minute, filepath.Join(cfg.DataDir, silencesID), am.stop)
@@ -188,8 +191,15 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	am.api.Update(conf, func(_ model.LabelSet) {})
 
-	am.inhibitor.Stop()
-	am.dispatcher.Stop()
+	// Ensure inhibitor is set before being called
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	// Ensure dispatcher is set before being called
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
@@ -205,8 +215,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	if err != nil {
 		return nil
 	}
-	pipelineBuilder := notify.NewPipelineBuilder(am.registry)
-	pipeline := pipelineBuilder.New(
+
+	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,

@@ -174,11 +174,12 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true)
+		if err == nil {
+			err = distributorsRing.StartAsync(context.Background())
+		}
 		if err != nil {
 			return nil, err
 		}
-
-		distributorsRing.Start()
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
 	} else {
@@ -203,11 +204,14 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
-	d.ingesterPool.Stop()
+	d.ingesterPool.StopAsync()
+	_ = d.ingesterPool.AwaitTerminated(context.Background())
+
 	d.Replicas.stop()
 
 	if d.distributorsRing != nil {
-		d.distributorsRing.Shutdown()
+		d.distributorsRing.StopAsync()
+		_ = d.distributorsRing.AwaitTerminated(context.Background())
 	}
 }
 

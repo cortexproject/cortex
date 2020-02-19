@@ -371,7 +371,7 @@ func TestIngesterFlush(t *testing.T) {
 	// Now stop the ingester.  Don't call shutdown, as it waits for all goroutines
 	// to exit.  We just want to check that by the time the token is removed from
 	// the ring, the data is in the chunk store.
-	ing.lifecycler.Shutdown()
+	ing.lifecycler.StopAsync()
 	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
 		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.IngesterRingKey)
 		if err != nil {

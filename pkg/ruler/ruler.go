@@ -168,7 +168,10 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 			return nil, err
 		}
 
-		ruler.lifecycler.Start()
+		err = ruler.lifecycler.StartAsync(context.Background())
+		if err != nil {
+			return nil, err
+		}
 
 		ruler.ring, err = ring.New(lifecyclerCfg.RingConfig, "ruler", ring.RulerRingKey)
 		if err != nil {
@@ -200,9 +203,15 @@ func (r *Ruler) Stop() {
 
 	if r.cfg.EnableSharding {
 		level.Info(r.logger).Log("msg", "attempting shutdown lifecycle")
-		r.lifecycler.Shutdown()
+		r.lifecycler.StopAsync()
+		if err := r.lifecycler.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(r.logger).Log("msg", "shutdown lifecycle failed", "err", err)
+		}
 		level.Info(r.logger).Log("msg", "shutting down the ring")
 		r.ring.StopAsync()
+		if err := r.ring.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(r.logger).Log("msg", "shutdown ring failed", "err", err)
+		}
 	}
 
 	level.Info(r.logger).Log("msg", "stopping user managers")

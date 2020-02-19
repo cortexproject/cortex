@@ -162,11 +162,13 @@ func newCompactor(
 	if compactorCfg.ShardingEnabled {
 		lifecyclerCfg := compactorCfg.ShardingRing.ToLifecyclerConfig()
 		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		if err == nil {
+			err = lifecycler.StartAsync(context.Background())
+		}
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}
 
-		lifecycler.Start()
 		c.ringLifecycler = lifecycler
 
 		ring, err := ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
@@ -205,11 +207,13 @@ func (c *Compactor) Stop() {
 
 	// Shutdown the ring lifecycler (if any)
 	if c.ringLifecycler != nil {
-		c.ringLifecycler.Shutdown()
+		c.ringLifecycler.StopAsync()
+		_ = c.ringLifecycler.AwaitTerminated(context.Background())
 	}
 
 	if c.ring != nil {
 		c.ring.StopAsync()
+		_ = c.ring.AwaitTerminated(context.Background())
 	}
 }
 

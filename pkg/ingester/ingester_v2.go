@@ -134,7 +134,9 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	}
 
 	// Now that user states have been created, we can start the lifecycler
-	i.lifecycler.Start()
+	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
+		return nil, err
+	}
 
 	// Run the blocks shipping in a dedicated go routine.
 	if i.cfg.TSDBConfig.ShipInterval > 0 {

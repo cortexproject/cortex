@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -194,7 +195,10 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	// Now that user states have been created, we can start the lifecycler
-	i.lifecycler.Start()
+	err = i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start ingester lifecycler")
+	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
@@ -245,7 +249,8 @@ func (i *Ingester) Shutdown() {
 		i.wal.Stop()
 
 		// Next initiate our graceful exit from the ring.
-		i.lifecycler.Shutdown()
+		i.lifecycler.StopAsync()
+		_ = i.lifecycler.AwaitTerminated(context.Background())
 	}
 }
 

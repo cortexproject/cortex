@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -104,13 +105,12 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
 type Lifecycler struct {
+	services.BasicService
+
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
 
-	// Controls the lifecycle of the ingester
-	quit      chan struct{}
-	done      sync.WaitGroup
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
@@ -138,9 +138,8 @@ type Lifecycler struct {
 	healthyInstancesCount int
 }
 
-// NewLifecycler makes and starts a new Lifecycler.
+// NewLifecycler creates new Lifecycler. It must be started via StartAsync.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
-
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -176,7 +175,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingKey:         ringKey,
 		flushOnShutdown: flushOnShutdown,
 
-		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
 
 		state:     PENDING,
@@ -185,13 +183,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	return l, nil
-}
+	services.InitBasicService(&l.BasicService, nil, l.loop, l.stopping)
 
-// Start the lifecycler
-func (i *Lifecycler) Start() {
-	i.done.Add(1)
-	go i.loop()
+	return l, nil
 }
 
 // CheckReady is used to rate limit the number of ingesters that can be coming or
@@ -322,25 +316,9 @@ func (i *Lifecycler) HealthyInstancesCount() int {
 	return i.healthyInstancesCount
 }
 
-// Shutdown the lifecycle.  It will:
-// - send chunks to another ingester, if it can.
-// - otherwise, flush chunks to the chunk store.
-// - remove config from Consul.
-// - block until we've successfully shutdown.
-func (i *Lifecycler) Shutdown() {
-	// This will prevent us accepting any more samples
-	i.flushTransferer.StopIncomingRequests()
-
-	// closing i.quit triggers loop() to exit, which in turn will trigger
-	// the removal of our tokens etc
-	close(i.quit)
-	i.done.Wait()
-}
-
-func (i *Lifecycler) loop() {
+func (i *Lifecycler) loop(ctx context.Context) error {
 	defer func() {
 		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully", "ring", i.RingName)
-		i.done.Done()
 	}()
 
 	// First, see if we exist in the cluster, update our state to match if we do,
@@ -357,7 +335,6 @@ func (i *Lifecycler) loop() {
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
 
-loop:
 	for {
 		select {
 		case <-autoJoinAfter:
@@ -416,10 +393,22 @@ loop:
 		case f := <-i.actorChan:
 			f()
 
-		case <-i.quit:
-			break loop
+		case <-ctx.Done():
+			return nil
 		}
 	}
+}
+
+// Shutdown the lifecycle.  It will:
+// - send chunks to another ingester, if it can.
+// - otherwise, flush chunks to the chunk store.
+// - remove config from Consul.
+func (i *Lifecycler) stopping() error {
+	// This will prevent us accepting any more samples
+	i.flushTransferer.StopIncomingRequests()
+
+	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTicker.Stop()
 
 	// Mark ourselved as Leaving so no more samples are send to us.
 	err := i.changeState(context.Background(), LEAVING)
@@ -456,6 +445,8 @@ heartbeatLoop:
 		}
 		level.Info(util.Logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}
+
+	return nil
 }
 
 // initRing is the first thing we do when we start. It:

@@ -26,9 +26,11 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 
 	cortex1 := newSingleBinary("cortex-1", "")
 	cortex2 := newSingleBinary("cortex-2", networkName+"-cortex-1:8000")
-	cortex3 := newSingleBinary("cortex-3", networkName+"-cortex-2:8000")
+	cortex3 := newSingleBinary("cortex-3", networkName+"-cortex-1:8000")
 
-	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2, cortex3))
+	// start cortex-1 first, as cortex-2 and cortex-3 both connect to cortex-1
+	require.NoError(t, s.StartAndWaitReady(cortex1))
+	require.NoError(t, s.StartAndWaitReady(cortex2, cortex3))
 
 	// All three Cortex serves should see each other.
 	require.NoError(t, cortex1.WaitSumMetric("memberlist_client_cluster_members_count", 3))

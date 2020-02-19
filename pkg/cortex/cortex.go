@@ -1,14 +1,15 @@
 package cortex
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
@@ -34,7 +35,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -163,6 +163,9 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
+	// set during initialization
+	serviceMap map[moduleName]services.Service
+
 	server        *server.Server
 	ring          *ring.Ring
 	overrides     *validation.Overrides
@@ -203,10 +206,12 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex.setupAuthMiddleware(&cfg)
 
-	if err := cortex.init(&cfg, cfg.Target); err != nil {
+	serviceMap, err := cortex.initModuleServices(&cfg, cfg.Target)
+	if err != nil {
 		return nil, err
 	}
 
+	cortex.serviceMap = serviceMap
 	return cortex, nil
 }
 
@@ -242,50 +247,83 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 	}
 }
 
-func (t *Cortex) init(cfg *Config, m moduleName) error {
+func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleName]services.Service, error) {
+	servicesMap := map[moduleName]services.Service{}
+
 	// initialize all of our dependencies first
-	for _, dep := range orderedDeps(m) {
-		if err := t.initModule(cfg, dep); err != nil {
-			return err
+	deps := orderedDeps(target)
+	deps = append(deps, target) // lastly, initialize the requested module
+
+	for ix, n := range deps {
+		mod := modules[n]
+
+		var serv services.Service
+
+		if mod.service != nil {
+			s, err := mod.service(t, cfg)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
+			}
+			serv = s
+		} else if mod.wrappedService != nil {
+			s, err := mod.service(t, cfg)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
+			}
+			serv = newModuleServiceWrapper(t, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
+		} else {
+			// panic... all modules should have a service.
+		}
+
+		if serv != nil {
+			servicesMap[n] = serv
 		}
 	}
-	// lastly, initialize the requested module
-	return t.initModule(cfg, m)
+
+	return servicesMap, nil
 }
 
-func (t *Cortex) initModule(cfg *Config, m moduleName) error {
-	level.Info(util.Logger).Log("msg", "initialising", "module", m)
-	if modules[m].init != nil {
-		if err := modules[m].init(t, cfg); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", m))
+// find modules that depend on mod
+func findReverseDeps(mod moduleName, mods []moduleName) []moduleName {
+	result := []moduleName(nil)
+
+	for _, n := range mods {
+		for _, d := range modules[n].deps {
+			if d == mod {
+				result = append(result, n)
+				break
+			}
 		}
 	}
-	return nil
+
+	return result
 }
 
 // Run starts Cortex running, and blocks until a signal is received.
 func (t *Cortex) Run() error {
-	return t.server.Run()
-}
-
-// Stop gracefully stops a Cortex.
-func (t *Cortex) Stop() error {
-	t.stopModule(t.target)
-	deps := orderedDeps(t.target)
-	// iterate over our deps in reverse order and call stopModule
-	for i := len(deps) - 1; i >= 0; i-- {
-		t.stopModule(deps[i])
+	// get all services and tell them to start
+	servs := []services.Service(nil)
+	for _, s := range t.serviceMap {
+		servs = append(servs, s)
 	}
-	return nil
-}
 
-func (t *Cortex) stopModule(m moduleName) {
-	level.Info(util.Logger).Log("msg", "stopping", "module", m)
-	if modules[m].stop != nil {
-		if err := modules[m].stop(t); err != nil {
-			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
-		}
+	sm, err := services.NewManager(servs...)
+	if err != nil {
+		return err
 	}
+
+	err = sm.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// Currently it's the Server that reacts on signal handler,
+	// so get Server service, and wait until it ends.
+	err = t.serviceMap[Server].AwaitTerminated(context.Background())
+
+	// Stop all the other services.
+	sm.StopAsync()
+	return sm.AwaitStopped(context.Background())
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

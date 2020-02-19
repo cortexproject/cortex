@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/pstibrany/services"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -176,11 +178,27 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return m.Set(s)
 }
 
-func (t *Cortex) initServer(cfg *Config) error {
-	var err error
-	t.server, err = server.New(cfg.Server)
+func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
+	serv, err := server.New(cfg.Server)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	t.server = serv
+
+	runFn := func(ctx context.Context) error {
+		ch := make(chan error, 1)
+		go func() {
+			ch <- t.server.Run()
+		}()
+
+		select {
+		case <-ctx.Done():
+			t.server.Shutdown()
+			return <-ch
+		case err := <-ch:
+			return err
+		}
 	}
 
 	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
@@ -197,12 +215,7 @@ func (t *Cortex) initServer(cfg *Config) error {
 		}
 	})
 
-	return nil
-}
-
-func (t *Cortex) stopServer() (err error) {
-	t.server.Shutdown()
-	return
+	return services.NewService(nil, runFn, nil), nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
@@ -660,14 +673,20 @@ func (t *Cortex) stopDataPurger() error {
 
 type module struct {
 	deps []moduleName
+
+	// service for this module
+	service func(t *Cortex, cfg *Config) (services.Service, error)
+
+	// service that will be wrapped into module_service_wrapper, to wait for dependencies to start / end
+	wrappedService func(t *Cortex, cfg *Config) (services.Service, error)
+
 	init func(t *Cortex, cfg *Config) error
 	stop func(t *Cortex) error
 }
 
 var modules = map[moduleName]module{
 	Server: {
-		init: (*Cortex).initServer,
-		stop: (*Cortex).stopServer,
+		service: (*Cortex).serverService,
 	},
 
 	RuntimeConfig: {

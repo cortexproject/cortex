@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/go-kit/kit/log"
@@ -212,6 +213,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.serviceMap = serviceMap
+	cortex.server.HTTP.Handle("/services", http.HandlerFunc(cortex.servicesHandler))
 	return cortex, nil
 }
 
@@ -266,7 +268,7 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 			}
 			serv = s
 		} else if mod.wrappedService != nil {
-			s, err := mod.service(t, cfg)
+			s, err := mod.wrappedService(t, cfg)
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
 			}

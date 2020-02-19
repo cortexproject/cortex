@@ -245,9 +245,10 @@ func (t *Cortex) runtimeConfigService(cfg *Config) (services.Service, error) {
 	return serv, err
 }
 
-func (t *Cortex) initOverrides(cfg *Config) (err error) {
+func (t *Cortex) overridesService(cfg *Config) (serv services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
-	return err
+	// overrides don't have operational state, no need to return any service.
+	return nil, err
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
@@ -698,8 +699,8 @@ var modules = map[moduleName]module{
 	},
 
 	Overrides: {
-		deps: []moduleName{RuntimeConfig},
-		init: (*Cortex).initOverrides,
+		deps:    []moduleName{RuntimeConfig},
+		service: (*Cortex).overridesService,
 	},
 
 	Distributor: {

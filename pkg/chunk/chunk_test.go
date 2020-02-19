@@ -35,9 +35,11 @@ func dummyChunk(now model.Time) Chunk {
 
 func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.Encoding, samples int) Chunk {
 	c, _ := encoding.NewForEncoding(enc)
+	chunkStart := now.Add(-time.Hour)
+
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
-		nc, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
+		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
 		if err != nil {
 			panic(err)
 		}
@@ -45,12 +47,13 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.En
 			panic("returned chunk was not nil")
 		}
 	}
+
 	chunk := NewChunk(
 		userID,
 		client.Fingerprint(metric),
 		metric,
 		c,
-		now.Add(-time.Hour),
+		chunkStart,
 		now,
 	)
 	// Force checksum calculation.
@@ -133,9 +136,9 @@ const fixedTimestamp = model.Time(1557654321000)
 
 func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	// Chunk encoded using code at commit b1777a50ab19
-	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01У\xbe\xb3\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
 	decodeContext := NewDecodeContext()
-	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
+	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:ff216d5b")
 	require.NoError(t, err)
 	require.NoError(t, have.Decode(decodeContext, rawData))
 	want := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
@@ -280,5 +283,78 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 			err := chunks[j].Decode(decodeContext, buf)
 			require.NoError(b, err)
 		}
+	}
+}
+
+func TestChunk_Slice(t *testing.T) {
+	now := model.Now()
+
+	// dummy chunk is created with time range now-1hour to now
+	chunkStartTime := now.Add(-time.Hour)
+
+	for _, tc := range []struct {
+		name       string
+		sliceRange model.Interval
+		err        string
+	}{
+		{
+			name:       "slice first 10 mins",
+			sliceRange: model.Interval{Start: chunkStartTime, End: chunkStartTime.Add(10 * time.Minute)},
+		},
+		{
+			name:       "slice last 10 mins",
+			sliceRange: model.Interval{Start: now.Add(-10 * time.Minute), End: now},
+		},
+		{
+			name:       "slice in the middle",
+			sliceRange: model.Interval{Start: chunkStartTime.Add(20 * time.Minute), End: now.Add(-20 * time.Minute)},
+		},
+		{
+			name:       "slice out of range",
+			sliceRange: model.Interval{Start: now.Add(20 * time.Minute), End: now.Add(30 * time.Minute)},
+			err:        ErrSliceOutOfRange.Error(),
+		},
+		{
+			name:       "slice no data in range", // we build chunk with
+			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Second)},
+			err:        ErrSliceNoDataInRange.Error(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalChunk := dummyChunkForEncoding(now, labelsForDummyChunks, encoding.DefaultEncoding, 241)
+
+			newChunk, err := originalChunk.Slice(tc.sliceRange.Start, tc.sliceRange.End)
+			if tc.err != "" {
+				require.Error(t, err)
+				require.Equal(t, tc.err, err.Error())
+				return
+			}
+			require.NoError(t, err)
+
+			require.Equal(t, tc.sliceRange.Start, newChunk.From)
+			require.Equal(t, tc.sliceRange.End, newChunk.Through)
+
+			chunkItr := originalChunk.Data.NewIterator(nil)
+			chunkItr.FindAtOrAfter(tc.sliceRange.Start)
+
+			newChunkItr := newChunk.Data.NewIterator(nil)
+			newChunkItr.Scan()
+
+			for {
+				require.Equal(t, chunkItr.Value(), newChunkItr.Value())
+
+				originalChunksHasMoreSamples := chunkItr.Scan()
+				newChunkHasMoreSamples := newChunkItr.Scan()
+
+				// originalChunk and newChunk both should end at same time or newChunk should end before or at slice end time
+				if !originalChunksHasMoreSamples || chunkItr.Value().Timestamp > tc.sliceRange.End {
+					require.Equal(t, false, newChunkHasMoreSamples)
+					break
+				}
+
+				require.Equal(t, true, newChunkHasMoreSamples)
+			}
+
+		})
 	}
 }

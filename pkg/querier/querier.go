@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -84,7 +85,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	return mergeChunks
 }
 
-func NewChunkStoreQueryable(cfg Config, chunkStore ChunkStore) storage.Queryable {
+func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
 	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
 }
 
@@ -234,7 +235,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 			// If there is error, we better report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, errSeriesSet{err: err})
+				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
 			}
 			continue
 		}

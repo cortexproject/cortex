@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -244,7 +245,7 @@ func (bqs *blockQuerierSeries) Labels() labels.Labels {
 func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
 	if len(bqs.chunks) == 0 {
 		// should not happen in practice, but we have a unit test for it
-		return errIterator{err: errors.New("no chunks")}
+		return series.NewErrIterator(errors.New("no chunks"))
 	}
 
 	its := make([]chunkenc.Iterator, 0, len(bqs.chunks))
@@ -252,7 +253,7 @@ func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
 	for _, c := range bqs.chunks {
 		ch, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
-			return errIterator{err: errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime)}
+			return series.NewErrIterator(errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime))
 		}
 
 		it := ch.Iterator(nil)

@@ -86,6 +86,10 @@ func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model
 	return store.Get(ctx, userID, from, through, matchers...)
 }
 
+func NewErrSeriesSet(err error) storage.SeriesSet {
+	return errSeriesSet{err}
+}
+
 // errSeriesSet implements storage.SeriesSet, just returning an error.
 type errSeriesSet struct {
 	err error

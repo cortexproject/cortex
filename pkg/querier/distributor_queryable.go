@@ -55,7 +55,7 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 		if err != nil {
 			return nil, nil, err
 		}
-		return metricsToSeriesSet(ms), nil, nil
+		return series.MetricsToSeriesSet(ms), nil, nil
 	}
 
 	mint, maxt := sp.Start, sp.End
@@ -108,7 +108,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers [
 		serieses = append(serieses, series)
 	}
 
-	return newConcreteSeriesSet(serieses), nil, nil
+	return series.NewConcreteSeriesSet(serieses), nil, nil
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

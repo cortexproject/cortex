@@ -161,7 +161,7 @@ func newCompactor(
 	// Initialize the compactors ring if sharding is enabled.
 	if compactorCfg.ShardingEnabled {
 		lifecyclerCfg := compactorCfg.ShardingRing.ToLifecyclerConfig()
-		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), nil, "compactor", ring.CompactorRingKey, false)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}

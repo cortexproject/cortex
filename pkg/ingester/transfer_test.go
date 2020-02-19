@@ -424,7 +424,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t require.TestingT) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.NewProtoCodec("codec", ring.ProtoDescFactory))
 	require.NoError(t, err)
 
 	return &testIngesterFactory{

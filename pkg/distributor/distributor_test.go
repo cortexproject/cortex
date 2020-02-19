@@ -259,7 +259,8 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 						UpdateTimeout:   100 * time.Millisecond,
 						FailoverTimeout: time.Second,
 					})
-					assert.NoError(t, err)
+					require.NoError(t, err)
+					require.NoError(t, r.StartAsync(context.Background()))
 					d.Replicas = r
 				}
 

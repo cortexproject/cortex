@@ -135,7 +135,9 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time.
 	mtime.NowForce(start)
@@ -163,7 +165,9 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "test", replica1)
@@ -196,7 +200,9 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -229,7 +235,9 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -278,7 +286,9 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time.
 	mtime.NowForce(startTime)
@@ -337,7 +347,9 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, c.StartAsync(context.Background()))
+	defer c.StopAsync()
 
 	// Write the first time for user 1.
 	mtime.NowForce(start)
@@ -418,7 +430,9 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			require.NoError(t, c.StartAsync(context.Background()))
+			defer c.StopAsync()
 
 			// Init context used by the test
 			ctx, cancel := context.WithTimeout(ctxUser1, time.Second)

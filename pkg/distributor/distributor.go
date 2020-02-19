@@ -163,6 +163,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
+	replicas.StartAsync(context.Background())
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -207,7 +208,8 @@ func (d *Distributor) Stop() {
 	d.ingesterPool.StopAsync()
 	_ = d.ingesterPool.AwaitTerminated(context.Background())
 
-	d.Replicas.stop()
+	d.Replicas.StopAsync()
+	_ = d.Replicas.AwaitTerminated(context.Background())
 
 	if d.distributorsRing != nil {
 		d.distributorsRing.StopAsync()

@@ -272,7 +272,9 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
 			}
-			serv = newModuleServiceWrapper(t, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
+			if s != nil {
+				serv = newModuleServiceWrapper(t, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
+			}
 		} else {
 			// panic... all modules should have a service.
 		}

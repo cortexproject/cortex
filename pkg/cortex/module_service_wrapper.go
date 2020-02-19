@@ -44,6 +44,8 @@ func (w *moduleServiceWrapper) start(serviceContext context.Context) error {
 			continue
 		}
 
+		level.Debug(util.Logger).Log("msg", "module waiting for initialization", "module", w.module, "waiting_for", m)
+
 		err := s.AwaitRunning(serviceContext)
 		if err != nil {
 			return fmt.Errorf("failed to start %v, because dependant service %v has failed: %v", w.module, m, err)

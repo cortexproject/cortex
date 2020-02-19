@@ -90,12 +90,17 @@ jobs:
         command: make BUILD_IN_CONTAINER=false check-doc
 
   test:
-    <<: *defaults
+    docker:
+      - image: quay.io/cortexproject/build-image:validate-k8s-specs-7c217ee7
+      - image: cassandra:3.11
+        environment:
+          JVM_OPTS: "-Xms1024M -Xmx1024M"
+    working_directory: /go/src/github.com/cortexproject/cortex
     steps:
     - checkout
     - run:
         name: Test
-        command: make BUILD_IN_CONTAINER=false test
+        command: CASSANDRA_TEST_ADDRESSES=localhost:9042 make BUILD_IN_CONTAINER=false test
 
   integration-configs-db:
     machine:

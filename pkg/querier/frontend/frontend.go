@@ -38,8 +38,12 @@ var (
 		Help:      "Number of queries in the queue.",
 	})
 
-	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
+	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
+	StatusClientClosedRequest = 499
+
+	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
+	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
+	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 )
 
 // Config for a Frontend.
@@ -151,14 +155,14 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
-	queryResponseTime := time.Now().Sub(startTime)
+	queryResponseTime := time.Since(startTime)
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
 	}
 
 	if err != nil {
-		server.WriteError(w, err)
+		writeError(w, err)
 		return
 	}
 
@@ -168,6 +172,17 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+func writeError(w http.ResponseWriter, err error) {
+	switch err {
+	case context.Canceled:
+		err = errCanceled
+	case context.DeadlineExceeded:
+		err = errDeadlineExceeded
+	default:
+	}
+	server.WriteError(w, err)
 }
 
 // RoundTrip implement http.Transport.
@@ -230,7 +245,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 	select {
 	case <-ctx.Done():
-		return nil, errCanceled
+		return nil, ctx.Err()
 
 	case resp := <-request.response:
 		return resp, nil

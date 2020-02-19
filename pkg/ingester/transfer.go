@@ -231,7 +231,8 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	xfer := func() error {
 		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
 
-		fromIngesterID, seriesReceived, err := i.acceptChunksFromStream(acceptChunksOptions{
+		var err error
+		fromIngesterID, seriesReceived, err = i.acceptChunksFromStream(acceptChunksOptions{
 			States:                userStates,
 			Stream:                stream,
 			ValidateRemoteLeaving: true,

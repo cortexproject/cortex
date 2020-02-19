@@ -383,9 +383,9 @@ func (t *Cortex) stopIngester() error {
 	return nil
 }
 
-func (t *Cortex) initStore(cfg *Config) (err error) {
+func (t *Cortex) storeService(cfg *Config) (serv services.Service, err error) {
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		return nil
+		return nil, nil
 	}
 	err = cfg.Schema.Load()
 	if err != nil {
@@ -397,14 +397,10 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 		return
 	}
 
-	return
-}
-
-func (t *Cortex) stopStore() error {
-	if t.store != nil {
+	return services.NewIdleService(nil, func() error {
 		t.store.Stop()
-	}
-	return nil
+		return nil
+	}), nil
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
@@ -707,9 +703,8 @@ var modules = map[moduleName]module{
 	},
 
 	Store: {
-		deps: []moduleName{Overrides},
-		init: (*Cortex).initStore,
-		stop: (*Cortex).stopStore,
+		deps:           []moduleName{Overrides},
+		wrappedService: (*Cortex).storeService,
 	},
 
 	Ingester: {

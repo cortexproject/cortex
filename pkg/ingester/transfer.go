@@ -99,15 +99,15 @@ func (i *Ingester) acceptChunksFromStream(opts acceptChunksOptions) (fromIngeste
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
-		}
-		if opts.ValidateRemoteLeaving {
-			// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later.
-			err := i.checkFromIngesterIsInLeavingState(opts.Stream.Context(), fromIngesterID)
-			if err != nil {
-				return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+
+			if opts.ValidateRemoteLeaving {
+				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later.
+				err := i.checkFromIngesterIsInLeavingState(opts.Stream.Context(), fromIngesterID)
+				if err != nil {
+					return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+				}
 			}
 		}
-
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: fromWireChunks")

@@ -286,6 +286,8 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
 // Requests to Querier sometimes doesn't have that (if they are fetched from Query-Frontend).
 // Prometheus uses this when logging queries to QueryLogger, but Cortex doesn't call engine.SetQueryLogger to set one.
+//
+// Can be removed when (if) https://github.com/prometheus/prometheus/pull/6840 is merged.
 func fakeRemoteAddr(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.RemoteAddr == "" {

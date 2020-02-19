@@ -271,7 +271,7 @@ func (t *Cortex) distributorService(cfg *Config) (serv services.Service, err err
 	return t.distributor, nil
 }
 
-func (t *Cortex) initQuerier(cfg *Config) (err error) {
+func (t *Cortex) querierService(cfg *Config) (serv services.Service, err error) {
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 	api := v1.NewAPI(
 		engine,
@@ -312,7 +312,16 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	return
+	// TODO: If queryable returned from querier.New was a service, it could actually wait for storeQueryable
+	// (if it also implemented Service) to finish starting... and return error if it's not in Running state.
+	// This requires extra work, which is out of scope for this proof-of-concept...
+	// BUT this extra functionality is ONE OF THE REASONS to introduce entire "Services" concept into Cortex.
+	// For now, only return service that stops the worker, and Querier will be used even before storeQueryable has finished starting.
+
+	return services.NewIdleService(nil, func() error {
+		t.worker.Stop()
+		return nil
+	}), nil
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
@@ -327,11 +336,6 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(w, r)
 	})
-}
-
-func (t *Cortex) stopQuerier() error {
-	t.worker.Stop()
-	return nil
 }
 
 func (t *Cortex) initStoreQueryable(cfg *Config) error {
@@ -708,9 +712,8 @@ var modules = map[moduleName]module{
 	},
 
 	Querier: {
-		deps: []moduleName{Distributor, Store, Ring, Server, StoreQueryable},
-		init: (*Cortex).initQuerier,
-		stop: (*Cortex).stopQuerier,
+		deps:           []moduleName{Distributor, Store, Ring, Server, StoreQueryable},
+		wrappedService: (*Cortex).querierService,
 	},
 
 	StoreQueryable: {

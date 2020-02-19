@@ -96,7 +96,7 @@ func TestDistributor_Push(t *testing.T) {
 				limits.IngestionBurstSize = 20
 
 				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
-				defer d.Stop()
+				defer d.StopAsync()
 
 				request := makeWriteRequest(tc.samples)
 				response, err := d.Push(ctx, request)
@@ -175,7 +175,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			distributors := make([]*Distributor, testData.distributors)
 			for i := 0; i < testData.distributors; i++ {
 				distributors[i], _ = prepare(t, 1, 1, 0, true, limits, kvStore)
-				defer distributors[i].Stop()
+				defer distributors[i].StopAsync()
 			}
 
 			// If the distributors ring is setup, wait until the first distributor
@@ -372,7 +372,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil, nil)
-			defer d.Stop()
+			defer d.StopAsync()
 
 			request := makeWriteRequest(tc.samples)
 			writeResponse, err := d.Push(ctx, request)
@@ -455,7 +455,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		limits.AcceptHASamples = tc.removeReplica
 
 		d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
-		defer d.Stop()
+		defer d.StopAsync()
 
 		// Push the series to the distributor
 		req := mockWriteRequest(tc.inputSeries, 1, 1)
@@ -557,7 +557,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
-			defer d.Stop()
+			defer d.StopAsync()
 
 			// Push the series to the distributor
 			req := mockWriteRequest(testData.inputSeries, 1, 1)
@@ -594,7 +594,7 @@ func TestSlowQueries(t *testing.T) {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
 			d, _ := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil, nil)
-			defer d.Stop()
+			defer d.StopAsync()
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
 			assert.Equal(t, expectedErr, err)
@@ -660,7 +660,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 
 	// Create distributor
 	d, _ := prepare(t, 3, 3, time.Duration(0), true, nil, nil)
-	defer d.Stop()
+	defer d.StopAsync()
 
 	// Push fixtures
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -762,6 +762,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 
 	d, err := New(cfg, clientConfig, overrides, ingestersRing, true)
 	require.NoError(t, err)
+	require.NoError(t, d.StartAsync(context.Background()))
 
 	return d, ingesters
 }
@@ -1136,7 +1137,7 @@ func TestDistributorValidation(t *testing.T) {
 			limits.MaxLabelNamesPerSeries = 2
 
 			d, _ := prepare(t, 3, 3, 0, true, &limits, nil)
-			defer d.Stop()
+			defer d.StopAsync()
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))
 			require.Equal(t, tc.err, err)

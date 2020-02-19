@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pstibrany/services"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	opentracing "github.com/opentracing/opentracing-go"
@@ -94,6 +95,8 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
+	services.BasicService
+
 	cfg           Config
 	ingestersRing ring.ReadRing
 	ingesterPool  *ingester_client.Pool
@@ -108,6 +111,9 @@ type Distributor struct {
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
+
+	// Manager for subservices (HA Tracker, distributor ring and client pool)
+	servManager *services.Manager
 }
 
 // Config contains the configuration require to
@@ -159,11 +165,14 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
+	subservices := []services.Service(nil)
+
 	replicas, err := newClusterTracker(cfg.HATrackerConfig)
 	if err != nil {
 		return nil, err
 	}
-	replicas.StartAsync(context.Background())
+
+	subservices = append(subservices, replicas)
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -175,12 +184,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true)
-		if err == nil {
-			err = distributorsRing.StartAsync(context.Background())
-		}
 		if err != nil {
 			return nil, err
 		}
+
+		subservices = append(subservices, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
 	} else {
@@ -197,24 +205,32 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Replicas:             replicas,
 	}
 
-	// pool cannot fail to start, so just ignore errors.
-	_ = d.ingesterPool.StartAsync(context.Background())
+	subservices = append(subservices, d.ingesterPool)
+	d.servManager, err = services.NewManager(subservices...)
+	if err != nil {
+		return nil, err
+	}
+
+	services.InitIdleService(&d.BasicService, d.starting, d.stopping)
 
 	return d, nil
 }
 
-// Stop stops the distributor's maintenance loop.
-func (d *Distributor) Stop() {
-	d.ingesterPool.StopAsync()
-	_ = d.ingesterPool.AwaitTerminated(context.Background())
-
-	d.Replicas.StopAsync()
-	_ = d.Replicas.AwaitTerminated(context.Background())
-
-	if d.distributorsRing != nil {
-		d.distributorsRing.StopAsync()
-		_ = d.distributorsRing.AwaitTerminated(context.Background())
+func (d *Distributor) starting(ctx context.Context) error {
+	err := d.servManager.StartAsync(ctx)
+	if err != nil {
+		return err
 	}
+
+	// Only report success if all sub-services start properly
+	return d.servManager.AwaitHealthy(ctx)
+}
+
+// Stop stops the distributor's maintenance loop.
+func (d *Distributor) stopping() error {
+	// just stop everything, and wait until it has stopped.
+	d.servManager.StopAsync()
+	return d.servManager.AwaitStopped(context.Background())
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {

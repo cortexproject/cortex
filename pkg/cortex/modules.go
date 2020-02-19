@@ -251,7 +251,7 @@ func (t *Cortex) overridesService(cfg *Config) (serv services.Service, err error
 	return nil, err
 }
 
-func (t *Cortex) initDistributor(cfg *Config) (err error) {
+func (t *Cortex) distributorService(cfg *Config) (serv services.Service, err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
@@ -268,12 +268,7 @@ func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	t.server.HTTP.HandleFunc("/all_user_stats", t.distributor.AllUserStatsHandler)
 	t.server.HTTP.Handle("/api/prom/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.distributor.Push)))
 	t.server.HTTP.Handle("/ha-tracker", t.distributor.Replicas)
-	return
-}
-
-func (t *Cortex) stopDistributor() (err error) {
-	t.distributor.Stop()
-	return nil
+	return t.distributor, nil
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
@@ -704,9 +699,8 @@ var modules = map[moduleName]module{
 	},
 
 	Distributor: {
-		deps: []moduleName{Ring, Server, Overrides},
-		init: (*Cortex).initDistributor,
-		stop: (*Cortex).stopDistributor,
+		deps:           []moduleName{Ring, Server, Overrides},
+		wrappedService: (*Cortex).distributorService,
 	},
 
 	Store: {

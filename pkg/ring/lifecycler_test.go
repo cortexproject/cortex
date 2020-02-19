@@ -746,7 +746,7 @@ func getLifecyclers(t *testing.T, r *Ring, cfg Config, count int) ([]*Lifecycler
 		require.NoError(t, err)
 		lc.Start()
 
-		waitIngesterState(t, r, id, time.Millisecond*250, true)
+		waitIngesterState(t, r, id, time.Millisecond*500, true)
 	}
 
 	return ret, func() {

@@ -594,21 +594,20 @@ func (t *Cortex) stopCompactor() error {
 	return nil
 }
 
-func (t *Cortex) initMemberlistKV(cfg *Config) (err error) {
+func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
 	cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
 	cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
 	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
-	return nil
-}
 
-func (t *Cortex) stopMemberlistKV() (err error) {
-	kv := t.memberlistKVState.kv
-	if kv != nil {
-		kv.Stop()
-	}
-	return nil
+	return services.NewIdleService(nil, func() error {
+		kv := t.memberlistKVState.kv
+		if kv != nil {
+			kv.Stop()
+		}
+		return nil
+	}), nil
 }
 
 func (t *Cortex) initDataPurger(cfg *Config) (err error) {
@@ -690,8 +689,7 @@ var modules = map[moduleName]module{
 	},
 
 	MemberlistKV: {
-		init: (*Cortex).initMemberlistKV,
-		stop: (*Cortex).stopMemberlistKV,
+		service: (*Cortex).initMemberlistKV,
 	},
 
 	Ring: {

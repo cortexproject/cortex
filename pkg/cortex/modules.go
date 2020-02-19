@@ -230,7 +230,7 @@ func (t *Cortex) initRing(cfg *Config) (err error) {
 	return
 }
 
-func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
+func (t *Cortex) runtimeConfigService(cfg *Config) (services.Service, error) {
 	if cfg.RuntimeConfig.LoadPath == "" {
 		cfg.RuntimeConfig.LoadPath = cfg.LimitsConfig.PerTenantOverrideConfig
 		cfg.RuntimeConfig.ReloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
@@ -240,13 +240,9 @@ func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
 
-	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig, prometheus.DefaultRegisterer)
-	return err
-}
-
-func (t *Cortex) stopRuntimeConfig() (err error) {
-	t.runtimeConfig.Stop()
-	return nil
+	serv, err := runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	t.runtimeConfig = serv
+	return serv, err
 }
 
 func (t *Cortex) initOverrides(cfg *Config) (err error) {
@@ -690,8 +686,7 @@ var modules = map[moduleName]module{
 	},
 
 	RuntimeConfig: {
-		init: (*Cortex).initRuntimeConfig,
-		stop: (*Cortex).stopRuntimeConfig,
+		wrappedService: (*Cortex).runtimeConfigService,
 	},
 
 	MemberlistKV: {

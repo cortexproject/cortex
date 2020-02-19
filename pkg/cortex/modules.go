@@ -187,10 +187,17 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 	t.server = serv
 
 	runFn := func(ctx context.Context) error {
+		started := make(chan struct{})
+
 		ch := make(chan error, 1)
 		go func() {
+			close(started)
 			ch <- t.server.Run()
 		}()
+
+		// wait until server has (almost) started, or we may actually
+		// run Shutdown before it is running which doesn't seem to do anything.
+		<-started
 
 		select {
 		case <-ctx.Done():

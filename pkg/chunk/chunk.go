@@ -330,7 +330,7 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	return prom_chunk.RangeValues(it, interval)
 }
 
-// Slice builds a new smaller chunk with data only from given time range
+// Slice builds a new smaller chunk with data only from given time range (inclusive)
 func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 	if from > c.Through || through < c.From {
 		return nil, ErrSliceOutOfRange

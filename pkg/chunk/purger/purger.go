@@ -172,7 +172,7 @@ func (dp *DataPurger) jobScheduler() {
 							pendingPlansCountMtx.Unlock()
 
 							dp.inProcessRequestIDsMtx.Lock()
-							delete(dp.inProcessRequestIDs, jobExecutionStatus.deleteRequestID)
+							delete(dp.inProcessRequestIDs, jobExecutionStatus.userID)
 							dp.inProcessRequestIDsMtx.Unlock()
 						} else {
 							pendingPlansCountMtx.Unlock()
@@ -202,7 +202,8 @@ func (dp *DataPurger) jobScheduler() {
 			pendingPlansCountMtx.Unlock()
 
 			for i := 0; i < numPlans; i++ {
-				dp.workerJobChan <- workerJob{planNo: i, userID: requestWithLogger.UserID, deleteRequestID: requestWithLogger.RequestID}
+				dp.workerJobChan <- workerJob{planNo: i, userID: requestWithLogger.UserID,
+					deleteRequestID: requestWithLogger.RequestID, logger: requestWithLogger.logger}
 			}
 		case <-dp.quit:
 			close(dp.workerJobChan)
@@ -296,18 +297,18 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 	}
 
 	for _, deleteRequest := range requestsWithBuildingPlanStatus {
-		requestAndLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
-		level.Info(requestAndLogger.logger).Log("msg", "loaded in process delete requests with status building plan")
+		level.Info(requestWithLogger.logger).Log("msg", "loaded in process delete requests with status building plan")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = dp.inProcessRequestIDs[deleteRequest.RequestID]
-		err := dp.buildDeletePlan(requestAndLogger)
+		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
+		err := dp.buildDeletePlan(requestWithLogger)
 		if err != nil {
-			level.Error(requestAndLogger.logger).Log("msg", "error building delete plan", "err", err)
+			level.Error(requestWithLogger.logger).Log("msg", "error building delete plan", "err", err)
 		}
 
-		level.Info(requestAndLogger.logger).Log("msg", "sending delete request for execution")
-		dp.executePlansChan <- requestAndLogger
+		level.Info(requestWithLogger.logger).Log("msg", "sending delete request for execution")
+		dp.executePlansChan <- requestWithLogger
 	}
 
 	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.Deleting)
@@ -319,7 +320,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		requestAndLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(requestAndLogger.logger).Log("msg", "loaded in process delete requests with status deleting")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = dp.inProcessRequestIDs[deleteRequest.RequestID]
+		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
 		dp.executePlansChan <- requestAndLogger
 	}
 

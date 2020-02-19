@@ -251,7 +251,7 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 
 				deleteRequest := deleteRequests[0]
 				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-				err = dataPurger.buildDeletePlan(makeDeleteRequestWithLogger(deleteRequest, util.Logger))
+				err = dataPurger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 
 				// execute all the plans
@@ -273,6 +273,71 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestDataPurger_Restarts(t *testing.T) {
+	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deleteStore, chunkStore, storageClient, dataPurger := setupStoresAndPurger(t)
+	defer func() {
+		chunkStore.Stop()
+	}()
+
+	chunks, err := buildChunks(0, model.Time(0).Add(10*24*time.Hour), 1)
+	require.NoError(t, err)
+
+	require.NoError(t, chunkStore.Put(context.Background(), chunks))
+
+	// delete chunks
+	err = deleteStore.AddDeleteRequest(context.Background(), userID, model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(8*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// get the delete request
+	deleteRequests, err := deleteStore.GetAllDeleteRequestsForUser(context.Background(), userID)
+	require.NoError(t, err)
+
+	deleteRequest := deleteRequests[0]
+	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+	err = dataPurger.buildDeletePlan(requestWithLogger)
+	require.NoError(t, err)
+
+	// stop the existing purger
+	dataPurger.Stop()
+
+	// create a new purger to check whether it picks up in process delete requests
+	var cfg DataPurgerConfig
+	flagext.DefaultValues(&cfg)
+	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient)
+	require.NoError(t, err)
+
+	defer func() {
+		newPurger.Stop()
+	}()
+
+	// lets wait till purger finishes execution of in process delete requests
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Minute)
+	for ctx.Err() == nil {
+		if len(newPurger.inProcessRequestIDs) == 0 {
+			break
+		}
+		time.Sleep(time.Second / 2)
+	}
+	require.NoError(t, ctx.Err())
+
+	// check whether data got deleted from the store since delete request has been processed
+	chunks, err = chunkStore.Get(context.Background(), userID, 0, model.Time(0).Add(10*24*time.Hour), fooMetricNameMatcher...)
+	require.NoError(t, err)
+
+	// we are deleting 7 days out of 10 so there should we 3 days data left in store which means 72 chunks
+	require.Equal(t, 72, len(chunks))
+
+	deleteRequests, err = deleteStore.GetAllDeleteRequestsForUser(context.Background(), userID)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Processed, deleteRequests[0].Status)
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {

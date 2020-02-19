@@ -11,20 +11,19 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message Plan {
-  int64 start_timestamp_ms = 1;
-  int64 end_timestamp_ms = 2;
-  repeated ChunksGroup ChunksGroup = 3 [(gogoproto.nullable) = false];
+  Interval plan_interval = 1;
+  repeated ChunksGroup chunks_group = 2 [(gogoproto.nullable) = false];
 }
 
 // ChunksGroup holds Chunk IDs for a group of chunks which have same series ID
 message ChunksGroup {
-  repeated cortex.LabelPair Labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
-  repeated ChunkDetails Chunks = 2 [(gogoproto.nullable) = false];
+  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated ChunkDetails chunks = 2 [(gogoproto.nullable) = false];
 }
 
 message ChunkDetails {
   string ID = 1;
-  Interval PartiallyDeletedInterval = 2;
+  Interval partially_deleted_interval = 2;
 }
 
 message Interval {

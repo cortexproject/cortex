@@ -319,11 +319,18 @@ func TestDataPurger_Restarts(t *testing.T) {
 	}()
 
 	// lets wait till purger finishes execution of in process delete requests
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
 	for ctx.Err() == nil {
+		newPurger.inProcessRequestIDsMtx.RLock()
+
 		if len(newPurger.inProcessRequestIDs) == 0 {
+			newPurger.inProcessRequestIDsMtx.RUnlock()
 			break
 		}
+
+		newPurger.inProcessRequestIDsMtx.RUnlock()
 		time.Sleep(time.Second / 2)
 	}
 	require.NoError(t, ctx.Err())

@@ -147,38 +147,37 @@ func (dp *DataPurger) jobScheduler() {
 
 		for {
 			select {
-			case jobExecutionStatus := <-dp.workerJobExecutionStatusChan:
-				if jobExecutionStatus.err != nil {
-					level.Error(jobExecutionStatus.logger).Log("msg", "error executing delete plan",
-						"plan_no", jobExecutionStatus.planNo, "err", jobExecutionStatus.err)
+			case status := <-dp.workerJobExecutionStatusChan:
+				if status.err != nil {
+					level.Error(status.logger).Log("msg", "error executing delete plan",
+						"plan_no", status.planNo, "err", status.err)
+					continue
+				}
+
+				err := dp.removeDeletePlan(context.Background(), status.userID, status.deleteRequestID, status.planNo)
+				if err != nil {
+					level.Error(status.logger).Log("msg", "error removing delete plan",
+						"plan_no", status.planNo, "err", err)
 				} else {
-					err := dp.removeDeletePlan(context.Background(), jobExecutionStatus.userID, jobExecutionStatus.deleteRequestID, jobExecutionStatus.planNo)
-					if err != nil {
-						level.Error(jobExecutionStatus.logger).Log("msg", "error removing delete plan",
-							"plan_no", jobExecutionStatus.planNo, "err", err)
-					} else {
-						pendingPlansCountMtx.Lock()
-						pendingPlansCount[jobExecutionStatus.deleteRequestID]--
+					pendingPlansCountMtx.Lock()
+					pendingPlansCount[status.deleteRequestID]--
 
-						if pendingPlansCount[jobExecutionStatus.deleteRequestID] == 0 {
-							level.Info(jobExecutionStatus.logger).Log("msg", "finished execution of all plans, cleaning up and updating status of request")
+					if pendingPlansCount[status.deleteRequestID] == 0 {
+						level.Info(status.logger).Log("msg", "finished execution of all plans, cleaning up and updating status of request")
 
-							err := dp.deleteStore.UpdateStatus(context.Background(), jobExecutionStatus.userID, jobExecutionStatus.deleteRequestID, chunk.Processed)
-							if err != nil {
-								level.Error(jobExecutionStatus.logger).Log("msg", "error updating delete request status to process", "err", err)
-							}
-
-							delete(pendingPlansCount, jobExecutionStatus.deleteRequestID)
-							pendingPlansCountMtx.Unlock()
-
-							dp.inProcessRequestIDsMtx.Lock()
-							delete(dp.inProcessRequestIDs, jobExecutionStatus.userID)
-							dp.inProcessRequestIDsMtx.Unlock()
-						} else {
-							pendingPlansCountMtx.Unlock()
-
+						err := dp.deleteStore.UpdateStatus(context.Background(), status.userID, status.deleteRequestID, chunk.Processed)
+						if err != nil {
+							level.Error(status.logger).Log("msg", "error updating delete request status to process", "err", err)
 						}
 
+						delete(pendingPlansCount, status.deleteRequestID)
+						pendingPlansCountMtx.Unlock()
+
+						dp.inProcessRequestIDsMtx.Lock()
+						delete(dp.inProcessRequestIDs, status.userID)
+						dp.inProcessRequestIDsMtx.Unlock()
+					} else {
+						pendingPlansCountMtx.Unlock()
 					}
 				}
 			case <-dp.quit:
@@ -193,17 +192,17 @@ func (dp *DataPurger) jobScheduler() {
 
 	for {
 		select {
-		case requestWithLogger := <-dp.executePlansChan:
-			numPlans := numOfPlans(requestWithLogger.StartTime, requestWithLogger.EndTime)
-			level.Info(requestWithLogger.logger).Log("msg", "sending jobs to workers for purging data", "num_jobs", numPlans)
+		case req := <-dp.executePlansChan:
+			numPlans := numOfPlans(req.StartTime, req.EndTime)
+			level.Info(req.logger).Log("msg", "sending jobs to workers for purging data", "num_jobs", numPlans)
 
 			pendingPlansCountMtx.Lock()
-			pendingPlansCount[requestWithLogger.RequestID] = numPlans
+			pendingPlansCount[req.RequestID] = numPlans
 			pendingPlansCountMtx.Unlock()
 
 			for i := 0; i < numPlans; i++ {
-				dp.workerJobChan <- workerJob{planNo: i, userID: requestWithLogger.UserID,
-					deleteRequestID: requestWithLogger.RequestID, logger: requestWithLogger.logger}
+				dp.workerJobChan <- workerJob{planNo: i, userID: req.UserID,
+					deleteRequestID: req.RequestID, logger: req.logger}
 			}
 		case <-dp.quit:
 			close(dp.workerJobChan)
@@ -277,7 +276,7 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger l
 		level.Debug(logger).Log("msg", "deleting series", "labels", plan.ChunksGroup[i].Labels)
 
 		// this is mostly required to clean up series ids from series store
-		err := dp.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.StartTimestampMs), model.Time(plan.EndTimestampMs),
+		err := dp.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.PlanInterval.StartTimestampMs), model.Time(plan.PlanInterval.EndTimestampMs),
 			userID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels))
 		if err != nil {
 			return err
@@ -297,18 +296,18 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 	}
 
 	for _, deleteRequest := range requestsWithBuildingPlanStatus {
-		requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
-		level.Info(requestWithLogger.logger).Log("msg", "loaded in process delete requests with status building plan")
+		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
 
 		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
-		err := dp.buildDeletePlan(requestWithLogger)
+		err := dp.buildDeletePlan(req)
 		if err != nil {
-			level.Error(requestWithLogger.logger).Log("msg", "error building delete plan", "err", err)
+			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
 		}
 
-		level.Info(requestWithLogger.logger).Log("msg", "sending delete request for execution")
-		dp.executePlansChan <- requestWithLogger
+		level.Info(req.logger).Log("msg", "sending delete request for execution")
+		dp.executePlansChan <- req
 	}
 
 	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.Deleting)
@@ -317,11 +316,11 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 	}
 
 	for _, deleteRequest := range requestsWithDeletingStatus {
-		requestAndLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-		level.Info(requestAndLogger.logger).Log("msg", "loaded in process delete requests with status deleting")
+		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
 		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
-		dp.executePlansChan <- requestAndLogger
+		dp.executePlansChan <- req
 	}
 
 	return nil
@@ -360,18 +359,18 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
 		dp.inProcessRequestIDsMtx.Unlock()
 
-		requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
-		level.Info(requestWithLogger.logger).Log("msg", "building plan for a new delete request")
+		level.Info(req.logger).Log("msg", "building plan for a new delete request")
 
-		err := dp.buildDeletePlan(requestWithLogger)
+		err := dp.buildDeletePlan(req)
 		if err != nil {
-			level.Error(requestWithLogger.logger).Log("msg", "error building delete plan", "err", err)
+			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
 			return err
 		}
 
-		level.Info(requestWithLogger.logger).Log("msg", "sending delete request for execution")
-		dp.executePlansChan <- requestWithLogger
+		level.Info(req.logger).Log("msg", "sending delete request for execution")
+		dp.executePlansChan <- req
 	}
 
 	return nil
@@ -381,36 +380,38 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 // A days plan will include chunk ids and labels of all the chunks which are supposed to be deleted.
 // Chunks are grouped together by labels to avoid storing labels repetitively.
 // After building delete plans it updates status of delete request to Deleting and sends it for execution
-func (dp *DataPurger) buildDeletePlan(requestWithLogger deleteRequestWithLogger) error {
+func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, requestWithLogger.UserID)
+	ctx = user.InjectOrgID(ctx, req.UserID)
 
-	perDayTimeRange := splitByDay(requestWithLogger.StartTime, requestWithLogger.EndTime)
-	level.Info(requestWithLogger.logger).Log("msg", "building delete plan", "num_plans", len(perDayTimeRange))
+	perDayTimeRange := splitByDay(req.StartTime, req.EndTime)
+	level.Info(req.logger).Log("msg", "building delete plan", "num_plans", len(perDayTimeRange))
 
 	plans := make([][]byte, len(perDayTimeRange))
 	for i, planRange := range perDayTimeRange {
 		chunksGroups := []purgeplan.ChunksGroup{}
 
-		for _, selector := range requestWithLogger.Selectors {
+		for _, selector := range req.Selectors {
 			matchers, err := promql.ParseMetricSelector(selector)
 			if err != nil {
 				return err
 			}
 
 			// ToDo: remove duplicate chunks
-			chunks, err := dp.chunkStore.Get(ctx, requestWithLogger.UserID, planRange.Start, planRange.End, matchers...)
+			chunks, err := dp.chunkStore.Get(ctx, req.UserID, planRange.Start, planRange.End, matchers...)
 			if err != nil {
 				return err
 			}
 
-			chunksGroups = append(chunksGroups, groupChunks(chunks, requestWithLogger.StartTime, requestWithLogger.EndTime)...)
+			chunksGroups = append(chunksGroups, groupChunks(chunks, req.StartTime, req.EndTime)...)
 		}
 
 		plan := purgeplan.Plan{
-			StartTimestampMs: int64(planRange.Start),
-			EndTimestampMs:   int64(planRange.End),
-			ChunksGroup:      chunksGroups,
+			PlanInterval: &purgeplan.Interval{
+				StartTimestampMs: int64(planRange.Start),
+				EndTimestampMs:   int64(planRange.End),
+			},
+			ChunksGroup: chunksGroups,
 		}
 
 		pb, err := proto.Marshal(&plan)
@@ -421,17 +422,17 @@ func (dp *DataPurger) buildDeletePlan(requestWithLogger deleteRequestWithLogger)
 		plans[i] = pb
 	}
 
-	err := dp.putDeletePlans(ctx, requestWithLogger.UserID, requestWithLogger.RequestID, plans)
+	err := dp.putDeletePlans(ctx, req.UserID, req.RequestID, plans)
 	if err != nil {
 		return err
 	}
 
-	err = dp.deleteStore.UpdateStatus(ctx, requestWithLogger.UserID, requestWithLogger.RequestID, chunk.Deleting)
+	err = dp.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, chunk.Deleting)
 	if err != nil {
 		return err
 	}
 
-	level.Info(requestWithLogger.logger).Log("msg", "built delete plans", "num_plans", len(perDayTimeRange))
+	level.Info(req.logger).Log("msg", "built delete plans", "num_plans", len(perDayTimeRange))
 
 	return nil
 }

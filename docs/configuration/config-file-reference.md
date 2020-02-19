@@ -66,7 +66,7 @@ Supported contents and default values of the config file:
 [limits: <limits_config>]
 
 # The frontend_worker_config configures the worker - running within the Cortex
-# ingester - picking up and executing queries enqueued by the query-frontend.
+# querier - picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker_config>]
 
 # The query_frontend_config configures the Cortex query-frontend.
@@ -1631,7 +1631,7 @@ grpc_client_config:
 
 ## `frontend_worker_config`
 
-The `frontend_worker_config` configures the worker - running within the Cortex ingester - picking up and executing queries enqueued by the query-frontend.
+The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
 
 ```yaml
 # Address of query frontend service.

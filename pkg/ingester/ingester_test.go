@@ -44,6 +44,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
+	require.NoError(t, ing.StartAsync(context.Background()))
 
 	return store, ing
 }
@@ -201,7 +202,8 @@ func TestIngesterAppend(t *testing.T) {
 	retrieveTestSamples(t, ing, userIDs, testData)
 
 	// Read samples back via chunk store.
-	ing.Shutdown()
+	ing.StopAsync()
+	require.NoError(t, ing.AwaitTerminated(context.Background()))
 	store.checkData(t, userIDs, testData)
 }
 
@@ -227,7 +229,8 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 	}
 
 	// Read samples back via chunk store.
-	ing.Shutdown()
+	ing.StopAsync()
+	require.NoError(t, ing.AwaitTerminated(context.Background()))
 }
 
 func TestIngesterIdleFlush(t *testing.T) {
@@ -302,7 +305,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.Shutdown()
+	defer ing.StopAsync()
 
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -333,7 +336,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.Shutdown()
+	defer ing.StopAsync()
 
 	lp := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -364,7 +367,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.Shutdown()
+	defer ing.StopAsync()
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -421,7 +424,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.Shutdown()
+	defer ing.StopAsync()
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -485,7 +488,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	_, ing := newDefaultTestStore(b)
-	defer ing.Shutdown()
+	defer ing.StopAsync()
 
 	var (
 		wg     sync.WaitGroup
@@ -582,7 +585,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 						require.NoError(b, err)
 					}
 				}
-				ing.Shutdown()
+				ing.StopAsync()
 			}
 		})
 	}

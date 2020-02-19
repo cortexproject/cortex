@@ -356,7 +356,7 @@ func (t *Cortex) stopStoreQueryable() error {
 	return nil
 }
 
-func (t *Cortex) initIngester(cfg *Config) (err error) {
+func (t *Cortex) ingesterService(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
@@ -375,12 +375,7 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	t.server.HTTP.Handle("/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.ingester.Push)))
-	return
-}
-
-func (t *Cortex) stopIngester() error {
-	t.ingester.Shutdown()
-	return nil
+	return t.ingester, nil
 }
 
 func (t *Cortex) storeService(cfg *Config) (serv services.Service, err error) {
@@ -708,9 +703,8 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
-		init: (*Cortex).initIngester,
-		stop: (*Cortex).stopIngester,
+		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
+		wrappedService: (*Cortex).ingesterService,
 	},
 
 	Querier: {

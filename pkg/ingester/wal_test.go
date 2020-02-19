@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -26,7 +27,8 @@ func TestWAL(t *testing.T) {
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
-	ing.Shutdown()
+	ing.StopAsync()
+	require.NoError(t, ing.AwaitTerminated(context.Background()))
 
 	for r := 0; r < numRestarts; r++ {
 		if r == numRestarts-1 {
@@ -46,6 +48,6 @@ func TestWAL(t *testing.T) {
 			userIDs, testData = pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, (r+1)*numSamplesPerSeriesPerPush)
 		}
 
-		ing.Shutdown()
+		ing.StopAsync()
 	}
 }

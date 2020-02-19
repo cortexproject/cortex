@@ -72,7 +72,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		ingester.StopAsync() // doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, ingester.AwaitTerminated(context.Background()))
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
@@ -82,7 +83,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		ingester.StopAsync() // doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, ingester.AwaitTerminated(context.Background()))
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -104,6 +106,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, ing1.StartAsync(context.Background()))
 
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing1.lifecycler.GetState()
@@ -123,6 +126,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, ing2.StartAsync(context.Background()))
 
 	// Let ing2 send chunks to ing1
 	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
@@ -132,7 +136,9 @@ func TestIngesterTransfer(t *testing.T) {
 	}
 
 	// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-	ing1.Shutdown()
+	ing1.StopAsync()
+	require.NoError(t, ing1.AwaitTerminated(context.Background()))
+
 	test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
 		return ing2.lifecycler.GetState()
 	})
@@ -168,6 +174,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, ing.StartAsync(context.Background()))
 
 	test.Poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
 		return ing.lifecycler.GetState()
@@ -439,6 +446,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg1.MaxTransferRetries = 10
 			ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, ing1.StartAsync(context.Background()))
 
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 				return ing1.lifecycler.GetState()
@@ -466,6 +474,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 			ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, ing2.StartAsync(context.Background()))
 
 			// Let ing1 send blocks/wal to ing2
 			ingesterClientFactoryCount := 0
@@ -481,7 +490,8 @@ func TestV2IngesterTransfer(t *testing.T) {
 			}
 
 			// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-			ing1.Shutdown()
+			ing1.StopAsync()
+			require.NoError(t, ing1.AwaitTerminated(context.Background()))
 			test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
 				return ing2.lifecycler.GetState()
 			})

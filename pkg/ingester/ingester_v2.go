@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -64,6 +65,9 @@ type TSDBState struct {
 	// transferring to a joining ingester
 	transferOnce sync.Once
 
+	shippingService   services.Service
+	compactionService services.Service
+
 	tsdbMetrics *tsdbMetrics
 
 	// Head compactions metrics.
@@ -88,7 +92,6 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		metrics:      newIngesterMetrics(registerer, false),
 		limits:       limits,
 		chunkStore:   nil,
-		quit:         make(chan struct{}),
 		wal:          &noopWAL{},
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*userTSDB),
@@ -138,24 +141,43 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		return nil, err
 	}
 
-	// Run the blocks shipping in a dedicated go routine.
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		i.done.Add(1)
-		go i.shipBlocksLoop()
-	}
-
-	i.done.Add(1)
-	go i.updateLoop()
-
-	i.done.Add(1)
-	go i.compactionLoop()
-
+	services.InitBasicService(&i.BasicService, i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
 
-func (i *Ingester) updateLoop() {
-	defer i.done.Done()
+// TODO: more stuff could be moved to Starting: especially opening of TSDBs, starting of lifecycler.
+func (i *Ingester) startingV2(ctx context.Context) error {
+	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		i.TSDBState.shippingService = services.NewService(nil, i.shipBlocksLoop, nil)
+		_ = i.TSDBState.shippingService.StartAsync(ctx)
+	}
 
+	i.TSDBState.compactionService = services.NewService(nil, i.compactionLoop, nil)
+	return nil
+}
+
+// runs when V2 ingester is stopping
+func (i *Ingester) stoppingV2() error {
+	if i.TSDBState.shippingService != nil {
+		// It's important to add the shipper loop to the "done" wait group,
+		// because the blocks transfer should start only once it's guaranteed
+		// there's no shipping on-going.
+
+		i.TSDBState.shippingService.StopAsync()
+		// wait until shipping stops
+		_ = i.TSDBState.shippingService.AwaitTerminated(context.Background())
+	}
+
+	i.TSDBState.compactionService.StopAsync()
+	_ = i.TSDBState.compactionService.AwaitTerminated(context.Background())
+
+	// Next initiate our graceful exit from the ring.
+	i.lifecycler.StopAsync()
+	_ = i.lifecycler.AwaitTerminated(context.Background())
+	return nil
+}
+
+func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
@@ -180,8 +202,8 @@ func (i *Ingester) updateLoop() {
 					userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
 				}
 			}
-		case <-i.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
@@ -767,17 +789,13 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 	return float64(count)
 }
 
-func (i *Ingester) shipBlocksLoop() {
-	// It's important to add the shipper loop to the "done" wait group,
-	// because the blocks transfer should start only once it's guaranteed
-	// there's no shipping on-going.
-	defer i.done.Done()
-
+func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 	// Start a goroutine that will cancel all shipper contexts on ingester
 	// shutdown, so that if there's any shipper sync in progress it will be
 	// quickly canceled.
+	// TODO: this could be a "stoppingFn" for shipper service, but let's keep that for later.
 	go func() {
-		<-i.quit
+		<-ctx.Done()
 
 		for _, userID := range i.getTSDBUsers() {
 			if userDB := i.getTSDB(userID); userDB != nil && userDB.shipperCancel != nil {
@@ -794,8 +812,8 @@ func (i *Ingester) shipBlocksLoop() {
 		case <-shipTicker.C:
 			i.shipBlocks()
 
-		case <-i.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
@@ -833,9 +851,7 @@ func (i *Ingester) shipBlocks() {
 	})
 }
 
-func (i *Ingester) compactionLoop() {
-	defer i.done.Done()
-
+func (i *Ingester) compactionLoop(ctx context.Context) error {
 	ticker := time.NewTicker(i.cfg.TSDBConfig.HeadCompactionInterval)
 	defer ticker.Stop()
 
@@ -844,8 +860,8 @@ func (i *Ingester) compactionLoop() {
 		case <-ticker.C:
 			i.compactBlocks()
 
-		case <-i.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }

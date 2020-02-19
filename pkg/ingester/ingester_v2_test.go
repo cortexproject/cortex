@@ -205,7 +205,8 @@ func TestIngester_v2Push(t *testing.T) {
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
-			defer i.Shutdown()
+			require.NoError(t, i.StartAsync(context.Background()))
+			defer i.StopAsync()
 			defer cleanup()
 
 			ctx := user.InjectOrgID(context.Background(), userID)
@@ -256,7 +257,8 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	ctx := user.InjectOrgID(context.Background(), userID)
@@ -321,7 +323,8 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until the ingester is ACTIVE
@@ -392,7 +395,8 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -436,7 +440,8 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -555,7 +560,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -590,7 +596,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Mock request
@@ -610,7 +617,8 @@ func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Mock request
@@ -630,7 +638,8 @@ func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T)
 func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Mock request
@@ -655,7 +664,8 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 	require.Equal(t, ring.PENDING, i.lifecycler.GetState())
 
@@ -703,7 +713,8 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 			require.NoError(t, err)
-			defer i.Shutdown()
+			require.NoError(t, i.StartAsync(context.Background()))
+			defer i.StopAsync()
 			defer cleanup()
 
 			// Switch ingester state to the expected one in the test
@@ -848,7 +859,8 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -1008,8 +1020,10 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 			require.NoError(t, err)
+			require.NoError(t, ingester.StartAsync(context.Background()))
+			require.NoError(t, ingester.AwaitRunning(context.Background()))
 
-			defer ingester.Shutdown()
+			defer ingester.StopAsync()
 
 			testData.check(t, ingester)
 		})
@@ -1024,7 +1038,8 @@ func TestIngester_shipBlocks(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -1078,7 +1093,8 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -1126,7 +1142,8 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, i.StartAsync(context.Background()))
+	defer i.StopAsync()
 	defer cleanup()
 
 	// Wait until it's ACTIVE

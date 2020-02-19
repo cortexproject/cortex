@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {

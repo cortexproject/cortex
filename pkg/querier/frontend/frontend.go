@@ -38,8 +38,11 @@ var (
 		Help:      "Number of queries in the queue.",
 	})
 
+	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
+	StatusClientClosedRequest = 499
+
 	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	errCanceled         = httpgrpc.Errorf(499, context.Canceled.Error())
+	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 )
 

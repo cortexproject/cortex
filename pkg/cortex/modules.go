@@ -677,6 +677,9 @@ type module struct {
 
 var modules = map[moduleName]module{
 	Server: {
+		// we cannot use 'wrappedService', as stopped Server service is currently signal to Cortex
+		// that it should shutdown. If we used wrappedService, it wouldn't stop until
+		// all services that depend on it stopped first... but there is nothing that would make them stop.
 		service: (*Cortex).serverService,
 	},
 
@@ -685,7 +688,7 @@ var modules = map[moduleName]module{
 	},
 
 	MemberlistKV: {
-		service: (*Cortex).initMemberlistKV,
+		wrappedService: (*Cortex).initMemberlistKV,
 	},
 
 	Ring: {
@@ -694,8 +697,8 @@ var modules = map[moduleName]module{
 	},
 
 	Overrides: {
-		deps:    []moduleName{RuntimeConfig},
-		service: (*Cortex).overridesService,
+		deps:           []moduleName{RuntimeConfig},
+		wrappedService: (*Cortex).overridesService,
 	},
 
 	Distributor: {

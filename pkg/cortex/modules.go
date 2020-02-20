@@ -511,7 +511,7 @@ func (t *Cortex) rulerService(cfg *Config) (serv services.Service, err error) {
 	return t.ruler, nil
 }
 
-func (t *Cortex) initConfigs(cfg *Config) (err error) {
+func (t *Cortex) configService(cfg *Config) (serv services.Service, err error) {
 	t.configDB, err = db.New(cfg.ConfigDB)
 	if err != nil {
 		return
@@ -519,12 +519,10 @@ func (t *Cortex) initConfigs(cfg *Config) (err error) {
 
 	t.configAPI = api.New(t.configDB)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
-	return
-}
-
-func (t *Cortex) stopConfigs() error {
-	t.configDB.Close()
-	return nil
+	return services.NewIdleService(nil, func() error {
+		t.configDB.Close()
+		return nil
+	}), nil
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
@@ -721,9 +719,8 @@ var modules = map[moduleName]module{
 	},
 
 	Configs: {
-		deps: []moduleName{Server},
-		init: (*Cortex).initConfigs,
-		stop: (*Cortex).stopConfigs,
+		deps:           []moduleName{Server},
+		wrappedService: (*Cortex).configService,
 	},
 
 	AlertManager: {

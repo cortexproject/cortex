@@ -453,14 +453,14 @@ func (t *Cortex) queryFrontendService(cfg *Config) (serv services.Service, err e
 	}), nil
 }
 
-func (t *Cortex) initTableManager(cfg *Config) error {
+func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		return nil // table manager isn't used in v2
+		return nil, nil // table manager isn't used in v2
 	}
 
 	err := cfg.Schema.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Assume the newest config is the one to use
@@ -481,26 +481,14 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 
 	tableClient, err := storage.NewTableClient(lastConfig.IndexType, cfg.Storage)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
-	if err != nil {
-		return err
-	}
-	t.tableManager.Start()
-	return nil
-}
-
-func (t *Cortex) stopTableManager() error {
-	if t.tableManager != nil {
-		t.tableManager.Stop()
-	}
-
-	return nil
+	return t.tableManager, err
 }
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
@@ -728,9 +716,8 @@ var modules = map[moduleName]module{
 	},
 
 	TableManager: {
-		deps: []moduleName{Server},
-		init: (*Cortex).initTableManager,
-		stop: (*Cortex).stopTableManager,
+		deps:           []moduleName{Server},
+		wrappedService: (*Cortex).initTableManager,
 	},
 
 	Ruler: {

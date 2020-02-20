@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -66,9 +67,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
 type Compactor struct {
+	services.BasicService
+
 	compactorCfg Config
 	storageCfg   cortex_tsdb.Config
 	logger       log.Logger
+
+	// function that craeates TSDB compactor using the context.
+	// Useful for injecting mock compactor.
+	createTsdbCompactor func(ctx context.Context) (tsdb.Compactor, error)
 
 	// Underlying compactor used to compact TSDB blocks.
 	tsdbCompactor tsdb.Compactor
@@ -79,14 +86,12 @@ type Compactor struct {
 	// Wait group used to wait until the internal go routine completes.
 	runner sync.WaitGroup
 
-	// Context used to run compaction and its cancel function to
-	// safely interrupt it on shutdown.
-	ctx       context.Context
-	cancelCtx context.CancelFunc
-
 	// Ring used for sharding compactions.
 	ringLifecycler *ring.Lifecycler
 	ring           *ring.Ring
+
+	// Manager sub-services (ring, lifecycler)
+	servMgr *services.Manager
 
 	// Metrics.
 	compactionRunsStarted   prometheus.Counter
@@ -111,13 +116,9 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_compactor_", registerer))
 	}
 
-	tsdbCompactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
-	if err != nil {
-		cancelCtx()
-		return nil, errors.Wrap(err, "failed to create TSDB compactor")
-	}
-
-	cortexCompactor, err := newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registerer)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, bucketClient, logger, registerer, func(ctx context.Context) (tsdb.Compactor, error) {
+		return tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
+	})
 	if err != nil {
 		cancelCtx()
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
@@ -127,23 +128,20 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 }
 
 func newCompactor(
-	ctx context.Context,
-	cancelCtx context.CancelFunc,
 	compactorCfg Config,
 	storageCfg cortex_tsdb.Config,
 	bucketClient objstore.Bucket,
-	tsdbCompactor tsdb.Compactor,
 	logger log.Logger,
 	registerer prometheus.Registerer,
+	createTsdbCompactor func(ctx context.Context) (tsdb.Compactor, error),
 ) (*Compactor, error) {
 	c := &Compactor{
-		compactorCfg:  compactorCfg,
-		storageCfg:    storageCfg,
-		logger:        logger,
-		bucketClient:  bucketClient,
-		tsdbCompactor: tsdbCompactor,
-		ctx:           ctx,
-		cancelCtx:     cancelCtx,
+		compactorCfg:        compactorCfg,
+		storageCfg:          storageCfg,
+		logger:              logger,
+		createTsdbCompactor: createTsdbCompactor,
+		bucketClient:        bucketClient,
+
 		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
@@ -158,80 +156,76 @@ func newCompactor(
 		}),
 	}
 
-	// Initialize the compactors ring if sharding is enabled.
-	if compactorCfg.ShardingEnabled {
-		lifecyclerCfg := compactorCfg.ShardingRing.ToLifecyclerConfig()
-		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
-		if err == nil {
-			err = lifecycler.StartAsync(context.Background())
-		}
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to initialize compactor ring lifecycler")
-		}
-
-		c.ringLifecycler = lifecycler
-
-		ring, err := ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to initialize compactor ring")
-		}
-		err = ring.StartAsync(context.Background())
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to start compactor ring")
-		}
-
-		c.ring = ring
-	}
-
 	// Register metrics.
 	if registerer != nil {
 		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed)
 		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
+	services.InitBasicService(&c.BasicService, c.starting, c.running, c.stopping)
+
 	return c, nil
 }
 
 // Start the compactor.
-func (c *Compactor) Start() {
-	// Start the compactor loop.
-	c.runner.Add(1)
-	go c.run()
-}
+func (c *Compactor) starting(ctx context.Context) error {
+	// Initialize the compactors ring if sharding is enabled.
+	if c.compactorCfg.ShardingEnabled {
+		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
+		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		if err != nil {
+			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
+		}
 
-// Stop the compactor and waits until done. This may take some time
-// if there's a on-going compaction.
-func (c *Compactor) Stop() {
-	c.cancelCtx()
-	c.runner.Wait()
+		c.ringLifecycler = lifecycler
 
-	// Shutdown the ring lifecycler (if any)
-	if c.ringLifecycler != nil {
-		c.ringLifecycler.StopAsync()
-		_ = c.ringLifecycler.AwaitTerminated(context.Background())
+		ring, err := ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
+		if err != nil {
+			return errors.Wrap(err, "unable to initialize compactor ring")
+		}
+
+		c.ring = ring
+
+		c.servMgr, err = services.NewManager(c.ringLifecycler, c.ring)
+		if err == nil {
+			err = c.servMgr.StartAsync(ctx)
+			if err == nil {
+				err = c.servMgr.AwaitHealthy(ctx)
+			}
+		}
+
+		if err != nil {
+			return errors.Wrap(err, "unable to initialize service manager")
+		}
 	}
 
-	if c.ring != nil {
-		c.ring.StopAsync()
-		_ = c.ring.AwaitTerminated(context.Background())
-	}
+	var err error
+	c.tsdbCompactor, err = c.createTsdbCompactor(ctx)
+	return errors.Wrap(err, "failed to create TSDB compactor")
 }
 
-func (c *Compactor) run() {
-	defer c.runner.Done()
+func (c *Compactor) stopping() error {
+	if c.servMgr != nil {
+		c.servMgr.StopAsync()
+		_ = c.servMgr.AwaitStopped(context.Background())
+	}
 
+	return nil
+}
+
+func (c *Compactor) running(ctx context.Context) error {
 	// If sharding is enabled we should wait until this instance is
 	// ACTIVE within the ring.
 	if c.compactorCfg.ShardingEnabled {
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := c.waitRingActive(); err != nil {
-			return
+		if err := c.waitRingActive(ctx); err != nil {
+			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
 	}
 
 	// Run an initial compaction before starting the interval.
-	c.compactUsersWithRetries(c.ctx)
+	c.compactUsersWithRetries(ctx)
 
 	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)
 	defer ticker.Stop()
@@ -239,9 +233,9 @@ func (c *Compactor) run() {
 	for {
 		select {
 		case <-ticker.C:
-			c.compactUsersWithRetries(c.ctx)
-		case <-c.ctx.Done():
-			return
+			c.compactUsersWithRetries(ctx)
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
@@ -391,7 +385,7 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
 }
 
-func (c *Compactor) waitRingActive() error {
+func (c *Compactor) waitRingActive(ctx context.Context) error {
 	for {
 		// Check if the ingester is ACTIVE in the ring and our ring client
 		// has detected it.
@@ -406,8 +400,8 @@ func (c *Compactor) waitRingActive() error {
 		select {
 		case <-time.After(time.Second):
 			// Nothing to do
-		case <-c.ctx.Done():
-			return c.ctx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }

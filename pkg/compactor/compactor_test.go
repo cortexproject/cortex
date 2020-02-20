@@ -81,14 +81,16 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	c.Start()
+	require.NoError(t, c.StartAsync(context.Background()))
+	require.NoError(t, c.AwaitRunning(context.Background()))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.Stop()
+	c.StopAsync()
+	require.NoError(t, c.AwaitTerminated(context.Background()))
 
 	assert.Equal(t, []string{
 		`level=info msg="discovering users from bucket"`,
@@ -171,14 +173,16 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 
 	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	c.Start()
+	require.NoError(t, c.StartAsync(context.Background()))
+	require.NoError(t, c.AwaitRunning(context.Background()))
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.compactionRunsFailed)
 	})
 
-	c.Stop()
+	c.StopAsync()
+	require.NoError(t, c.AwaitTerminated(context.Background()))
 
 	// Ensure the bucket iteration has been retried the configured number of times.
 	bucketClient.AssertNumberOfCalls(t, "Iter", 3)
@@ -272,7 +276,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	c, tsdbCompactor, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	c.Start()
+	require.NoError(t, c.StartAsync(context.Background()))
+	require.NoError(t, c.AwaitRunning(context.Background()))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -285,7 +290,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.Stop()
+	c.StopAsync()
+	require.NoError(t, c.AwaitTerminated(context.Background()))
 
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
@@ -344,7 +350,8 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	c, tsdbCompactor, logs, _, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
-	c.Start()
+	require.NoError(t, c.StartAsync(context.Background()))
+	require.NoError(t, c.AwaitRunning(context.Background()))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -357,7 +364,8 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.Stop()
+	c.StopAsync()
+	require.NoError(t, c.AwaitTerminated(context.Background()))
 
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
@@ -416,7 +424,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
-		defer c.Stop()
+		defer c.StopAsync()
 		defer cleanup()
 
 		compactors = append(compactors, c)
@@ -429,9 +437,16 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
 	}
 
+	// Start all compactors
+	for _, c := range compactors {
+		require.NoError(t, c.StartAsync(context.Background()))
+		require.NoError(t, c.AwaitRunning(context.Background()))
+	}
+
 	// Wait until each compactor sees all ACTIVE compactors in the ring
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 10*time.Second, len(compactors), func() interface{} {
+			// it is safe to access c.ring here, since we know that all compactors are Running now
 			rs, err := c.ring.GetAll()
 			if err != nil {
 				return 0
@@ -446,11 +461,6 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 			return numActive
 		})
-	}
-
-	// Start all compactors
-	for _, c := range compactors {
-		c.Start()
 	}
 
 	// Wait until a run has been completed on each compactor
@@ -536,8 +546,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient *cortex_tsdb.Bucket
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	c, err := newCompactor(ctx, cancelCtx, compactorCfg, storageCfg, bucketClient, tsdbCompactor, logger, registry)
+	c, err := newCompactor(compactorCfg, storageCfg, bucketClient, logger, registry, func(ctx context.Context) (tsdb.Compactor, error) {
+		return tsdbCompactor, nil
+	})
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, logs, registry, cleanup

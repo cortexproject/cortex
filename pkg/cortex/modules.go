@@ -538,26 +538,19 @@ func (t *Cortex) initAlertManager(cfg *Config) (serv services.Service, err error
 	return t.alertmanager, nil
 }
 
-func (t *Cortex) initCompactor(cfg *Config) (err error) {
+func (t *Cortex) initCompactor(cfg *Config) (serv services.Service, err error) {
 	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return err
+		return
 	}
-
-	t.compactor.Start()
 
 	// Expose HTTP endpoints.
 	t.server.HTTP.HandleFunc("/compactor_ring", t.compactor.RingHandler)
 
-	return nil
-}
-
-func (t *Cortex) stopCompactor() error {
-	t.compactor.Stop()
-	return nil
+	return t.compactor, nil
 }
 
 func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
@@ -635,19 +628,17 @@ func (t *Cortex) stopDataPurger() error {
 type module struct {
 	deps []moduleName
 
-	// service for this module
+	// service for this module (can return nil)
 	service func(t *Cortex, cfg *Config) (services.Service, error)
 
 	// service that will be wrapped into module_service_wrapper, to wait for dependencies to start / end
+	// (can return nil)
 	wrappedService func(t *Cortex, cfg *Config) (services.Service, error)
-
-	init func(t *Cortex, cfg *Config) error
-	stop func(t *Cortex) error
 }
 
 var modules = map[moduleName]module{
 	Server: {
-		// we cannot use 'wrappedService', as stopped Server service is currently signal to Cortex
+		// we cannot use 'wrappedService', as stopped Server service is currently a signal to Cortex
 		// that it should shutdown. If we used wrappedService, it wouldn't stop until
 		// all services that depend on it stopped first... but there is nothing that would make them stop.
 		service: (*Cortex).serverService,
@@ -722,9 +713,8 @@ var modules = map[moduleName]module{
 	},
 
 	Compactor: {
-		deps: []moduleName{Server},
-		init: (*Cortex).initCompactor,
-		stop: (*Cortex).stopCompactor,
+		deps:           []moduleName{Server},
+		wrappedService: (*Cortex).initCompactor,
 	},
 
 	DataPurger: {
@@ -734,6 +724,6 @@ var modules = map[moduleName]module{
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager, Compactor},
 	},
 }

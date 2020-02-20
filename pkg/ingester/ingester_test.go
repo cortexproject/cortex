@@ -45,6 +45,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
 	require.NoError(t, ing.StartAsync(context.Background()))
+	require.NoError(t, ing.AwaitRunning(context.Background()))
 
 	return store, ing
 }

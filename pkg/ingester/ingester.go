@@ -194,13 +194,14 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	// TODO: lot more stuff can be put into startingFn (esp. WAL replay), but for now keep it in New
-	services.InitBasicService(&i.BasicService, nil, i.loop, i.stopping)
+	services.InitBasicService(&i.BasicService, i.starting, i.loop, i.stopping)
 	return i, nil
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
 	// Now that user states have been created, we can start the lifecycler.
-	if err := i.lifecycler.StartAsync(ctx); err != nil {
+	// we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
+	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
 	if err := i.lifecycler.AwaitRunning(ctx); err != nil {

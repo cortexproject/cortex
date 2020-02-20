@@ -141,7 +141,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 }
 
 func (i *Ingester) startingV2(ctx context.Context) error {
-	if err := i.lifecycler.StartAsync(ctx); err != nil {
+	// we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
+	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
 	if err := i.lifecycler.AwaitRunning(ctx); err != nil {

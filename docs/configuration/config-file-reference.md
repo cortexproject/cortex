@@ -642,7 +642,8 @@ results_cache:
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
 
-# Perform query parallelisations based on storage sharding configuration and query ASTs.
+# Perform query parallelisations based on storage sharding configuration and
+# query ASTs.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = false]
 ```

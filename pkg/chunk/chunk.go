@@ -28,6 +28,7 @@ const (
 	ErrDataLength         = errs.Error("chunk data wrong length")
 	ErrSliceOutOfRange    = errs.Error("chunk can't be sliced out of its data range")
 	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -332,6 +333,7 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 
 // Slice builds a new smaller chunk with data only from given time range (inclusive)
 func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
+	// there should be atleast some overlap between chunk interval and slice interval
 	if from > c.Through || through < c.From {
 		return nil, ErrSliceOutOfRange
 	}
@@ -353,8 +355,7 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		}
 
 		if oc != nil {
-			// ToDo: revisit this
-			return nil, errors.New("slicing should not overflow a chunk")
+			return nil, ErrSliceChunkOverflow
 		}
 		if !itr.Scan() {
 			break

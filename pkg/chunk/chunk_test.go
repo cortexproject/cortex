@@ -304,15 +304,13 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 }
 
 func TestChunk_Slice(t *testing.T) {
-	now := model.Now()
-
-	// dummy chunk is created with time range now-1hour to now
-	chunkStartTime := now.Add(-time.Hour)
+	chunkEndTime := model.Now()
+	chunkStartTime := chunkEndTime.Add(-time.Hour)
 
 	for _, tc := range []struct {
 		name       string
 		sliceRange model.Interval
-		err        string
+		err        error
 	}{
 		{
 			name:       "slice first 10 mins",
@@ -320,30 +318,34 @@ func TestChunk_Slice(t *testing.T) {
 		},
 		{
 			name:       "slice last 10 mins",
-			sliceRange: model.Interval{Start: now.Add(-10 * time.Minute), End: now},
+			sliceRange: model.Interval{Start: chunkEndTime.Add(-10 * time.Minute), End: chunkEndTime},
 		},
 		{
 			name:       "slice in the middle",
-			sliceRange: model.Interval{Start: chunkStartTime.Add(20 * time.Minute), End: now.Add(-20 * time.Minute)},
+			sliceRange: model.Interval{Start: chunkStartTime.Add(20 * time.Minute), End: chunkEndTime.Add(-20 * time.Minute)},
 		},
 		{
 			name:       "slice out of range",
-			sliceRange: model.Interval{Start: now.Add(20 * time.Minute), End: now.Add(30 * time.Minute)},
-			err:        ErrSliceOutOfRange.Error(),
+			sliceRange: model.Interval{Start: chunkEndTime.Add(20 * time.Minute), End: chunkEndTime.Add(30 * time.Minute)},
+			err:        ErrSliceOutOfRange,
 		},
 		{
-			name:       "slice no data in range", // we build chunk with
+			name:       "slice no data in range",
 			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Second)},
-			err:        ErrSliceNoDataInRange.Error(),
+			err:        ErrSliceNoDataInRange,
+		},
+		{
+			name:       "slice interval not aligned with sample intervals",
+			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Minute).Add(10 * time.Second)},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			originalChunk := dummyChunkForEncoding(now, labelsForDummyChunks, encoding.DefaultEncoding, 241)
+			// dummy chunk is created with time range chunkEndTime-1hour to chunkEndTime
+			originalChunk := dummyChunkForEncoding(chunkEndTime, labelsForDummyChunks, encoding.DefaultEncoding, 241)
 
 			newChunk, err := originalChunk.Slice(tc.sliceRange.Start, tc.sliceRange.End)
-			if tc.err != "" {
-				require.Error(t, err)
-				require.Equal(t, tc.err, err.Error())
+			if tc.err != nil {
+				require.Equal(t, tc.err, err)
 				return
 			}
 			require.NoError(t, err)

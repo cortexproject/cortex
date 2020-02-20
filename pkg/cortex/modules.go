@@ -405,7 +405,7 @@ func (t *Cortex) storeService(cfg *Config) (serv services.Service, err error) {
 	}), nil
 }
 
-func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
+func (t *Cortex) queryFrontendService(cfg *Config) (serv services.Service, err error) {
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
@@ -432,7 +432,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 	)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 	t.cache = cache
 	t.frontend.Wrap(tripperware)
@@ -443,16 +443,14 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 			t.frontend.Handler(),
 		),
 	)
-	return
-}
-
-func (t *Cortex) stopQueryFrontend() (err error) {
-	t.frontend.Close()
-	if t.cache != nil {
-		t.cache.Stop()
-		t.cache = nil
-	}
-	return
+	return services.NewIdleService(nil, func() error {
+		t.frontend.Close()
+		if t.cache != nil {
+			t.cache.Stop()
+			t.cache = nil
+		}
+		return nil
+	}), nil
 }
 
 func (t *Cortex) initTableManager(cfg *Config) error {
@@ -725,9 +723,8 @@ var modules = map[moduleName]module{
 	},
 
 	QueryFrontend: {
-		deps: []moduleName{Server, Overrides},
-		init: (*Cortex).initQueryFrontend,
-		stop: (*Cortex).stopQueryFrontend,
+		deps:           []moduleName{Server, Overrides},
+		wrappedService: (*Cortex).queryFrontendService,
 	},
 
 	TableManager: {

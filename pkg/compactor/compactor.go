@@ -73,7 +73,7 @@ type Compactor struct {
 	logger       log.Logger
 
 	// function that creates bucket client and TSDB compactor using the context.
-	// Useful for injecting mock compactor.
+	// Useful for injecting mock objects from tests.
 	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error)
 
 	// Underlying compactor used to compact TSDB blocks.

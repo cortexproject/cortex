@@ -3,9 +3,10 @@ package astmapper
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var summableAggregates = map[promql.ItemType]struct{}{

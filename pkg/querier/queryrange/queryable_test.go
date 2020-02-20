@@ -16,15 +16,15 @@ import (
 func TestSelect(t *testing.T) {
 	var testExpr = []struct {
 		name    string
-		querier *DownstreamQuerier
-		fn      func(*testing.T, *DownstreamQuerier)
+		querier *ShardedQuerier
+		fn      func(*testing.T, *ShardedQuerier)
 	}{
 		{
 			name: "errors non embedded query",
 			querier: mkQuerier(
 				nil,
 			),
-			fn: func(t *testing.T, q *DownstreamQuerier) {
+			fn: func(t *testing.T, q *ShardedQuerier) {
 				set, _, err := q.Select(nil)
 				require.Nil(t, set)
 				require.EqualError(t, err, nonEmbeddedErrMsg)
@@ -36,7 +36,7 @@ func TestSelect(t *testing.T) {
 				&PrometheusResponse{},
 				nil,
 			)),
-			fn: func(t *testing.T, q *DownstreamQuerier) {
+			fn: func(t *testing.T, q *ShardedQuerier) {
 
 				expected := &PrometheusResponse{
 					Status: "success",
@@ -71,7 +71,7 @@ func TestSelect(t *testing.T) {
 				},
 				nil,
 			)),
-			fn: func(t *testing.T, q *DownstreamQuerier) {
+			fn: func(t *testing.T, q *ShardedQuerier) {
 				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
 				require.Nil(t, err)
 				set, _, err := q.Select(
@@ -127,7 +127,7 @@ func TestSelect(t *testing.T) {
 				},
 				nil,
 			)),
-			fn: func(t *testing.T, q *DownstreamQuerier) {
+			fn: func(t *testing.T, q *ShardedQuerier) {
 				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
 				require.Nil(t, err)
 				set, _, err := q.Select(
@@ -264,6 +264,6 @@ func exactMatch(k, v string) *labels.Matcher {
 
 }
 
-func mkQuerier(handler Handler) *DownstreamQuerier {
-	return &DownstreamQuerier{context.Background(), &PrometheusRequest{}, handler}
+func mkQuerier(handler Handler) *ShardedQuerier {
+	return &ShardedQuerier{context.Background(), &PrometheusRequest{}, handler}
 }

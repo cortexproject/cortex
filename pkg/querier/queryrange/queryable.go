@@ -15,26 +15,26 @@ const (
 	nonEmbeddedErrMsg       = "DownstreamQuerier cannot handle a non-embedded query"
 )
 
-// DownstreamQueryable is an implementor of the Queryable interface.
-type DownstreamQueryable struct {
+// ShardedQueryable is an implementor of the Queryable interface.
+type ShardedQueryable struct {
 	Req     Request
 	Handler Handler
 }
 
 // Querier implements Queryable
-func (q *DownstreamQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return &DownstreamQuerier{ctx, q.Req, q.Handler}, nil
+func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return &ShardedQuerier{ctx, q.Req, q.Handler}, nil
 }
 
-// DownstreamQuerier is a an implementor of the Querier interface.
-type DownstreamQuerier struct {
+// ShardedQuerier is a an implementor of the Querier interface.
+type ShardedQuerier struct {
 	Ctx     context.Context
 	Req     Request
 	Handler Handler
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q *DownstreamQuerier) Select(
+func (q *ShardedQuerier) Select(
 	_ *storage.SelectParams,
 	matchers ...*labels.Matcher,
 ) (storage.SeriesSet, storage.Warnings, error) {
@@ -62,7 +62,7 @@ func (q *DownstreamQuerier) Select(
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
-func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
 	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
 		return nil, nil, err
@@ -106,16 +106,16 @@ func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesS
 }
 
 // LabelValues returns all potential values for a label name.
-func (q *DownstreamQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *ShardedQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (q *DownstreamQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (q *ShardedQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
 // Close releases the resources of the Querier.
-func (q *DownstreamQuerier) Close() error {
+func (q *ShardedQuerier) Close() error {
 	return nil
 }

@@ -185,7 +185,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 		return qs.next.Do(ctx, r)
 	}
 
-	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
+	queryable := lazyquery.NewLazyQueryable(&ShardedQueryable{r, qs.next})
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,

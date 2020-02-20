@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"math"
+	"math/rand"
 	"net/http"
 	"os/exec"
 	"time"
@@ -59,6 +60,7 @@ func TimeToMilliseconds(t time.Time) int64 {
 
 func GenerateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vector model.Vector) {
 	tsMillis := TimeToMilliseconds(ts)
+	value := rand.Float64()
 
 	// Generate the series
 	series = append(series, prompb.TimeSeries{
@@ -66,7 +68,7 @@ func GenerateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vect
 			{Name: labels.MetricName, Value: name},
 		},
 		Samples: []prompb.Sample{
-			{Value: float64(1), Timestamp: tsMillis},
+			{Value: value, Timestamp: tsMillis},
 		},
 	})
 
@@ -76,7 +78,7 @@ func GenerateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vect
 
 	vector = append(vector, &model.Sample{
 		Metric:    metric,
-		Value:     model.SampleValue(1),
+		Value:     model.SampleValue(value),
 		Timestamp: model.Time(tsMillis),
 	})
 

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +40,9 @@ func TestQueryFrontendWithChunksStorage(t *testing.T) {
 }
 
 func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
+	const numUsers = 10
+	const numQueriesPerUser = 10
+
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -59,20 +65,43 @@ func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *t
 	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
 	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
 
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "user-1")
-	require.NoError(t, err)
-
-	// Push some series to Cortex.
+	// Push a series for each user to Cortex.
 	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now)
+	expectedVectors := make([]model.Vector, numUsers)
 
-	res, err := c.Push(series)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
+	for u := 0; u < numUsers; u++ {
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", u))
+		require.NoError(t, err)
 
-	// Query the series.
-	result, err := c.Query("series_1", now)
-	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
-	assert.Equal(t, expectedVector, result.(model.Vector))
+		var series []prompb.TimeSeries
+		series, expectedVectors[u] = generateSeries("series_1", now)
+
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	// Query the series for each user in parallel.
+	wg := sync.WaitGroup{}
+	wg.Add(numUsers * numQueriesPerUser)
+
+	for u := 0; u < numUsers; u++ {
+		userID := u
+
+		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", fmt.Sprintf("user-%d", userID))
+		require.NoError(t, err)
+
+		for q := 0; q < numQueriesPerUser; q++ {
+			go func() {
+				defer wg.Done()
+
+				result, err := c.Query("series_1", now)
+				require.NoError(t, err)
+				require.Equal(t, model.ValVector, result.Type())
+				assert.Equal(t, expectedVectors[userID], result.(model.Vector))
+			}()
+		}
+	}
+
+	wg.Wait()
 }

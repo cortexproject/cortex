@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,14 +15,7 @@ func TestAlertmanager(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	alertmanagerDir := filepath.Join(s.SharedDir(), "alertmanager_configs")
-	require.NoError(t, os.Mkdir(alertmanagerDir, os.ModePerm))
-
-	require.NoError(t, ioutil.WriteFile(
-		filepath.Join(alertmanagerDir, "user-1.yaml"),
-		[]byte(cortexAlertmanagerUserConfigYaml),
-		os.ModePerm),
-	)
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 	alertmanager := e2ecortex.NewAlertmanager("alertmanager", AlertmanagerConfigs, "")
 	require.NoError(t, s.StartAndWaitReady(alertmanager))

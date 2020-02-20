@@ -339,6 +339,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
 	cfg.ShardingRing.InstanceID = "compactor-1"
+	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
 
 	c, tsdbCompactor, logs, _, cleanup := prepare(t, cfg, bucketClient)

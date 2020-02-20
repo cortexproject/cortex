@@ -98,23 +98,23 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 	}
 
 	w.checkpointDeleteFail = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "ingester_checkpoint_deletions_failed_total",
+		Name: "cortex_ingester_checkpoint_deletions_failed_total",
 		Help: "Total number of checkpoint deletions that failed.",
 	})
 	w.checkpointDeleteTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "ingester_checkpoint_deletions_total",
+		Name: "cortex_ingester_checkpoint_deletions_total",
 		Help: "Total number of checkpoint deletions attempted.",
 	})
 	w.checkpointCreationFail = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "ingester_checkpoint_creations_failed_total",
+		Name: "cortex_ingester_checkpoint_creations_failed_total",
 		Help: "Total number of checkpoint creations that failed.",
 	})
 	w.checkpointCreationTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "ingester_checkpoint_creations_total",
+		Name: "cortex_ingester_checkpoint_creations_total",
 		Help: "Total number of checkpoint creations attempted.",
 	})
 	w.checkpointDuration = prometheus.NewSummary(prometheus.SummaryOpts{
-		Name:       "ingester_checkpoint_duration_seconds",
+		Name:       "cortex_ingester_checkpoint_duration_seconds",
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})

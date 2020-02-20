@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uber-go/atomic"
+	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 )
 

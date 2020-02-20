@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
@@ -21,7 +22,6 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -82,7 +82,6 @@ type Config struct {
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
-	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
@@ -118,7 +117,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
-	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
@@ -181,9 +179,9 @@ type Cortex struct {
 	compactor         *compactor.Compactor
 	memberlistKVState *memberlistKVState
 
-	// The chunk store that the querier should use to query the long
+	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	querierChunkStore querier.ChunkStore
+	storeQueryable prom_storage.Queryable
 }
 
 // New makes a new Cortex.

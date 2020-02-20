@@ -70,27 +70,39 @@ type LabelAdapter labels.Label
 
 // Marshal implements proto.Marshaller.
 func (bs *LabelAdapter) Marshal() ([]byte, error) {
-	buf := make([]byte, bs.Size())
-	_, err := bs.MarshalTo(buf)
-	return buf, err
+	size := bs.Size()
+	buf := make([]byte, size)
+	n, err := bs.MarshalToSizedBuffer(buf[:size])
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], err
+}
+
+func (bs *LabelAdapter) MarshalTo(dAtA []byte) (int, error) {
+	size := bs.Size()
+	return bs.MarshalToSizedBuffer(dAtA[:size])
 }
 
 // MarshalTo implements proto.Marshaller.
-func (bs *LabelAdapter) MarshalTo(buf []byte) (n int, err error) {
-	var i int
+func (bs *LabelAdapter) MarshalToSizedBuffer(buf []byte) (n int, err error) {
 	ls := (*labels.Label)(bs)
-
-	buf[i] = 0xa
-	i++
-	i = encodeVarintCortex(buf, i, uint64(len(ls.Name)))
-	i += copy(buf[i:], ls.Name)
-
-	buf[i] = 0x12
-	i++
-	i = encodeVarintCortex(buf, i, uint64(len(ls.Value)))
-	i += copy(buf[i:], ls.Value)
-
-	return i, nil
+	i := len(buf)
+	if len(ls.Value) > 0 {
+		i -= len(ls.Value)
+		copy(buf[i:], ls.Value)
+		i = encodeVarintCortex(buf, i, uint64(len(ls.Value)))
+		i--
+		buf[i] = 0x12
+	}
+	if len(ls.Name) > 0 {
+		i -= len(ls.Name)
+		copy(buf[i:], ls.Name)
+		i = encodeVarintCortex(buf, i, uint64(len(ls.Name)))
+		i--
+		buf[i] = 0xa
+	}
+	return len(buf) - i, nil
 }
 
 // Unmarshal a LabelAdapter, implements proto.Unmarshaller.
@@ -217,13 +229,21 @@ func yoloString(buf []byte) string {
 }
 
 // Size implements proto.Sizer.
-func (bs *LabelAdapter) Size() int {
+func (bs *LabelAdapter) Size() (n int) {
 	ls := (*labels.Label)(bs)
-	var n int
-	l := len(ls.Name)
-	n += 1 + l + sovCortex(uint64(l))
+	if bs == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(ls.Name)
+	if l > 0 {
+		n += 1 + l + sovCortex(uint64(l))
+	}
 	l = len(ls.Value)
-	n += 1 + l + sovCortex(uint64(l))
+	if l > 0 {
+		n += 1 + l + sovCortex(uint64(l))
+	}
 	return n
 }
 

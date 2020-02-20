@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -69,12 +70,14 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 // KVConfig is a config for memberlist.KV
 type KVConfig struct {
 	// Memberlist options.
-	NodeName         string        `yaml:"node_name"`
-	StreamTimeout    time.Duration `yaml:"stream_timeout"`
-	RetransmitMult   int           `yaml:"retransmit_factor"`
-	PushPullInterval time.Duration `yaml:"pull_push_interval"`
-	GossipInterval   time.Duration `yaml:"gossip_interval"`
-	GossipNodes      int           `yaml:"gossip_nodes"`
+	NodeName            string        `yaml:"node_name"`
+	StreamTimeout       time.Duration `yaml:"stream_timeout"`
+	RetransmitMult      int           `yaml:"retransmit_factor"`
+	PushPullInterval    time.Duration `yaml:"pull_push_interval"`
+	GossipInterval      time.Duration `yaml:"gossip_interval"`
+	GossipNodes         int           `yaml:"gossip_nodes"`
+	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time"`
+	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -109,6 +112,8 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", 0, "How often to gossip. Uses memberlist LAN defaults if 0.")
 	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", 0, "How many nodes to gossip to. Uses memberlist LAN defaults if 0.")
 	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", 0, "How often to use pull/push sync. Uses memberlist LAN defaults if 0.")
+	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", 0, "How long to keep gossiping to dead nodes, to give them chance to refute their death. Uses memberlist LAN defaults if 0.")
+	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", 0, "How soon can dead node's name be reclaimed with new address. Defaults to 0, which is disabled.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
@@ -119,6 +124,9 @@ type KV struct {
 	cfg        KVConfig
 	memberlist *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
+
+	// Disabled on Stop()
+	casBroadcastsEnabled *atomic.Bool
 
 	// KV Store.
 	storeMu sync.Mutex
@@ -213,6 +221,12 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	if cfg.GossipNodes != 0 {
 		mlCfg.GossipNodes = cfg.GossipNodes
 	}
+	if cfg.GossipToTheDeadTime > 0 {
+		mlCfg.GossipToTheDeadTime = cfg.GossipToTheDeadTime
+	}
+	if cfg.DeadNodeReclaimTime > 0 {
+		mlCfg.DeadNodeReclaimTime = cfg.DeadNodeReclaimTime
+	}
 	if cfg.NodeName != "" {
 		mlCfg.Name = cfg.NodeName
 	}
@@ -224,17 +238,18 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	// As we don't use UDP for sending packets, we can use higher value here.
 	mlCfg.UDPBufferSize = 10 * 1024 * 1024
 
-	memberlistClient := &KV{
-		cfg:            cfg,
-		store:          make(map[string]valueDesc),
-		codecs:         make(map[string]codec.Codec),
-		watchers:       make(map[string][]chan string),
-		prefixWatchers: make(map[string][]chan string),
-		shutdown:       make(chan struct{}),
-		maxCasRetries:  maxCasRetries,
+	mlkv := &KV{
+		cfg:                  cfg,
+		store:                make(map[string]valueDesc),
+		codecs:               make(map[string]codec.Codec),
+		watchers:             make(map[string][]chan string),
+		prefixWatchers:       make(map[string][]chan string),
+		shutdown:             make(chan struct{}),
+		maxCasRetries:        maxCasRetries,
+		casBroadcastsEnabled: atomic.NewBool(true),
 	}
 
-	mlCfg.Delegate = memberlistClient
+	mlCfg.Delegate = mlkv
 
 	list, err := memberlist.Create(mlCfg)
 	if err != nil {
@@ -242,24 +257,24 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	}
 
 	// finish delegate initialization
-	memberlistClient.memberlist = list
-	memberlistClient.broadcasts = &memberlist.TransmitLimitedQueue{
+	mlkv.memberlist = list
+	mlkv.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       list.NumMembers,
 		RetransmitMult: cfg.RetransmitMult,
 	}
 
 	// Almost ready...
-	memberlistClient.createAndRegisterMetrics()
+	mlkv.createAndRegisterMetrics()
 
 	for _, c := range cfg.Codecs {
-		memberlistClient.codecs[c.CodecID()] = c
+		mlkv.codecs[c.CodecID()] = c
 	}
 
 	// Join the cluster
 	if len(cfg.JoinMembers) > 0 {
-		reached, err := memberlistClient.JoinMembers(cfg.JoinMembers)
+		reached, err := mlkv.JoinMembers(cfg.JoinMembers)
 		if err != nil && cfg.AbortIfJoinFails {
-			_ = memberlistClient.memberlist.Shutdown()
+			_ = mlkv.memberlist.Shutdown()
 			return nil, err
 		}
 
@@ -270,7 +285,7 @@ func NewKV(cfg KVConfig) (*KV, error) {
 		}
 	}
 
-	return memberlistClient, nil
+	return mlkv, nil
 }
 
 // GetCodec returns codec for given ID or nil.
@@ -294,7 +309,23 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 func (m *KV) Stop() {
 	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")
 
-	// TODO: should we empty our broadcast queue before leaving? That would make sure that we have sent out everything we wanted.
+	m.casBroadcastsEnabled.Store(false)
+
+	// Wait until broadcast queue is empty, but don't wait for too long.
+	// Also don't wait if there is just one node left.
+	// Problem is that broadcast queue is also filled up by state changes received from other nodes,
+	// so it may never be empty in a busy cluster. However, we generally only care about messages
+	// generated on this node via CAS, and those are disabled now (via casBroadcastsEnabled), and should be able
+	// to get out in this timeout.
+
+	waitTimeout := time.Now().Add(10 * time.Second)
+	for m.broadcasts.NumQueued() > 0 && m.memberlist.NumMembers() > 1 && time.Now().Before(waitTimeout) {
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	if cnt := m.broadcasts.NumQueued(); cnt > 0 {
+		level.Warn(util.Logger).Log("msg", "broadcast messages left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
+	}
 
 	err := m.memberlist.Leave(m.cfg.LeaveTimeout)
 	if err != nil {
@@ -524,7 +555,12 @@ outer:
 		if change != nil {
 			m.casSuccesses.Inc()
 			m.notifyWatchers(key)
-			m.broadcastNewValue(key, change, newver, codec)
+
+			if m.casBroadcastsEnabled.Load() {
+				m.broadcastNewValue(key, change, newver, codec)
+			} else {
+				level.Warn(util.Logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)
+			}
 		}
 
 		return nil

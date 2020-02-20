@@ -17,7 +17,7 @@ func TestAlertmanager(t *testing.T) {
 
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
-	alertmanager := e2ecortex.NewAlertmanager("alertmanager", AlertmanagerConfigs, "")
+	alertmanager := e2ecortex.NewAlertmanager("alertmanager", AlertmanagerFlags, "")
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
 	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_configs"))
 

@@ -2,6 +2,7 @@ package e2ecortex
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 )
@@ -23,6 +24,14 @@ func GetDefaultImage() string {
 }
 
 func NewDistributor(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewDistributorWithConfigFile(name, consulAddress, "", flags, image)
+}
+
+func NewDistributorWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -46,6 +55,14 @@ func NewDistributor(name string, consulAddress string, flags map[string]string, 
 }
 
 func NewQuerier(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewQuerierWithConfigFile(name, consulAddress, "", flags, image)
+}
+
+func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -55,7 +72,7 @@ func NewQuerier(name string, consulAddress string, flags map[string]string, imag
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "querier",
-			"-log.level":                      "info", // TODO warn
+			"-log.level":                      "warn",
 			"-distributor.replication-factor": "1",
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
@@ -73,6 +90,13 @@ func NewQuerier(name string, consulAddress string, flags map[string]string, imag
 }
 
 func NewIngester(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewIngesterWithConfigFile(name, consulAddress, "", flags, image)
+}
+
+func NewIngesterWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -100,6 +124,14 @@ func NewIngester(name string, consulAddress string, flags map[string]string, ima
 }
 
 func NewTableManager(name string, flags map[string]string, image string) *CortexService {
+	return NewTableManagerWithConfigFile(name, "", flags, image)
+}
+
+func NewTableManagerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -119,6 +151,14 @@ func NewTableManager(name string, flags map[string]string, image string) *Cortex
 }
 
 func NewQueryFrontend(name string, flags map[string]string, image string) *CortexService {
+	return NewQueryFrontendWithConfigFile(name, "", flags, image)
+}
+
+func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -128,7 +168,7 @@ func NewQueryFrontend(name string, flags map[string]string, image string) *Corte
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "query-frontend",
-			"-log.level": "info", // TODO warn
+			"-log.level": "warn",
 		}, flags))...),
 		// The query-frontend doesn't expose a readiness probe, so we just check if the / returns 404
 		e2e.NewReadinessProbe(httpPort, "/", 404),

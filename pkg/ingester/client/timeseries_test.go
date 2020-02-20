@@ -12,6 +12,7 @@ func TestLabelAdapter_Marshal(t *testing.T) {
 	}{
 		{&LabelAdapter{Name: "foo", Value: "bar"}},
 		{&LabelAdapter{Name: "very long label name", Value: "very long label value"}},
+		{&LabelAdapter{Name: "", Value: "foo"}},
 		{&LabelAdapter{}},
 	}
 	for _, tt := range tests {

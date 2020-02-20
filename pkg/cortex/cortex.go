@@ -167,8 +167,7 @@ type Cortex struct {
 	httpAuthMiddleware middleware.Interface
 
 	// set during initialization
-	serviceMap     map[moduleName]services.Service
-	serviceManager *services.Manager // set in Run method
+	serviceMap map[moduleName]services.Service
 
 	server        *server.Server
 	ring          *ring.Ring
@@ -278,8 +277,6 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 			if s != nil {
 				serv = newModuleServiceWrapper(t, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
 			}
-		} else {
-			// panic... all modules should have a service.
 		}
 
 		if serv != nil {
@@ -290,25 +287,9 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 	return servicesMap, nil
 }
 
-// find modules that depend on mod
-func findReverseDeps(mod moduleName, mods []moduleName) []moduleName {
-	result := []moduleName(nil)
-
-	for _, n := range mods {
-		for _, d := range modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
-		}
-	}
-
-	return result
-}
-
 // Run starts Cortex running, and blocks until a signal is received.
 func (t *Cortex) Run() error {
-	// get all services and tell them to start
+	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)
 	for _, s := range t.serviceMap {
 		servs = append(servs, s)
@@ -319,10 +300,27 @@ func (t *Cortex) Run() error {
 		return err
 	}
 
-	t.serviceManager = sm
-	// Let's listen for errors from this manager, and log them.
-	sm.AddListener(t)
+	// Let's listen for events from this manager, and log them.
+	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
+	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
+	serviceFailed := func(service services.Service) {
+		// if any service fails, stop entire Cortex
+		sm.StopAsync()
 
+		// let's find out which module failed
+		for m, s := range t.serviceMap {
+			if s == service {
+				level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				return
+			}
+		}
+
+		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+	}
+
+	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
+
+	// Start all services.
 	err = sm.StartAsync(context.Background())
 	if err != nil {
 		return err
@@ -330,35 +328,12 @@ func (t *Cortex) Run() error {
 
 	// Currently it's the Server that reacts on signal handler,
 	// so get Server service, and wait until it ends.
+	// It will also be stopped via service manager if any service fails (see attached service listener)
 	err = t.serviceMap[Server].AwaitTerminated(context.Background())
 
 	// Stop all the other services.
 	sm.StopAsync()
 	return sm.AwaitStopped(context.Background())
-}
-
-// services.ManagerListener methods
-func (t *Cortex) Healthy() {
-	level.Info(util.Logger).Log("msg", "Cortex started")
-}
-
-func (t *Cortex) Stopped() {
-	level.Info(util.Logger).Log("msg", "Cortex stopped")
-}
-
-func (t *Cortex) Failure(service services.Service) {
-	// on any failure, stop entire Cortex
-	t.serviceManager.StopAsync()
-
-	// let's find out which module failed
-	for m, s := range t.serviceMap {
-		if s == service {
-			level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
-			return
-		}
-	}
-
-	level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
@@ -404,5 +379,21 @@ func orderedDeps(m moduleName) []moduleName {
 			result = append(result, name)
 		}
 	}
+	return result
+}
+
+// find modules in the supplied list, that depend on mod
+func findReverseDeps(mod moduleName, mods []moduleName) []moduleName {
+	result := []moduleName(nil)
+
+	for _, n := range mods {
+		for _, d := range modules[n].deps {
+			if d == mod {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+
 	return result
 }

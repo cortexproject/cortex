@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -543,4 +544,59 @@ func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
 		chunk.Metric = b.Labels()
 		chunks[i] = chunk
 	}
+}
+
+func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return errors.New("No metric name label")
+	}
+
+	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, string(metricName), metric, chunkID)
+	if err != nil {
+		return err
+	}
+
+	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
+		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+	})
+}
+
+func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+
+	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
+		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
+	})
+	if err != nil {
+		return err
+	}
+
+	batch := c.index.NewWriteBatch()
+	for i := range entries {
+		batch.Delete(entries[i].TableName, entries[i].HashValue, entries[i].RangeValue)
+	}
+
+	return c.index.BatchWrite(ctx, batch)
+}
+
+func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID string, from, through model.Time) (bool, error) {
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, []string{seriesID})
+	if err != nil {
+		return false, err
+	}
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+	if err != nil {
+		return false, err
+	}
+
+	seriesInUse := false
+	for i := range chunks {
+		if from <= chunks[i].From && chunks[i].From <= through || from <= chunks[i].Through && chunks[i].Through <= through {
+			seriesInUse = true
+			break
+		}
+	}
+
+	return seriesInUse, nil
 }

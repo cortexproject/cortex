@@ -127,3 +127,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 
 	return storageObjects, nil
 }
+
+func (s *GCSObjectClient) DeleteObject(ctx context.Context, chunkID string) error {
+	return chunk.ErrMethodNotImplemented
+}

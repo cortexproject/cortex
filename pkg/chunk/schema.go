@@ -38,6 +38,8 @@ var (
 	ErrNotSupported = errors.New("not supported")
 )
 
+type hasChunksForIntervalFunc func(userID, seriesID string, from, through model.Time) (bool, error)
+
 // Schema interface defines methods to calculate the hash and range keys needed
 // to write or read chunks from the external index.
 type Schema interface {
@@ -59,6 +61,8 @@ type Schema interface {
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
 	// Returns queries to retrieve all label names of multiple series by id.
 	GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
+
+	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error)
 }
 
 // IndexQuery describes a query for entries
@@ -207,6 +211,67 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 		}
 		result = append(result, entries...)
 	}
+	return result, nil
+}
+
+// returns IndexEntrys for deletion. It makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc
+func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+	buckets := s.buckets(from, through, userID)
+	if len(buckets) == 0 {
+		return nil, nil
+	}
+
+	seriesID := string(labelsSeriesID(metric))
+
+	// Only first and last buckets needs to be checked for in-use series ids.
+	// Only partially deleted first/last deleted bucket needs to be checked otherwise
+	// not since whole bucket is anyways considered for deletion.
+	if buckets[0].from != 0 {
+		bucketStartTime := from - model.Time(buckets[0].from)
+		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(buckets[0].bucketSize)-1)
+		if err != nil {
+			return nil, err
+		}
+
+		if hasChunks {
+			buckets = buckets[1:]
+			if len(buckets) == 0 {
+				return nil, nil
+			}
+		}
+	}
+
+	lastBucket := buckets[len(buckets)-1]
+
+	if lastBucket.through != lastBucket.bucketSize {
+		bucketStartTime := through - model.Time(lastBucket.through)
+		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(lastBucket.bucketSize)-1)
+		if err != nil {
+			return nil, err
+		}
+
+		if hasChunks {
+			buckets = buckets[:len(buckets)-1]
+			if len(buckets) == 0 {
+				return nil, nil
+			}
+		}
+	}
+
+	var result []IndexEntry
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return nil, errors.New("no metric name")
+	}
+
+	for _, bucket := range buckets {
+		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, metric, "")
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entries...)
+	}
+
 	return result, nil
 }
 

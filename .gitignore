@@ -7,3 +7,4 @@ docker-images/
 website/public
 website/resources
 website/content/en/docs
+e2e_integration_test*

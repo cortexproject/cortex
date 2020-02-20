@@ -34,7 +34,11 @@ type Scenario struct {
 func NewScenario(networkName string) (*Scenario, error) {
 	s := &Scenario{networkName: networkName}
 
-	tmpDir, err := ioutil.TempDir("", "e2e_integration_test")
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	tmpDir, err := ioutil.TempDir(dir, "e2e_integration_test")
 	if err != nil {
 		return nil, err
 	}

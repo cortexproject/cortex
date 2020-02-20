@@ -160,12 +160,11 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 // runs when V2 ingester is stopping
 func (i *Ingester) stoppingV2() error {
 	if i.TSDBState.shippingService != nil {
-		// It's important to add the shipper loop to the "done" wait group,
+		// It's important to wait until shipper is finished,
 		// because the blocks transfer should start only once it's guaranteed
 		// there's no shipping on-going.
 
 		i.TSDBState.shippingService.StopAsync()
-		// wait until shipping stops
 		_ = i.TSDBState.shippingService.AwaitTerminated(context.Background())
 	}
 
@@ -175,7 +174,7 @@ func (i *Ingester) stoppingV2() error {
 	// Next initiate our graceful exit from the ring.
 	i.lifecycler.StopAsync()
 	_ = i.lifecycler.AwaitTerminated(context.Background())
-	return nil
+	return i.lifecycler.FailureCase()
 }
 
 func (i *Ingester) updateLoop(ctx context.Context) error {

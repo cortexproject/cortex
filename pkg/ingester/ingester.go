@@ -244,7 +244,7 @@ func (i *Ingester) stopping() error {
 	// Next initiate our graceful exit from the ring.
 	i.lifecycler.StopAsync()
 	_ = i.lifecycler.AwaitTerminated(context.Background())
-	return nil
+	return i.lifecycler.FailureCase()
 }
 
 // ShutdownHandler triggers the following set of operations in order:

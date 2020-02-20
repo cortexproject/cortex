@@ -225,7 +225,7 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 	return services.NewService(nil, runFn, nil), nil
 }
 
-func (t *Cortex) ringService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
@@ -237,7 +237,7 @@ func (t *Cortex) ringService(cfg *Config) (serv services.Service, err error) {
 	return t.ring, nil
 }
 
-func (t *Cortex) runtimeConfigService(cfg *Config) (services.Service, error) {
+func (t *Cortex) initRuntimeConfig(cfg *Config) (services.Service, error) {
 	if cfg.RuntimeConfig.LoadPath == "" {
 		cfg.RuntimeConfig.LoadPath = cfg.LimitsConfig.PerTenantOverrideConfig
 		cfg.RuntimeConfig.ReloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
@@ -252,13 +252,13 @@ func (t *Cortex) runtimeConfigService(cfg *Config) (services.Service, error) {
 	return serv, err
 }
 
-func (t *Cortex) overridesService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initOverrides(cfg *Config) (serv services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	// overrides don't have operational state, no need to return any service.
 	return nil, err
 }
 
-func (t *Cortex) distributorService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 
@@ -278,7 +278,7 @@ func (t *Cortex) distributorService(cfg *Config) (serv services.Service, err err
 	return t.distributor, nil
 }
 
-func (t *Cortex) querierService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 	api := v1.NewAPI(
 		engine,
@@ -345,7 +345,7 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 	})
 }
 
-func (t *Cortex) storeQueryableService(cfg *Config) (services.Service, error) {
+func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 	if cfg.Storage.Engine == storage.StorageEngineChunks {
 		t.storeQueryable = querier.NewChunkStoreQueryable(cfg.Querier, t.store)
 		return nil, nil
@@ -363,7 +363,7 @@ func (t *Cortex) storeQueryableService(cfg *Config) (services.Service, error) {
 	return nil, fmt.Errorf("unknown storage engine '%s'", cfg.Storage.Engine)
 }
 
-func (t *Cortex) ingesterService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
@@ -385,7 +385,7 @@ func (t *Cortex) ingesterService(cfg *Config) (serv services.Service, err error)
 	return t.ingester, nil
 }
 
-func (t *Cortex) storeService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		return nil, nil
 	}
@@ -405,7 +405,7 @@ func (t *Cortex) storeService(cfg *Config) (serv services.Service, err error) {
 	}), nil
 }
 
-func (t *Cortex) queryFrontendService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err error) {
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
@@ -491,7 +491,7 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 	return t.tableManager, err
 }
 
-func (t *Cortex) rulerService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
@@ -511,7 +511,7 @@ func (t *Cortex) rulerService(cfg *Config) (serv services.Service, err error) {
 	return t.ruler, nil
 }
 
-func (t *Cortex) configService(cfg *Config) (serv services.Service, err error) {
+func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
 	t.configDB, err = db.New(cfg.ConfigDB)
 	if err != nil {
 		return
@@ -654,7 +654,7 @@ var modules = map[moduleName]module{
 	},
 
 	RuntimeConfig: {
-		wrappedService: (*Cortex).runtimeConfigService,
+		wrappedService: (*Cortex).initRuntimeConfig,
 	},
 
 	MemberlistKV: {
@@ -663,42 +663,42 @@ var modules = map[moduleName]module{
 
 	Ring: {
 		deps:           []moduleName{Server, RuntimeConfig, MemberlistKV},
-		wrappedService: (*Cortex).ringService,
+		wrappedService: (*Cortex).initRing,
 	},
 
 	Overrides: {
 		deps:           []moduleName{RuntimeConfig},
-		wrappedService: (*Cortex).overridesService,
+		wrappedService: (*Cortex).initOverrides,
 	},
 
 	Distributor: {
 		deps:           []moduleName{Ring, Server, Overrides},
-		wrappedService: (*Cortex).distributorService,
+		wrappedService: (*Cortex).initDistributor,
 	},
 
 	Store: {
 		deps:           []moduleName{Overrides},
-		wrappedService: (*Cortex).storeService,
+		wrappedService: (*Cortex).initStore,
 	},
 
 	Ingester: {
 		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
-		wrappedService: (*Cortex).ingesterService,
+		wrappedService: (*Cortex).initIngester,
 	},
 
 	Querier: {
 		deps:           []moduleName{Distributor, Store, Ring, Server, StoreQueryable},
-		wrappedService: (*Cortex).querierService,
+		wrappedService: (*Cortex).initQuerier,
 	},
 
 	StoreQueryable: {
 		deps:           []moduleName{Store},
-		wrappedService: (*Cortex).storeQueryableService,
+		wrappedService: (*Cortex).initStoreQueryable,
 	},
 
 	QueryFrontend: {
 		deps:           []moduleName{Server, Overrides},
-		wrappedService: (*Cortex).queryFrontendService,
+		wrappedService: (*Cortex).initQueryFrontend,
 	},
 
 	TableManager: {
@@ -708,12 +708,12 @@ var modules = map[moduleName]module{
 
 	Ruler: {
 		deps:           []moduleName{Distributor, Store, StoreQueryable},
-		wrappedService: (*Cortex).rulerService,
+		wrappedService: (*Cortex).initRuler,
 	},
 
 	Configs: {
 		deps:           []moduleName{Server},
-		wrappedService: (*Cortex).configService,
+		wrappedService: (*Cortex).initConfig,
 	},
 
 	AlertManager: {

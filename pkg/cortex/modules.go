@@ -178,7 +178,7 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return m.Set(s)
 }
 
-func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
+func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	serv, err := server.New(cfg.Server)
 	if err != nil {
 		return nil, err
@@ -186,13 +186,15 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 
 	t.server = serv
 
+	serverDone := make(chan error, 1)
+
 	runFn := func(ctx context.Context) error {
 		started := make(chan struct{})
 
-		ch := make(chan error, 1)
 		go func() {
 			close(started)
-			ch <- t.server.Run()
+			defer close(serverDone)
+			serverDone <- t.server.Run()
 		}()
 
 		// wait until server has (almost) started, or we may actually
@@ -201,11 +203,26 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 
 		select {
 		case <-ctx.Done():
-			t.server.Shutdown()
-			return <-ch
-		case err := <-ch:
+			return nil
+		case err := <-serverDone:
 			return err
 		}
+	}
+
+	stoppingFn := func() error {
+		// wait until all modules are done, and then shutdown server.
+		for m, s := range t.serviceMap {
+			if m == Server {
+				continue
+			}
+
+			_ = s.AwaitTerminated(context.Background())
+		}
+
+		t.server.Shutdown()
+		// if not closed yet, wait until server stops.
+		<-serverDone
+		return nil
 	}
 
 	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
@@ -222,7 +239,7 @@ func (t *Cortex) serverService(cfg *Config) (services.Service, error) {
 		}
 	})
 
-	return services.NewService(nil, runFn, nil), nil
+	return services.NewService(nil, runFn, stoppingFn), nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {
@@ -641,7 +658,7 @@ var modules = map[moduleName]module{
 		// we cannot use 'wrappedService', as stopped Server service is currently a signal to Cortex
 		// that it should shutdown. If we used wrappedService, it wouldn't stop until
 		// all services that depend on it stopped first... but there is nothing that would make them stop.
-		service: (*Cortex).serverService,
+		service: (*Cortex).initServer,
 	},
 
 	RuntimeConfig: {

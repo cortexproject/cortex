@@ -714,6 +714,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 			require.NoError(t, err)
 			require.NoError(t, i.StartAsync(context.Background()))
+			require.NoError(t, i.AwaitRunning(context.Background()))
 			defer i.StopAsync()
 			defer cleanup()
 

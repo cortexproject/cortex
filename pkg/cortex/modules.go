@@ -491,14 +491,14 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 	return t.tableManager, err
 }
 
-func (t *Cortex) initRuler(cfg *Config) (err error) {
+func (t *Cortex) rulerService(cfg *Config) (serv services.Service, err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
-		return err
+		return
 	}
 
 	if cfg.Ruler.EnableAPI {
@@ -508,12 +508,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	}
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
-	return
-}
-
-func (t *Cortex) stopRuler() error {
-	t.ruler.Stop()
-	return nil
+	return t.ruler, nil
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
@@ -721,9 +716,8 @@ var modules = map[moduleName]module{
 	},
 
 	Ruler: {
-		deps: []moduleName{Distributor, Store, StoreQueryable},
-		init: (*Cortex).initRuler,
-		stop: (*Cortex).stopRuler,
+		deps:           []moduleName{Distributor, Store, StoreQueryable},
+		wrappedService: (*Cortex).rulerService,
 	},
 
 	Configs: {

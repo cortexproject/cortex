@@ -131,13 +131,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
-	// Scan and open TSDB's that already exist on disk
+	// Scan and open TSDB's that already exist on disk // TODO: move to starting
 	if err := i.openExistingTSDB(context.Background()); err != nil {
-		return nil, err
-	}
-
-	// Now that user states have been created, we can start the lifecycler
-	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return nil, err
 	}
 
@@ -145,8 +140,14 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	return i, nil
 }
 
-// TODO: more stuff could be moved to Starting: especially opening of TSDBs, starting of lifecycler.
 func (i *Ingester) startingV2(ctx context.Context) error {
+	if err := i.lifecycler.StartAsync(ctx); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
+	}
+	if err := i.lifecycler.AwaitRunning(ctx); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
+	}
+
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
 		i.TSDBState.shippingService = services.NewService(nil, i.shipBlocksLoop, nil)
 		_ = i.TSDBState.shippingService.StartAsync(ctx)

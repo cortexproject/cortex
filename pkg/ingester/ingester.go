@@ -193,21 +193,27 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return nil, err
 	}
 
-	// Now that user states have been created, we can start the lifecycler
-	err = i.lifecycler.StartAsync(context.Background())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to start ingester lifecycler")
+	// TODO: lot more stuff can be put into startingFn (esp. WAL replay), but for now keep it in New
+	services.InitBasicService(&i.BasicService, nil, i.loop, i.stopping)
+	return i, nil
+}
+
+func (i *Ingester) starting(ctx context.Context) error {
+	// Now that user states have been created, we can start the lifecycler.
+	if err := i.lifecycler.StartAsync(ctx); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
+	}
+	if err := i.lifecycler.AwaitRunning(ctx); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
 	}
 
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
-	for j := 0; j < cfg.ConcurrentFlushes; j++ {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		go i.flushLoop(j)
 	}
 
-	// TODO: lot more stuff can be put into startingFn (WAL replay, lifecycler startup), but for now keep it in New
-	services.InitBasicService(&i.BasicService, nil, i.loop, i.stopping)
-	return i, nil
+	return nil
 }
 
 func (i *Ingester) loop(ctx context.Context) error {
@@ -231,7 +237,7 @@ func (i *Ingester) loop(ctx context.Context) error {
 	}
 }
 
-// stopping is run when ingester is stopping
+// stopping is run when ingester is asked to stop
 func (i *Ingester) stopping() error {
 	i.wal.Stop()
 

@@ -2,12 +2,12 @@ package chunk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -549,12 +549,12 @@ func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
 func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
-		return errors.New("No metric name label")
+		return ErrMetricNameLabelMissing
 	}
 
 	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, string(metricName), metric, chunkID)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "when getting chunk index entries to delete for chunkID=%s", chunkID)
 	}
 
 	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
@@ -590,13 +590,11 @@ func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID
 		return false, err
 	}
 
-	seriesInUse := false
-	for i := range chunks {
-		if from <= chunks[i].From && chunks[i].From <= through || from <= chunks[i].Through && chunks[i].Through <= through {
-			seriesInUse = true
-			break
+	for _, chunk := range chunks {
+		if intervalsOverlap(model.Interval{Start: from, End: through}, model.Interval{Start: chunk.From, End: chunk.Through}) {
+			return true, nil
 		}
 	}
 
-	return seriesInUse, nil
+	return false, nil
 }

@@ -184,5 +184,6 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Azure BlobStorage
 	return chunk.ErrMethodNotImplemented
 }

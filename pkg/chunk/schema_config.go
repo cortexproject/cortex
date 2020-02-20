@@ -350,7 +350,7 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 			through:    uint32(relativeThrough),
 			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
 			hashKey:    fmt.Sprintf("%s:%d", userID, i),
-			bucketSize: uint32(millisecondsInHour),
+			bucketSize: uint32(millisecondsInHour), // helps with deletion of series ids in series store
 		})
 	}
 	return result
@@ -381,7 +381,7 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 			through:    uint32(relativeThrough),
 			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
 			hashKey:    fmt.Sprintf("%s:d%d", userID, i),
-			bucketSize: uint32(millisecondsInDay),
+			bucketSize: uint32(millisecondsInDay), // helps with deletion of series ids in series store
 		})
 	}
 	return result

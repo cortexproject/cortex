@@ -62,6 +62,10 @@ type Schema interface {
 	// Returns queries to retrieve all label names of multiple series by id.
 	GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
 
+	// GetSeriesDeleteEntries returns IndexEntry's for deleting SeriesIDs from SeriesStore.
+	// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
+	// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
+	// if yes then it doesn't include IndexEntry's for that bucket for deletion.
 	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error)
 }
 
@@ -214,8 +218,16 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 	return result, nil
 }
 
-// returns IndexEntrys for deletion. It makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc
+// GetSeriesDeleteEntries returns IndexEntry's for deleting SeriesIDs from SeriesStore.
+// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
+// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
+// if yes then it doesn't include IndexEntry's for that bucket for deletion.
 func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return nil, ErrMetricNameLabelMissing
+	}
+
 	buckets := s.buckets(from, through, userID)
 	if len(buckets) == 0 {
 		return nil, nil
@@ -226,6 +238,10 @@ func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, 
 	// Only first and last buckets needs to be checked for in-use series ids.
 	// Only partially deleted first/last deleted bucket needs to be checked otherwise
 	// not since whole bucket is anyways considered for deletion.
+
+	// Bucket times are relative to the bucket i.e for a per-day bucket
+	// bucket.from would be the number of milliseconds elapsed since the start of that day.
+	// If bucket.from is not 0, it means the from param doesn't align with the start of the bucket.
 	if buckets[0].from != 0 {
 		bucketStartTime := from - model.Time(buckets[0].from)
 		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(buckets[0].bucketSize)-1)
@@ -243,6 +259,9 @@ func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, 
 
 	lastBucket := buckets[len(buckets)-1]
 
+	// Similar to bucket.from, bucket.through here is also relative i.e for a per-day bucket
+	// through would be the number of milliseconds elapsed since the start of that day
+	// If bucket.through is not equal to max size of bucket, it means the through param doesn't align with the end of the bucket.
 	if lastBucket.through != lastBucket.bucketSize {
 		bucketStartTime := through - model.Time(lastBucket.through)
 		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(lastBucket.bucketSize)-1)
@@ -259,10 +278,6 @@ func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, 
 	}
 
 	var result []IndexEntry
-	metricName := metric.Get(model.MetricNameLabel)
-	if metricName == "" {
-		return nil, errors.New("no metric name")
-	}
 
 	for _, bucket := range buckets {
 		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, metric, "")

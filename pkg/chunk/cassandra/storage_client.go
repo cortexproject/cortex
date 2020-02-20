@@ -224,7 +224,8 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 }
 
 func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	panic("implement me")
+	// ToDo: implement this to support deleting index entries from Cassandra
+	panic("Cassandra does not support Deleting index entries yet")
 }
 
 // BatchWrite implement chunk.IndexClient.
@@ -370,5 +371,6 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 }
 
 func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
 }

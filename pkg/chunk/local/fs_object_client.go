@@ -111,10 +111,6 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 	return storageObjects, nil
 }
 
-func (f *FSObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	return f.DeleteObject(ctx, chunkID)
-}
-
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	err := os.Remove(path.Join(f.cfg.Directory, objectKey))
 	if err != nil && os.IsNotExist(err) {

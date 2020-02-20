@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -863,7 +864,7 @@ func generateIndexEntries(n int64) []IndexEntry {
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {
 	if !intervalsOverlap(originalInterval, deletedInterval) {
-		return nil
+		return []model.Interval{originalInterval}
 	}
 
 	nonDeletedIntervals := []model.Interval{}
@@ -891,6 +892,11 @@ func TestStore_DeleteChunk(t *testing.T) {
 		{Name: "bar", Value: "baz2"},
 	}
 
+	metric3 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz3"},
+	}
+
 	fooChunk1 := dummyChunkForEncoding(model.Now(), metric1, encoding.Varbit, 200)
 	err := fooChunk1.Encode()
 	require.NoError(t, err)
@@ -899,7 +905,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 	err = fooChunk2.Encode()
 	require.NoError(t, err)
 
-	nonExistentChunk := dummyChunkFor(model.Now().Add(-time.Hour), metric2)
+	nonExistentChunk := dummyChunkForEncoding(model.Now(), metric3, encoding.Varbit, 200)
 
 	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
 	if err != nil {
@@ -907,51 +913,53 @@ func TestStore_DeleteChunk(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name                  string
-		chunks                []Chunk
-		chunkToDelete         Chunk
-		partialDeleteInterval *model.Interval
-		err                   string
+		name                           string
+		chunks                         []Chunk
+		chunkToDelete                  Chunk
+		partialDeleteInterval          *model.Interval
+		err                            error
+		numChunksToExpectAfterDeletion int
 	}{
 		{
-			name:          "delete whole chunk",
-			chunkToDelete: fooChunk1,
+			name:                           "delete whole chunk",
+			chunkToDelete:                  fooChunk1,
+			numChunksToExpectAfterDeletion: 1,
 		},
 		{
-			name:                  "delete chunk partially at start",
-			chunkToDelete:         fooChunk1,
-			partialDeleteInterval: &model.Interval{Start: fooChunk1.From, End: fooChunk1.From.Add(30 * time.Minute)},
+			name:                           "delete chunk partially at start",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From.Add(30 * time.Minute)},
+			numChunksToExpectAfterDeletion: 2,
 		},
 		{
-			name:                  "delete chunk partially at end",
-			chunkToDelete:         fooChunk1,
-			partialDeleteInterval: &model.Interval{Start: fooChunk1.Through.Add(-30 * time.Minute), End: fooChunk1.Through},
+			name:                           "delete chunk partially at end",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(-30 * time.Minute), End: fooChunk1.Through},
+			numChunksToExpectAfterDeletion: 2,
 		},
 		{
-			name:                  "delete chunk partially in the middle",
-			chunkToDelete:         fooChunk1,
-			partialDeleteInterval: &model.Interval{Start: fooChunk1.Through.Add(15 * time.Minute), End: fooChunk1.Through.Add(-15 * time.Minute)},
+			name:                           "delete chunk partially in the middle",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From.Add(15 * time.Minute), End: fooChunk1.Through.Add(-15 * time.Minute)},
+			numChunksToExpectAfterDeletion: 3,
 		},
 		{
-			name:          "delete non-existent chunk",
-			chunkToDelete: nonExistentChunk,
-			err:           ErrStorageObjectNotFound.Error(),
+			name:                           "delete non-existent chunk",
+			chunkToDelete:                  nonExistentChunk,
+			numChunksToExpectAfterDeletion: 2,
 		},
 		{
-			name:                  "delete non-existent chunk partially",
-			chunkToDelete:         nonExistentChunk,
-			partialDeleteInterval: &model.Interval{Start: nonExistentChunk.From, End: nonExistentChunk.From.Add(30 * time.Minute)},
-			err:                   ErrStorageObjectNotFound.Error(),
+			name:                           "delete first second",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From},
+			numChunksToExpectAfterDeletion: 2,
 		},
 		{
-			name:                  "delete first second",
-			chunkToDelete:         fooChunk1,
-			partialDeleteInterval: &model.Interval{Start: fooChunk1.From, End: fooChunk1.From},
-		},
-		{
-			name:                  "delete chunk out of range",
-			chunkToDelete:         fooChunk1,
-			partialDeleteInterval: &model.Interval{Start: fooChunk1.Through.Add(time.Minute), End: fooChunk1.Through.Add(10 * time.Minute)},
+			name:                           "delete chunk out of range",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(time.Minute), End: fooChunk1.Through.Add(10 * time.Minute)},
+			numChunksToExpectAfterDeletion: 2,
+			err:                            errors.Wrapf(ErrParialDeleteChunkNoOverlap, "chunkID=%s", fooChunk1.ExternalKey()),
 		},
 	} {
 		for _, schema := range schemas {
@@ -971,9 +979,9 @@ func TestStore_DeleteChunk(t *testing.T) {
 				err = store.DeleteChunk(ctx, tc.chunkToDelete.From, tc.chunkToDelete.Through, userID,
 					tc.chunkToDelete.ExternalKey(), tc.chunkToDelete.Metric, tc.partialDeleteInterval)
 
-				if tc.err != "" {
+				if tc.err != nil {
 					require.Error(t, err)
-					require.Equal(t, tc.err, err.Error())
+					require.Equal(t, tc.err.Error(), err.Error())
 
 					// we expect to get same results back if delete operation is expected to fail
 					chunks, err := store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), fooMetricNameMatcher...)
@@ -1000,7 +1008,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 				// we expect to get 1 non deleted chunk + new chunks that were created (if any) after partial deletion
 				chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), fooMetricNameMatcher...)
 				require.NoError(t, err)
-				require.Equal(t, 1+len(nonDeletedIntervals), len(chunks))
+				require.Equal(t, tc.numChunksToExpectAfterDeletion, len(chunks))
 
 				chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), matchersForDeletedChunk...)
 				require.NoError(t, err)

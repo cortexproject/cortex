@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -24,6 +24,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
+	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
 )
 
 var (
@@ -136,7 +141,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {
-		return nil, fmt.Errorf("no MetricNameLabel for chunk")
+		return nil, ErrMetricNameLabelMissing
 	}
 
 	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
@@ -489,12 +494,12 @@ func (c *store) convertChunkIDsToChunks(ctx context.Context, userID string, chun
 func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
-		return errors.New("No metric name label")
+		return ErrMetricNameLabelMissing
 	}
 
 	chunkWriteEntries, err := c.schema.GetWriteEntries(from, through, userID, string(metricName), metric, chunkID)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "when getting index entries to delete for chunkID=%s", chunkID)
 	}
 
 	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
@@ -502,18 +507,24 @@ func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userI
 	})
 }
 
-func (c *store) deleteChunk(ctx context.Context, userID, chunkID string, metric labels.Labels,
-	chunkWriteEntries []IndexEntry, partiallyDeletedInterval *model.Interval, putChunkFunc func(chunk Chunk) error) error {
+func (c *store) deleteChunk(ctx context.Context,
+	userID string,
+	chunkID string,
+	metric labels.Labels,
+	chunkWriteEntries []IndexEntry,
+	partiallyDeletedInterval *model.Interval,
+	putChunkFunc func(chunk Chunk) error) error {
+
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
-		return errors.New("No metric name label")
+		return ErrMetricNameLabelMissing
 	}
 
 	// if chunk is partially deleted, fetch it, slice non-deleted portion and put it to store before deleting original chunk
 	if partiallyDeletedInterval != nil {
-		err := c.deleteChunkPartially(ctx, userID, chunkID, *partiallyDeletedInterval, putChunkFunc)
+		err := c.reboundChunk(ctx, userID, chunkID, *partiallyDeletedInterval, putChunkFunc)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "chunkID=%s", chunkID)
 		}
 	}
 
@@ -524,25 +535,40 @@ func (c *store) deleteChunk(ctx context.Context, userID, chunkID string, metric 
 
 	err := c.index.BatchWrite(ctx, batch)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "when deleting index entries for chunkID=%s", chunkID)
 	}
 
-	return c.chunks.DeleteChunk(ctx, chunkID)
+	err = c.chunks.DeleteChunk(ctx, chunkID)
+	if err != nil {
+		if err == ErrStorageObjectNotFound {
+			return nil
+		}
+		return errors.Wrapf(err, "when deleting chunk from storage with chunkID=%s", chunkID)
+	}
+
+	return nil
 }
 
-func (c *store) deleteChunkPartially(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
+func (c *store) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
 	chunk, err := ParseExternalKey(userID, chunkID)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "when parsing external key")
 	}
 
 	if !intervalsOverlap(model.Interval{Start: chunk.From, End: chunk.Through}, partiallyDeletedInterval) {
-		return nil
+		return ErrParialDeleteChunkNoOverlap
 	}
 
 	chunks, err := c.Fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
 	if err != nil {
-		return err
+		if err == ErrStorageObjectNotFound {
+			return nil
+		}
+		return errors.Wrap(err, "when fetching chunk from storage for slicing")
+	}
+
+	if len(chunks) != 1 {
+		return errors.New(fmt.Sprintf("expected to get 1 chunk from storage got %d instead", len(chunks)))
 	}
 
 	chunk = chunks[0]
@@ -550,7 +576,7 @@ func (c *store) deleteChunkPartially(ctx context.Context, userID, chunkID string
 	if partiallyDeletedInterval.Start > chunk.From {
 		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)
 		if err != nil && err != ErrSliceNoDataInRange {
-			return err
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.From, partiallyDeletedInterval.Start-1)
 		}
 
 		if newChunk != nil {
@@ -561,7 +587,7 @@ func (c *store) deleteChunkPartially(ctx context.Context, userID, chunkID string
 	if partiallyDeletedInterval.End < chunk.Through {
 		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, chunk.Through)
 		if err != nil && err != ErrSliceNoDataInRange {
-			return err
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Through)
 		}
 
 		if newChunk != nil {
@@ -570,18 +596,13 @@ func (c *store) deleteChunkPartially(ctx context.Context, userID, chunkID string
 	}
 
 	for _, newChunk := range newChunks {
-		// we don't want to create chunks with no samples in it
-		if newChunk.Data.Len() == 0 {
-			continue
-		}
-
 		if err := newChunk.Encode(); err != nil {
-			return err
+			return errors.Wrapf(err, "when encoding new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
 		}
 
 		err = putChunkFunc(*newChunk)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "when putting new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
 		}
 	}
 
@@ -589,5 +610,6 @@ func (c *store) deleteChunkPartially(ctx context.Context, userID, chunkID string
 }
 
 func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	// SeriesID is something which is only used in SeriesStore so we need not do anything here
 	return nil
 }

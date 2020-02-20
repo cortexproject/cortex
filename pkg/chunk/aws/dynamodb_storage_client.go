@@ -599,6 +599,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 }
 
 func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from DynamoDB
 	return chunk.ErrMethodNotImplemented
 }
 
@@ -754,7 +755,8 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 }
 
 func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	panic("implement me")
+	// ToDo: implement this to support deleting index entries from DynamoDB
+	panic("DynamoDB does not support Deleting index entries yet")
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.

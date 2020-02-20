@@ -642,9 +642,9 @@ results_cache:
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
 
-# Parse the ast and parallelize sums by shard.
-# CLI flag: -querier.sum-shards
-[sum_shards: <boolean> | default = false]
+# Perform query parallelisations based on storage sharding configuration and query ASTs.
+# CLI flag: -querier.parallelise-shardable-queries
+[parallelise_shardable_queries: <boolean> | default = false]
 ```
 
 ## `ruler_config`

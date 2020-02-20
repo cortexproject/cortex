@@ -68,7 +68,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 ## Query Frontend
 
-- `-querier.sum-shards`
+- `-querier.parallelise-shardable-queries`
 
    If set to true, will cause the query frontend to mutate incoming queries when possible by turning `sum` operations into sharded `sum` operations. This requires a shard-compatible schema (v10+). An abridged example:
    `sum by (foo) (rate(bar{baz=”blip”}[1m]))` ->

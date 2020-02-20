@@ -3,7 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] Fan out parallelizable queries to backend queriers concurrently. #1878
-  * `-querier.sum-shards` (bool)
+  * `querier.parallelise-shardable-queries` (bool)
   * Requires a shard-compatible schema (v10+)
   * This causes the number of traces to increase accordingly.
   * The query-frontend now requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume. The schema is only required to use this option.

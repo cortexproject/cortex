@@ -108,7 +108,7 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 
 func Test_ShardingConfigError(t *testing.T) {
 	_, _, err := NewTripperware(
-		Config{SumShards: true},
+		Config{ShardedQueries: true},
 		log.NewNopLogger(),
 		nil,
 		nil,

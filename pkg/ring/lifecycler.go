@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -241,13 +242,31 @@ func (i *Lifecycler) setState(state IngesterState) {
 	i.state = state
 }
 
+func (i *Lifecycler) sendToLifecyclerLoop(fn func()) error {
+	sc := i.ServiceContext()
+	if sc == nil {
+		return errors.New("lifecycler not running")
+	}
+
+	select {
+	case <-sc.Done():
+		return errors.New("lifecycler not running")
+	case i.actorChan <- fn:
+		return nil
+	}
+}
+
 // ChangeState of the ingester, for use off of the loop() goroutine.
 func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error {
-	err := make(chan error)
-	i.actorChan <- func() {
-		err <- i.changeState(ctx, state)
+	errCh := make(chan error)
+	fn := func() {
+		errCh <- i.changeState(ctx, state)
 	}
-	return <-err
+
+	if err := i.sendToLifecyclerLoop(fn); err != nil {
+		return err
+	}
+	return <-errCh
 }
 
 func (i *Lifecycler) getTokens() Tokens {
@@ -277,9 +296,9 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 // assign token to the wrong ingester. While we could check for that state here, when this method is called,
 // transfers have already finished -- it's better to check for this *before* transfers start.
 func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) error {
-	err := make(chan error)
+	errCh := make(chan error)
 
-	i.actorChan <- func() {
+	fn := func() {
 		var tokens Tokens
 
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
@@ -301,10 +320,13 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		}
 
 		i.setTokens(tokens)
-		err <- nil
+		errCh <- nil
 	}
 
-	return <-err
+	if err := i.sendToLifecyclerLoop(fn); err != nil {
+		return err
+	}
+	return <-errCh
 }
 
 // HealthyInstancesCount returns the number of healthy instances in the ring, updated

@@ -16,20 +16,20 @@ import (
 type moduleServiceWrapper struct {
 	services.BasicService
 
-	cortex    *Cortex
-	module    moduleName
-	service   services.Service
-	startDeps []moduleName
-	stopDeps  []moduleName
+	serviceMap map[moduleName]services.Service
+	module     moduleName
+	service    services.Service
+	startDeps  []moduleName
+	stopDeps   []moduleName
 }
 
-func newModuleServiceWrapper(cortex *Cortex, mod moduleName, modServ services.Service, startDeps []moduleName, stopDeps []moduleName) *moduleServiceWrapper {
+func newModuleServiceWrapper(serviceMap map[moduleName]services.Service, mod moduleName, modServ services.Service, startDeps []moduleName, stopDeps []moduleName) *moduleServiceWrapper {
 	w := &moduleServiceWrapper{
-		cortex:    cortex,
-		module:    mod,
-		service:   modServ,
-		startDeps: startDeps,
-		stopDeps:  stopDeps,
+		serviceMap: serviceMap,
+		module:     mod,
+		service:    modServ,
+		startDeps:  startDeps,
+		stopDeps:   stopDeps,
 	}
 
 	services.InitBasicService(&w.BasicService, w.start, w.run, w.stop)
@@ -39,7 +39,7 @@ func newModuleServiceWrapper(cortex *Cortex, mod moduleName, modServ services.Se
 func (w *moduleServiceWrapper) start(serviceContext context.Context) error {
 	// wait until all startDeps are running
 	for _, m := range w.startDeps {
-		s := w.cortex.serviceMap[m]
+		s := w.serviceMap[m]
 		if s == nil {
 			continue
 		}
@@ -75,12 +75,14 @@ func (w *moduleServiceWrapper) run(serviceContext context.Context) error {
 func (w *moduleServiceWrapper) stop() error {
 	// wait until all stopDeps have stopped
 	for _, m := range w.stopDeps {
-		s := w.cortex.serviceMap[m]
+		s := w.serviceMap[m]
 		if s == nil {
 			continue
 		}
 
-		_ = w.cortex.serviceMap[m].AwaitTerminated(context.Background())
+		// Passed context isn't canceled, so we can only get error here, if service
+		// fails. But we don't care *how* service stops, as long as it is done.
+		_ = s.AwaitTerminated(context.Background())
 	}
 
 	level.Debug(util.Logger).Log("msg", "stopping", "module", w.module)
@@ -88,7 +90,7 @@ func (w *moduleServiceWrapper) stop() error {
 	w.service.StopAsync()
 	err := w.service.AwaitTerminated(context.Background())
 	if err != nil {
-		level.Info(util.Logger).Log("msg", "error stopping", "module", w.module, "err", err)
+		level.Info(util.Logger).Log("msg", "error stopping module", "module", w.module, "err", err)
 	} else {
 		level.Info(util.Logger).Log("msg", "module stopped", "module", w.module)
 	}

@@ -275,7 +275,9 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
 			}
 			if s != nil {
-				serv = newModuleServiceWrapper(t, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
+				// We pass servicesMap, which isn't yet finished. By the time service starts,
+				// it will be fully built, so there is no need for extra synchronization.
+				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
 			}
 		}
 

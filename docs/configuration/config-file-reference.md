@@ -643,7 +643,7 @@ results_cache:
 [max_retries: <int> | default = 5]
 
 # Perform query parallelisations based on storage sharding configuration and
-# query ASTs.
+# query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = false]
 ```

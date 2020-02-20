@@ -184,7 +184,9 @@ func (t *Cortex) initServer(cfg *Config) error {
 
 		w.Header().Set("Content-Type", "text/yaml")
 		w.WriteHeader(http.StatusOK)
-		w.Write(out)
+		if _, err := w.Write(out); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
+		}
 	})
 
 	return nil

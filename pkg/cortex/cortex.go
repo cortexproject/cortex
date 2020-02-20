@@ -339,7 +339,7 @@ func (t *Cortex) Run() error {
 
 // services.ManagerListener methods
 func (t *Cortex) Healthy() {
-	level.Info(util.Logger).Log("msg", "Cortex started, all services running")
+	level.Info(util.Logger).Log("msg", "Cortex started")
 }
 
 func (t *Cortex) Stopped() {

@@ -83,12 +83,14 @@ func (w *moduleServiceWrapper) stop() error {
 		_ = w.cortex.serviceMap[m].AwaitTerminated(context.Background())
 	}
 
-	level.Info(util.Logger).Log("msg", "stopping", "module", w.module)
+	level.Debug(util.Logger).Log("msg", "stopping", "module", w.module)
 
 	w.service.StopAsync()
 	err := w.service.AwaitTerminated(context.Background())
 	if err != nil {
 		level.Info(util.Logger).Log("msg", "error stopping", "module", w.module, "err", err)
+	} else {
+		level.Info(util.Logger).Log("msg", "module stopped", "module", w.module)
 	}
 	return err
 }

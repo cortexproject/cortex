@@ -313,6 +313,7 @@ github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zV
 github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
 github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48 h1:X+zN6RZXsvnrSJaAIQhZezPfAfvsqihKKR8oiLHid34=
 github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
+github.com/gogo/protobuf v1.3.0/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
 github.com/gogo/protobuf v1.3.1 h1:DqDEcV5aeaTmdFBePNpYsp3FlcVH/2ISVVM9Qf8PSls=
 github.com/gogo/protobuf v1.3.1/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
 github.com/gogo/status v1.0.3 h1:WkVBY59mw7qUNTr/bLwO7J2vesJ0rQ2C3tMXrTd3w5M=
@@ -773,8 +774,8 @@ github.com/uber/jaeger-lib v2.2.0+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
 github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1 h1:qi+YkNiB7T3Ikw1DoDIFhdAPbDU7fUPDsKrUoZdupnQ=
 github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1/go.mod h1:7gGdEUJaCrSlWi/mjd68CZv0sfqektYPDcro9cE+M9k=
-github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1 h1:nhoCrldzSm1le34sZfSNyTELYxIDaAmDw6PPVoEj5Mw=
-github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1/go.mod h1:KLGX4H1D0lPVfHS/hqO9yrKvDzaT0bqYftIW43iLaOc=
+github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a h1:4Sm4LnEnP1yQ2NeNgGqLTuN2xrTvcBOU+EsljpB8Ed0=
+github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a/go.mod h1:6enWAqfQBFrE8X/XdJwZr8IKgh1chStuFR0mjU/UOUw=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/xanzy/go-gitlab v0.15.0/go.mod h1:8zdQa/ri1dfn8eS3Ir1SyfvOKlw7WBJ8DVThkpGiXrs=

@@ -63,7 +63,7 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-	github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
+	github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	go.uber.org/atomic v1.5.0

@@ -15,6 +15,7 @@ import (
 	_ "github.com/golang/protobuf/ptypes/timestamp"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
@@ -30,7 +31,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // RuleGroupDesc is a proto representation of a cortex rule group
 type RuleGroupDesc struct {
@@ -55,7 +56,7 @@ func (m *RuleGroupDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_RuleGroupDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +144,7 @@ func (m *RuleDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_RuleDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +244,7 @@ func (m *AlertDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_AlertDesc.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -599,7 +600,7 @@ func valueToGoStringRules(v interface{}, typ string) string {
 func (m *RuleGroupDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -607,65 +608,75 @@ func (m *RuleGroupDesc) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *RuleGroupDesc) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RuleGroupDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Name) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Name)))
-		i += copy(dAtA[i:], m.Name)
-	}
-	if len(m.Namespace) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Namespace)))
-		i += copy(dAtA[i:], m.Namespace)
-	}
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.Interval)))
-	n1, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Interval, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n1
-	if len(m.Rules) > 0 {
-		for _, msg := range m.Rules {
-			dAtA[i] = 0x22
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
+	if len(m.User) > 0 {
+		i -= len(m.User)
+		copy(dAtA[i:], m.User)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.User)))
+		i--
+		dAtA[i] = 0x32
 	}
 	if m.Deleted {
-		dAtA[i] = 0x28
-		i++
+		i--
 		if m.Deleted {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i++
+		i--
+		dAtA[i] = 0x28
 	}
-	if len(m.User) > 0 {
-		dAtA[i] = 0x32
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.User)))
-		i += copy(dAtA[i:], m.User)
+	if len(m.Rules) > 0 {
+		for iNdEx := len(m.Rules) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Rules[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintRules(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
 	}
-	return i, nil
+	n1, err1 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Interval, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Interval):])
+	if err1 != nil {
+		return 0, err1
+	}
+	i -= n1
+	i = encodeVarintRules(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x1a
+	if len(m.Namespace) > 0 {
+		i -= len(m.Namespace)
+		copy(dAtA[i:], m.Namespace)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Namespace)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *RuleDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -673,97 +684,114 @@ func (m *RuleDesc) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *RuleDesc) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RuleDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Expr) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Expr)))
-		i += copy(dAtA[i:], m.Expr)
-	}
-	if len(m.Record) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Record)))
-		i += copy(dAtA[i:], m.Record)
-	}
-	if len(m.Alert) > 0 {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Alert)))
-		i += copy(dAtA[i:], m.Alert)
-	}
-	dAtA[i] = 0x22
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.For)))
-	n2, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.For, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
-	if len(m.Labels) > 0 {
-		for _, msg := range m.Labels {
-			dAtA[i] = 0x2a
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+	if len(m.Alerts) > 0 {
+		for iNdEx := len(m.Alerts) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Alerts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintRules(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x52
 		}
-	}
-	if len(m.Annotations) > 0 {
-		for _, msg := range m.Annotations {
-			dAtA[i] = 0x32
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
-	}
-	if len(m.State) > 0 {
-		dAtA[i] = 0x3a
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
-		i += copy(dAtA[i:], m.State)
-	}
-	if len(m.Health) > 0 {
-		dAtA[i] = 0x42
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.Health)))
-		i += copy(dAtA[i:], m.Health)
 	}
 	if len(m.LastError) > 0 {
-		dAtA[i] = 0x4a
-		i++
+		i -= len(m.LastError)
+		copy(dAtA[i:], m.LastError)
 		i = encodeVarintRules(dAtA, i, uint64(len(m.LastError)))
-		i += copy(dAtA[i:], m.LastError)
+		i--
+		dAtA[i] = 0x4a
 	}
-	if len(m.Alerts) > 0 {
-		for _, msg := range m.Alerts {
-			dAtA[i] = 0x52
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+	if len(m.Health) > 0 {
+		i -= len(m.Health)
+		copy(dAtA[i:], m.Health)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Health)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.State) > 0 {
+		i -= len(m.State)
+		copy(dAtA[i:], m.State)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if len(m.Annotations) > 0 {
+		for iNdEx := len(m.Annotations) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Annotations[iNdEx].Size()
+				i -= size
+				if _, err := m.Annotations[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintRules(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x32
 		}
 	}
-	return i, nil
+	if len(m.Labels) > 0 {
+		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Labels[iNdEx].Size()
+				i -= size
+				if _, err := m.Labels[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintRules(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	n2, err2 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.For, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.For):])
+	if err2 != nil {
+		return 0, err2
+	}
+	i -= n2
+	i = encodeVarintRules(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x22
+	if len(m.Alert) > 0 {
+		i -= len(m.Alert)
+		copy(dAtA[i:], m.Alert)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Alert)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Record) > 0 {
+		i -= len(m.Record)
+		copy(dAtA[i:], m.Record)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Record)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Expr) > 0 {
+		i -= len(m.Expr)
+		copy(dAtA[i:], m.Expr)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.Expr)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *AlertDesc) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -771,97 +799,109 @@ func (m *AlertDesc) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *AlertDesc) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *AlertDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.State) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
-		i += copy(dAtA[i:], m.State)
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ValidUntil, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.ValidUntil):])
+	if err3 != nil {
+		return 0, err3
 	}
-	if len(m.Labels) > 0 {
-		for _, msg := range m.Labels {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
+	i -= n3
+	i = encodeVarintRules(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x4a
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastSentAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LastSentAt):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintRules(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0x42
+	n5, err5 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ResolvedAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.ResolvedAt):])
+	if err5 != nil {
+		return 0, err5
+	}
+	i -= n5
+	i = encodeVarintRules(dAtA, i, uint64(n5))
+	i--
+	dAtA[i] = 0x3a
+	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FiredAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.FiredAt):])
+	if err6 != nil {
+		return 0, err6
+	}
+	i -= n6
+	i = encodeVarintRules(dAtA, i, uint64(n6))
+	i--
+	dAtA[i] = 0x32
+	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ActiveAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.ActiveAt):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintRules(dAtA, i, uint64(n7))
+	i--
+	dAtA[i] = 0x2a
+	if m.Value != 0 {
+		i -= 8
+		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
+		i--
+		dAtA[i] = 0x21
 	}
 	if len(m.Annotations) > 0 {
-		for _, msg := range m.Annotations {
-			dAtA[i] = 0x1a
-			i++
-			i = encodeVarintRules(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Annotations) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Annotations[iNdEx].Size()
+				i -= size
+				if _, err := m.Annotations[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintRules(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x1a
 		}
 	}
-	if m.Value != 0 {
-		dAtA[i] = 0x21
-		i++
-		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
-		i += 8
+	if len(m.Labels) > 0 {
+		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Labels[iNdEx].Size()
+				i -= size
+				if _, err := m.Labels[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintRules(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
 	}
-	dAtA[i] = 0x2a
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ActiveAt)))
-	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ActiveAt, dAtA[i:])
-	if err != nil {
-		return 0, err
+	if len(m.State) > 0 {
+		i -= len(m.State)
+		copy(dAtA[i:], m.State)
+		i = encodeVarintRules(dAtA, i, uint64(len(m.State)))
+		i--
+		dAtA[i] = 0xa
 	}
-	i += n3
-	dAtA[i] = 0x32
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.FiredAt)))
-	n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FiredAt, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
-	dAtA[i] = 0x3a
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ResolvedAt)))
-	n5, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ResolvedAt, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n5
-	dAtA[i] = 0x42
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.LastSentAt)))
-	n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastSentAt, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n6
-	dAtA[i] = 0x4a
-	i++
-	i = encodeVarintRules(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.ValidUntil)))
-	n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.ValidUntil, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n7
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintRules(dAtA []byte, offset int, v uint64) int {
+	offset -= sovRules(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *RuleGroupDesc) Size() (n int) {
 	if m == nil {
@@ -987,14 +1027,7 @@ func (m *AlertDesc) Size() (n int) {
 }
 
 func sovRules(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozRules(x uint64) (n int) {
 	return sovRules(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -1003,11 +1036,16 @@ func (this *RuleGroupDesc) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForRules := "[]*RuleDesc{"
+	for _, f := range this.Rules {
+		repeatedStringForRules += strings.Replace(f.String(), "RuleDesc", "RuleDesc", 1) + ","
+	}
+	repeatedStringForRules += "}"
 	s := strings.Join([]string{`&RuleGroupDesc{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`Namespace:` + fmt.Sprintf("%v", this.Namespace) + `,`,
-		`Interval:` + strings.Replace(strings.Replace(this.Interval.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
-		`Rules:` + strings.Replace(fmt.Sprintf("%v", this.Rules), "RuleDesc", "RuleDesc", 1) + `,`,
+		`Interval:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Interval), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`Rules:` + repeatedStringForRules + `,`,
 		`Deleted:` + fmt.Sprintf("%v", this.Deleted) + `,`,
 		`User:` + fmt.Sprintf("%v", this.User) + `,`,
 		`}`,
@@ -1018,17 +1056,22 @@ func (this *RuleDesc) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForAlerts := "[]*AlertDesc{"
+	for _, f := range this.Alerts {
+		repeatedStringForAlerts += strings.Replace(f.String(), "AlertDesc", "AlertDesc", 1) + ","
+	}
+	repeatedStringForAlerts += "}"
 	s := strings.Join([]string{`&RuleDesc{`,
 		`Expr:` + fmt.Sprintf("%v", this.Expr) + `,`,
 		`Record:` + fmt.Sprintf("%v", this.Record) + `,`,
 		`Alert:` + fmt.Sprintf("%v", this.Alert) + `,`,
-		`For:` + strings.Replace(strings.Replace(this.For.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`For:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.For), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
 		`State:` + fmt.Sprintf("%v", this.State) + `,`,
 		`Health:` + fmt.Sprintf("%v", this.Health) + `,`,
 		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
-		`Alerts:` + strings.Replace(fmt.Sprintf("%v", this.Alerts), "AlertDesc", "AlertDesc", 1) + `,`,
+		`Alerts:` + repeatedStringForAlerts + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1042,11 +1085,11 @@ func (this *AlertDesc) String() string {
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
 		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
-		`ActiveAt:` + strings.Replace(strings.Replace(this.ActiveAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`FiredAt:` + strings.Replace(strings.Replace(this.FiredAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`ResolvedAt:` + strings.Replace(strings.Replace(this.ResolvedAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`LastSentAt:` + strings.Replace(strings.Replace(this.LastSentAt.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`ValidUntil:` + strings.Replace(strings.Replace(this.ValidUntil.String(), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ActiveAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ActiveAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`FiredAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.FiredAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ResolvedAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ResolvedAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastSentAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.LastSentAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ValidUntil:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ValidUntil), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s

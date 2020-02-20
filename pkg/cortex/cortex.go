@@ -323,25 +323,27 @@ func (t *Cortex) Run() error {
 	// Currently it's the Server that reacts on signal handler,
 	// so get Server service, and wait until it gets to Stopping state.
 	// It will also be stopped via service manager if any service fails (see attached service listener)
+	// Attach listener before starting services, or we may miss the notification.
 	serverStopping := make(chan struct{})
-
-	// attach listener before starting services, or we may miss the notification.
 	t.serviceMap[Server].AddListener(services.NewListener(nil, nil, func(from services.State) {
 		close(serverStopping)
 	}, nil, nil))
 
-	// Start all services.
+	// Start all services. This can really only fail if some service is already
+	// in other state than New, which should not be the case.
 	err = sm.StartAsync(context.Background())
-	if err != nil {
-		return err
+	if err == nil {
+		// no error starting the services, now let's just wait until Server module
+		// transitions to Stopping (after SIGTERM or when some service fails),
+		// and then initiate shutdown
+		<-serverStopping
 	}
 
-	// we can now wait for Server stopping, and then initiate shutdown
-	<-serverStopping
-
-	// Stop all the services.
+	// Stop all the services, and wait until they are all done.
 	sm.StopAsync()
-	return sm.AwaitStopped(context.Background())
+	// this can only return error if context is Done... ignore
+	_ = sm.AwaitStopped(context.Background())
+	return err
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

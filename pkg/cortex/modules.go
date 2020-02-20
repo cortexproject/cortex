@@ -743,6 +743,6 @@ var modules = map[moduleName]module{
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager, Compactor},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
 	},
 }

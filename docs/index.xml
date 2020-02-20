@@ -280,7 +280,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;p&gt;Cortex can be configured using a YAML file - specified using the &lt;code&gt;-config.file&lt;/code&gt; flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.&lt;/p&gt;
 &lt;h2 id=&#34;reference&#34;&gt;Reference&lt;/h2&gt;
 &lt;p&gt;To specify which configuration file to load, pass the &lt;code&gt;-config.file&lt;/code&gt; flag at the command line. The file is written in &lt;a href=&#34;https://en.wikipedia.org/wiki/YAML&#34;&gt;YAML format&lt;/a&gt;, defined by the scheme below. Brackets indicate that a parameter is optional.&lt;/p&gt;
-&lt;p&gt;Generic placeholders are defined as follows:&lt;/p&gt;
+&lt;h3 id=&#34;generic-placeholders&#34;&gt;Generic placeholders&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;&amp;lt;boolean&amp;gt;&lt;/code&gt;: a boolean that can take the values &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;&amp;lt;int&amp;gt;&lt;/code&gt;: any integer matching the regular expression &lt;code&gt;[1-9]+[0-9]*&lt;/code&gt;&lt;/li&gt;
@@ -289,7 +289,20 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;li&gt;&lt;code&gt;&amp;lt;url&amp;gt;&lt;/code&gt;: an URL&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;&amp;lt;prefix&amp;gt;&lt;/code&gt;: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;Supported contents and default values of the config file:&lt;/p&gt;
+&lt;h3 id=&#34;use-environment-variables-in-the-configuration&#34;&gt;Use environment variables in the configuration&lt;/h3&gt;
+&lt;p&gt;You can use environment variable references in the config file to set values that need to be configurable during deployment.
+To do this, use:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;${VAR}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Where VAR is the name of the environment variable.&lt;/p&gt;
+&lt;p&gt;Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.&lt;/p&gt;
+&lt;p&gt;To specify a default value, use:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;${VAR:default_value}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Where default_value is the value to use if the environment variable is undefined.&lt;/p&gt;
+&lt;h3 id=&#34;supported-contents-and-default-values-of-the-config-file&#34;&gt;Supported contents and default values of the config file&lt;/h3&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# The Cortex service to run. Supported values are: all, distributor, ingester,&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# querier, query-frontend, table-manager, ruler, alertmanager, configs.&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# CLI flag: -target&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
@@ -3621,6 +3634,10 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Added flag &lt;code&gt;-experimental.ruler.enable-api&lt;/code&gt; to enable the ruler api which implements the Prometheus API &lt;code&gt;/api/v1/rules&lt;/code&gt; and &lt;code&gt;/api/v1/alerts&lt;/code&gt; endpoints under the configured &lt;code&gt;-http.prefix&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1999&#34;&gt;#1999&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2113&#34;&gt;#2113&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Add ability to override YAML config file settings using environment variables. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2147&#34;&gt;#2147&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-config.expand-env&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Add &lt;code&gt;status&lt;/code&gt; label to &lt;code&gt;cortex_alertmanager_configs&lt;/code&gt; metric to gauge the number of valid and invalid configs. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Cassandra Authentication: added the &lt;code&gt;custom_authenticators&lt;/code&gt; config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in &lt;a href=&#34;https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27&#34;&gt;gocql&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2093&#34;&gt;#2093&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with &lt;code&gt;cortex_compactor_&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2023&#34;&gt;#2023&lt;/a&gt;&lt;/li&gt;

@@ -107,7 +107,12 @@ func (u *UserStore) starting(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	go u.serv.Serve(l) //nolint:errcheck
+	go func() {
+		err := u.serv.Serve(l)
+		if err != nil {
+			level.Error(u.logger).Log("msg", "block store grpc server failed", "err", err)
+		}
+	}()
 
 	cc, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
 	if err != nil {

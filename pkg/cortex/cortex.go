@@ -329,7 +329,7 @@ func (t *Cortex) Run() error {
 	// Currently it's the Server that reacts on signal handler,
 	// so get Server service, and wait until it ends.
 	// It will also be stopped via service manager if any service fails (see attached service listener)
-	err = t.serviceMap[Server].AwaitTerminated(context.Background())
+	_ = t.serviceMap[Server].AwaitTerminated(context.Background())
 
 	// Stop all the other services.
 	sm.StopAsync()

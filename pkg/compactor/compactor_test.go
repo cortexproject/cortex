@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -546,8 +547,8 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient *cortex_tsdb.Bucket
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 
-	c, err := newCompactor(compactorCfg, storageCfg, bucketClient, logger, registry, func(ctx context.Context) (tsdb.Compactor, error) {
-		return tsdbCompactor, nil
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
+		return bucketClient, tsdbCompactor, nil
 	})
 	require.NoError(t, err)
 

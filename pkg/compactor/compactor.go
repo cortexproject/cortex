@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -73,18 +72,15 @@ type Compactor struct {
 	storageCfg   cortex_tsdb.Config
 	logger       log.Logger
 
-	// function that craeates TSDB compactor using the context.
+	// function that creates bucket client and TSDB compactor using the context.
 	// Useful for injecting mock compactor.
-	createTsdbCompactor func(ctx context.Context) (tsdb.Compactor, error)
+	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error)
 
 	// Underlying compactor used to compact TSDB blocks.
 	tsdbCompactor tsdb.Compactor
 
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.Bucket
-
-	// Wait group used to wait until the internal go routine completes.
-	runner sync.WaitGroup
 
 	// Ring used for sharding compactions.
 	ringLifecycler *ring.Lifecycler
@@ -104,23 +100,22 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
-	ctx, cancelCtx := context.WithCancel(context.Background())
+	createObjectsFn := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
+		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg, "compactor", logger)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed to create the bucket client")
+		}
 
-	bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg, "compactor", logger)
-	if err != nil {
-		cancelCtx()
-		return nil, errors.Wrap(err, "failed to create the bucket client")
+		if registerer != nil {
+			bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_compactor_", registerer))
+		}
+
+		compactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
+		return bucketClient, compactor, err
 	}
 
-	if registerer != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_compactor_", registerer))
-	}
-
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, bucketClient, logger, registerer, func(ctx context.Context) (tsdb.Compactor, error) {
-		return tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
-	})
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createObjectsFn)
 	if err != nil {
-		cancelCtx()
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
 
@@ -130,17 +125,15 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.Config,
-	bucketClient objstore.Bucket,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	createTsdbCompactor func(ctx context.Context) (tsdb.Compactor, error),
+	createTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error),
 ) (*Compactor, error) {
 	c := &Compactor{
-		compactorCfg:        compactorCfg,
-		storageCfg:          storageCfg,
-		logger:              logger,
-		createTsdbCompactor: createTsdbCompactor,
-		bucketClient:        bucketClient,
+		compactorCfg:                       compactorCfg,
+		storageCfg:                         storageCfg,
+		logger:                             logger,
+		createBucketClientAndTsdbCompactor: createTsdbCompactor,
 
 		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -200,8 +193,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 	}
 
 	var err error
-	c.tsdbCompactor, err = c.createTsdbCompactor(ctx)
-	return errors.Wrap(err, "failed to create TSDB compactor")
+	c.bucketClient, c.tsdbCompactor, err = c.createBucketClientAndTsdbCompactor(ctx)
+	if err != nil && c.servMgr != nil {
+		c.servMgr.StopAsync()
+	}
+
+	return errors.Wrap(err, "failed to initialize compactor objects")
 }
 
 func (c *Compactor) stopping() error {

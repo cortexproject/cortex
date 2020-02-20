@@ -205,6 +205,7 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		case <-ctx.Done():
 			return nil
 		case err := <-serverDone:
+			level.Info(util.Logger).Log("msg", "server failed", "err", err)
 			return err
 		}
 	}
@@ -222,6 +223,7 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		t.server.Shutdown()
 		// if not closed yet, wait until server stops.
 		<-serverDone
+		level.Info(util.Logger).Log("msg", "server stopped")
 		return nil
 	}
 

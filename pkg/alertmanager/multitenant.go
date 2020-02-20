@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -128,6 +129,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
 // organizations.
 type MultitenantAlertmanager struct {
+	services.BasicService
+
 	cfg *MultitenantAlertmanagerConfig
 
 	store AlertStore
@@ -147,9 +150,6 @@ type MultitenantAlertmanager struct {
 	metrics *alertmanagerMetrics
 
 	peer *cluster.Peer
-
-	stop chan struct{}
-	done chan struct{}
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
@@ -210,42 +210,31 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		peer:           peer,
 		store:          store,
 		logger:         log.With(logger, "component", "MultiTenantAlertmanager"),
-		stop:           make(chan struct{}),
-		done:           make(chan struct{}),
 	}
 
 	if registerer != nil {
 		registerer.MustRegister(am.metrics)
 	}
 
+	services.InitTimerService(&am.BasicService, am.cfg.PollInterval, am.starting, am.stopping, am.iteration)
 	return am, nil
 }
 
-// Run the MultitenantAlertmanager.
-func (am *MultitenantAlertmanager) Run() {
-	defer close(am.done)
-
+func (am *MultitenantAlertmanager) starting(ctx context.Context) error {
 	// Load initial set of all configurations before polling for new ones.
 	am.syncConfigs(am.loadAllConfigs())
-	ticker := time.NewTicker(am.cfg.PollInterval)
-	for {
-		select {
-		case <-ticker.C:
-			err := am.updateConfigs()
-			if err != nil {
-				level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
-			}
-		case <-am.stop:
-			ticker.Stop()
-			return
-		}
+	return nil
+}
+
+func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
+	err := am.updateConfigs()
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
 	}
 }
 
 // Stop stops the MultitenantAlertmanager.
-func (am *MultitenantAlertmanager) Stop() {
-	close(am.stop)
-	<-am.done
+func (am *MultitenantAlertmanager) stopping() error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
 		am.Stop()
@@ -256,6 +245,7 @@ func (am *MultitenantAlertmanager) Stop() {
 		level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
 	}
 	level.Debug(am.logger).Log("msg", "stopping")
+	return nil
 }
 
 // Load the full set of configurations from the alert store, retrying with backoff

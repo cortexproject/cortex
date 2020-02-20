@@ -525,24 +525,17 @@ func (t *Cortex) configService(cfg *Config) (serv services.Service, err error) {
 	}), nil
 }
 
-func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
+func (t *Cortex) initAlertManager(cfg *Config) (serv services.Service, err error) {
 	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return err
+		return
 	}
-	go t.alertmanager.Run()
-
 	t.server.HTTP.PathPrefix("/status").Handler(t.alertmanager.GetStatusHandler())
 
 	// TODO this clashed with the queirer and the distributor, so we cannot
 	// run them in the same process.
 	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
-	return
-}
-
-func (t *Cortex) stopAlertmanager() error {
-	t.alertmanager.Stop()
-	return nil
+	return t.alertmanager, nil
 }
 
 func (t *Cortex) initCompactor(cfg *Config) (err error) {
@@ -724,9 +717,8 @@ var modules = map[moduleName]module{
 	},
 
 	AlertManager: {
-		deps: []moduleName{Server},
-		init: (*Cortex).initAlertmanager,
-		stop: (*Cortex).stopAlertmanager,
+		deps:           []moduleName{Server},
+		wrappedService: (*Cortex).initAlertManager,
 	},
 
 	Compactor: {

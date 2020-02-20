@@ -2,10 +2,12 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	jaeger "github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
+	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -131,6 +134,24 @@ func TestFrontendCancel(t *testing.T) {
 		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
 	}
 	testFrontend(t, handler, test)
+}
+
+func TestFrontendCancelStatusCode(t *testing.T) {
+	for _, test := range []struct {
+		status int
+		err    error
+	}{
+		{http.StatusInternalServerError, errors.New("unknown")},
+		{http.StatusGatewayTimeout, context.DeadlineExceeded},
+		{StatusClientClosedRequest, context.Canceled},
+		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
+	} {
+		t.Run(test.err.Error(), func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeError(w, test.err)
+			require.Equal(t, test.status, w.Result().StatusCode)
+		})
+	}
 }
 
 func defaultOverrides(t *testing.T) *validation.Overrides {

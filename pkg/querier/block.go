@@ -2,35 +2,34 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"math"
+	"sort"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
-// BlockQuerier is a querier of thanos blocks
-type BlockQuerier struct {
+// BlockQueryable is a storage.Queryable implementation for blocks storage
+type BlockQueryable struct {
 	us *UserStore
 }
 
-// NewBlockQuerier returns a client to query a block store
-func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQuerier, error) {
+// NewBlockQueryable returns a client to query a block store
+func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
 	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", util.Logger)
 	if err != nil {
 		return nil, err
@@ -45,21 +44,93 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, registerer prometh
 		return nil, err
 	}
 
-	b := &BlockQuerier{
-		us: us,
-	}
+	b := &BlockQueryable{us: us}
 
 	return b, nil
 }
 
-// Get implements the ChunkStore interface. It makes a block query and converts the response into chunks
-func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "BlockQuerier.Get")
+// Querier returns a new Querier on the storage.
+func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, promql.ErrStorage{Err: err}
+	}
+
+	return &blocksQuerier{
+		ctx:    ctx,
+		client: b.us.client,
+		mint:   mint,
+		maxt:   maxt,
+		userID: userID,
+	}, nil
+}
+
+type blocksQuerier struct {
+	ctx        context.Context
+	client     storepb.StoreClient
+	mint, maxt int64
+	userID     string
+}
+
+func (b *blocksQuerier) addUserToContext(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "user", b.userID)
+}
+
+func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()
 
-	client := b.us.client
+	mint, maxt := b.mint, b.maxt
+	if sp != nil {
+		mint, maxt = sp.Start, sp.End
+	}
+	converted := convertMatchersToLabelMatcher(matchers)
 
-	// Convert matchers to LabelMatcher
+	ctx = b.addUserToContext(ctx)
+	// returned series are sorted
+	seriesClient, err := b.client.Series(ctx, &storepb.SeriesRequest{
+		MinTime:                 mint,
+		MaxTime:                 maxt,
+		Matchers:                converted,
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	series := []*storepb.Series(nil)
+	warnings := storage.Warnings(nil)
+
+	// only very basic processing of responses is done here. Dealing with multiple responses
+	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
+	for {
+		resp, err := seriesClient.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// response may either contain series or warning. If it's warning, we get nil here.
+		s := resp.GetSeries()
+		if s != nil {
+			series = append(series, s)
+		}
+
+		// collect and return warnings too
+		w := resp.GetWarning()
+		if w != "" {
+			warnings = append(warnings, errors.New(w))
+		}
+	}
+
+	return &blockQuerierSeriesSet{
+		series: series,
+	}, warnings, nil
+}
+
+func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
 	var converted []storepb.LabelMatcher
 	for _, m := range matchers {
 		var t storepb.LabelMatcher_Type
@@ -80,91 +151,201 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 			Value: m.Value,
 		})
 	}
-
-	ctx = metadata.AppendToOutgoingContext(ctx, "user", userID)
-	seriesClient, err := client.Series(ctx, &storepb.SeriesRequest{
-		MinTime:                 int64(from),
-		MaxTime:                 int64(through),
-		Matchers:                converted,
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var chunks []chunk.Chunk
-	for {
-		resp, err := seriesClient.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-
-		// Convert Thanos store series into Cortex chunks
-		convertedChunks, err := seriesToChunks(userID, resp.GetSeries())
-		if err != nil {
-			level.Error(log).Log("msg", "failed converting TSDB series to Cortex chunks", "err", err)
-			return nil, err
-		}
-
-		chunks = append(chunks, convertedChunks...)
-	}
-
-	return chunks, nil
+	return converted
 }
 
-func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error) {
-	var lbls labels.Labels
-	for _, label := range series.Labels {
-		// We have to remove the external label set by the shipper
-		if label.Name == tsdb.TenantIDExternalLabel {
+func (b *blocksQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	// Cortex doesn't use this. It will ask ingesters for metadata.
+	return nil, nil, errors.New("not implemented")
+}
+
+func (b *blocksQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	// Cortex doesn't use this. It will ask ingesters for metadata.
+	return nil, nil, errors.New("not implemented")
+}
+
+func (b *blocksQuerier) Close() error {
+	// nothing to do here.
+	return nil
+}
+
+// Implementation of storage.SeriesSet, based on individual responses from store client.
+type blockQuerierSeriesSet struct {
+	series []*storepb.Series
+
+	// next response to process
+	next int
+
+	currLabels []storepb.Label
+	currChunks []storepb.AggrChunk
+}
+
+func (bqss *blockQuerierSeriesSet) Next() bool {
+	bqss.currChunks = nil
+	bqss.currLabels = nil
+
+	if bqss.next >= len(bqss.series) {
+		return false
+	}
+
+	bqss.currLabels = bqss.series[bqss.next].Labels
+	bqss.currChunks = bqss.series[bqss.next].Chunks
+
+	bqss.next++
+
+	// Merge chunks for current series. Chunks may come in multiple responses, but as soon
+	// as the response has chunks for a new series, we can stop searching. Series are sorted.
+	// See documentation for StoreClient.Series call for details.
+	for bqss.next < len(bqss.series) && storepb.CompareLabels(bqss.currLabels, bqss.series[bqss.next].Labels) == 0 {
+		bqss.currChunks = append(bqss.currChunks, bqss.series[bqss.next].Chunks...)
+		bqss.next++
+	}
+
+	return true
+}
+
+func (bqss *blockQuerierSeriesSet) At() storage.Series {
+	if bqss.currLabels == nil {
+		return nil
+	}
+
+	return newBlockQuerierSeries(bqss.currLabels, bqss.currChunks)
+}
+
+func (bqss *blockQuerierSeriesSet) Err() error {
+	return nil
+}
+
+func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
+	sort.Slice(chunks, func(i, j int) bool {
+		return chunks[i].MinTime < chunks[j].MinTime
+	})
+
+	b := labels.NewBuilder(nil)
+	for _, l := range lbls {
+		// Ignore external label set by the shipper
+		if l.Name != tsdb.TenantIDExternalLabel {
+			b.Set(l.Name, l.Value)
+		}
+	}
+
+	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}
+}
+
+type blockQuerierSeries struct {
+	labels labels.Labels
+	chunks []storepb.AggrChunk
+}
+
+func (bqs *blockQuerierSeries) Labels() labels.Labels {
+	return bqs.labels
+}
+
+func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
+	if len(bqs.chunks) == 0 {
+		// should not happen in practice, but we have a unit test for it
+		return errIterator{err: errors.New("no chunks")}
+	}
+
+	its := make([]chunkenc.Iterator, 0, len(bqs.chunks))
+
+	for _, c := range bqs.chunks {
+		ch, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
+		if err != nil {
+			return errIterator{err: errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime)}
+		}
+
+		it := ch.Iterator(nil)
+		its = append(its, it)
+	}
+
+	return newBlockQuerierSeriesIterator(bqs.Labels(), its)
+}
+
+func newBlockQuerierSeriesIterator(labels labels.Labels, its []chunkenc.Iterator) *blockQuerierSeriesIterator {
+	return &blockQuerierSeriesIterator{labels: labels, iterators: its, lastT: math.MinInt64}
+}
+
+// blockQuerierSeriesIterator implements a series iterator on top
+// of a list of time-sorted, non-overlapping chunks.
+type blockQuerierSeriesIterator struct {
+	// only used for error reporting
+	labels labels.Labels
+
+	iterators []chunkenc.Iterator
+	i         int
+	lastT     int64
+}
+
+func (it *blockQuerierSeriesIterator) Seek(t int64) bool {
+	// We generally expect the chunks already to be cut down
+	// to the range we are interested in. There's not much to be gained from
+	// hopping across chunks so we just call next until we reach t.
+	for {
+		ct, _ := it.At()
+		if ct >= t {
+			return true
+		}
+		if !it.Next() {
+			return false
+		}
+	}
+}
+
+func (it *blockQuerierSeriesIterator) At() (int64, float64) {
+	if it.i >= len(it.iterators) {
+		return 0, 0
+	}
+
+	t, v := it.iterators[it.i].At()
+	it.lastT = t
+	return t, v
+}
+
+func (it *blockQuerierSeriesIterator) Next() bool {
+	if it.i >= len(it.iterators) {
+		return false
+	}
+
+	if it.iterators[it.i].Next() {
+		return true
+	}
+	if it.iterators[it.i].Err() != nil {
+		return false
+	}
+
+	for {
+		it.i++
+
+		if it.i >= len(it.iterators) {
+			return false
+		}
+
+		// we must advance iterator first, to see if it has any samples.
+		// Seek will call At() as its first operation.
+		if !it.iterators[it.i].Next() {
+			if it.iterators[it.i].Err() != nil {
+				return false
+			}
+
+			// Found empty iterator without error, skip it.
 			continue
 		}
 
-		lbls = append(lbls, labels.Label{
-			Name:  label.Name,
-			Value: label.Value,
-		})
+		// Chunks are guaranteed to be ordered but not generally guaranteed to not overlap.
+		// We must ensure to skip any overlapping range between adjacent chunks.
+		return it.Seek(it.lastT + 1)
+	}
+}
+
+func (it *blockQuerierSeriesIterator) Err() error {
+	if it.i >= len(it.iterators) {
+		return nil
 	}
 
-	chunks := make([]chunk.Chunk, 0, len(series.Chunks))
-
-	for _, c := range series.Chunks {
-		ch := encoding.New()
-
-		enc, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
-		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
-		}
-
-		it := enc.Iterator(nil)
-		for it.Next() {
-			ts, v := it.At()
-			overflow, err := ch.Add(model.SamplePair{
-				Timestamp: model.Time(ts),
-				Value:     model.SampleValue(v),
-			})
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("failed adding sample to chunk (series: %v timestamp: %d value: %f)", lbls, ts, v))
-			}
-
-			if overflow != nil {
-				chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, ch, model.Time(c.MinTime), model.Time(c.MaxTime)))
-				ch = overflow
-			}
-		}
-
-		// Ensure the iteration has not been interrupted because of an error
-		if it.Err() != nil {
-			return nil, errors.Wrap(it.Err(), fmt.Sprintf("failed reading sample from encoded chunk (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
-		}
-
-		if ch.Len() > 0 {
-			chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, ch, model.Time(c.MinTime), model.Time(c.MaxTime)))
-		}
+	err := it.iterators[it.i].Err()
+	if err != nil {
+		return errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)
 	}
-
-	return chunks, nil
+	return nil
 }

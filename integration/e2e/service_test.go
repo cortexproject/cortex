@@ -1,10 +1,10 @@
 package e2e
 
 import (
-	"fmt"
 	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,26 +13,23 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// freePort returns port that is free now.
-func freePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", ":0")
-	if err != nil {
-		return 0, err
-	}
+func TestWaitSumMetric(t *testing.T) {
+	// Listen on a random port before starting the HTTP server, to
+	// make sure the port is already open when we'll call WaitSumMetric()
+	// the first time (this avoid flaky tests).
+	ln, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	defer ln.Close()
 
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	return l.Addr().(*net.TCPAddr).Port, l.Close()
-}
-
-func TestWaitMetric(t *testing.T) {
-	p, err := freePort()
+	// Get the port.
+	_, addrPort, err := net.SplitHostPort(ln.Addr().String())
 	require.NoError(t, err)
 
+	port, err := strconv.Atoi(addrPort)
+	require.NoError(t, err)
+
+	// Start an HTTP server exposing the metrics.
 	srv := &http.Server{
-		Addr: net.JoinHostPort("localhost", fmt.Sprintf("%v", p)),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`
 # HELP metric_c cheescake
@@ -55,14 +52,14 @@ metric_b 1000
 	defer srv.Close()
 
 	go func() {
-		_ = srv.ListenAndServe()
+		_ = srv.Serve(ln)
 	}()
 
 	s := &HTTPService{
 		httpPort: 0,
 		ConcreteService: &ConcreteService{
 			networkPortsContainerToLocal: map[int]int{
-				0: p,
+				0: port,
 			},
 		},
 	}
@@ -83,12 +80,23 @@ metric_b 1000
 	require.Error(t, s.WaitSumMetric("metric_a", 16))
 }
 
-func TestWaitMetric_Nan(t *testing.T) {
-	p, err := freePort()
+func TestWaitSumMetric_Nan(t *testing.T) {
+	// Listen on a random port before starting the HTTP server, to
+	// make sure the port is already open when we'll call WaitSumMetric()
+	// the first time (this avoid flaky tests).
+	ln, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	// Get the port.
+	_, addrPort, err := net.SplitHostPort(ln.Addr().String())
 	require.NoError(t, err)
 
+	port, err := strconv.Atoi(addrPort)
+	require.NoError(t, err)
+
+	// Start an HTTP server exposing the metrics.
 	srv := &http.Server{
-		Addr: net.JoinHostPort("localhost", fmt.Sprintf("%v", p)),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`
 # HELP metric_c cheescake
@@ -112,14 +120,14 @@ metric_b 1000
 	defer srv.Close()
 
 	go func() {
-		_ = srv.ListenAndServe()
+		_ = srv.Serve(ln)
 	}()
 
 	s := &HTTPService{
 		httpPort: 0,
 		ConcreteService: &ConcreteService{
 			networkPortsContainerToLocal: map[int]int{
-				0: p,
+				0: port,
 			},
 		},
 	}

@@ -6,6 +6,11 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 )
 
+const (
+	HTTPPort = 80
+	GRPCPort = 9095
+)
+
 // GetDefaultImage returns the Docker image to use to run Cortex.
 func GetDefaultImage() string {
 	// Get the cortex image from the CORTEX_IMAGE env variable,
@@ -34,8 +39,8 @@ func NewDistributor(name string, consulAddress string, flags map[string]string, 
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(80, "/ring", 200),
-		80,
+		e2e.NewReadinessProbe(HTTPPort, "/ring", 200),
+		HTTPPort,
 	)
 }
 
@@ -49,14 +54,19 @@ func NewQuerier(name string, consulAddress string, flags map[string]string, imag
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "querier",
-			"-log.level":                      "warn",
+			"-log.level":                      "info", // TODO warn
 			"-distributor.replication-factor": "1",
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
+			// Query-frontend worker
+			"-querier.frontend-client.backoff-min-period": "100ms",
+			"-querier.frontend-client.backoff-max-period": "100ms",
+			"-querier.frontend-client.backoff-retries":    "1",
+			"-querier.worker-parallelism":                 "1",
 		}, flags))...),
-		e2e.NewReadinessProbe(80, "/ready", 204),
-		80,
+		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
+		HTTPPort,
 	)
 }
 
@@ -81,8 +91,8 @@ func NewIngester(name string, consulAddress string, flags map[string]string, ima
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(80, "/ready", 204),
-		80,
+		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
+		HTTPPort,
 	)
 }
 
@@ -99,8 +109,27 @@ func NewTableManager(name string, flags map[string]string, image string) *e2e.HT
 			"-log.level": "warn",
 		}, flags))...),
 		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(80, "/", 404),
-		80,
+		e2e.NewReadinessProbe(HTTPPort, "/", 404),
+		HTTPPort,
+	)
+}
+
+func NewQueryFrontend(name string, flags map[string]string, image string) *e2e.HTTPService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return e2e.NewHTTPService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "query-frontend",
+			"-log.level": "info", // TODO warn
+		}, flags))...),
+		// The query-frontend doesn't expose a readiness probe, so we just check if the / returns 404
+		e2e.NewReadinessProbe(HTTPPort, "/", 404),
+		HTTPPort,
+		GRPCPort,
 	)
 }
 
@@ -134,7 +163,7 @@ func NewAlertmanager(name string, flags map[string]string, image string) *e2e.HT
 			"-log.level": "warn",
 		}, flags))...),
 		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(80, "/", 404),
-		80,
+		e2e.NewReadinessProbe(HTTPPort, "/", 404),
+		HTTPPort,
 	)
 }

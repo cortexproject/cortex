@@ -6,35 +6,30 @@ defaults: &defaults
     - image: quay.io/cortexproject/build-image:validate-k8s-specs-7c217ee7
   working_directory: /go/src/github.com/cortexproject/cortex
 
+filters: &filters
+  filters:
+    tags:
+      only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+
 workflows:
   version: 2
   test-build-deploy:
     # You must specify a tag filter for each job that deploy depends on.
     jobs:
     - lint:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        <<: *filters
     - test:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        <<: *filters
     - integration:
         requires:
         - build
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        <<: *filters
     - integration-configs-db:
         requires:
         - build
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        <<: *filters
     - build:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        <<: *filters
     - deploy_website:
         requires:
         - test
@@ -90,12 +85,17 @@ jobs:
         command: make BUILD_IN_CONTAINER=false check-doc
 
   test:
-    <<: *defaults
+    docker:
+      - image: quay.io/cortexproject/build-image:validate-k8s-specs-7c217ee7
+      - image: cassandra:3.11
+        environment:
+          JVM_OPTS: "-Xms1024M -Xmx1024M"
+    working_directory: /go/src/github.com/cortexproject/cortex
     steps:
     - checkout
     - run:
         name: Test
-        command: make BUILD_IN_CONTAINER=false test
+        command: CASSANDRA_TEST_ADDRESSES=localhost:9042 make BUILD_IN_CONTAINER=false test
 
   integration-configs-db:
     machine:
@@ -143,7 +143,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${CIRCLE_TAG:-$(./tools/image-tag)}"
           export CORTEX_CHECKOUT_DIR="/home/circleci/.go_workspace/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -timeout 300s -v -count=1 ./integration
+          go test -timeout 300s -v -count=1 ./integration/...
 
   build:
     <<: *defaults

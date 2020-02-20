@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -62,6 +63,17 @@ func TestFlagParsing(t *testing.T) {
 			stdoutMessage: "target: ingester\n",
 		},
 
+		"config without expand-env": {
+			yaml:          "target: $TARGET",
+			stderrMessage: "Error parsing config file: unrecognised module name: $TARGET\n",
+		},
+
+		"config with expand-env": {
+			arguments:     []string{"-config.expand-env"},
+			yaml:          "target: $TARGET",
+			stdoutMessage: "target: ingester\n",
+		},
+
 		"config with arguments override": {
 			yaml:          "target: ingester",
 			arguments:     []string{"-target=distributor"},
@@ -71,12 +83,14 @@ func TestFlagParsing(t *testing.T) {
 		// we cannot test the happy path, as cortex would then fully start
 	} {
 		t.Run(name, func(t *testing.T) {
+			_ = os.Setenv("TARGET", "ingester")
 			testSingle(t, tc.arguments, tc.yaml, []byte(tc.stdoutMessage), []byte(tc.stderrMessage))
 		})
 	}
 }
 
 func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, stderrMessage []byte) {
+	t.Helper()
 	oldArgs, oldStdout, oldStderr, oldTestMode := os.Args, os.Stdout, os.Stderr, testMode
 	defer func() {
 		os.Stdout = oldStdout
@@ -192,8 +206,50 @@ func TestExpandEnv(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		os.Setenv("y", "y")
-		output := expandEnv([]byte(test.in))
-		assert.Equal(t, test.out, string(output), "Input: %s", test.in)
+		test := test
+		t.Run(test.in, func(t *testing.T) {
+			_ = os.Setenv("y", "y")
+			output := expandEnv([]byte(test.in))
+			assert.Equal(t, test.out, string(output), "Input: %s", test.in)
+		})
+	}
+}
+
+func TestParseConfigFileParameter(t *testing.T) {
+	var tests = []struct {
+		args       string
+		configFile string
+		expandENV  bool
+	}{
+		{"", "", false},
+		{"--foo", "", false},
+		{"-f -a", "", false},
+
+		{"--config.file=foo", "foo", false},
+		{"--config.file foo", "foo", false},
+		{"--config.file=foo --config.expand-env", "foo", true},
+		{"--config.expand-env --config.file=foo", "foo", true},
+
+		{"--opt1 --config.file=foo", "foo", false},
+		{"--opt1 --config.file foo", "foo", false},
+		{"--opt1 --config.file=foo --config.expand-env", "foo", true},
+		{"--opt1 --config.expand-env --config.file=foo", "foo", true},
+
+		{"--config.file=foo --opt1", "foo", false},
+		{"--config.file foo --opt1", "foo", false},
+		{"--config.file=foo --config.expand-env --opt1", "foo", true},
+		{"--config.expand-env --config.file=foo --opt1", "foo", true},
+
+		{"--config.file=foo --opt1 --config.expand-env", "foo", true},
+		{"--config.expand-env --opt1 --config.file=foo", "foo", true},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.args, func(t *testing.T) {
+			args := strings.Split(test.args, " ")
+			configFile, expandENV := parseConfigFileParameter(args)
+			assert.Equal(t, test.configFile, configFile)
+			assert.Equal(t, test.expandENV, expandENV)
+		})
 	}
 }

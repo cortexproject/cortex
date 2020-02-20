@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -25,7 +26,10 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("cortex"))
 }
 
-const configFileOption = "config.file"
+const (
+	configFileOption = "config.file"
+	configExpandENV  = "config.expand-env"
+)
 
 var testMode = false
 
@@ -37,14 +41,14 @@ func main() {
 		mutexProfileFraction int
 	)
 
-	configFile := parseConfigFileParameter()
+	configFile, expandENV := parseConfigFileParameter(os.Args[1:])
 
 	// This sets default values from flags to the config.
 	// It needs to be called before parsing the config file!
 	flagext.RegisterFlags(&cfg)
 
 	if configFile != "" {
-		if err := LoadConfig(configFile, &cfg); err != nil {
+		if err := LoadConfig(configFile, expandENV, &cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "error loading config from %s: %v\n", configFile, err)
 			if testMode {
 				return
@@ -53,8 +57,10 @@ func main() {
 		}
 	}
 
-	// Ignore -config.file here, since it was already parsed, but it's still present on command line.
+	// Ignore -config.file and -config.expand-env here, since it was already parsed, but it's still present on command line.
 	flagext.IgnoredFlag(flag.CommandLine, configFileOption, "Configuration file to load.")
+	flagext.IgnoredFlag(flag.CommandLine, configExpandENV, "Expands ${var} or $var in config according to the values of the environment variables.")
+
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
@@ -108,35 +114,36 @@ func main() {
 	util.CheckFatal("initializing cortex", err)
 }
 
-// Parse -config.file option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.
-func parseConfigFileParameter() string {
-	var configFile = ""
+// Parse -config.file and -config.expand-env option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.
+func parseConfigFileParameter(args []string) (configFile string, expandEnv bool) {
 	// ignore errors and any output here. Any flag errors will be reported by main flag.Parse() call.
-	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fs := flag.NewFlagSet("", flag.ContinueOnError)
 	fs.SetOutput(ioutil.Discard)
-	fs.StringVar(&configFile, configFileOption, "", "") // usage not used in this function.
 
-	// Try to find -config.file option in the flags. As Parsing stops on the first error, eg. unknown flag, we simply
+	// usage not used in these functions.
+	fs.StringVar(&configFile, configFileOption, "", "")
+	fs.BoolVar(&expandEnv, configExpandENV, false, "")
+
+	// Try to find -config.file and -config.expand-env option in the flags. As Parsing stops on the first error, eg. unknown flag, we simply
 	// try remaining parameters until we find config flag, or there are no params left.
 	// (ContinueOnError just means that flag.Parse doesn't call panic or os.Exit, but it returns error, which we ignore)
-	args := os.Args[1:]
 	for len(args) > 0 {
 		_ = fs.Parse(args)
-		if configFile != "" {
-			// found (!)
-			break
-		}
 		args = args[1:]
 	}
 
-	return configFile
+	return
 }
 
 // LoadConfig read YAML-formatted config from filename into cfg.
-func LoadConfig(filename string, cfg *cortex.Config) error {
+func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
+	}
+
+	if expandENV {
+		buf = expandEnv(buf)
 	}
 
 	err = yaml.UnmarshalStrict(buf, cfg)
@@ -154,4 +161,20 @@ func DumpYaml(cfg *cortex.Config) {
 	} else {
 		fmt.Printf("%s\n", out)
 	}
+}
+
+// expandEnv replaces ${var} or $var in config according to the values of the current environment variables.
+// The replacement is case-sensitive. References to undefined variables are replaced by the empty string.
+// A default value can be given by using the form ${var:default value}.
+func expandEnv(config []byte) []byte {
+	return []byte(os.Expand(string(config), func(key string) string {
+		keyAndDefault := strings.SplitN(key, ":", 2)
+		key = keyAndDefault[0]
+
+		v := os.Getenv(key)
+		if v == "" && len(keyAndDefault) == 2 {
+			v = keyAndDefault[1] // Set value to the default.
+		}
+		return v
+	}))
 }

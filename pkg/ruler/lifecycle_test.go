@@ -1,10 +1,12 @@
 package ruler
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
@@ -26,7 +28,8 @@ func TestRulerShutdown(t *testing.T) {
 		return testutils.NumTokens(config.Ring.KVStore.Mock, "localhost", ring.RulerRingKey)
 	})
 
-	r.Stop()
+	r.StopAsync()
+	require.NoError(t, r.AwaitTerminated(context.Background()))
 
 	// Wait until the tokens are unregistered from the ring
 	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
@@ -50,7 +53,8 @@ func TestRulerRestart(t *testing.T) {
 	})
 
 	// Stop the ruler. Doesn't actually unregister due to skipUnregister: true
-	r.Stop()
+	r.StopAsync()
+	require.NoError(t, r.AwaitTerminated(context.Background()))
 
 	// We expect the tokens are preserved in the ring.
 	assert.Equal(t, config.Ring.NumTokens, testutils.NumTokens(config.Ring.KVStore.Mock, "localhost", ring.RulerRingKey))
@@ -58,7 +62,7 @@ func TestRulerRestart(t *testing.T) {
 	// Create a new ruler which is expected to pick up tokens from the ring.
 	r, rcleanup = newTestRuler(t, config)
 	defer rcleanup()
-	defer r.Stop()
+	defer r.StopAsync()
 
 	// Wait until the ruler is ACTIVE in the ring.
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {

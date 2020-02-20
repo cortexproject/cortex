@@ -17,7 +17,7 @@ func TestRuler_rules(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer r.StopAsync()
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/rules", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")
@@ -73,7 +73,7 @@ func TestRuler_alerts(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer r.StopAsync()
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/alerts", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")

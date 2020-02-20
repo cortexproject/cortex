@@ -6,7 +6,6 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -65,20 +64,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	am := &MultitenantAlertmanager{
-		cfg: &MultitenantAlertmanagerConfig{
-			ExternalURL: externalURL,
-			DataDir:     tempDir,
-		},
-		store:            mockStore,
-		cfgs:             map[string]alerts.AlertConfigDesc{},
-		alertmanagersMtx: sync.Mutex{},
-		alertmanagers:    map[string]*Alertmanager{},
-		logger:           log.NewNopLogger(),
-		stop:             make(chan struct{}),
-		done:             make(chan struct{}),
-		metrics:          newAlertmanagerMetrics(),
-	}
+	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		ExternalURL: externalURL,
+		DataDir:     tempDir,
+	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 
 	// Ensure the configs are synced correctly
 	require.NoError(t, am.updateConfigs())

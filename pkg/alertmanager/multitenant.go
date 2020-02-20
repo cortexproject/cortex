@@ -201,6 +201,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		return nil, err
 	}
 
+	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, logger, registerer), nil
+}
+
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, logger log.Logger, registerer prometheus.Registerer) *MultitenantAlertmanager {
 	am := &MultitenantAlertmanager{
 		cfg:            cfg,
 		fallbackConfig: string(fallbackConfig),
@@ -217,7 +221,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	}
 
 	services.InitTimerService(&am.BasicService, am.cfg.PollInterval, am.starting, am.stopping, am.iteration)
-	return am, nil
+	return am
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) error {
@@ -231,6 +235,7 @@ func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
 	if err != nil {
 		level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
 	}
+	return nil
 }
 
 // Stop stops the MultitenantAlertmanager.

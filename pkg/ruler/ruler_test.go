@@ -81,6 +81,8 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	l = level.NewFilter(l, level.AllowInfo())
 	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
+	require.NoError(t, ruler.StartAsync(context.Background()))
+	require.NoError(t, ruler.AwaitRunning(context.Background()))
 
 	// Ensure all rules are loaded before usage
 	ruler.loadRules(context.Background())
@@ -111,7 +113,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer r.StopAsync()
 	n, err := r.getOrCreateNotifier("1")
 	require.NoError(t, err)
 
@@ -135,7 +137,7 @@ func TestRuler_Rules(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer r.StopAsync()
 
 	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")

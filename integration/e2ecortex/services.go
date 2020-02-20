@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	HTTPPort = 80
-	GRPCPort = 9095
+	httpPort = 80
+	grpcPort = 9095
 )
 
 // GetDefaultImage returns the Docker image to use to run Cortex.
@@ -22,12 +22,12 @@ func GetDefaultImage() string {
 	return "quay.io/cortexproject/cortex:latest"
 }
 
-func NewDistributor(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
+func NewDistributor(name string, consulAddress string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -39,17 +39,18 @@ func NewDistributor(name string, consulAddress string, flags map[string]string, 
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ring", 200),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ring", 200),
+		httpPort,
+		grpcPort,
 	)
 }
 
-func NewQuerier(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
+func NewQuerier(name string, consulAddress string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -65,17 +66,18 @@ func NewQuerier(name string, consulAddress string, flags map[string]string, imag
 			"-querier.frontend-client.backoff-retries":    "1",
 			"-querier.worker-parallelism":                 "1",
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
+		grpcPort,
 	)
 }
 
-func NewIngester(name string, consulAddress string, flags map[string]string, image string) *e2e.HTTPService {
+func NewIngester(name string, consulAddress string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -91,17 +93,18 @@ func NewIngester(name string, consulAddress string, flags map[string]string, ima
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
+		grpcPort,
 	)
 }
 
-func NewTableManager(name string, flags map[string]string, image string) *e2e.HTTPService {
+func NewTableManager(name string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -109,17 +112,18 @@ func NewTableManager(name string, flags map[string]string, image string) *e2e.HT
 			"-log.level": "warn",
 		}, flags))...),
 		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(HTTPPort, "/", 404),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/", 404),
+		httpPort,
+		grpcPort,
 	)
 }
 
-func NewQueryFrontend(name string, flags map[string]string, image string) *e2e.HTTPService {
+func NewQueryFrontend(name string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -127,18 +131,18 @@ func NewQueryFrontend(name string, flags map[string]string, image string) *e2e.H
 			"-log.level": "info", // TODO warn
 		}, flags))...),
 		// The query-frontend doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(HTTPPort, "/", 404),
-		HTTPPort,
-		GRPCPort,
+		e2e.NewReadinessProbe(httpPort, "/", 404),
+		httpPort,
+		grpcPort,
 	)
 }
 
-func NewSingleBinary(name string, flags map[string]string, image string, httpPort int, otherPorts ...int) *e2e.HTTPService {
+func NewSingleBinary(name string, flags map[string]string, image string, httpPort, grpcPort int, otherPorts ...int) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -146,16 +150,17 @@ func NewSingleBinary(name string, flags map[string]string, image string, httpPor
 		}, flags))...),
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
+		grpcPort,
 		otherPorts...,
 	)
 }
 
-func NewAlertmanager(name string, flags map[string]string, image string) *e2e.HTTPService {
+func NewAlertmanager(name string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewHTTPService(
+	return NewCortexService(
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -163,7 +168,8 @@ func NewAlertmanager(name string, flags map[string]string, image string) *e2e.HT
 			"-log.level": "warn",
 		}, flags))...),
 		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(HTTPPort, "/", 404),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/", 404),
+		httpPort,
+		grpcPort,
 	)
 }

@@ -61,7 +61,7 @@ func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *t
 	// Start the querier after the query-frontend otherwise we're not
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkEndpoint(e2ecortex.GRPCPort),
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 

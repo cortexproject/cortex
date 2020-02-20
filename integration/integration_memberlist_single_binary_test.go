@@ -55,7 +55,7 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	require.NoError(t, s.Stop(cortex3))
 }
 
-func newSingleBinary(name string, join string) *e2e.HTTPService {
+func newSingleBinary(name string, join string) *e2ecortex.CortexService {
 	flags := map[string]string{
 		"-target":                        "all", // single-binary mode
 		"-log.level":                     "warn",

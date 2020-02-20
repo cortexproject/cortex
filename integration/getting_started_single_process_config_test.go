@@ -26,10 +26,10 @@ func TestGettingStartedSingleProcessConfig(t *testing.T) {
 		"-config.file": filepath.Join(e2e.ContainerSharedDir, cortexConfigFile),
 	}
 
-	cortex := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009)
+	cortex := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
-	c, err := e2ecortex.NewClient(cortex.Endpoint(9009), cortex.Endpoint(9009), "", "user-1")
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
 
 	// Push some series to Cortex.

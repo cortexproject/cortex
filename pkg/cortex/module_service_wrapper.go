@@ -48,7 +48,7 @@ func (w *moduleServiceWrapper) start(serviceContext context.Context) error {
 
 		err := s.AwaitRunning(serviceContext)
 		if err != nil {
-			return fmt.Errorf("failed to start %v, because dependant service %v has failed: %v", w.module, m, err)
+			return fmt.Errorf("failed to start %v, because it depends on module %v, which has failed: %w", w.module, m, err)
 		}
 	}
 
@@ -65,11 +65,9 @@ func (w *moduleServiceWrapper) start(serviceContext context.Context) error {
 
 func (w *moduleServiceWrapper) run(serviceContext context.Context) error {
 	// wait until service stops, or context is canceled, whatever happens first.
-	err := w.service.AwaitTerminated(serviceContext)
-	if err == context.Canceled {
-		return nil
-	}
-	return err
+	// We don't care about exact error here
+	_ = w.service.AwaitTerminated(serviceContext)
+	return w.service.FailureCase()
 }
 
 func (w *moduleServiceWrapper) stop() error {

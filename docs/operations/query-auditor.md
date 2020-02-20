@@ -1,23 +1,24 @@
 ---
 title: "Query Auditor (tool)"
-linkTitle: "query auditor (tool)"
-weight: 1
+linkTitle: "Query Auditor (tool)"
+weight: 2
 slug: query-auditor
 ---
 
-The query auditor is a tool bundled in the cortex repo, but **not** included in docker images -- this must be built from source. It's primarily useful for those _developing_ cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).
+The query auditor is a tool bundled in the Cortex repository, but **not** included in Docker images -- this must be built from source. It's primarily useful for those _developing_ Cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).
 
 ## How it works
 
-The `query-audit` tool performs a set of queries against two backends that expose the prometheus read API. This is generally the `query-frontend` component of two cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:
- - Ensuring the resulting label sets match
- - For each label set, ensuring they contain the same number of samples as their pair from the other backend
+The `query-audit` tool performs a set of queries against two backends that expose the Prometheus read API. This is generally the `query-frontend` component of two Cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:
+
+ - Ensuring the resulting label sets match.
+ - For each label set, ensuring they contain the same number of samples as their pair from the other backend.
  - For each sample, calculates their difference against it's pair from the other backend/label set.
  - Calculates the average diff per query from the above diffs.
 
 ### Limitations
 
-It currently only supports queries with `Matrix` response types, but should be simple to extend to `Vector`s as well, should the need arise.
+It currently only supports queries with `Matrix` response types.
 
 ### Use cases
 
@@ -71,7 +72,7 @@ queries:
 Under ideal circumstances, you'll see output like the following:
 
 ```
-$ go install ./tools/query-audit/ && query-audit -f ~/grafana/tmp/equivalence-config.yaml
+$ go run ./tools/query-audit/ -f config.yaml
 
 0.000000% avg diff for:
         query: sum(rate(container_cpu_usage_seconds_total[5m]))

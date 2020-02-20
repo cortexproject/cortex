@@ -238,7 +238,7 @@ func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the MultitenantAlertmanager.
+// stopping runs when MultitenantAlertmanager transitions to Stopping state.
 func (am *MultitenantAlertmanager) stopping() error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {

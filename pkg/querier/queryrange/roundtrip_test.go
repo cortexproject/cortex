@@ -118,5 +118,5 @@ func Test_ShardingConfigError(t *testing.T) {
 		0,
 	)
 
-	require.EqualError(t, err, "a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
+	require.EqualError(t, err, errInvalidMinShardingLookback.Error())
 }

@@ -317,14 +317,6 @@ func (cfg *SchemaConfig) Load() error {
 		return err
 	}
 
-	for i, periodCfg := range cfg.Configs {
-		// apply default row shards
-		if periodCfg.RowShards == 0 {
-			periodCfg.RowShards = defaultRowShards(periodCfg.Schema)
-			cfg.Configs[i] = periodCfg
-		}
-	}
-
 	return cfg.Validate()
 }
 

@@ -1,7 +1,10 @@
 package astmapper
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -76,7 +79,8 @@ func CanParallel(node promql.Node) bool {
 		return true
 
 	default:
-		panic(errors.Errorf("CanParallel: unhandled node type %T", node))
+		level.Error(util.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node))
+		return false
 	}
 
 }

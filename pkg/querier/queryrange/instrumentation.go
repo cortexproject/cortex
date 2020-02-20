@@ -25,7 +25,7 @@ var (
 	splitByCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "frontend_split_queries_total",
-		Help:      "Total number of split (parallelized) request segments",
+		Help:      "Total number of underlying query requests after the split by interval is applied",
 	})
 )
 

@@ -41,7 +41,7 @@ func (q *DownstreamQuerier) Select(
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {
-		if matcher.Name == labels.MetricName && matcher.Value == astmapper.EmbeddedQueryFlag {
+		if matcher.Name == labels.MetricName && matcher.Value == astmapper.EmbeddedQueriesMetricName {
 			isEmbedded = true
 		}
 

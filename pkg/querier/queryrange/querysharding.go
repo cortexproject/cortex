@@ -140,7 +140,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 	conf, err := ast.confs.GetConf(r)
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(ast.logger).Log("err", err.Error())
+		level.Warn(ast.logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
@@ -298,9 +298,7 @@ func partitionRequest(r Request, t time.Time) (before Request, after Request) {
 
 // TimeFromMillis is a helper to turn milliseconds -> time.Time
 func TimeFromMillis(ms int64) time.Time {
-	secs := ms / 1000
-	rem := ms - (secs * 1000)
-	return time.Unix(secs, rem*nanosecondsInMillisecond)
+	return time.Unix(0, ms*nanosecondsInMillisecond)
 }
 
 func TimeToMillis(t time.Time) int64 {

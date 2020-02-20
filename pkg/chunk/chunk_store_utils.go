@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -255,11 +254,4 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 		}
 	}
 	return found, missing, err
-}
-
-func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
-	for i, chunk := range chunks {
-		chunk.Metric = append(chunk.Metric, shard.Label())
-		chunks[i] = chunk
-	}
 }

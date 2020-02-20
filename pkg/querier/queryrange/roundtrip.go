@@ -36,10 +36,14 @@ import (
 
 const day = 24 * time.Hour
 
-// PassthroughMiddleware is a noop middleware
-var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
-	return next
-})
+var (
+	// PassthroughMiddleware is a noop middleware
+	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
+		return next
+	})
+
+	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
+)
 
 // Config for query_range middleware chain.
 type Config struct {
@@ -145,7 +149,7 @@ func NewTripperware(
 	if cfg.SumShards {
 
 		if minShardingLookback == 0 {
-			return nil, nil, errors.New("a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
+			return nil, nil, errInvalidMinShardingLookback
 		}
 
 		shardingware := NewQueryShardMiddleware(

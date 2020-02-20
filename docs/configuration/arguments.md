@@ -86,9 +86,11 @@ The ingester query API was improved over time, but defaults to the old behaviour
    - `querier.max-outstanding-requests-per-tenant`
    - `querier.max-query-parallelism`
    - `querier.max-concurrent`
+   - `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
+
    Furthermore, both querier and query-frontend components require the `querier.query-ingesters-within` parameter to know when to start sharding requests (ingester queries are not sharded). It's recommended to align this with `ingester.max-chunk-age`.
 
-   Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well.
+   Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well (for instance via `JAEGER_REPORTER_MAX_QUEUE_SIZE`).
 
 - `-querier.align-querier-with-step`
 

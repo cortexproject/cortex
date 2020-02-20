@@ -53,10 +53,12 @@ func TestSelect(t *testing.T) {
 					},
 				)
 
-				_, _, err := q.Select(
+				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
+				require.Nil(t, err)
+				_, _, err = q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
+					exactMatch(astmapper.QueryLabel, encoded),
 				)
 				require.Nil(t, err)
 			},
@@ -70,10 +72,12 @@ func TestSelect(t *testing.T) {
 				nil,
 			)),
 			fn: func(t *testing.T, q *DownstreamQuerier) {
+				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
+				require.Nil(t, err)
 				set, _, err := q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
+					exactMatch(astmapper.QueryLabel, encoded),
 				)
 				require.Nil(t, set)
 				require.EqualError(t, err, "SomeErr")
@@ -124,10 +128,12 @@ func TestSelect(t *testing.T) {
 				nil,
 			)),
 			fn: func(t *testing.T, q *DownstreamQuerier) {
+				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
+				require.Nil(t, err)
 				set, _, err := q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
+					exactMatch(astmapper.QueryLabel, encoded),
 				)
 				require.Nil(t, err)
 				require.Equal(
@@ -226,10 +232,12 @@ func TestSelectConcurrent(t *testing.T) {
 				},
 			}, c.err))
 
+			encoded, err := astmapper.JSONCodec.Encode(c.queries)
+			require.Nil(t, err)
 			set, _, err := querier.Select(
 				nil,
-				exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-				exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode(c.queries)),
+				exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
+				exactMatch(astmapper.QueryLabel, encoded),
 			)
 
 			if c.err != nil {

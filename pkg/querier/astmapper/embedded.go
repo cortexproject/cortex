@@ -21,8 +21,8 @@ be remapped into vector or matrix selectors utilizing a reserved label containin
 const (
 	// QueryLabel is a reserved label containing an embedded query
 	QueryLabel = "__cortex_queries__"
-	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
-	EmbeddedQueryFlag = "__embedded_queries__"
+	// EmbeddedQueriesMetricName is a reserved label (metric name) denoting an embedded query
+	EmbeddedQueriesMetricName = "__embedded_queries__"
 )
 
 // EmbeddedQueries is a wrapper type for encoding queries
@@ -35,17 +35,12 @@ var JSONCodec jsonCodec
 
 type jsonCodec struct{}
 
-func (c jsonCodec) Encode(queries []string) string {
+func (c jsonCodec) Encode(queries []string) (string, error) {
 	embedded := EmbeddedQueries{
 		Concat: queries,
 	}
 	b, err := json.Marshal(embedded)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return string(b)
+	return string(b), err
 }
 
 func (c jsonCodec) Decode(encoded string) (queries []string, err error) {
@@ -69,7 +64,10 @@ func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 		strs = append(strs, node.String())
 	}
 
-	encoded := JSONCodec.Encode(strs)
+	encoded, err := JSONCodec.Encode(strs)
+	if err != nil {
+		return nil, err
+	}
 
 	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
@@ -78,7 +76,7 @@ func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 	}
 
 	return &promql.VectorSelector{
-		Name:          EmbeddedQueryFlag,
+		Name:          EmbeddedQueriesMetricName,
 		LabelMatchers: []*labels.Matcher{embeddedQuery},
 	}, nil
 

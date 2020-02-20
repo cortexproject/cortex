@@ -534,3 +534,14 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 
 	return result, missing, nil
 }
+
+func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
+	for i, chunk := range chunks {
+
+		b := labels.NewBuilder(chunk.Metric)
+		l := shard.Label()
+		b.Set(l.Name, l.Value)
+		chunk.Metric = b.Labels()
+		chunks[i] = chunk
+	}
+}

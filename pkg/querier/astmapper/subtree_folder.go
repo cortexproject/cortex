@@ -42,12 +42,12 @@ func (f *subtreeFolder) MapNode(node promql.Node) (promql.Node, bool, error) {
 func isEmbedded(node promql.Node) (bool, error) {
 	switch n := node.(type) {
 	case *promql.VectorSelector:
-		if n.Name == EmbeddedQueryFlag {
+		if n.Name == EmbeddedQueriesMetricName {
 			return true, nil
 		}
 
 	case *promql.MatrixSelector:
-		if n.Name == EmbeddedQueryFlag {
+		if n.Name == EmbeddedQueriesMetricName {
 			return true, nil
 		}
 

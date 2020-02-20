@@ -21,7 +21,7 @@ type DownstreamQueryable struct {
 	Handler Handler
 }
 
-// Querier impls Queryable
+// Querier implements Queryable
 func (q *DownstreamQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return &DownstreamQuerier{ctx, q.Req, q.Handler}, nil
 }

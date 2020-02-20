@@ -23,7 +23,7 @@ type MultiMapper struct {
 	mappers []ASTMapper
 }
 
-// Map impls ASTMapper
+// Map implements ASTMapper
 func (m *MultiMapper) Map(node promql.Node) (promql.Node, error) {
 	var result promql.Node = node
 	var err error
@@ -87,7 +87,7 @@ type ASTNodeMapper struct {
 	NodeMapper
 }
 
-// Map impls ASTMapper from a NodeMapper
+// Map implements ASTMapper from a NodeMapper
 func (nm ASTNodeMapper) Map(node promql.Node) (promql.Node, error) {
 	node, fin, err := nm.MapNode(node)
 

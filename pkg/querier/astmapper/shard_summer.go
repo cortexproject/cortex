@@ -2,12 +2,9 @@ package astmapper
 
 import (
 	"fmt"
-
 	"regexp"
-
-	"strings"
-
 	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -29,28 +26,28 @@ var (
 type squasher = func(...promql.Node) (promql.Expr, error)
 
 type shardSummer struct {
-	shards   int
-	curshard *int
-	squash   squasher
+	shards       int
+	currentShard *int
+	squash       squasher
 }
 
-// NewShardSummer instantiates an ASTMapper which will fan out sums queries by shard
+// NewShardSummer instantiates an ASTMapper which will fan out sum queries by shard
 func NewShardSummer(shards int, squasher squasher) (ASTMapper, error) {
 	if squasher == nil {
 		return nil, errors.Errorf("squasher required and not passed")
 	}
 
 	return NewASTNodeMapper(&shardSummer{
-		shards:   shards,
-		squash:   squasher,
-		curshard: nil,
+		shards:       shards,
+		squash:       squasher,
+		currentShard: nil,
 	}), nil
 }
 
 // CopyWithCurShard clones a shardSummer with a new current shard.
 func (summer *shardSummer) CopyWithCurShard(curshard int) *shardSummer {
 	s := *summer
-	s.curshard = &curshard
+	s.currentShard = &curshard
 	return &s
 }
 
@@ -59,7 +56,7 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 
 	switch n := node.(type) {
 	case *promql.AggregateExpr:
-		if CanParallel(n) && n.Op == promql.SUM {
+		if CanParallelize(n) && n.Op == promql.SUM {
 			result, err := summer.shardSum(n)
 			return result, true, err
 		}
@@ -67,15 +64,15 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 		return n, false, nil
 
 	case *promql.VectorSelector:
-		if summer.curshard != nil {
-			mapped, err := shardVectorSelector(*summer.curshard, summer.shards, n)
+		if summer.currentShard != nil {
+			mapped, err := shardVectorSelector(*summer.currentShard, summer.shards, n)
 			return mapped, true, err
 		}
 		return n, true, nil
 
 	case *promql.MatrixSelector:
-		if summer.curshard != nil {
-			mapped, err := shardMatrixSelector(*summer.curshard, summer.shards, n)
+		if summer.currentShard != nil {
+			mapped, err := shardMatrixSelector(*summer.currentShard, summer.shards, n)
 			return mapped, true, err
 		}
 		return n, true, nil

@@ -147,7 +147,6 @@ func NewTripperware(
 	}
 
 	if cfg.SumShards {
-
 		if minShardingLookback == 0 {
 			return nil, nil, errInvalidMinShardingLookback
 		}

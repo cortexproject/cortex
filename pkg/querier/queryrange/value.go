@@ -100,7 +100,6 @@ func ResponseToSamples(resp Response) ([]SampleStream, error) {
 
 // NewSeriesSet returns an in memory storage.SeriesSet from a []SampleStream
 func NewSeriesSet(results []SampleStream) storage.SeriesSet {
-
 	set := make([]storage.Series, 0, len(results))
 
 	for _, stream := range results {

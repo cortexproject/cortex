@@ -81,7 +81,7 @@ func TestCanParallel(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			res := CanParallel(c.input)
+			res := CanParallelize(c.input)
 			require.Equal(t, c.expected, res)
 		})
 	}
@@ -112,7 +112,7 @@ func TestCanParallel_String(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)
-			res := CanParallel(expr)
+			res := CanParallelize(expr)
 			require.Equal(t, c.expected, res)
 		})
 	}

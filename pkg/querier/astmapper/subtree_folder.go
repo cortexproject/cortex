@@ -18,7 +18,7 @@ func NewSubtreeFolder() ASTMapper {
 	return NewASTNodeMapper(&subtreeFolder{})
 }
 
-// MapNode impls NodeMapper
+// MapNode implements NodeMapper
 func (f *subtreeFolder) MapNode(node promql.Node) (promql.Node, bool, error) {
 	switch n := node.(type) {
 	// do not attempt to fold number or string leaf nodes
@@ -75,7 +75,7 @@ type visitor struct {
 	result bool
 }
 
-// Visit impls promql.Visitor
+// Visit implements promql.Visitor
 func (v *visitor) Visit(node promql.Node, path []promql.Node) (promql.Visitor, error) {
 	// if the visitor has already seen a predicate success, don't overwrite
 	if v.result {

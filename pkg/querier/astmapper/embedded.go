@@ -30,7 +30,7 @@ type EmbeddedQueries struct {
 	Concat []string `json:"Concat"`
 }
 
-// JSONCodec is a Codec impl that uses JSON representations of EmbeddedQueries structs
+// JSONCodec is a Codec that uses JSON representations of EmbeddedQueries structs
 var JSONCodec jsonCodec
 
 type jsonCodec struct{}
@@ -70,7 +70,6 @@ func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 	}
 
 	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
-
 	if err != nil {
 		return nil, err
 	}

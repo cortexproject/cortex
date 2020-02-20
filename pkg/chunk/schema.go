@@ -5,9 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
-
 	"strconv"
+	"strings"
 
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"

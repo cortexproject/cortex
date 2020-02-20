@@ -226,7 +226,7 @@ func (d *Distributor) starting(ctx context.Context) error {
 	return d.servManager.AwaitHealthy(ctx)
 }
 
-// Stop stops the distributor's maintenance loop.
+// Called after distributor is asked to stop via StopAsync.
 func (d *Distributor) stopping() error {
 	// just stop everything, and wait until it has stopped.
 	d.servManager.StopAsync()

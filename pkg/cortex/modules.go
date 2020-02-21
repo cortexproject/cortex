@@ -648,7 +648,9 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 }
 
 func (t *Cortex) stopDataPurger() error {
-	t.dataPurger.Stop()
+	if t.dataPurger != nil {
+		t.dataPurger.Stop()
+	}
 	return nil
 }
 

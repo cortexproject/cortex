@@ -238,4 +238,4 @@ The **configs API** is an **optional service** managing the configuration of Rul
 It provides APIs to get/set/update the rules and alertmanager configurations and store them into backend.
 Current supported backend are PostgreSQL, static files and in-memory.
 
-Configs API are **stateless** and can be scaled up and down as needed.
+Configs API is **stateless**.

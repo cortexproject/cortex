@@ -37,15 +37,14 @@ var (
 
 // Config holds the config information for TSDB storage
 type Config struct {
-	Dir         string            `yaml:"dir"`
-	BlockRanges DurationList      `yaml:"block_ranges_period"`
-	Retention   time.Duration     `yaml:"retention_period"`
-	Backend     string            `yaml:"backend"`
-	BucketStore BucketStoreConfig `yaml:"bucket_store"`
-
-	CompactionInterval    time.Duration `yaml:"compaction_interval"`
-	CompactionConcurrency int           `yaml:"compaction_concurrency"`
-	ShippingEnabled       bool          `yaml:"shipping_enabled"`
+	Dir                   string            `yaml:"dir"`
+	BlockRanges           DurationList      `yaml:"block_ranges_period"`
+	Retention             time.Duration     `yaml:"retention_period"`
+	Backend               string            `yaml:"backend"`
+	BucketStore           BucketStoreConfig `yaml:"bucket_store"`
+	CompactionInterval    time.Duration     `yaml:"compaction_interval"`
+	CompactionConcurrency int               `yaml:"compaction_concurrency"`
+	ShippingEnabled       bool              `yaml:"shipping_enabled"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`

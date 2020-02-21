@@ -236,9 +236,9 @@ func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) 
 			Range:  selector.Range,
 			EndPos: selector.EndPos,
 		}, nil
-	} else {
-		return nil, fmt.Errorf("invalid selector type: %T", selector.VectorSelector)
 	}
+
+	return nil, fmt.Errorf("invalid selector type: %T", selector.VectorSelector)
 }
 
 // ParseShard will extract the shard information encoded in ShardLabelFmt

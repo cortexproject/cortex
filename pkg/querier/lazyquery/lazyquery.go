@@ -17,7 +17,7 @@ type LazyQueryable struct {
 	q storage.Queryable
 }
 
-// Querier impls storage.Queryable
+// Querier implements storage.Queryable
 func (lq LazyQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	q, err := lq.q.Querier(ctx, mint, maxt)
 	if err != nil {
@@ -58,7 +58,7 @@ func (l LazyQuerier) createSeriesSet(params *storage.SelectParams, matchers []*l
 	return future
 }
 
-// Select impls Storage.Querier
+// Select implements Storage.Querier
 func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	future := l.createSeriesSet(params, matchers, l.next.Select)
 	return &lazySeriesSet{
@@ -66,7 +66,7 @@ func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Ma
 	}, nil, nil
 }
 
-// LabelValues impls Storage.Querier
+// SelectSorted implements Storage.Querier
 func (l LazyQuerier) SelectSorted(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	future := l.createSeriesSet(params, matchers, l.next.SelectSorted)
 	return &lazySeriesSet{
@@ -74,17 +74,17 @@ func (l LazyQuerier) SelectSorted(params *storage.SelectParams, matchers ...*lab
 	}, nil, nil
 }
 
-// LabelValues impls Storage.Querier
+// LabelValues implements Storage.Querier
 func (l LazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return l.next.LabelValues(name)
 }
 
-// LabelNames impls Storage.Querier
+// LabelNames implements Storage.Querier
 func (l LazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return l.next.LabelNames()
 }
 
-// Close impls Storage.Querier
+// Close implements Storage.Querier
 func (l LazyQuerier) Close() error {
 	return l.next.Close()
 }

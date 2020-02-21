@@ -222,7 +222,7 @@ The query frontend supports caching query results and reuses them on subsequent 
 
 The **ruler** is an **optional service** executing PromQL queries for recording rules and alerts. The ruler requires a database storing the recording rules and alerts for each tenant.
 
-Ruler are **stateless** and can be scaled horizontally.
+Ruler is **stateless** and can be scaled horizontally.
 
 ### Alertmanager
 

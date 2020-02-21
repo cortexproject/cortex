@@ -55,11 +55,15 @@ func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *t
 	// Start Cortex components.
 	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
 	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
+
+	// Start the querier after the query-frontend otherwise we're not
+	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkEndpoint(e2ecortex.GRPCPort),
 	}), "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, querier, ingester))
+	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))

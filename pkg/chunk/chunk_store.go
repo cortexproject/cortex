@@ -568,7 +568,7 @@ func (c *store) reboundChunk(ctx context.Context, userID, chunkID string, partia
 	}
 
 	if len(chunks) != 1 {
-		return errors.New(fmt.Sprintf("expected to get 1 chunk from storage got %d instead", len(chunks)))
+		return fmt.Errorf("expected to get 1 chunk from storage got %d instead", len(chunks))
 	}
 
 	chunk = chunks[0]

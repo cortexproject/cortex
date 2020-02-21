@@ -363,7 +363,6 @@ func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io
 }
 
 func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
-	fmt.Println("deleting", objectKey)
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

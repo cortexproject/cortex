@@ -332,7 +332,7 @@ type Bucket struct {
 	through    uint32
 	tableName  string
 	hashKey    string
-	bucketSize uint32 // helps with deletion of series ids in series store
+	bucketSize uint32 // helps with deletion of series ids in series store. Size in milliseconds.
 }
 
 func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) []Bucket {

@@ -114,14 +114,17 @@ tsdb:
   # CLI flag: -experimental.tsdb.retention-period
   [ retention_period: <duration> | default = 6h]
 
-  # How frequently the TSDB blocks are scanned and new ones are shipped to
-  # the storage. 0 means shipping is disabled.
-  # CLI flag: -experimental.tsdb.ship-interval
-  [ship_interval: <duration> | default = 1m]
+  # How frequently are TSDB head compacted, and subsequently shipped to the storage.
+  # CLI flag: -experimental.tsdb.compaction-interval
+  [compaction_interval: <duration> | default = 2h]
 
-  # Maximum number of tenants concurrently shipping blocks to the storage.
-  # CLI flag: -experimental.tsdb.ship-concurrency
-  [ship_concurrency: <int> | default = 10]
+  # Maximum number of tenants concurrently compacting and shipping blocks to the storage.
+  # CLI flag: -experimental.tsdb.compaction-concurrency
+  [compaction_concurrency: <int> | default = 5]
+
+  # Is shipping of blocks to the storage enabled?
+  # CLI flag: -experimental.tsdb.shipping-enabled
+  [shipping_enabled: <bool> | default true]
 
   # The bucket store configuration applies to queriers and configure how queriers
   # iteract with the long-term storage backend.

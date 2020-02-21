@@ -612,7 +612,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Maximum number of retries for a single request; beyond this, the downstream&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# error is returned.&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# CLI flag: -querier.max-retries-per-request&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;max_retries&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;int&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;5&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;max_retries&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;int&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;5&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Perform query parallelisations based on storage sharding configuration and&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# query ASTs. This feature is supported only by the chunks storage engine.&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# CLI flag: -querier.parallelise-shardable-queries&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;parallelise_shardable_queries&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;boolean&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;false&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;h2 id=&#34;ruler-config&#34;&gt;&lt;code&gt;ruler_config&lt;/code&gt;&lt;/h2&gt;
 &lt;p&gt;The &lt;code&gt;ruler_config&lt;/code&gt; configures the Cortex ruler.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# URL of alerts return path.&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
@@ -2009,6 +2014,28 @@ If both &lt;code&gt;iterators&lt;/code&gt; and &lt;code&gt;batch-iterators&lt;/c
 &lt;/ul&gt;
 &lt;p&gt;Time since the last sample after which a time series is considered stale and ignored by expression evaluations.&lt;/p&gt;
 &lt;h2 id=&#34;query-frontend&#34;&gt;Query Frontend&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-querier.parallelise-shardable-queries&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;If set to true, will cause the query frontend to mutate incoming queries when possible by turning &lt;code&gt;sum&lt;/code&gt; operations into sharded &lt;code&gt;sum&lt;/code&gt; operations. This requires a shard-compatible schema (v10+). An abridged example:
+&lt;code&gt;sum by (foo) (rate(bar{baz=”blip”}[1m]))&lt;/code&gt; -&amp;gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; sum by (foo) (
+sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”0of16”}[1m])) or
+sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
+...
+sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
+)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the &lt;code&gt;config-yaml&lt;/code&gt; CLI flag). This is the same schema config the queriers consume.
+It&amp;rsquo;s also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;querier.max-outstanding-requests-per-tenant&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;querier.max-query-parallelism&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;querier.max-concurrent&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;server.grpc-max-concurrent-streams&lt;/code&gt; (for both query-frontends and queriers)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Furthermore, both querier and query-frontend components require the &lt;code&gt;querier.query-ingesters-within&lt;/code&gt; parameter to know when to start sharding requests (ingester queries are not sharded). It&amp;rsquo;s recommended to align this with &lt;code&gt;ingester.max-chunk-age&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Instrumentation (traces) also scale with the number of sharded queries and it&amp;rsquo;s suggested to account for increased throughput there as well (for instance via &lt;code&gt;JAEGER_REPORTER_MAX_QUEUE_SIZE&lt;/code&gt;).&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-querier.align-querier-with-step&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;

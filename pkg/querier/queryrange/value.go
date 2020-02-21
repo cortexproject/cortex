@@ -99,6 +99,7 @@ func ResponseToSamples(resp Response) ([]SampleStream, error) {
 }
 
 // NewSeriesSet returns an in memory storage.SeriesSet from a []SampleStream
+// As NewSeriesSet uses NewConcreteSeriesSet to implement SeriesSet, result will be sorted by label names.
 func NewSeriesSet(results []SampleStream) storage.SeriesSet {
 	set := make([]storage.Series, 0, len(results))
 

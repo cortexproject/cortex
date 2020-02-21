@@ -33,11 +33,12 @@ type ShardedQuerier struct {
 	Handler Handler
 }
 
+func (q *ShardedQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
+}
+
 // Select returns a set of series that matches the given label matchers.
-func (q *ShardedQuerier) Select(
-	_ *storage.SelectParams,
-	matchers ...*labels.Matcher,
-) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) SelectSorted(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {

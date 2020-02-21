@@ -9,12 +9,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -130,7 +130,7 @@ func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
-	rules := []rulefmt.Rule{
+	rules := []legacy_rulefmt.Rule{
 		{
 			Alert: "TestAlert",
 			Expr:  "up == 0",
@@ -146,7 +146,7 @@ func TestParseFormatted(t *testing.T) {
 
 	for i, tc := range []struct {
 		cfg      RulesConfig
-		expected map[string]rulefmt.RuleGroups
+		expected map[string]legacy_rulefmt.RuleGroups
 	}{
 		{
 			cfg: RulesConfig{
@@ -155,9 +155,9 @@ func TestParseFormatted(t *testing.T) {
 					"legacy.rules": legacyRulesFile,
 				},
 			},
-			expected: map[string]rulefmt.RuleGroups{
+			expected: map[string]legacy_rulefmt.RuleGroups{
 				"legacy.rules": {
-					Groups: []rulefmt.RuleGroup{
+					Groups: []legacy_rulefmt.RuleGroup{
 						{
 							Name:  "rg:legacy.rules",
 							Rules: rules,
@@ -173,9 +173,9 @@ func TestParseFormatted(t *testing.T) {
 					"alerts.yaml": ruleFile,
 				},
 			},
-			expected: map[string]rulefmt.RuleGroups{
+			expected: map[string]legacy_rulefmt.RuleGroups{
 				"alerts.yaml": {
-					Groups: []rulefmt.RuleGroup{
+					Groups: []legacy_rulefmt.RuleGroup{
 						{
 							Name:  "example",
 							Rules: rules,

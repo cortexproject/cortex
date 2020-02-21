@@ -24,8 +24,8 @@ func TestCloneNode(t *testing.T) {
 			},
 			&promql.BinaryExpr{
 				Op:  promql.ADD,
-				LHS: &promql.NumberLiteral{Val: 1},
-				RHS: &promql.NumberLiteral{Val: 1},
+				LHS: &promql.NumberLiteral{Val: 1, PosRange: promql.PositionRange{Start: 0, End: 1}},
+				RHS: &promql.NumberLiteral{Val: 1, PosRange: promql.PositionRange{Start: 4, End: 5}},
 			},
 		},
 		{
@@ -48,8 +48,16 @@ func TestCloneNode(t *testing.T) {
 					LabelMatchers: []*labels.Matcher{
 						mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "some_metric"),
 					},
+					PosRange: promql.PositionRange{
+						Start: 18,
+						End:   29,
+					},
 				},
 				Grouping: []string{"foo"},
+				PosRange: promql.PositionRange{
+					Start: 0,
+					End:   30,
+				},
 			},
 		},
 	}

@@ -75,11 +75,10 @@ func TestQueryshardingMiddleware(t *testing.T) {
 	for _, c := range testExpr {
 		t.Run(c.name, func(t *testing.T) {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:        util.Logger,
-				Reg:           nil,
-				MaxConcurrent: 10,
-				MaxSamples:    1000,
-				Timeout:       time.Minute,
+				Logger:     util.Logger,
+				Reg:        nil,
+				MaxSamples: 1000,
+				Timeout:    time.Minute,
 			})
 
 			handler := NewQueryShardMiddleware(
@@ -519,12 +518,10 @@ func BenchmarkQuerySharding(b *testing.B) {
 			time.Millisecond / 10,
 		} {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger: util.Logger,
-				Reg:    nil,
-				// set high concurrency so we're not bottlenecked here
-				MaxConcurrent: 100000,
-				MaxSamples:    100000000,
-				Timeout:       time.Minute,
+				Logger:     util.Logger,
+				Reg:        nil,
+				MaxSamples: 100000000,
+				Timeout:    time.Minute,
 			})
 
 			queryable := NewMockShardedQueryable(

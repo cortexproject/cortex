@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -26,7 +27,6 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		MaxConcurrent:      1000,
 		Logger:             util.Logger,
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
@@ -525,6 +525,10 @@ func (m *testMatrix) At() storage.Series {
 }
 
 func (m *testMatrix) Err() error { return nil }
+
+func (m *testMatrix) SelectSorted(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return nil, nil, errors.New("not implemented")
+}
 
 func (m *testMatrix) Select(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	s, _, err := astmapper.ShardFromMatchers(matchers)

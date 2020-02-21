@@ -33,6 +33,7 @@ type ConcreteSeriesSet struct {
 }
 
 // NewConcreteSeriesSet instantiates an in-memory series set from a series
+// Series will be sorted by labels.
 func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	sort.Sort(byLabels(series))
 	return &ConcreteSeriesSet{
@@ -143,6 +144,7 @@ func (e errIterator) Err() error {
 }
 
 // MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
+// Series will be sorted by labels.
 func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {

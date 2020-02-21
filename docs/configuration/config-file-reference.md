@@ -569,6 +569,13 @@ The `querier_config` configures the Cortex querier.
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
 [defaultevaluationinterval: <duration> | default = 1m0s]
+
+# Active query tracker monitors active queries, and writes them to the file in
+# given directory. If Cortex discovers any queries in this log during startup,
+# it will log them to the log file. Setting to empty value disables active query
+# tracker, which also disables -querier.max-concurrent option.
+# CLI flag: -querier.active-query-tracker-dir
+[active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 ```
 
 ## `query_frontend_config`

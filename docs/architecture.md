@@ -230,7 +230,7 @@ The **alertmanager** is an **optional service** responsible for accepting alert 
 
 The Cortex alertmanager is built on top of the [Prometheus Alertmanager](https://prometheus.io/docs/alerting/alertmanager/), adding multi-tenancy support. Like the [ruler](#ruler), the alertmanager requires a database storing the per-tenant configuration.
 
-Alertmanager are **stateful**.
+Alertmanager is **stateful**.
 
 ### Configs API
 

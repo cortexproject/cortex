@@ -664,6 +664,11 @@ results_cache:
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
+
+# Perform query parallelisations based on storage sharding configuration and
+# query ASTs. This feature is supported only by the chunks storage engine.
+# CLI flag: -querier.parallelise-shardable-queries
+[parallelise_shardable_queries: <boolean> | default = false]
 ```
 
 ## `ruler_config`

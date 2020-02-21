@@ -2,6 +2,16 @@
 
 ## master / unreleased
 
+* [FEATURE] Fan out parallelizable queries to backend queriers concurrently. #1878
+  * `querier.parallelise-shardable-queries` (bool)
+  * Requires a shard-compatible schema (v10+)
+  * This causes the number of traces to increase accordingly.
+  * The query-frontend now requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume. The schema is only required to use this option.
+  * It's also advised to increase downstream concurrency controls as well:
+    * `querier.max-outstanding-requests-per-tenant`
+    * `querier.max-query-parallelism`
+    * `querier.max-concurrent`
+    * `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
 * [CHANGE] The frontend http server will now send 502 in case of deadline exceeded and 499 if the user requested cancellation. #2156
 * [CHANGE] Config file changed to remove top level `config_store` field in favor of a nested `configdb` field. #2125
 * [CHANGE] Removed unnecessary `frontend.cache-split-interval` in favor of `querier.split-queries-by-interval` both to reduce configuration complexity and guarantee alignment of these two configs. Starting from now, `-querier.cache-results` may only be enabled in conjunction with `-querier.split-queries-by-interval` (previously the cache interval default was `24h` so if you want to preserve the same behaviour you should set `-querier.split-queries-by-interval=24h`). #2040

@@ -14,7 +14,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -74,12 +76,6 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// ChunkStore is the read-interface to the Chunk Store.  Made an interface here
-// to reduce package coupling.
-type ChunkStore interface {
-	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
-}
-
 func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	if cfg.BatchIterators {
 		return batch.NewChunkMergeIterator
@@ -89,7 +85,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	return mergeChunks
 }
 
-func NewChunkStoreQueryable(cfg Config, chunkStore ChunkStore) storage.Queryable {
+func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
 	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
 }
 
@@ -106,7 +102,7 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 		if err != nil {
 			return nil, err
 		}
-		return newLazyQuerier(querier), nil
+		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
@@ -239,7 +235,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 			// If there is error, we better report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, errSeriesSet{err: err})
+				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
 			}
 			continue
 		}

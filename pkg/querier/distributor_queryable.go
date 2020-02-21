@@ -12,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 )
 
@@ -54,7 +55,7 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 		if err != nil {
 			return nil, nil, err
 		}
-		return metricsToSeriesSet(ms), nil, nil
+		return series.MetricsToSeriesSet(ms), nil, nil
 	}
 
 	mint, maxt := sp.Start, sp.End
@@ -68,7 +69,7 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return matrixToSeriesSet(matrix), nil, nil
+	return series.MatrixToSeriesSet(matrix), nil, nil
 }
 
 func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
@@ -107,7 +108,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers [
 		serieses = append(serieses, series)
 	}
 
-	return newConcreteSeriesSet(serieses), nil, nil
+	return series.NewConcreteSeriesSet(serieses), nil, nil
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

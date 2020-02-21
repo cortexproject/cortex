@@ -58,7 +58,7 @@ var (
 )
 
 var dummyResponse = &PrometheusResponse{
-	Status: statusSuccess,
+	Status: StatusSuccess,
 	Data: PrometheusData{
 		ResultType: matrix,
 		Result: []SampleStream{
@@ -87,7 +87,7 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	}
 
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: matrix,
 			Result: []SampleStream{

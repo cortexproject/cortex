@@ -17,7 +17,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"net/http"
 	"strings"
@@ -25,14 +24,26 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
 const day = 24 * time.Hour
+
+var (
+	// PassthroughMiddleware is a noop middleware
+	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
+		return next
+	})
+
+	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
+)
 
 // Config for query_range middleware chain.
 type Config struct {
@@ -42,6 +53,7 @@ type Config struct {
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
+	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -51,6 +63,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -105,7 +118,16 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, cache.Cache, error) {
+func NewTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec Codec,
+	cacheExtractor Extractor,
+	schema chunk.SchemaConfig,
+	engineOpts promql.EngineOpts,
+	minShardingLookback time.Duration,
+) (frontend.Tripperware, cache.Cache, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
@@ -113,6 +135,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
+
 	var c cache.Cache
 	if cfg.CacheResults {
 		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor)
@@ -122,6 +145,26 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		c = cache
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
 	}
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, nil, errInvalidMinShardingLookback
+		}
+
+		shardingware := NewQueryShardMiddleware(
+			log,
+			promql.NewEngine(engineOpts),
+			schema.Configs,
+			codec,
+			minShardingLookback,
+		)
+
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			shardingware, // instrumentation is included in the sharding middleware
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry"), NewRetryMiddleware(log, cfg.MaxRetries))
 	}

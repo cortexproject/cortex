@@ -22,7 +22,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
-const statusSuccess = "success"
+// StatusSuccess Prometheus success result.
+const StatusSuccess = "success"
 
 var (
 	matrix            = model.ValMatrix.String()
@@ -71,6 +72,8 @@ type Request interface {
 	GetQuery() string
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
+	// WithQuery clone the current request with a different query.
+	WithQuery(string) Request
 	proto.Message
 }
 
@@ -97,6 +100,13 @@ func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 	new := *q
 	new.Start = start
 	new.End = end
+	return &new
+}
+
+// WithQuery clones the current `PrometheusRequest` with a new query.
+func (q *PrometheusRequest) WithQuery(query string) Request {
+	new := *q
+	new.Query = query
 	return &new
 }
 
@@ -127,12 +137,12 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	if len(promResponses) == 0 {
 		return &PrometheusResponse{
-			Status: statusSuccess,
+			Status: StatusSuccess,
 		}, nil
 	}
 
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),

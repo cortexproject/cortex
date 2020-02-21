@@ -82,11 +82,12 @@ func (q *MockShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 	return q, nil
 }
 
+func (q *MockShardedQueryable) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
+}
+
 // Select impls storage.Querier
-func (q *MockShardedQueryable) Select(
-	_ *storage.SelectParams,
-	matchers ...*labels.Matcher,
-) (storage.SeriesSet, storage.Warnings, error) {
+func (q *MockShardedQueryable) SelectSorted(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	tStart := time.Now()
 
 	shard, _, err := astmapper.ShardFromMatchers(matchers)
@@ -142,8 +143,8 @@ func (q *MockShardedQueryable) Select(
 		time.Sleep(remaining)
 	}
 
+	// sorted
 	return series.NewConcreteSeriesSet(results), nil, nil
-
 }
 
 // ShardLabelSeries allows extending a Series with new labels. This is helpful for adding cortex shard labels

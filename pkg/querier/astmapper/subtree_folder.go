@@ -47,10 +47,7 @@ func isEmbedded(node promql.Node) (bool, error) {
 		}
 
 	case *promql.MatrixSelector:
-		if n.Name == EmbeddedQueriesMetricName {
-			return true, nil
-		}
-
+		return isEmbedded(n.VectorSelector)
 	}
 	return false, nil
 }

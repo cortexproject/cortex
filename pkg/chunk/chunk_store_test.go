@@ -1060,7 +1060,8 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.NoError(t, err)
 
 			// we expect to have 2 series IDs in index for the chunks that were added above
-			seriesIDs, err := seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(), userID, "foo", nil)
+			seriesIDs, err := seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 2, len(seriesIDs))
 
@@ -1074,7 +1075,8 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.NoError(t, err)
 
 			// series IDs should still be there since chunks for them still exist
-			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(), userID, "foo", nil)
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 2, len(seriesIDs))
 
@@ -1090,7 +1092,8 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 1, len(chunks))
 
-			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(), userID, "foo", nil)
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(seriesIDs))
 			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
@@ -1108,7 +1111,8 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 1, len(chunks))
 
-			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(), userID, "foo", nil)
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(seriesIDs))
 			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])

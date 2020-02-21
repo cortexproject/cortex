@@ -120,18 +120,12 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
 
-	// Run the blocks shipping in a dedicated go routine.
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		i.done.Add(1)
-		go i.shipBlocksLoop()
-	}
-
 	i.done.Add(1)
 	go i.updateLoop()
 
 	if i.cfg.TSDBConfig.CompactionConcurrency > 0 && i.cfg.TSDBConfig.CompactionInterval > 0 {
 		i.done.Add(1)
-		go i.compactionLoop()
+		go i.compactionAndShippingLoop()
 	}
 
 	return i, nil
@@ -617,7 +611,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	// Create a new shipper for this database
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
+	if i.cfg.TSDBConfig.ShippingEnabled {
 		userDB.shipper = shipper.New(
 			util.Logger,
 			tsdbPromReg,
@@ -748,10 +742,10 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 	return float64(count)
 }
 
-func (i *Ingester) shipBlocksLoop() {
-	// It's important to add the shipper loop to the "done" wait group,
+func (i *Ingester) compactionAndShippingLoop() {
+	// It's important to add this loop to the "done" wait group,
 	// because the blocks transfer should start only once it's guaranteed
-	// there's no shipping on-going.
+	// there's no compaction or shipping on-going.
 	defer i.done.Done()
 
 	// Start a goroutine that will cancel all shipper contexts on ingester
@@ -767,13 +761,13 @@ func (i *Ingester) shipBlocksLoop() {
 		}
 	}()
 
-	shipTicker := time.NewTicker(i.cfg.TSDBConfig.ShipInterval)
-	defer shipTicker.Stop()
+	ticker := time.NewTicker(i.cfg.TSDBConfig.CompactionInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case <-shipTicker.C:
-			i.shipBlocks()
+		case <-ticker.C:
+			i.compactAndShipBlocks()
 
 		case <-i.quit:
 			return
@@ -781,22 +775,32 @@ func (i *Ingester) shipBlocksLoop() {
 	}
 }
 
-func (i *Ingester) shipBlocks() {
-	// Do not ship blocks if the ingester is PENDING or JOINING. It's
+func (i *Ingester) compactAndShipBlocks() {
+	// Do not compact or ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
 	// run the shipper in such state we could end up with race conditions.
 	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
-		level.Info(util.Logger).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
+		level.Info(util.Logger).Log("msg", "TSDB blocks compaction and shipping has been skipped because of the current ingester state", "state", ingesterState)
 		return
 	}
 
-	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
-	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.ShipConcurrency, func(userID string) {
-		// Get the user's DB. If the user doesn't exist, we skip it.
+	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.CompactionConcurrency, func(userID string) {
 		userDB := i.getTSDB(userID)
-		if userDB == nil || userDB.shipper == nil {
+		if userDB == nil {
+			return
+		}
+
+		err := userDB.Compact()
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
+			// Should we still ship in such case?
+		} else {
+			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
+		}
+
+		if userDB.shipper == nil {
+			// shipping disabled
 			return
 		}
 
@@ -810,45 +814,6 @@ func (i *Ingester) shipBlocks() {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
-		}
-	})
-}
-
-func (i *Ingester) compactionLoop() {
-	defer i.done.Done()
-
-	ticker := time.NewTicker(i.cfg.TSDBConfig.CompactionInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			i.compactBlocks()
-
-		case <-i.quit:
-			return
-		}
-	}
-}
-
-func (i *Ingester) compactBlocks() {
-	// Don't compact TSDB blocks while JOINING or LEAVING, as there may be ongoing blocks transfers.
-	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING || ingesterState == ring.LEAVING {
-		level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
-		return
-	}
-
-	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.CompactionConcurrency, func(userID string) {
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
-			return
-		}
-
-		err := userDB.Compact()
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
-		} else {
-			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
 		}
 	})
 }

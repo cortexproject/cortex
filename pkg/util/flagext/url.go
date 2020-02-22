@@ -33,3 +33,8 @@ func (v *URLValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	return v.Set(s)
 }
+
+// MarshalYAML implements yaml.Marshaler.
+func (v URLValue) MarshalYAML() (interface{}, error) {
+	return v.URL.String(), nil
+}

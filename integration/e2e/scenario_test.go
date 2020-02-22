@@ -123,7 +123,7 @@ func TestScenario(t *testing.T) {
 
 	require.Error(t, s.Stop(m1))
 	// Should be noop.
-	require.NoError(t, m1.Stop("e2e-scenario-test"))
+	require.NoError(t, m1.Stop())
 	// I can run closes as many times I want.
 	s.Close()
 	s.Close()

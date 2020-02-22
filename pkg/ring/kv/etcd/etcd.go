@@ -125,21 +125,35 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 // WatchKey implements kv.Client.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	watchChan := c.cli.Watch(ctx, key)
-	for resp := range watchChan {
-		if err := resp.Err(); err != nil {
-			level.Error(util.Logger).Log("msg", "watch chan error", "key", key, "err", err)
-		}
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 1 * time.Minute,
+	})
 
-		for _, event := range resp.Events {
-			out, err := c.codec.Decode(event.Kv.Value)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
-				continue
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
+	for backoff.Ongoing() {
+		for resp := range c.cli.Watch(watchCtx, key) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
 
-			if !f(out) {
-				return
+			backoff.Reset()
+
+			for _, event := range resp.Events {
+				out, err := c.codec.Decode(event.Kv.Value)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+					continue
+				}
+
+				if !f(out) {
+					return
+				}
 			}
 		}
 	}
@@ -151,13 +165,19 @@ func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, int
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
+
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
 	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key, clientv3.WithPrefix())
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+		for resp := range c.cli.Watch(watchCtx, key, clientv3.WithPrefix()) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
+
 			backoff.Reset()
 
 			for _, event := range resp.Events {

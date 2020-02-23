@@ -4,11 +4,12 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/weaveworks/common/httpgrpc"
 )
 
 // Handler is a http.Handler which accepts WriteRequests.

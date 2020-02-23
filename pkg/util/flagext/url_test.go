@@ -51,4 +51,24 @@ func TestURLValueYAML(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, testStruct, actualStruct)
 	}
+
+	// Test no url set in URLValue.
+	{
+		type TestStruct struct {
+			URL URLValue `yaml:"url"`
+		}
+
+		var testStruct TestStruct
+		expected := []byte(`url: ""
+`)
+
+		actual, err := yaml.Marshal(testStruct)
+		require.NoError(t, err)
+		assert.Equal(t, expected, actual)
+
+		var actualStruct TestStruct
+		err = yaml.Unmarshal(expected, &actualStruct)
+		require.NoError(t, err)
+		assert.Equal(t, testStruct, actualStruct)
+	}
 }

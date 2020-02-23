@@ -16,7 +16,7 @@ func TestDayValueYAML(t *testing.T) {
 		}
 
 		var testStruct TestStruct
-		testStruct.Day.Set("1985-06-02")
+		require.NoError(t, testStruct.Day.Set("1985-06-02"))
 		expected := []byte(`day: "1985-06-02"
 `)
 
@@ -38,7 +38,7 @@ func TestDayValueYAML(t *testing.T) {
 
 		var testStruct TestStruct
 		testStruct.Day = &DayValue{}
-		testStruct.Day.Set("1985-06-02")
+		require.NoError(t, testStruct.Day.Set("1985-06-02"))
 		expected := []byte(`day: "1985-06-02"
 `)
 

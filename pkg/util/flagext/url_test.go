@@ -16,7 +16,7 @@ func TestURLValueYAML(t *testing.T) {
 		}
 
 		var testStruct TestStruct
-		testStruct.URL.Set("http://google.com")
+		require.NoError(t, testStruct.URL.Set("http://google.com"))
 		expected := []byte(`url: http://google.com
 `)
 
@@ -38,7 +38,7 @@ func TestURLValueYAML(t *testing.T) {
 
 		var testStruct TestStruct
 		testStruct.URL = &URLValue{}
-		testStruct.URL.Set("http://google.com")
+		require.NoError(t, testStruct.URL.Set("http://google.com"))
 		expected := []byte(`url: http://google.com
 `)
 

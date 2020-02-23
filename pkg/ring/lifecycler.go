@@ -44,14 +44,14 @@ type LifecyclerConfig struct {
 
 	// Config for the ingester lifecycle control
 	ListenPort       *int          `yaml:"-"`
-	NumTokens        int           `yaml:"num_tokens,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
-	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
-	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
+	NumTokens        int           `yaml:"num_tokens"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	ObservePeriod    time.Duration `yaml:"observe_period"`
+	JoinAfter        time.Duration `yaml:"join_after"`
+	MinReadyDuration time.Duration `yaml:"min_ready_duration"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
+	TokensFilePath   string        `yaml:"tokens_file_path"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address" doc:"hidden"`

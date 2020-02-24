@@ -72,15 +72,10 @@ var webReload = make(chan chan error)
 
 func init() {
 	go func() {
-		for {
-			select {
-			// Since this is not a "normal" Alertmanager which reads its config
-			// from disk, we just ignore web-based reload signals. Config updates are
-			// only applied externally via ApplyConfig().
-			case <-webReload:
-			default:
-				continue
-			}
+		// Since this is not a "normal" Alertmanager which reads its config
+		// from disk, we just accept and ignore web-based reload signals. Config
+		// updates are only applied externally via ApplyConfig().
+		for range webReload {
 		}
 	}()
 }

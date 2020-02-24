@@ -129,7 +129,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.done.Add(1)
 	go i.updateLoop()
 
-	if i.cfg.TSDBConfig.CompactionConcurrency > 0 && i.cfg.TSDBConfig.CompactionInterval > 0 {
+	if i.cfg.TSDBConfig.HeadCompactionConcurrency > 0 && i.cfg.TSDBConfig.HeadCompactionInterval > 0 {
 		i.done.Add(1)
 		go i.compactionLoop()
 	}
@@ -817,7 +817,7 @@ func (i *Ingester) shipBlocks() {
 func (i *Ingester) compactionLoop() {
 	defer i.done.Done()
 
-	ticker := time.NewTicker(i.cfg.TSDBConfig.CompactionInterval)
+	ticker := time.NewTicker(i.cfg.TSDBConfig.HeadCompactionInterval)
 	defer ticker.Stop()
 
 	for {
@@ -838,7 +838,7 @@ func (i *Ingester) compactBlocks() {
 		return
 	}
 
-	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.CompactionConcurrency, func(userID string) {
+	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
 			return

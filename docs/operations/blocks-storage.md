@@ -124,12 +124,12 @@ tsdb:
   [ship_concurrency: <int> | default = 10]
 
   # How frequently are TSDB heads compacted.
-  # CLI flag: -experimental.tsdb.compaction-interval
-  [compaction_interval: <duration> | default = 2h]
+  # CLI flag: -experimental.tsdb.head-compaction-interval
+  [head_compaction_interval: <duration> | default = 2h]
 
   # Maximum number of tenants concurrently compacting TSDB head.
-  # CLI flag: -experimental.tsdb.compaction-concurrency
-  [compaction_concurrency: <int> | default = 5]
+  # CLI flag: -experimental.tsdb.head-compaction-concurrency
+  [head_compaction_concurrency: <int> | default = 5]
 
   # The bucket store configuration applies to queriers and configure how queriers
   # iteract with the long-term storage backend.

@@ -51,24 +51,24 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on invalid compaction interval": {
 			config: Config{
-				Backend:            "s3",
-				CompactionInterval: -1 * time.Minute,
+				Backend:                "s3",
+				HeadCompactionInterval: -1 * time.Minute,
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},
 		"should fail on invalid compaction concurrency": {
 			config: Config{
-				Backend:               "s3",
-				CompactionInterval:    time.Minute,
-				CompactionConcurrency: 0,
+				Backend:                   "s3",
+				HeadCompactionInterval:    time.Minute,
+				HeadCompactionConcurrency: 0,
 			},
 			expectedErr: errInvalidCompactionConcurrency,
 		},
 		"should pass on on valid compaction config": {
 			config: Config{
-				Backend:               "s3",
-				CompactionInterval:    time.Minute,
-				CompactionConcurrency: 10,
+				Backend:                   "s3",
+				HeadCompactionInterval:    time.Minute,
+				HeadCompactionConcurrency: 10,
 			},
 			expectedErr: nil,
 		},

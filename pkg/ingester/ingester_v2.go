@@ -145,10 +145,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.done.Add(1)
 	go i.updateLoop()
 
-	if i.cfg.TSDBConfig.HeadCompactionConcurrency > 0 && i.cfg.TSDBConfig.HeadCompactionInterval > 0 {
-		i.done.Add(1)
-		go i.compactionLoop()
-	}
+	i.done.Add(1)
+	go i.compactionLoop()
 
 	return i, nil
 }

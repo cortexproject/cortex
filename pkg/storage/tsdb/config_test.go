@@ -17,13 +17,17 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		"should pass on S3 backend": {
 			config: Config{
-				Backend: "s3",
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
 			},
 			expectedErr: nil,
 		},
 		"should pass on GCS backend": {
 			config: Config{
-				Backend: "gcs",
+				Backend:                   "gcs",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
 			},
 			expectedErr: nil,
 		},
@@ -43,16 +47,25 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should pass on invalid ship concurrency but shipping is disabled": {
 			config: Config{
-				Backend:         "s3",
-				ShipInterval:    0,
-				ShipConcurrency: 0,
+				Backend:                   "s3",
+				ShipInterval:              0,
+				ShipConcurrency:           0,
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
 			},
 			expectedErr: nil,
 		},
 		"should fail on invalid compaction interval": {
 			config: Config{
 				Backend:                "s3",
-				HeadCompactionInterval: -1 * time.Minute,
+				HeadCompactionInterval: 0 * time.Minute,
+			},
+			expectedErr: errInvalidCompactionInterval,
+		},
+		"should fail on too high compaction interval": {
+			config: Config{
+				Backend:                "s3",
+				HeadCompactionInterval: 10 * time.Minute,
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},

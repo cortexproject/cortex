@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	networkName            = "e2e-cortex-test"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	cortexSchemaConfigYaml = `configs:

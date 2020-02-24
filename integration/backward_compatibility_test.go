@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	networkName = "e2e-cortex-test"
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
 	previousVersionImage = "quay.io/cortexproject/cortex:v0.6.0"

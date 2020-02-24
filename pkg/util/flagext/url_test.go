@@ -71,4 +71,20 @@ func TestURLValueYAML(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, testStruct, actualStruct)
 	}
+
+	// Test passwords are masked.
+	{
+		type TestStruct struct {
+			URL URLValue `yaml:"url"`
+		}
+
+		var testStruct TestStruct
+		require.NoError(t, testStruct.URL.Set("http://username:password@google.com"))
+		expected := []byte(`url: http://username:%2A%2A%2A%2A%2A%2A%2A%2A@google.com
+`)
+
+		actual, err := yaml.Marshal(testStruct)
+		require.NoError(t, err)
+		assert.Equal(t, expected, actual)
+	}
 }

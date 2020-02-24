@@ -30,6 +30,7 @@
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
 * [FEATURE] Add ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
+* [FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. #2165
 * [ENHANCEMENT] Add `status` label to `cortex_alertmanager_configs` metric to gauge the number of valid and invalid configs. #2125
 * [ENHANCEMENT] Cassandra Authentication: added the `custom_authenticators` config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in [gocql](https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27) #2093
 * [ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with `cortex_compactor_`. #2023

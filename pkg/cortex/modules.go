@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -167,9 +168,28 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return m.Set(s)
 }
 
-func (t *Cortex) initServer(cfg *Config) (err error) {
+func (t *Cortex) initServer(cfg *Config) error {
+	var err error
 	t.server, err = server.New(cfg.Server)
-	return
+	if err != nil {
+		return err
+	}
+
+	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := yaml.Marshal(cfg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/yaml")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(out); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
+		}
+	})
+
+	return nil
 }
 
 func (t *Cortex) stopServer() (err error) {

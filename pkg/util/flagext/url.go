@@ -31,5 +31,21 @@ func (v *URLValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&s); err != nil {
 		return err
 	}
+
+	// An empty string means no URL has been configured.
+	if s == "" {
+		v.URL = nil
+		return nil
+	}
+
 	return v.Set(s)
+}
+
+// MarshalYAML implements yaml.Marshaler.
+func (v URLValue) MarshalYAML() (interface{}, error) {
+	if v.URL == nil {
+		return "", nil
+	}
+
+	return v.URL.String(), nil
 }

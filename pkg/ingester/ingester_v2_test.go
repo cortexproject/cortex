@@ -1016,10 +1016,10 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 	}
 }
 
-func TestIngester_compactAndShipBlocks(t *testing.T) {
+func TestIngester_shipBlocks(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.TSDBConfig.CompactionConcurrency = 2
+	cfg.TSDBConfig.ShipConcurrency = 2
 
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
@@ -1047,7 +1047,7 @@ func TestIngester_compactAndShipBlocks(t *testing.T) {
 	}
 
 	// Ship blocks and assert on the mocked shipper
-	i.compactAndShipBlocks()
+	i.shipBlocks()
 
 	for _, m := range mocks {
 		m.AssertNumberOfCalls(t, "Sync", 1)

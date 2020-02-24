@@ -33,6 +33,22 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errUnsupportedBackend,
 		},
+		"should fail on invalid ship concurrency": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    time.Minute,
+				ShipConcurrency: 0,
+			},
+			expectedErr: errInvalidShipConcurrency,
+		},
+		"should pass on invalid ship concurrency but shipping is disabled": {
+			config: Config{
+				Backend:         "s3",
+				ShipInterval:    0,
+				ShipConcurrency: 0,
+			},
+			expectedErr: nil,
+		},
 		"should fail on invalid compaction interval": {
 			config: Config{
 				Backend:            "s3",

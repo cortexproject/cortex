@@ -1,5 +1,6 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Configuration</title><link>/docs/configuration/</link><description>Recent content in Configuration on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/configuration/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Configuration file</title><link>/docs/configuration/configuration-file/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/configuration-file/</guid><description>
 &lt;p&gt;Cortex can be configured using a YAML file - specified using the &lt;code&gt;-config.file&lt;/code&gt; flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.&lt;/p&gt;
+&lt;p&gt;The current configuration of any Cortex component can be seen by visiting the &lt;code&gt;/config&lt;/code&gt; HTTP path.&lt;/p&gt;
 &lt;h2 id=&#34;reference&#34;&gt;Reference&lt;/h2&gt;
 &lt;p&gt;To specify which configuration file to load, pass the &lt;code&gt;-config.file&lt;/code&gt; flag at the command line. The file is written in &lt;a href=&#34;https://en.wikipedia.org/wiki/YAML&#34;&gt;YAML format&lt;/a&gt;, defined by the scheme below. Brackets indicate that a parameter is optional.&lt;/p&gt;
 &lt;h3 id=&#34;generic-placeholders&#34;&gt;Generic placeholders&lt;/h3&gt;

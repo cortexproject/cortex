@@ -278,6 +278,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;h3 id=&#34;migrating-from-the-chunks-to-the-blocks-storage&#34;&gt;Migrating from the chunks to the blocks storage&lt;/h3&gt;
 &lt;p&gt;Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.&lt;/p&gt;</description></item><item><title>Docs: Configuration file</title><link>/docs/configuration/configuration-file/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/configuration-file/</guid><description>
 &lt;p&gt;Cortex can be configured using a YAML file - specified using the &lt;code&gt;-config.file&lt;/code&gt; flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.&lt;/p&gt;
+&lt;p&gt;The current configuration of any Cortex component can be seen by visiting the &lt;code&gt;/config&lt;/code&gt; HTTP path.&lt;/p&gt;
 &lt;h2 id=&#34;reference&#34;&gt;Reference&lt;/h2&gt;
 &lt;p&gt;To specify which configuration file to load, pass the &lt;code&gt;-config.file&lt;/code&gt; flag at the command line. The file is written in &lt;a href=&#34;https://en.wikipedia.org/wiki/YAML&#34;&gt;YAML format&lt;/a&gt;, defined by the scheme below. Brackets indicate that a parameter is optional.&lt;/p&gt;
 &lt;h3 id=&#34;generic-placeholders&#34;&gt;Generic placeholders&lt;/h3&gt;
@@ -3799,6 +3800,7 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-config.expand-env&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2165&#34;&gt;#2165&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Add &lt;code&gt;status&lt;/code&gt; label to &lt;code&gt;cortex_alertmanager_configs&lt;/code&gt; metric to gauge the number of valid and invalid configs. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Cassandra Authentication: added the &lt;code&gt;custom_authenticators&lt;/code&gt; config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in &lt;a href=&#34;https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27&#34;&gt;gocql&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2093&#34;&gt;#2093&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with &lt;code&gt;cortex_compactor_&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2023&#34;&gt;#2023&lt;/a&gt;&lt;/li&gt;

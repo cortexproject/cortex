@@ -5,6 +5,8 @@ import (
 
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // NewRateLimiter creates a UnaryClientInterceptor for client side rate limiting.
@@ -17,7 +19,7 @@ func NewRateLimiter(cfg *Config) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		err := limiter.Wait(ctx)
 		if err != nil {
-			return err
+			return status.Error(codes.ResourceExhausted, err.Error())
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}

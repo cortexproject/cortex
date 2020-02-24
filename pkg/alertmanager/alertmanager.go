@@ -78,8 +78,6 @@ func init() {
 			// from disk, we just ignore web-based reload signals. Config updates are
 			// only applied externally via ApplyConfig().
 			case <-webReload:
-			default:
-				continue
 			}
 		}
 	}()

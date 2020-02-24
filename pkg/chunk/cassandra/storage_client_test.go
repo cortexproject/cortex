@@ -3,6 +3,7 @@ package cassandra
 import (
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gocql/gocql"
@@ -26,7 +27,7 @@ func TestConfig_setClusterConfig_authWithPassword(t *testing.T) {
 	cfg := Config{
 		Auth:     true,
 		Username: "user",
-		Password: "pass",
+		Password: flagext.Secret{Value: "pass"},
 	}
 	require.NoError(t, cfg.Validate())
 
@@ -73,7 +74,7 @@ func TestConfig_setClusterConfig_authWithPasswordAndPasswordFile(t *testing.T) {
 	cfg := Config{
 		Auth:         true,
 		Username:     "user",
-		Password:     "pass",
+		Password:     flagext.Secret{Value: "pass"},
 		PasswordFile: "testdata/password-with-trailing-newline.txt",
 	}
 	assert.Error(t, cfg.Validate())

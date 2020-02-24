@@ -101,6 +101,7 @@ const cacheLineSize = 64
 type indexShard struct {
 	mtx sync.RWMutex
 	idx unlockIndex
+	//nolint:structcheck,unused
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(unlockIndex{})]byte
 }
 
@@ -266,12 +267,6 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 	}
 	return result
 }
-
-type fingerprints []model.Fingerprint
-
-func (a fingerprints) Len() int           { return len(a) }
-func (a fingerprints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a fingerprints) Less(i, j int) bool { return a[i] < a[j] }
 
 func mergeStringSlices(ss [][]string) []string {
 	switch len(ss) {

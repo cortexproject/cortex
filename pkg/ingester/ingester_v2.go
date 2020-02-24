@@ -520,7 +520,7 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 func (i *Ingester) getTSDB(userID string) *userTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	db, _ := i.TSDBState.dbs[userID]
+	db := i.TSDBState.dbs[userID]
 	return db
 }
 

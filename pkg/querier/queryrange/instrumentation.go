@@ -34,7 +34,7 @@ func InstrumentMiddleware(name string) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
 			var resp Response
-			err := instrument.TimeRequestHistogram(ctx, name, queryRangeDuration, func(ctx context.Context) error {
+			err := instrument.CollectedRequest(ctx, name, instrument.NewHistogramCollector(queryRangeDuration), instrument.ErrorCode, func(ctx context.Context) error {
 				var err error
 				resp, err = next.Do(ctx, req)
 				return err

@@ -207,7 +207,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
+	if time.Since(i.startTime) < i.cfg.MinReadyDuration {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
@@ -422,7 +422,10 @@ loop:
 	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(context.Background(), LEAVING)
+	err := i.changeState(context.Background(), LEAVING)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.

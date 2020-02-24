@@ -78,6 +78,8 @@ func init() {
 			// from disk, we just ignore web-based reload signals. Config updates are
 			// only applied externally via ApplyConfig().
 			case <-webReload:
+			default:
+				continue
 			}
 		}
 	}()
@@ -176,7 +178,7 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
+	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
 			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)

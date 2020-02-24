@@ -196,6 +196,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
+	assert.NoError(t, err)
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)

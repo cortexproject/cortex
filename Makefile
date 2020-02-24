@@ -122,7 +122,7 @@ protos: $(PROTO_GOS)
 
 lint:
 	misspell -error docs
-	golangci-lint run --new-from-rev ed7c302fd968 --build-tags netgo --timeout=5m --enable golint --enable misspell --enable gofmt
+	golangci-lint run --build-tags netgo --timeout=5m --enable golint --enable misspell --enable gofmt
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev

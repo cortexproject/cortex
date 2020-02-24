@@ -52,5 +52,6 @@ func main() {
 	}))
 
 	prometheus.MustRegister(runner)
-	server.Run()
+	err = server.Run()
+	util.CheckFatal("running server", err)
 }

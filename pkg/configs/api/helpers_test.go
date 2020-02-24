@@ -51,7 +51,8 @@ func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.R
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
 	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
-	user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+	err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+	require.NoError(t, err)
 	app.ServeHTTP(w, r)
 	return w
 }

@@ -125,7 +125,7 @@ tsdb:
 
   # How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range.
   # CLI flag: -experimental.tsdb.head-compaction-interval
-  [head_compaction_interval: <duration> | default = 2h]
+  [head_compaction_interval: <duration> | default = 5m]
 
   # Maximum number of tenants concurrently compacting TSDB head.
   # CLI flag: -experimental.tsdb.head-compaction-concurrency

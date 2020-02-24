@@ -118,10 +118,12 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 type tsdbMetrics struct {
 	// We aggregate metrics from individual TSDB registries into
 	// a single set of counters, which are exposed as Cortex metrics.
-	dirSyncs        *prometheus.Desc // sum(thanos_shipper_dir_syncs_total)
-	dirSyncFailures *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
-	uploads         *prometheus.Desc // sum(thanos_shipper_uploads_total)
-	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
+	dirSyncs             *prometheus.Desc // sum(thanos_shipper_dir_syncs_total)
+	dirSyncFailures      *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
+	uploads              *prometheus.Desc // sum(thanos_shipper_uploads_total)
+	uploadFailures       *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
+	compactionsTriggered *prometheus.Desc // sum(prometheus_tsdb_compactions_triggered_total)
+	compactionsFailed    *prometheus.Desc // sum(prometheus_tsdb_compactions_failed_total)
 
 	// These two metrics replace metrics in ingesterMetrics, as we count them differently
 	memSeriesCreatedTotal *prometheus.Desc
@@ -151,6 +153,14 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_shipper_upload_failures_total",
 			"TSDB: Total number of failed object uploads",
 			nil, nil),
+		compactionsTriggered: prometheus.NewDesc(
+			"cortex_ingester_tsdb_compactions_triggered_total",
+			"Total number of triggered compactions for the partition.",
+			nil, nil),
+		compactionsFailed: prometheus.NewDesc(
+			"cortex_ingester_tsdb_compactions_failed_total",
+			"Total number of compactions that failed for the partition.",
+			nil, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
 		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
@@ -169,6 +179,8 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.uploadFailures
 	out <- sm.memSeriesCreatedTotal
 	out <- sm.memSeriesRemovedTotal
+	out <- sm.compactionsTriggered
+	out <- sm.compactionsFailed
 }
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
@@ -182,6 +194,9 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfCountersPerUser(out, sm.memSeriesCreatedTotal, "prometheus_tsdb_head_series_created_total")
 	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")
+
+	data.SendSumOfCounters(out, sm.compactionsTriggered, "prometheus_tsdb_compactions_triggered_total")
+	data.SendSumOfCounters(out, sm.compactionsFailed, "prometheus_tsdb_compactions_failed_total")
 }
 
 // make a copy of the map, so that metrics can be gathered while the new registry is being added.

@@ -31,7 +31,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	// Get config from /config API endpoint.
 	res, err := e2e.GetRequest(fmt.Sprintf("http://%s/config", cortex1.Endpoint(9009)))
 	require.NoError(t, err)
-	
+
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "config API response")
 	body, err := ioutil.ReadAll(res.Body)
 	require.NoError(t, err)

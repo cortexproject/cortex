@@ -123,7 +123,7 @@ tsdb:
   # CLI flag: -experimental.tsdb.ship-concurrency
   [ship_concurrency: <int> | default = 10]
 
-  # How frequently are TSDB heads compacted.
+  # How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range.
   # CLI flag: -experimental.tsdb.head-compaction-interval
   [head_compaction_interval: <duration> | default = 2h]
 

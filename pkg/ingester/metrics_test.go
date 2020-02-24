@@ -52,14 +52,6 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_memory_series_removed_total{user="user1"} 74070
 			cortex_ingester_memory_series_removed_total{user="user2"} 514722
 			cortex_ingester_memory_series_removed_total{user="user3"} 5994
-
-			# HELP cortex_ingester_tsdb_compactions_triggered_total Total number of triggered compactions for the partition.
-			# TYPE cortex_ingester_tsdb_compactions_triggered_total counter
- 			cortex_ingester_tsdb_compactions_triggered_total 693917
-			
-			# HELP cortex_ingester_tsdb_compactions_failed_total Total number of compactions that failed for the partition.
-			# TYPE cortex_ingester_tsdb_compactions_failed_total counter
-			cortex_ingester_tsdb_compactions_failed_total 793048
 	`))
 	require.NoError(t, err)
 }
@@ -103,23 +95,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	})
 	seriesRemoved.Add(6 * base)
 
-	compactionsTriggered := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "prometheus_tsdb_compactions_triggered_total",
-	})
-	compactionsTriggered.Add(7 * base)
-
-	compactionsFailed := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "prometheus_tsdb_compactions_failed_total",
-	})
-	compactionsFailed.Add(8 * base)
-
 	r.MustRegister(dirSyncs)
 	r.MustRegister(dirSyncFailures)
 	r.MustRegister(uploads)
 	r.MustRegister(uploadFailures)
 	r.MustRegister(seriesCreated)
 	r.MustRegister(seriesRemoved)
-	r.MustRegister(compactionsTriggered, compactionsFailed)
 
 	return r
 }

@@ -65,6 +65,10 @@ type TSDBState struct {
 	transferOnce sync.Once
 
 	tsdbMetrics *tsdbMetrics
+
+	// Head compactions metrics.
+	compactionsTriggered prometheus.Counter
+	compactionsFailed    prometheus.Counter
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -90,6 +94,16 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
 			tsdbMetrics: newTSDBMetrics(registerer),
+
+			compactionsTriggered: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "cortex_ingester_tsdb_compactions_triggered_total",
+				Help: "Total number of triggered compactions.",
+			}),
+
+			compactionsFailed: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "cortex_ingester_tsdb_compactions_failed_total",
+				Help: "Total number of compactions that failed.",
+			}),
 		},
 	}
 
@@ -101,6 +115,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			Name: "cortex_ingester_memory_series",
 			Help: "The current number of series in memory.",
 		}, i.numSeriesInTSDB))
+		registerer.MustRegister(i.TSDBState.compactionsTriggered)
+		registerer.MustRegister(i.TSDBState.compactionsFailed)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
@@ -844,8 +860,10 @@ func (i *Ingester) compactBlocks() {
 			return
 		}
 
+		i.TSDBState.compactionsTriggered.Inc()
 		err := userDB.Compact()
 		if err != nil {
+			i.TSDBState.compactionsFailed.Inc()
 			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
 		} else {
 			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)

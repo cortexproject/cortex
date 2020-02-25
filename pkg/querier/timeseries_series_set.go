@@ -14,6 +14,28 @@ type timeSeriesSeriesSet struct {
 	i  int
 }
 
+func newTimeSeriesSeriesSet(series []client.TimeSeries) *timeSeriesSeriesSet {
+	sort.Sort(byTimeSeriesLabels(series))
+	return &timeSeriesSeriesSet{
+		ts: series,
+		i:  -1,
+	}
+}
+
+// Next implements SeriesSet interface
+func (t *timeSeriesSeriesSet) Next() bool { t.i++; return t.i < len(t.ts) }
+
+// At implements SeriesSet interface
+func (t *timeSeriesSeriesSet) At() storage.Series {
+	if t.i < 0 {
+		return nil
+	}
+	return &Timeseries{series: t.ts[t.i]}
+}
+
+// Err implements SeriesSet interface
+func (t *timeSeriesSeriesSet) Err() error { return nil }
+
 // Timeseries is a type wrapper that implements the storage.Series interface
 type Timeseries struct {
 	series client.TimeSeries
@@ -33,24 +55,8 @@ func (b byTimeSeriesLabels) Less(i, j int) bool {
 	return labels.Compare(client.FromLabelAdaptersToLabels(b[i].Labels), client.FromLabelAdaptersToLabels(b[j].Labels)) < 0
 }
 
-func newTimeSeriesSeriesSet(series []client.TimeSeries) *timeSeriesSeriesSet {
-	sort.Sort(byTimeSeriesLabels(series))
-	return &timeSeriesSeriesSet{
-		ts: series,
-		i:  -1,
-	}
-}
-
-// Next implements SeriesSet interface
-func (t *timeSeriesSeriesSet) Next() bool { t.i++; return t.i < len(t.ts) }
-
-// At implements SeriesSet interface
-func (t *timeSeriesSeriesSet) At() storage.Series { return &Timeseries{series: t.ts[t.i]} }
-
-// Err implements SeriesSet interface
-func (t *timeSeriesSeriesSet) Err() error { return nil }
-
-// Labels implements the storage.Series interface
+// Labels implements the storage.Series interface.
+// Conversion is safe because ingester sets these by calling client.FromLabelsToLabelAdapters which guarantees labels are sorted.
 func (t *Timeseries) Labels() labels.Labels {
 	return client.FromLabelAdaptersToLabels(t.series.Labels)
 }
@@ -79,6 +85,9 @@ func (t *TimeSeriesSeriesIterator) Seek(s int64) bool {
 
 // At implements the SeriesIterator interface
 func (t *TimeSeriesSeriesIterator) At() (int64, float64) {
+	if t.i < 0 {
+		return 0, 0
+	}
 	return t.ts.series.Samples[t.i].TimestampMs, t.ts.series.Samples[t.i].Value
 }
 

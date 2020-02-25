@@ -9,7 +9,7 @@ import (
 )
 
 func TestSecretdYAML(t *testing.T) {
-	// Test embedding of Password.
+	// Test embedding of Secret.
 	{
 		type TestStruct struct {
 			Secret Secret `yaml:"secret"`
@@ -25,14 +25,14 @@ func TestSecretdYAML(t *testing.T) {
 		assert.Equal(t, expected, actual)
 
 		var actualStruct TestStruct
-		yamlPassword := []byte(`secret: pa55w0rd
+		yamlSecret := []byte(`secret: pa55w0rd
 `)
-		err = yaml.Unmarshal(yamlPassword, &actualStruct)
+		err = yaml.Unmarshal(yamlSecret, &actualStruct)
 		require.NoError(t, err)
 		assert.Equal(t, testStruct, actualStruct)
 	}
 
-	// Test pointers of Password.
+	// Test pointers of Secret.
 	{
 		type TestStruct struct {
 			Secret *Secret `yaml:"secret"`
@@ -56,7 +56,7 @@ func TestSecretdYAML(t *testing.T) {
 		assert.Equal(t, testStruct, actualStruct)
 	}
 
-	// Test no url set in Password.
+	// Test no value set in Secret.
 	{
 		type TestStruct struct {
 			Secret Secret `yaml:"secret"`

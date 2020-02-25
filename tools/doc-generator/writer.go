@@ -123,7 +123,7 @@ func (w *markdownWriter) writeConfigDoc(blocks []*configBlock) {
 func (w *markdownWriter) writeConfigBlock(block *configBlock) {
 	// Title
 	if block.name != "" {
-		w.out.WriteString("## `" + block.name + "`\n")
+		w.out.WriteString("### `" + block.name + "`\n")
 		w.out.WriteString("\n")
 	}
 

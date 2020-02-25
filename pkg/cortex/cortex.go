@@ -77,8 +77,8 @@ type Config struct {
 	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb" doc:"hidden"`
-	Compactor      compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
+	TSDB           tsdb.Config              `yaml:"tsdb"`
+	Compactor      compactor.Config         `yaml:"compactor,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`

@@ -33,24 +33,24 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex2, cortex3))
 
 	// All three Cortex serves should see each other.
-	require.NoError(t, cortex1.WaitSumMetric("memberlist_client_cluster_members_count", 3))
-	require.NoError(t, cortex2.WaitSumMetric("memberlist_client_cluster_members_count", 3))
-	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 3))
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(3), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(3), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(3), "memberlist_client_cluster_members_count"))
 
 	// All Cortex servers should have 512 tokens, altogether 3 * 512.
-	require.NoError(t, cortex1.WaitSumMetric("cortex_ring_tokens_total", 3*512))
-	require.NoError(t, cortex2.WaitSumMetric("cortex_ring_tokens_total", 3*512))
-	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 3*512))
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(3*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(3*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(3*512), "cortex_ring_tokens_total"))
 
 	require.NoError(t, s.Stop(cortex1))
-	require.NoError(t, cortex2.WaitSumMetric("cortex_ring_tokens_total", 2*512))
-	require.NoError(t, cortex2.WaitSumMetric("memberlist_client_cluster_members_count", 2))
-	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 2*512))
-	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 2))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
 
 	require.NoError(t, s.Stop(cortex2))
-	require.NoError(t, cortex3.WaitSumMetric("cortex_ring_tokens_total", 1*512))
-	require.NoError(t, cortex3.WaitSumMetric("memberlist_client_cluster_members_count", 1))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1), "memberlist_client_cluster_members_count"))
 
 	require.NoError(t, s.Stop(cortex3))
 }

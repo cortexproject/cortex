@@ -79,6 +79,7 @@ func (us *userStates) cp() map[string]*userState {
 	return states
 }
 
+//nolint:unused
 func (us *userStates) gc() {
 	us.states.Range(func(key, value interface{}) bool {
 		state := value.(*userState)

@@ -272,7 +272,7 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 			sp := ot.GlobalTracer().StartSpan("notify", ot.Tag{Key: "organization", Value: userID})
 			defer sp.Finish()
 			ctx = ot.ContextWithSpan(ctx, sp)
-			ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
+			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
 	}, util.Logger)

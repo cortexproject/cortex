@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -37,7 +36,8 @@ const (
 
 func TestFrontend(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello World"))
+		_, err := w.Write([]byte("Hello World"))
+		require.NoError(t, err)
 	})
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
@@ -71,7 +71,8 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 		observedTraceID <- traceID
 
-		w.Write([]byte(responseBody))
+		_, err = w.Write([]byte(responseBody))
+		require.NoError(t, err)
 	}))
 
 	test := func(addr string) {
@@ -154,14 +155,6 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
-func defaultOverrides(t *testing.T) *validation.Overrides {
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
-	return overrides
-}
-
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	logger := log.NewNopLogger()
 
@@ -197,10 +190,10 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 			middleware.Tracer{},
 		).Wrap(frontend.Handler()),
 	}
-	defer httpServer.Shutdown(context.Background())
+	defer httpServer.Shutdown(context.Background()) //nolint:errcheck
 
-	go httpServer.Serve(httpListen)
-	go grpcServer.Serve(grpcListen)
+	go httpServer.Serve(httpListen) //nolint:errcheck
+	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	worker, err := NewWorker(workerConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)

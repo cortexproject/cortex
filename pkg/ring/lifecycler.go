@@ -44,14 +44,14 @@ type LifecyclerConfig struct {
 
 	// Config for the ingester lifecycle control
 	ListenPort       *int          `yaml:"-"`
-	NumTokens        int           `yaml:"num_tokens,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
-	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
-	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
+	NumTokens        int           `yaml:"num_tokens"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	ObservePeriod    time.Duration `yaml:"observe_period"`
+	JoinAfter        time.Duration `yaml:"join_after"`
+	MinReadyDuration time.Duration `yaml:"min_ready_duration"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
+	TokensFilePath   string        `yaml:"tokens_file_path"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address" doc:"hidden"`
@@ -207,7 +207,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
+	if time.Since(i.startTime) < i.cfg.MinReadyDuration {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
@@ -422,7 +422,10 @@ loop:
 	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(context.Background(), LEAVING)
+	err := i.changeState(context.Background(), LEAVING)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.

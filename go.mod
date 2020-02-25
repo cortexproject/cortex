@@ -52,8 +52,8 @@ require (
 	github.com/prometheus/alertmanager v0.19.0
 	github.com/prometheus/client_golang v1.2.1
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
-	github.com/prometheus/common v0.7.0
-	github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
+	github.com/prometheus/common v0.8.0
+	github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
@@ -71,7 +71,7 @@ require (
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
-	gopkg.in/yaml.v2 v2.2.5
+	gopkg.in/yaml.v2 v2.2.7
 	sigs.k8s.io/yaml v1.1.0
 )
 

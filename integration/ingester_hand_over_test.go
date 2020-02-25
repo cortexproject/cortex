@@ -32,7 +32,7 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 
 		// Wait until the first table-manager sync has completed, so that we're
 		// sure the tables have been created.
-		require.NoError(t, tableManager.WaitSumMetric("cortex_dynamo_sync_tables_seconds", 1))
+		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
 	})
 }
 
@@ -47,14 +47,14 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	setup(t, s)
 
 	// Start Cortex components.
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
 
 	// Wait until both the distributor and querier have updated the ring.
-	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
-	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
 	// Start ingester-2.
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(networkName), mergeFlags(flags, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	require.NoError(t, s.Start(ingester2))

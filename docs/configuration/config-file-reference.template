@@ -7,6 +7,8 @@ slug: configuration-file
 
 Cortex can be configured using a YAML file - specified using the `-config.file` flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.
 
+The current configuration of any Cortex component can be seen by visiting the `/config` HTTP path.
+
 ## Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below. Brackets indicate that a parameter is optional.

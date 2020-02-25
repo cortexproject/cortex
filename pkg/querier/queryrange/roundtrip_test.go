@@ -53,11 +53,10 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		chunk.SchemaConfig{},
 		promql.EngineOpts{
-			Logger:        util.Logger,
-			Reg:           nil,
-			MaxConcurrent: 10,
-			MaxSamples:    1000,
-			Timeout:       time.Minute,
+			Logger:     util.Logger,
+			Reg:        nil,
+			MaxSamples: 1000,
+			Timeout:    time.Minute,
 		},
 		0,
 	)

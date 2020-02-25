@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -50,15 +52,20 @@ func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, ste
 }
 
 func runRangeQuery(t testing.TB, query string, from, through time.Time, step time.Duration, store chunkstore.ChunkStore) {
+	dir, err := ioutil.TempDir("", t.Name())
+	testutil.Ok(t, err)
+	defer os.RemoveAll(dir)
+	queryTracker := promql.NewActiveQueryTracker(dir, 1, util.Logger)
+
 	if len(query) == 0 || store == nil {
 		return
 	}
 	queryable := newChunkStoreQueryable(store, batch.NewChunkMergeIterator)
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		MaxConcurrent: 1,
-		MaxSamples:    math.MaxInt32,
-		Timeout:       10 * time.Minute,
+		Logger:             util.Logger,
+		ActiveQueryTracker: queryTracker,
+		MaxSamples:         math.MaxInt32,
+		Timeout:            10 * time.Minute,
 	})
 	rangeQuery, err := engine.NewRangeQuery(queryable, query, from, through, step)
 	require.NoError(t, err)

@@ -9,8 +9,6 @@ type nonOverlappingIterator struct {
 	curr   int
 	chunks []chunk.Chunk
 	iter   chunkIterator
-	input  batchStream
-	output batchStream
 }
 
 // newNonOverlappingIterator returns a single iterator over an slice of sorted,

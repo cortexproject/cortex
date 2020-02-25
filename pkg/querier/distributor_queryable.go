@@ -47,7 +47,7 @@ type distributorQuerier struct {
 	chunkIterFn chunkIteratorFunc
 }
 
-func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
@@ -69,7 +69,12 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
+	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
 	return series.MatrixToSeriesSet(matrix), nil, nil
+}
+
+func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

@@ -38,6 +38,12 @@ type Config struct {
 	// step if not specified.
 	DefaultEvaluationInterval time.Duration
 
+	// Directory for ActiveQueryTracker. If empty, ActiveQueryTracker will be disabled and MaxConcurrent will not be applied (!).
+	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.
+	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
+	// engine.
+	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
+
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`
 }
@@ -60,6 +66,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
+	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -107,13 +114,23 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) 
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		Reg:           cfg.metricsRegisterer,
-		MaxConcurrent: cfg.MaxConcurrent,
-		MaxSamples:    cfg.MaxSamples,
-		Timeout:       cfg.Timeout,
+		Logger:             util.Logger,
+		Reg:                cfg.metricsRegisterer,
+		ActiveQueryTracker: createActiveQueryTracker(cfg),
+		MaxSamples:         cfg.MaxSamples,
+		Timeout:            cfg.Timeout,
 	})
 	return lazyQueryable, engine
+}
+
+func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+	dir := cfg.ActiveQueryTrackerDir
+
+	if dir != "" {
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
+	}
+
+	return nil
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -165,8 +182,8 @@ type querier struct {
 	mint, maxt  int64
 }
 
-// Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// SelectSorted implements storage.Querier.
+func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
@@ -206,7 +223,13 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 
 	// we have all the sets from different sources (chunk from store, chunks from ingesters,
 	// time series from store and time series from ingesters).
+	// mergeSeriesSets will return sorted set.
 	return q.mergeSeriesSets(result), nil, nil
+}
+
+// Select implements storage.Querier.
+func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 // LabelsValue implements storage.Querier.

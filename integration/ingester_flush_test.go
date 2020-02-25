@@ -31,20 +31,20 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorage, "")
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(networkName), mergeFlags(ChunksStorage, map[string]string{
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorage, map[string]string{
 		"-ingester.max-transfer-retries": "0",
 	}), "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), ChunksStorage, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorage, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorage, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1, tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
 	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetric("cortex_dynamo_sync_tables_seconds", 1))
+	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
 
 	// Wait until both the distributor and querier have updated the ring.
-	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
-	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)

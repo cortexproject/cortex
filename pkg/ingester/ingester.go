@@ -158,7 +158,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		limits:       limits,
 		chunkStore:   chunkStore,
 		quit:         make(chan struct{}),
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 	}
 
 	var err error

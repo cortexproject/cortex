@@ -78,6 +78,10 @@ func (b *blocksQuerier) addUserToContext(ctx context.Context) context.Context {
 }
 
 func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return b.SelectSorted(sp, matchers...)
+}
+
+func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()
 

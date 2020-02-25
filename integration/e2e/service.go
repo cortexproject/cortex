@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
@@ -26,6 +27,9 @@ var (
 
 // ConcreteService represents microservice with optional ports which will be discoverable from docker
 // with <name>:<port>. For connecting from test, use `Endpoint` method.
+//
+// ConcreteService can be reused (started and stopped many time), but it can represent only one running container
+// at the time.
 type ConcreteService struct {
 	name         string
 	image        string
@@ -41,7 +45,9 @@ type ConcreteService struct {
 	// Generic retry backoff.
 	retryBackoff *util.Backoff
 
-	stopped bool
+	// docker NetworkName used to start this container.
+	// If empty it means service is stopped.
+	usedNetworkName string
 }
 
 func NewConcreteService(
@@ -63,8 +69,11 @@ func NewConcreteService(
 			MaxBackoff: 600 * time.Millisecond,
 			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯
 		}),
-		stopped: true,
 	}
+}
+
+func (s *ConcreteService) isExpectedRunning() bool {
+	return s.usedNetworkName != ""
 }
 
 func (s *ConcreteService) Name() string { return s.name }
@@ -99,10 +108,10 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	if err = cmd.Start(); err != nil {
 		return err
 	}
-	s.stopped = false
+	s.usedNetworkName = networkName
 
 	// Wait until the container has been started.
-	if err = s.WaitStarted(networkName); err != nil {
+	if err = s.WaitStarted(); err != nil {
 		return err
 	}
 
@@ -111,11 +120,11 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		var out []byte
 		var localPort int
 
-		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(networkName), strconv.Itoa(containerPort))
+		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
 		if err != nil {
 			// Catch init errors.
-			if werr := s.WaitStarted(networkName); werr != nil {
-				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(networkName), err)
+			if werr := s.WaitStarted(); werr != nil {
+				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(), err)
 			}
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
 		}
@@ -132,44 +141,48 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		}
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
-	fmt.Println("Ports for container:", s.containerName(networkName), "Mapping:", s.networkPortsContainerToLocal)
+	fmt.Println("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 
-func (s *ConcreteService) Stop(networkName string) error {
-	if s.stopped {
+func (s *ConcreteService) Stop() error {
+	if !s.isExpectedRunning() {
 		return nil
 	}
 
 	fmt.Println("Stopping", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName(networkName)); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
-	s.stopped = true
+	s.usedNetworkName = ""
 
 	return nil
 }
 
-func (s *ConcreteService) Kill(networkName string) error {
-	if s.stopped {
+func (s *ConcreteService) Kill() error {
+	if !s.isExpectedRunning() {
 		return nil
 	}
 
 	fmt.Println("Killing", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName(networkName)); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
 		fmt.Println(string(out))
 		return err
 	}
-	s.stopped = true
+	s.usedNetworkName = ""
 
 	return nil
 }
 
+// Endpoint returns external (from host perspective) service endpoint (host:port) for given internal port.
+// External means that it will be accessible only from host, but not from docker containers.
+//
+// If your service is not running, this method returns incorrect `stopped` endpoint.
 func (s *ConcreteService) Endpoint(port int) string {
-	if s.stopped {
+	if !s.isExpectedRunning() {
 		return "stopped"
 	}
 
@@ -183,13 +196,31 @@ func (s *ConcreteService) Endpoint(port int) string {
 	return fmt.Sprintf("127.0.0.1:%d", localPort)
 }
 
-func (s *ConcreteService) NetworkEndpoint(networkName string, port int) string {
-	return fmt.Sprintf("%s:%d", s.containerName(networkName), port)
+// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
+// Internal means that it will be accessible only from docker containers within the network that this
+// service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
+// as well. Use `Endpoint` for host access.
+//
+// If your service is not running, use `NetworkEndpointFor` instead.
+func (s *ConcreteService) NetworkEndpoint(port int) string {
+	if s.usedNetworkName == "" {
+		return "stopped"
+	}
+	return s.NetworkEndpointFor(s.usedNetworkName, port)
+}
+
+// NetworkEndpointFor returns internal service endpoint (host:port) for given internal port and network.
+// Internal means that it will be accessible only from docker containers within the given network. If you configure
+// your local resolver with docker DNS namespace you can access it from host as well.
+//
+// This method return correct endpoint for the service in any state.
+func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) string {
+	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
 func (s *ConcreteService) Ready() error {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	// Ensure the service has a readiness probe configure.
@@ -206,17 +237,21 @@ func (s *ConcreteService) Ready() error {
 	return s.readiness.Ready(localPort)
 }
 
-func (s *ConcreteService) containerName(networkName string) string {
-	return fmt.Sprintf("%s-%s", networkName, s.name)
+func containerName(netName string, name string) string {
+	return fmt.Sprintf("%s-%s", netName, name)
 }
 
-func (s *ConcreteService) WaitStarted(networkName string) (err error) {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+func (s *ConcreteService) containerName() string {
+	return containerName(s.usedNetworkName, s.name)
+}
+
+func (s *ConcreteService) WaitStarted() (err error) {
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		err = exec.Command("docker", "inspect", s.containerName(networkName)).Run()
+		err = exec.Command("docker", "inspect", s.containerName()).Run()
 		if err == nil {
 			return nil
 		}
@@ -227,8 +262,8 @@ func (s *ConcreteService) WaitStarted(networkName string) (err error) {
 }
 
 func (s *ConcreteService) WaitReady() (err error) {
-	if s.stopped {
-		return fmt.Errorf("service %s stopped", s.Name())
+	if !s.isExpectedRunning() {
+		return fmt.Errorf("service %s is stopped", s.Name())
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
@@ -394,12 +429,89 @@ func (s *HTTPService) HTTPEndpoint() string {
 	return s.Endpoint(s.httpPort)
 }
 
-func (s *HTTPService) NetworkHTTPEndpoint(networkName string) string {
-	return s.NetworkEndpoint(networkName, s.httpPort)
+func (s *HTTPService) NetworkHTTPEndpoint() string {
+	return s.NetworkEndpoint(s.httpPort)
 }
 
-func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
-	lastValue := 0.0
+func (s *HTTPService) NetworkHTTPEndpointFor(networkName string) string {
+	return s.NetworkEndpointFor(networkName, s.httpPort)
+}
+
+func sumValues(family *io_prometheus_client.MetricFamily) float64 {
+	sum := 0.0
+	for _, m := range family.Metric {
+		if m.GetGauge() != nil {
+			sum += m.GetGauge().GetValue()
+		} else if m.GetCounter() != nil {
+			sum += m.GetCounter().GetValue()
+		} else if m.GetHistogram() != nil {
+			sum += m.GetHistogram().GetSampleSum()
+		} else if m.GetSummary() != nil {
+			sum += m.GetSummary().GetSampleSum()
+		}
+	}
+	return sum
+}
+
+func Equals(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("equals: expected one value")
+		}
+		return sums[0] == value || math.IsNaN(sums[0]) && math.IsNaN(value)
+	}
+}
+
+func Greater(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("greater: expected one value")
+		}
+		return sums[0] > value
+	}
+}
+
+func Less(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("less: expected one value")
+		}
+		return sums[0] < value
+	}
+}
+
+// EqualsAmongTwo returns true if first sum is equal to the second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func EqualsAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("equalsAmongTwo: expected two values")
+	}
+	return sums[0] == sums[1]
+}
+
+// GreaterAmongTwo returns true if first sum is greater than second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func GreaterAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("greaterAmongTwo: expected two values")
+	}
+	return sums[0] > sums[1]
+}
+
+// LessAmongTwo returns true if first sum is smaller than second.
+// NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
+// usually not atomic.
+func LessAmongTwo(sums ...float64) bool {
+	if len(sums) != 2 {
+		panic("lessAmongTwo: expected two values")
+	}
+	return sums[0] < sums[1]
+}
+
+func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
+	sums := make([]float64, len(metricNames))
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		metrics, err := s.metrics()
@@ -413,28 +525,22 @@ func (s *HTTPService) WaitSumMetric(metric string, value float64) error {
 			return err
 		}
 
-		sum := 0.0
-		// Check if the metric is exported.
-		mf, ok := families[metric]
-		if ok {
-			for _, m := range mf.Metric {
-				if m.GetGauge() != nil {
-					sum += m.GetGauge().GetValue()
-				} else if m.GetCounter() != nil {
-					sum += m.GetCounter().GetValue()
-				} else if m.GetHistogram() != nil {
-					sum += float64(m.GetHistogram().GetSampleCount())
-				}
+		for i, m := range metricNames {
+			sums[i] = 0.0
+
+			// Check if the metric is exported.
+			mf, ok := families[m]
+			if ok {
+				sums[i] = sumValues(mf)
 			}
 		}
 
-		if sum == value || math.IsNaN(sum) && math.IsNaN(value) {
+		if isExpected(sums...) {
 			return nil
 		}
-		lastValue = sum
 
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find a metric %s with value %v. LastValue: %v", metric, value, lastValue)
+	return fmt.Errorf("unable to find metrics %s with expected values. LastValues: %v", metricNames, sums)
 }

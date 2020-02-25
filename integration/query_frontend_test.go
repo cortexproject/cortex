@@ -35,7 +35,7 @@ func TestQueryFrontendWithChunksStorage(t *testing.T) {
 
 		// Wait until the first table-manager sync has completed, so that we're
 		// sure the tables have been created.
-		require.NoError(t, tableManager.WaitSumMetric("cortex_dynamo_sync_tables_seconds", 1))
+		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
 	})
 }
 
@@ -54,16 +54,20 @@ func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *t
 
 	// Start Cortex components.
 	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(networkName), mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkEndpoint(networkName, e2ecortex.GRPCPort),
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
+
+	// Start the querier after the query-frontend otherwise we're not
+	// able to get the query-frontend network endpoint.
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkEndpoint(e2ecortex.GRPCPort),
 	}), "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(networkName), flags, "")
-	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, querier, ingester))
+	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.
-	require.NoError(t, distributor.WaitSumMetric("cortex_ring_tokens_total", 512))
-	require.NoError(t, querier.WaitSumMetric("cortex_ring_tokens_total", 512))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	// Push a series for each user to Cortex.
 	now := time.Now()

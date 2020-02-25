@@ -74,14 +74,14 @@ func BenchmarkQueryStream(b *testing.B) {
 
 	l, err := net.Listen("tcp", "localhost:0")
 	require.NoError(b, err)
-	go server.Serve(l)
+	go server.Serve(l) //nolint:errcheck
 
 	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
 		b.Run("QueryStream", func(b *testing.B) {
 			c, err := client.MakeIngesterClient(l.Addr().String(), clientCfg)
 			require.NoError(b, err)
-			defer c.Close()
+			defer c.Close() //nolint:errcheck
 
 			s, err := c.QueryStream(ctx, &client.QueryRequest{
 				StartTimestampMs: 0,

@@ -16,6 +16,11 @@ var (
 	expectedLabels           = 20
 	expectedSamplesPerSeries = 10
 
+	/*
+		We cannot pool these as pointer-to-slice because the place we use them is in WriteRequest which is generated from Protobuf
+		and we don't have an option to make it a pointer. There is overhead here 24 bytes of garbage every time a PreallocTimeseries
+		is re-used. But since the slices are far far larger, we come out ahead.
+	*/
 	slicePool = sync.Pool{
 		New: func() interface{} {
 			return make([]PreallocTimeseries, 0, expectedTimeseries)
@@ -265,7 +270,7 @@ func ReuseSlice(slice []PreallocTimeseries) {
 	for i := range slice {
 		ReuseTimeseries(slice[i].TimeSeries)
 	}
-	slicePool.Put(slice[:0])
+	slicePool.Put(slice[:0]) //nolint:staticcheck //see comment on slicePool for more details
 }
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.

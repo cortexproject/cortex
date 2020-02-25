@@ -223,6 +223,11 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 	})
 }
 
+func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	// ToDo: implement this to support deleting index entries from Cassandra
+	panic("Cassandra does not support Deleting index entries yet")
+}
+
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	b := batch.(*writeBatch)
@@ -289,7 +294,6 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
-	consumed   bool
 	rangeValue []byte
 	value      []byte
 }
@@ -363,4 +367,9 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	}
 	err = input.Decode(decodeContext, buf)
 	return input, err
+}
+
+func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Cassandra
+	return chunk.ErrMethodNotImplemented
 }

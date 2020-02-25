@@ -161,13 +161,13 @@ func captureOutput(t *testing.T) *capturedOutput {
 	co.wg.Add(1)
 	go func() {
 		defer co.wg.Done()
-		_, _ = io.Copy(&co.stdoutBuf, stdoutR)
+		io.Copy(&co.stdoutBuf, stdoutR)
 	}()
 
 	co.wg.Add(1)
 	go func() {
 		defer co.wg.Done()
-		_, _ = io.Copy(&co.stderrBuf, stderrR)
+		io.Copy(&co.stderrBuf, stderrR)
 	}()
 
 	return co

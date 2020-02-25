@@ -7,6 +7,8 @@ slug: configuration-file
 
 Cortex can be configured using a YAML file - specified using the `-config.file` flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.
 
+The current configuration of any Cortex component can be seen by visiting the `/config` HTTP path.
+
 ## Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below. Brackets indicate that a parameter is optional.
@@ -569,6 +571,13 @@ The `querier_config` configures the Cortex querier.
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
 [defaultevaluationinterval: <duration> | default = 1m0s]
+
+# Active query tracker monitors active queries, and writes them to the file in
+# given directory. If Cortex discovers any queries in this log during startup,
+# it will log them to the log file. Setting to empty value disables active query
+# tracker, which also disables -querier.max-concurrent option.
+# CLI flag: -querier.active-query-tracker-dir
+[active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 ```
 
 ## `query_frontend_config`

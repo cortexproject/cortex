@@ -34,6 +34,7 @@ var (
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
+	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 )
 
 // Config holds the config information for TSDB storage
@@ -47,6 +48,7 @@ type Config struct {
 	BucketStore               BucketStoreConfig `yaml:"bucket_store"`
 	HeadCompactionInterval    time.Duration     `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int               `yaml:"head_compaction_concurrency"`
+	StripeSize                int               `yaml:"stripe_size"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -114,6 +116,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
 	f.DurationVar(&cfg.HeadCompactionInterval, "experimental.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "experimental.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
+	f.IntVar(&cfg.StripeSize, "experimental.tsdb.stripe-size", 16384, "Power of 2 to use for the number of shards of series to use in TSDB. Reducing this will decrease memory footprint, but can negatively impact performance.")
 }
 
 // Validate the config
@@ -132,6 +135,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.HeadCompactionConcurrency <= 0 {
 		return errInvalidCompactionConcurrency
+	}
+
+	if cfg.StripeSize <= 1 || (cfg.StripeSize&(cfg.StripeSize-1)) != 0 { // ensure stripe size is a positive power of 2
+		return errInvalidStripeSize
 	}
 
 	return nil

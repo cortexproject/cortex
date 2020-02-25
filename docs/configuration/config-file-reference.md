@@ -8,6 +8,7 @@ slug: configuration-file
 Cortex can be configured using a YAML file - specified using the `-config.file` flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.
 
 The current configuration of any Cortex component can be seen by visiting the `/config` HTTP path.
+Passwords are filtered out of this endpoint.
 
 ## Reference
 

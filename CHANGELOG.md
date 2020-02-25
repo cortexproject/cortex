@@ -23,6 +23,7 @@
 * [CHANGE] Renamed the cache configuration setting `defaul_validity` to `default_validity`. #2140
 * [CHANGE] Removed unused /validate_expr endpoint. #2152
 * [CHANGE] Updated Prometheus dependency to v2.16.0. This Prometheus version uses Active Query Tracker to limit concurrent queries. In order to keep `-querier.max-concurrent` working, Active Query Tracker is enabled by default, and is configured to store its data to `active-query-tracker` directory (relative to current directory when Cortex started). This can be changed by using `-querier.active-query-tracker-dir` option. Purpose of Active Query Tracker is to log queries that were running when Cortex crashes. This logging happens on next Cortex start. #2088
+* [CHANGE] Experimental TSDB: TSDB head compaction interval and concurrency is now configurable (defaults to 1 min interval and 5 concurrent head compactions). New options: `-experimental.tsdb.head-compaction-interval` and `-experimental.tsdb.head-compaction-concurrency`. #2172
 * [FEATURE] Added a read-only local alertmanager config store using files named corresponding to their tenant id. #2125
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`

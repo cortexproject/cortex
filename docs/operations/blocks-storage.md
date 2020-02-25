@@ -123,6 +123,15 @@ tsdb:
   # CLI flag: -experimental.tsdb.ship-concurrency
   [ship_concurrency: <int> | default = 10]
 
+  # How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range.
+  # Must be greater than 0 and max 5 minutes.
+  # CLI flag: -experimental.tsdb.head-compaction-interval
+  [head_compaction_interval: <duration> | default = 1m]
+
+  # Maximum number of tenants concurrently compacting TSDB head into a new block.
+  # CLI flag: -experimental.tsdb.head-compaction-concurrency
+  [head_compaction_concurrency: <int> | default = 5]
+
   # The bucket store configuration applies to queriers and configure how queriers
   # iteract with the long-term storage backend.
   bucket_store:

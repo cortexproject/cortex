@@ -30,19 +30,23 @@ const (
 
 // Validation errors
 var (
-	errUnsupportedBackend     = errors.New("unsupported TSDB storage backend")
-	errInvalidShipConcurrency = errors.New("invalid TSDB ship concurrency")
+	errUnsupportedBackend           = errors.New("unsupported TSDB storage backend")
+	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
+	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
+	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 )
 
 // Config holds the config information for TSDB storage
 type Config struct {
-	Dir             string            `yaml:"dir"`
-	BlockRanges     DurationList      `yaml:"block_ranges_period"`
-	Retention       time.Duration     `yaml:"retention_period"`
-	ShipInterval    time.Duration     `yaml:"ship_interval"`
-	ShipConcurrency int               `yaml:"ship_concurrency"`
-	Backend         string            `yaml:"backend"`
-	BucketStore     BucketStoreConfig `yaml:"bucket_store"`
+	Dir                       string            `yaml:"dir"`
+	BlockRanges               DurationList      `yaml:"block_ranges_period"`
+	Retention                 time.Duration     `yaml:"retention_period"`
+	ShipInterval              time.Duration     `yaml:"ship_interval"`
+	ShipConcurrency           int               `yaml:"ship_concurrency"`
+	Backend                   string            `yaml:"backend"`
+	BucketStore               BucketStoreConfig `yaml:"bucket_store"`
+	HeadCompactionInterval    time.Duration     `yaml:"head_compaction_interval"`
+	HeadCompactionConcurrency int               `yaml:"head_compaction_concurrency"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -108,6 +112,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ShipConcurrency, "experimental.tsdb.ship-concurrency", 10, "Maximum number of tenants concurrently shipping blocks to the storage.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")
 	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
+	f.DurationVar(&cfg.HeadCompactionInterval, "experimental.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
+	f.IntVar(&cfg.HeadCompactionConcurrency, "experimental.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
 }
 
 // Validate the config
@@ -118,6 +124,14 @@ func (cfg *Config) Validate() error {
 
 	if cfg.ShipInterval > 0 && cfg.ShipConcurrency <= 0 {
 		return errInvalidShipConcurrency
+	}
+
+	if cfg.HeadCompactionInterval <= 0 || cfg.HeadCompactionInterval > 5*time.Minute {
+		return errInvalidCompactionInterval
+	}
+
+	if cfg.HeadCompactionConcurrency <= 0 {
+		return errInvalidCompactionConcurrency
 	}
 
 	return nil

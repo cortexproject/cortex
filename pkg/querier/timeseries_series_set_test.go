@@ -3,8 +3,9 @@ package querier
 import (
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestTimeSeriesSeriesSet(t *testing.T) {

@@ -3,9 +3,10 @@ package querier
 import (
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 // timeSeriesSeriesSet is a wrapper around a client.TimeSeries slice to implement to SeriesSet interface

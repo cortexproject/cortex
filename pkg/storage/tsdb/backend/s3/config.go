@@ -21,5 +21,5 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, "experimental.tsdb.s3.secret-access-key", "S3 secret access key")
 	f.StringVar(&cfg.BucketName, "experimental.tsdb.s3.bucket-name", "", "S3 bucket name")
 	f.StringVar(&cfg.Endpoint, "experimental.tsdb.s3.endpoint", "", "S3 endpoint without schema")
-	f.BoolVar(&cfg.Insecure, "experimental.tsdb.s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://")
+	f.BoolVar(&cfg.Insecure, "experimental.tsdb.s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 }

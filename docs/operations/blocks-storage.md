@@ -197,7 +197,9 @@ tsdb:
     # CLI flag: -experimental.tsdb.s3.access-key-id
     [access_key_id: <string> | default = ""]
 
-    # If enabled, use http:// for the S3 endpoint instead of https://
+    # If enabled, use http:// for the S3 endpoint instead of https://. This
+    # could be useful in local dev/test environments while using an
+    # S3-compatible backend storage, like Minio.
     # CLI flag: -experimental.tsdb.s3.insecure
     [insecure: <boolean> | default = false]
 
@@ -240,8 +242,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 
 ```yaml
 compactor:
-  # Comma separated list of compaction ranges expressed in the time duration
-  # format
+  # List of compaction time ranges.
   # CLI flag: -compactor.block-ranges
   [block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
 

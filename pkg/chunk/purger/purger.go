@@ -104,18 +104,8 @@ func NewDataPurger(cfg DataPurgerConfig, deleteStore *chunk.DeleteStore, chunkSt
 	return &dataPurger, nil
 }
 
-// Run starts workers, job scheduler and a loop for feeding delete requests to them for processing
+// Run keeps pulling delete requests for planning
 func (dp *DataPurger) Run() {
-	dp.loop()
-}
-
-// Stop stops all background workers/loops
-func (dp *DataPurger) Stop() {
-	close(dp.quit)
-	dp.wg.Wait()
-}
-
-func (dp *DataPurger) loop() {
 	dp.wg.Add(1)
 	defer dp.wg.Done()
 
@@ -133,6 +123,12 @@ func (dp *DataPurger) loop() {
 			return
 		}
 	}
+}
+
+// Stop stops all background workers/loops
+func (dp *DataPurger) Stop() {
+	close(dp.quit)
+	dp.wg.Wait()
 }
 
 // we send all the delete plans to workerJobChan and then start checking for status on workerJobExecutionStatusChan

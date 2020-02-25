@@ -638,8 +638,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 		return
 	}
 
-	subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
-	adminRouter := subrouter.PathPrefix("/api/v1/admin/tsdb").Subrouter()
+	adminRouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix + "/api/v1/admin/tsdb").Subrouter()
 
 	adminRouter.Path("/delete_series").Methods("PUT", "POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
 	adminRouter.Path("/delete_series").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))

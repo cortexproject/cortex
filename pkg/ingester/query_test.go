@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -128,7 +129,7 @@ func TestTSDBQueryStream(t *testing.T) {
 	cfg1.TSDBConfig.S3 = s3.Config{
 		Endpoint:        "dummy",
 		BucketName:      "dummy",
-		SecretAccessKey: "dummy",
+		SecretAccessKey: flagext.Secret{Value: "dummy"},
 		AccessKeyID:     "dummy",
 	}
 	cfg1.LifecyclerConfig.ID = "ingester1"

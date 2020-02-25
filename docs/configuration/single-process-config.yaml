@@ -70,5 +70,5 @@ storage:
   delete_store:
     store: boltdb
 
-data_purger:
+purger:
   object_store_type: filesystem

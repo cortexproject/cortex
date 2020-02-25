@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
@@ -166,6 +167,11 @@ var (
 			name:       "compactor_config",
 			structType: reflect.TypeOf(compactor.Config{}),
 			desc:       "The compactor_config configures the compactor for the experimental blocks storage.",
+		},
+		{
+			name:       "purger_config",
+			structType: reflect.TypeOf(purger.DataPurgerConfig{}),
+			desc:       "The purger_config configures the purger which takes care of delete requests",
 		},
 	}
 )

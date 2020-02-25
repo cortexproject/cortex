@@ -80,7 +80,7 @@ type Config struct {
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB             tsdb.Config              `yaml:"tsdb"`
 	Compactor        compactor.Config         `yaml:"compactor,omitempty"`
-	DataPurgerConfig purger.DataPurgerConfig  `yaml:"data_purger,omitempty"`
+	DataPurgerConfig purger.DataPurgerConfig  `yaml:"purger,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`

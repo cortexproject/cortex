@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
@@ -111,7 +113,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), util.Logger)
 
 	var cfg configs.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	if err := yaml.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error decoding json body", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)

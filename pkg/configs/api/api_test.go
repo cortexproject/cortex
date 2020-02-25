@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -249,6 +250,8 @@ var amCfgValidationTests = []struct {
 }
 
 func Test_ValidateAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
@@ -271,6 +274,8 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 }
 
 func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		cfg := configs.Config{AlertmanagerConfig: test.config}
@@ -284,4 +289,21 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.Code, "test case %d", i)
 		assert.Contains(t, resp.Body.String(), test.errContains, "test case %d", i)
 	}
+}
+
+func Test_SetConfig_BodyFormat(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+	for _, format := range []string{"testdata/config.yml", "testdata/config.json"} {
+		testSetConfigBodyFormat(format, t)
+	}
+}
+
+func testSetConfigBodyFormat(format string, t *testing.T) {
+	userID := makeUserID()
+	file, err := os.Open(format)
+	require.NoError(t, err)
+	defer file.Close()
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", file)
+	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s", resp.Body.String())
 }

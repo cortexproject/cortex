@@ -31,7 +31,7 @@
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
 * [FEATURE] Added ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
-* [FEATURE] Added flags to disable Alertmanager notifications methods.
+* [FEATURE] Added flags to disable Alertmanager notifications methods. #2187
   * `-configs-api.notifications.disable-email`
   * `-configs-api.notifications.disable-pagerduty`
   * `-configs-api.notifications.disable-pushover`

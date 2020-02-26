@@ -108,6 +108,10 @@ Where default_value is the value to use if the environment variable is undefined
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
+# The configs_api_config configures the configs API used by the 'configs'
+# service to expose APIs to manage them.
+[configs_api: <configs_api_config>]
+
 # The configdb_config configures the config database storing rules and alerts,
 # and used by the 'configs' service to expose APIs to manage them.
 [configdb: <configdb_config>]
@@ -2073,6 +2077,45 @@ The `fifo_cache_config` configures the local in-memory cache.
 # The expiry duration for the cache.
 # CLI flag: -<prefix>.fifocache.duration
 [validity: <duration> | default = 0s]
+```
+
+## `configs_api_config`
+
+The `configs_api_config` configures the configs API used by the 'configs' service to expose APIs to manage them.
+
+```yaml
+notifications:
+  # Disable Email notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-email
+  [allow_email: <boolean> | default = false]
+
+  # Disable PagerDuty notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-pagerduty
+  [allow_pagerduty: <boolean> | default = false]
+
+  # Disable Pushover notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-pushover
+  [allow_pushover: <boolean> | default = false]
+
+  # Disable Slack notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-slack
+  [allow_slack: <boolean> | default = false]
+
+  # Disable OpsGenie notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-opsgenie
+  [allow_opsgenie: <boolean> | default = false]
+
+  # Disable WebHook notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-webhook
+  [allow_webhook: <boolean> | default = false]
+
+  # Disable VictorOps notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-victorops
+  [allow_victorops: <boolean> | default = false]
+
+  # Disable WeChat notifications for Alertmanager.
+  # CLI flag: -configs-api.notifications.disable-wechat
+  [allow_wechat: <boolean> | default = false]
 ```
 
 ## `configdb_config`

@@ -20,10 +20,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+// Config configures the configs API.
 type Config struct {
 	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
+// NotificationsConfig configures Alertmanager notifications method.
 type NotificationsConfig struct {
 	DisableEmail     bool `yaml:"allow_email"`
 	DisablePagerDuty bool `yaml:"allow_pagerduty"`

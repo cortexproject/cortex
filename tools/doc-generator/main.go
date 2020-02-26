@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/configs/api"
+
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -141,6 +143,11 @@ var (
 			name:       "fifo_cache_config",
 			structType: reflect.TypeOf(cache.FifoCacheConfig{}),
 			desc:       "The fifo_cache_config configures the local in-memory cache.",
+		},
+		{
+			name:       "configs_api_config",
+			structType: reflect.TypeOf(api.Config{}),
+			desc:       "The configs_api_config configures the configs API used by the 'configs' service to expose APIs to manage them.",
 		},
 		{
 			name:       "configdb_config",

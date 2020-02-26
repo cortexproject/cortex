@@ -124,7 +124,7 @@ tsdb:
   [backend: <string> | default = "s3"]
 
   bucket_store:
-    # Directory to store synched TSDB index headers.
+    # Directory to store synchronized TSDB index headers.
     # CLI flag: -experimental.tsdb.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 

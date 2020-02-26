@@ -244,7 +244,20 @@ var amCfgValidationTests = []struct {
           email_configs:
           - to: myteam@foobar.org`,
 		shouldFail:  true,
-		errContains: "email notifications are not supported in Cortex yet",
+		errContains: "email notifications are disabled in Cortex yet",
+	}, {
+		config: `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          slack_configs:
+          - api_url: http://slack`,
+		shouldFail: false,
 	},
 }
 

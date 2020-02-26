@@ -520,7 +520,7 @@ func (t *Cortex) initConfigs(cfg *Config) (err error) {
 		return
 	}
 
-	t.configAPI = api.New(t.configDB)
+	t.configAPI = api.New(t.configDB, cfg.ConfigsAPI)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
 	return
 }

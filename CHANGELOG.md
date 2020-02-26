@@ -29,8 +29,17 @@
   * `--experimental.distributor.user-subring-size`
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
-* [FEATURE] Add ability to override YAML config file settings using environment variables. #2147
+* [FEATURE] Added ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
+* [FEATURE] Added flags to disable Alertmanager notifications methods.
+  * `-configs-api.notifications.disable-email`
+  * `-configs-api.notifications.disable-pagerduty`
+  * `-configs-api.notifications.disable-pushover`
+  * `-configs-api.notifications.disable-slack`
+  * `-configs-api.notifications.disable-opsgenie`
+  * `-configs-api.notifications.disable-webhook`
+  * `-configs-api.notifications.disable-victorops`
+  * `-configs-api.notifications.disable-wechat`
 * [FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. #2165
 * [ENHANCEMENT] Add `status` label to `cortex_alertmanager_configs` metric to gauge the number of valid and invalid configs. #2125
 * [ENHANCEMENT] Cassandra Authentication: added the `custom_authenticators` config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in [gocql](https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27) #2093

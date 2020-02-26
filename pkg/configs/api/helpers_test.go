@@ -27,7 +27,11 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(database)
+	app = api.New(database, api.Config{
+		Notifications: api.NotificationsConfig{
+			DisableEmail: true,
+		},
+	})
 	counter = 0
 }
 

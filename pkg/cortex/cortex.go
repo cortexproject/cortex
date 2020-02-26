@@ -81,6 +81,7 @@ type Config struct {
 	Compactor      compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigsAPI    api.Config                                 `yaml:"configs_api,omitempty"`
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
@@ -116,6 +117,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Compactor.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.ConfigsAPI.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)

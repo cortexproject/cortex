@@ -56,3 +56,65 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	require.Equal(t, 1.618, v)
 	require.Equal(t, int64(2345), ts)
 }
+
+func TestTimeSeriesIterator(t *testing.T) {
+	ts := Timeseries{
+		series: client.TimeSeries{
+			Labels: []client.LabelAdapter{
+				{
+					Name:  "label1",
+					Value: "value1",
+				},
+			},
+			Samples: []client.Sample{
+				{
+					Value:       3.14,
+					TimestampMs: 1234,
+				},
+				{
+					Value:       3.14,
+					TimestampMs: 1235,
+				},
+				{
+					Value:       3.14,
+					TimestampMs: 1236,
+				},
+			},
+		},
+	}
+
+	it := ts.Iterator()
+	require.True(t, it.Seek(1235)) // Seek to middle
+	i, _ := it.At()
+	require.EqualValues(t, 1235, i)
+	require.True(t, it.Seek(1236)) // Seek to end
+	i, _ = it.At()
+	require.EqualValues(t, 1236, i)
+	require.False(t, it.Seek(1238)) // Seek past end
+
+	it = ts.Iterator()
+	require.True(t, it.Next())
+	require.True(t, it.Next())
+	i, _ = it.At()
+	require.EqualValues(t, 1235, i)
+	require.True(t, it.Seek(1234)) // Ensure seek doesn't do anything if already past seek target.
+	i, _ = it.At()
+	require.EqualValues(t, 1235, i)
+
+	it = ts.Iterator()
+	for i := 0; it.Next(); {
+		j, _ := it.At()
+		switch i {
+		case 0:
+			require.EqualValues(t, 1234, j)
+		case 1:
+			require.EqualValues(t, 1235, j)
+		case 2:
+			require.EqualValues(t, 1236, j)
+		default:
+			t.Fail()
+		}
+		i++
+	}
+	it.At() // Ensure an At after a full iteration, doesn't cause a panic
+}

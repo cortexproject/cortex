@@ -72,21 +72,21 @@ func (t *Timeseries) Iterator() storage.SeriesIterator {
 
 // Seek implements SeriesIterator interface
 func (t *TimeSeriesSeriesIterator) Seek(s int64) bool {
-	idx := sort.Search(len(t.ts.series.Samples), func(i int) bool {
-		return t.ts.series.Samples[i].TimestampMs >= s
-	})
-
-	if idx < len(t.ts.series.Samples) {
-		t.i = idx
-		return true
+	offset := 0
+	if t.i > 0 {
+		offset = t.i // only advance via Seek
 	}
 
-	return false
+	t.i = sort.Search(len(t.ts.series.Samples[offset:]), func(i int) bool {
+		return t.ts.series.Samples[offset+i].TimestampMs >= s
+	}) + offset
+
+	return t.i < len(t.ts.series.Samples)
 }
 
 // At implements the SeriesIterator interface
 func (t *TimeSeriesSeriesIterator) At() (int64, float64) {
-	if t.i < 0 {
+	if t.i < 0 || t.i >= len(t.ts.series.Samples) {
 		return 0, 0
 	}
 	return t.ts.series.Samples[t.i].TimestampMs, t.ts.series.Samples[t.i].Value

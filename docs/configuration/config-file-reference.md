@@ -229,23 +229,6 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 The `distributor_config` configures the Cortex distributor.
 
 ```yaml
-# Report number of ingested samples to billing system.
-# CLI flag: -distributor.enable-billing
-[enable_billing: <boolean> | default = false]
-
-billing:
-  # Maximum number of billing events to buffer in memory
-  # CLI flag: -billing.max-buffered-events
-  [maxbufferedevents: <int> | default = 1024]
-
-  # How often to retry sending events to the billing ingester.
-  # CLI flag: -billing.retry-delay
-  [retrydelay: <duration> | default = 500ms]
-
-  # points to the billing ingester sidecar (should be on localhost)
-  # CLI flag: -billing.ingester
-  [ingesterhostport: <string> | default = "localhost:24225"]
-
 pool:
   # How frequently to clean up clients for ingesters that have gone away.
   # CLI flag: -distributor.client-cleanup-period

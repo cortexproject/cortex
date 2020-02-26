@@ -149,8 +149,10 @@ func TestManagerCannotStartIfAllServicesArentNew(t *testing.T) {
 
 	m.AddListener(gl)
 
-	require.NoError(t, s3.StartAsync(context.Background()))
-	require.Error(t, m.StartAsync(context.Background())) // cannot start now
+	// start first service
+	require.NoError(t, s1.StartAsync(context.Background()))
+	// will fail while starting s1, and then s2 and s3 won't be started at all (they are started sequentially)
+	require.Error(t, m.StartAsync(context.Background()))
 
 	m.StopAsync()
 	require.NoError(t, m.AwaitStopped(context.Background()))

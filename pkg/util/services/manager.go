@@ -60,7 +60,7 @@ func NewManager(services ...Service) (*Manager, error) {
 	for _, s := range services {
 		st := s.State()
 		if st != New {
-			return nil, fmt.Errorf("unexpected service %v state: %v", s, st)
+			return nil, fmt.Errorf("unexpected service state: %v", st)
 		}
 
 		m.byState[st] = append(m.byState[st], s)

@@ -116,7 +116,7 @@ type Ruler struct {
 
 	lifecycler  *ring.Lifecycler
 	ring        *ring.Ring
-	servManager *services.Manager
+	subservices *services.Manager
 
 	store          rules.RuleStore
 	mapper         *mapper
@@ -178,13 +178,13 @@ func (r *Ruler) starting(ctx context.Context) error {
 			return errors.Wrap(err, "failed to initialize ruler's ring")
 		}
 
-		r.servManager, err = services.NewManager(r.lifecycler, r.ring)
+		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
 		if err != nil {
 			return err
 		}
-		err = r.servManager.StartAsync(ctx)
+		err = r.subservices.StartAsync(ctx)
 		if err == nil {
-			err = r.servManager.AwaitHealthy(ctx)
+			err = r.subservices.AwaitHealthy(ctx)
 		}
 		return errors.Wrap(err, "failed to start ruler's services")
 	}
@@ -202,10 +202,10 @@ func (r *Ruler) stopping() error {
 	}
 	r.notifiersMtx.Unlock()
 
-	if r.servManager != nil {
-		// servManager manages ring and lifecycler, if sharding was enabled.
-		r.servManager.StopAsync()
-		_ = r.servManager.AwaitStopped(context.Background())
+	if r.subservices != nil {
+		// subservices manages ring and lifecycler, if sharding was enabled.
+		r.subservices.StopAsync()
+		_ = r.subservices.AwaitStopped(context.Background())
 	}
 
 	level.Info(r.logger).Log("msg", "stopping user managers")

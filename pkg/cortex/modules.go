@@ -650,7 +650,7 @@ type module struct {
 	// service for this module (can return nil)
 	service func(t *Cortex, cfg *Config) (services.Service, error)
 
-	// service that will be wrapped into module_service_wrapper, to wait for dependencies to start / end
+	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
 	// (can return nil)
 	wrappedService func(t *Cortex, cfg *Config) (services.Service, error)
 }

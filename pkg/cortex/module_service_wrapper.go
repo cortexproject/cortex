@@ -88,7 +88,7 @@ func (w *moduleServiceWrapper) stop() error {
 	w.service.StopAsync()
 	err := w.service.AwaitTerminated(context.Background())
 	if err != nil {
-		level.Info(util.Logger).Log("msg", "error stopping module", "module", w.module, "err", err)
+		level.Warn(util.Logger).Log("msg", "error stopping module", "module", w.module, "err", err)
 	} else {
 		level.Info(util.Logger).Log("msg", "module stopped", "module", w.module)
 	}

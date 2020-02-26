@@ -87,7 +87,7 @@ type Compactor struct {
 	ring           *ring.Ring
 
 	// Manager sub-services (ring, lifecycler)
-	servMgr *services.Manager
+	subservices *services.Manager
 
 	// Metrics.
 	compactionRunsStarted   prometheus.Counter
@@ -179,11 +179,11 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 		c.ring = ring
 
-		c.servMgr, err = services.NewManager(c.ringLifecycler, c.ring)
+		c.subservices, err = services.NewManager(c.ringLifecycler, c.ring)
 		if err == nil {
-			err = c.servMgr.StartAsync(ctx)
+			err = c.subservices.StartAsync(ctx)
 			if err == nil {
-				err = c.servMgr.AwaitHealthy(ctx)
+				err = c.subservices.AwaitHealthy(ctx)
 			}
 		}
 
@@ -194,17 +194,17 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	var err error
 	c.bucketClient, c.tsdbCompactor, err = c.createBucketClientAndTsdbCompactor(ctx)
-	if err != nil && c.servMgr != nil {
-		c.servMgr.StopAsync()
+	if err != nil && c.subservices != nil {
+		c.subservices.StopAsync()
 	}
 
 	return errors.Wrap(err, "failed to initialize compactor objects")
 }
 
 func (c *Compactor) stopping() error {
-	if c.servMgr != nil {
-		c.servMgr.StopAsync()
-		_ = c.servMgr.AwaitStopped(context.Background())
+	if c.subservices != nil {
+		c.subservices.StopAsync()
+		_ = c.subservices.AwaitStopped(context.Background())
 	}
 
 	return nil

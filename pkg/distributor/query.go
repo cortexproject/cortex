@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"io"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -189,8 +190,15 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		resp.Chunkseries = append(resp.Chunkseries, series)
 	}
 	for _, series := range hashToTimeSeries {
+		sort.Sort(byTimestamp(series.Samples))
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
 
 	return resp, nil
 }
+
+type byTimestamp []client.Sample
+
+func (b byTimestamp) Len() int           { return len(b) }
+func (b byTimestamp) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b byTimestamp) Less(i, j int) bool { return b[i].TimestampMs < b[j].TimestampMs }

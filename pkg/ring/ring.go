@@ -14,10 +14,10 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -85,7 +85,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
-	services.BasicService
+	services.Service
 
 	name     string
 	key      string
@@ -147,7 +147,7 @@ func New(cfg Config, name, key string) (*Ring, error) {
 		),
 	}
 
-	services.InitBasicService(&r.BasicService, nil, r.loop, nil)
+	r.Service = services.NewBasicService(nil, r.loop, nil)
 	return r, nil
 }
 

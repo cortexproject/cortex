@@ -11,11 +11,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"

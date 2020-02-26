@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -22,12 +21,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // BlockQueryable is a storage.Queryable implementation for blocks storage
 type BlockQueryable struct {
-	services.BasicService
+	services.Service
 
 	us *UserStore
 }
@@ -49,7 +49,7 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 	}
 
 	b := &BlockQueryable{us: us}
-	services.InitIdleService(&b.BasicService, b.starting, b.stopping)
+	b.Service = services.NewIdleService(b.starting, b.stopping)
 
 	return b, nil
 }

@@ -12,12 +12,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var clients = promauto.NewGauge(prometheus.GaugeOpts{
@@ -44,7 +44,7 @@ func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Pool holds a cache of grpc_health_v1 clients.
 type Pool struct {
-	services.BasicService
+	services.Service
 
 	cfg     PoolConfig
 	ring    ring.ReadRing
@@ -66,25 +66,16 @@ func NewPool(cfg PoolConfig, ring ring.ReadRing, factory Factory, logger log.Log
 		clients: map[string]grpc_health_v1.HealthClient{},
 	}
 
-	services.InitBasicService(&p.BasicService, nil, p.loop, nil)
+	p.Service = services.NewTimerService(cfg.ClientCleanupPeriod, nil, p.iteration, nil)
 	return p
 }
 
-func (p *Pool) loop(ctx context.Context) error {
-	cleanupClients := time.NewTicker(p.cfg.ClientCleanupPeriod)
-	defer cleanupClients.Stop()
-
-	for {
-		select {
-		case <-cleanupClients.C:
-			p.removeStaleClients()
-			if p.cfg.HealthCheckIngesters {
-				p.cleanUnhealthy()
-			}
-		case <-ctx.Done():
-			return nil
-		}
+func (p *Pool) iteration(ctx context.Context) error {
+	p.removeStaleClients()
+	if p.cfg.HealthCheckIngesters {
+		p.cleanUnhealthy()
 	}
+	return nil
 }
 
 func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {

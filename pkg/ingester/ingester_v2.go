@@ -16,12 +16,13 @@ import (
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -136,7 +137,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		return nil, err
 	}
 
-	services.InitBasicService(&i.BasicService, i.startingV2, i.updateLoop, i.stoppingV2)
+	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
 
@@ -150,11 +151,11 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 	}
 
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		i.TSDBState.shippingService = services.NewService(nil, i.shipBlocksLoop, nil)
+		i.TSDBState.shippingService = services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		_ = i.TSDBState.shippingService.StartAsync(ctx)
 	}
 
-	i.TSDBState.compactionService = services.NewService(nil, i.compactionLoop, nil)
+	i.TSDBState.compactionService = services.NewBasicService(nil, i.compactionLoop, nil)
 	return nil
 }
 
@@ -811,7 +812,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-shipTicker.C:
-			i.shipBlocks()
+			i.shipBlocks(ctx)
 
 		case <-ctx.Done():
 			return nil
@@ -819,7 +820,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 	}
 }
 
-func (i *Ingester) shipBlocks() {
+func (i *Ingester) shipBlocks(ctx context.Context) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -831,7 +832,7 @@ func (i *Ingester) shipBlocks() {
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.ShipConcurrency, func(userID string) {
+	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(userID string) {
 		// Get the user's DB. If the user doesn't exist, we skip it.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
@@ -859,7 +860,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			i.compactBlocks()
+			i.compactBlocks(ctx)
 
 		case <-ctx.Done():
 			return nil
@@ -867,14 +868,14 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	}
 }
 
-func (i *Ingester) compactBlocks() {
+func (i *Ingester) compactBlocks(ctx context.Context) {
 	// Don't compact TSDB blocks while JOINING or LEAVING, as there may be ongoing blocks transfers.
 	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING || ingesterState == ring.LEAVING {
 		level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
 		return
 	}
 
-	i.runConcurrentUserWorkers(i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
+	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
 			return
@@ -891,7 +892,7 @@ func (i *Ingester) compactBlocks() {
 	})
 }
 
-func (i *Ingester) runConcurrentUserWorkers(concurrency int, userFunc func(userID string)) {
+func (i *Ingester) runConcurrentUserWorkers(ctx context.Context, concurrency int, userFunc func(userID string)) {
 	wg := sync.WaitGroup{}
 	ch := make(chan string)
 
@@ -911,7 +912,7 @@ sendLoop:
 		select {
 		case ch <- userID:
 			// ok
-		case <-i.quit:
+		case <-ctx.Done():
 			// don't start new tasks.
 			break sendLoop
 		}

@@ -13,11 +13,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -106,7 +106,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
 type Lifecycler struct {
-	services.BasicService
+	*services.BasicService
 
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
@@ -184,7 +184,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	services.InitBasicService(&l.BasicService, nil, l.loop, l.stopping)
+	l.BasicService = services.NewBasicService(nil, l.loop, l.stopping)
 
 	return l, nil
 }

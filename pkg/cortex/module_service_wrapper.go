@@ -6,15 +6,15 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // This service wraps module service, and adds waiting for dependencies to start before starting,
 // and dependant modules to stop before stopping this module service.
 type moduleServiceWrapper struct {
-	services.BasicService
+	services.Service
 
 	serviceMap map[moduleName]services.Service
 	module     moduleName
@@ -32,7 +32,7 @@ func newModuleServiceWrapper(serviceMap map[moduleName]services.Service, mod mod
 		stopDeps:   stopDeps,
 	}
 
-	services.InitBasicService(&w.BasicService, w.start, w.run, w.stop)
+	w.Service = services.NewBasicService(w.start, w.run, w.stop)
 	return w
 }
 

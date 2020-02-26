@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -23,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Config holds the Compactor config.
@@ -66,7 +66,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
 type Compactor struct {
-	services.BasicService
+	services.Service
 
 	compactorCfg Config
 	storageCfg   cortex_tsdb.Config
@@ -155,7 +155,7 @@ func newCompactor(
 		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
-	services.InitBasicService(&c.BasicService, c.starting, c.running, c.stopping)
+	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
 
 	return c, nil
 }

@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Loader loads the configuration from file.
@@ -33,7 +33,7 @@ func (mc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
 // Manager periodically reloads the configuration from a file, and keeps this
 // configuration available for clients.
 type Manager struct {
-	services.BasicService
+	services.Service
 
 	cfg ManagerConfig
 
@@ -60,7 +60,7 @@ func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer
 		registerer.MustRegister(mgr.configLoadSuccess)
 	}
 
-	services.InitBasicService(&mgr.BasicService, mgr.start, mgr.loop, mgr.stop)
+	mgr.Service = services.NewBasicService(mgr.start, mgr.loop, mgr.stop)
 	return &mgr, nil
 }
 

@@ -24,7 +24,6 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 	"google.golang.org/grpc"
@@ -35,6 +34,7 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -105,7 +105,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ruler evaluates rules.
 type Ruler struct {
-	services.BasicService
+	services.Service
 
 	cfg         Config
 	engine      *promql.Engine
@@ -158,7 +158,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		logger:       logger,
 	}
 
-	services.InitBasicService(&ruler.BasicService, ruler.starting, ruler.run, ruler.stopping)
+	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
 	return ruler, nil
 }
 

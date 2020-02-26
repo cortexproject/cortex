@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/pstibrany/services"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (

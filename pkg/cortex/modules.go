@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/pstibrany/services"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -41,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/push"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -241,7 +241,7 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		}
 	})
 
-	return services.NewService(nil, runFn, stoppingFn), nil
+	return services.NewBasicService(nil, runFn, stoppingFn), nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {

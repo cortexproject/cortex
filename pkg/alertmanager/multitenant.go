@@ -19,12 +19,12 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -129,7 +129,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
 // organizations.
 type MultitenantAlertmanager struct {
-	services.BasicService
+	services.Service
 
 	cfg *MultitenantAlertmanagerConfig
 
@@ -220,7 +220,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		registerer.MustRegister(am.metrics)
 	}
 
-	services.InitTimerService(&am.BasicService, am.cfg.PollInterval, am.starting, am.stopping, am.iteration)
+	am.Service = services.NewTimerService(am.cfg.PollInterval, am.starting, am.iteration, am.stopping)
 	return am
 }
 

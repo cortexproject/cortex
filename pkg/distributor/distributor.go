@@ -8,9 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pstibrany/services"
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,6 +16,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -28,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -95,7 +94,7 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	services.BasicService
+	services.Service
 
 	cfg           Config
 	ingestersRing ring.ReadRing
@@ -210,8 +209,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		return nil, err
 	}
 
-	services.InitIdleService(&d.BasicService, d.starting, d.stopping)
-
+	d.Service = services.NewIdleService(d.starting, d.stopping)
 	return d, nil
 }
 

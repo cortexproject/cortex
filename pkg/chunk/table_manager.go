@@ -13,11 +13,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -116,7 +116,7 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	services.BasicService
+	services.Service
 
 	client       TableClient
 	cfg          TableManagerConfig
@@ -147,7 +147,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		bucketClient: objectClient,
 	}
 
-	services.InitBasicService(&tm.BasicService, tm.starting, tm.loop, tm.stopping)
+	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
 	return tm, nil
 }
 

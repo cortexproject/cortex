@@ -17,9 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/pstibrany/services"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/mtime"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -67,7 +68,7 @@ func NewReplicaDesc() *ReplicaDesc {
 // Track the replica we're accepting samples from
 // for each HA cluster we know about.
 type haTracker struct {
-	services.BasicService
+	services.Service
 
 	logger              log.Logger
 	cfg                 HATrackerConfig
@@ -164,7 +165,7 @@ func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 		t.client = client
 	}
 
-	services.InitBasicService(&t.BasicService, nil, t.loop, nil)
+	t.Service = services.NewBasicService(nil, t.loop, nil)
 	return t, nil
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/pstibrany/services"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -28,12 +27,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	services.BasicService
+	services.Service
 
 	logger             log.Logger
 	cfg                tsdb.Config
@@ -96,7 +96,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		registerer.MustRegister(u.syncTimes, u.bucketStoreMetrics, u.indexCacheMetrics)
 	}
 
-	services.InitBasicService(&u.BasicService, u.starting, u.syncStoresLoop, u.stopping)
+	u.Service = services.NewBasicService(u.starting, u.syncStoresLoop, u.stopping)
 	return u, nil
 }
 

@@ -111,11 +111,10 @@ func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.state == healthy {
-		return nil
-	} else {
+	if m.state != healthy {
 		return errors.New("not healthy")
 	}
+	return nil
 }
 
 // Returns true if all services are in terminal state (Terminated or Failed)

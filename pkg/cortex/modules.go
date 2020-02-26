@@ -189,23 +189,18 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	serverDone := make(chan error, 1)
 
 	runFn := func(ctx context.Context) error {
-		started := make(chan struct{})
-
 		go func() {
-			close(started)
 			defer close(serverDone)
 			serverDone <- t.server.Run()
 		}()
-
-		// wait until server has (almost) started, or we may actually
-		// run Shutdown before it is running which doesn't seem to do anything.
-		<-started
 
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-serverDone:
-			level.Info(util.Logger).Log("msg", "server failed", "err", err)
+			if err != nil {
+				level.Info(util.Logger).Log("msg", "server failed", "err", err)
+			}
 			return err
 		}
 	}
@@ -220,7 +215,12 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 			_ = s.AwaitTerminated(context.Background())
 		}
 
+		// unblock Run, if it's still running
+		t.server.Stop()
+
+		// shutdown HTTP and gRPC servers
 		t.server.Shutdown()
+
 		// if not closed yet, wait until server stops.
 		<-serverDone
 		level.Info(util.Logger).Log("msg", "server stopped")

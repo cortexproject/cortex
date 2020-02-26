@@ -86,7 +86,7 @@ type Compactor struct {
 	ringLifecycler *ring.Lifecycler
 	ring           *ring.Ring
 
-	// Manager sub-services (ring, lifecycler)
+	// Subservices manager (ring, lifecycler)
 	subservices *services.Manager
 
 	// Metrics.
@@ -100,7 +100,7 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
-	createObjectsFn := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
+	createBucketClientAndTsdbCompactor := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
 		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg, "compactor", logger)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "failed to create the bucket client")
@@ -114,7 +114,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 		return bucketClient, compactor, err
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createObjectsFn)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createBucketClientAndTsdbCompactor)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -127,13 +127,13 @@ func newCompactor(
 	storageCfg cortex_tsdb.Config,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	createTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error),
+	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error),
 ) (*Compactor, error) {
 	c := &Compactor{
 		compactorCfg:                       compactorCfg,
 		storageCfg:                         storageCfg,
 		logger:                             logger,
-		createBucketClientAndTsdbCompactor: createTsdbCompactor,
+		createBucketClientAndTsdbCompactor: createBucketClientAndTsdbCompactor,
 
 		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -188,7 +188,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		}
 
 		if err != nil {
-			return errors.Wrap(err, "unable to initialize service manager")
+			return errors.Wrap(err, "unable to start compactor dependencies")
 		}
 	}
 

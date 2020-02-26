@@ -763,6 +763,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	d, err := New(cfg, clientConfig, overrides, ingestersRing, true)
 	require.NoError(t, err)
 	require.NoError(t, d.StartAsync(context.Background()))
+	require.NoError(t, d.AwaitRunning(context.Background()))
 
 	return d, ingesters
 }

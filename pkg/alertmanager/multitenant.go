@@ -235,6 +235,8 @@ func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
 	if err != nil {
 		level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
 	}
+	// Returning error here would stop "MultitenantAlertmanager" service completely,
+	// so we return nil to keep service running.
 	return nil
 }
 

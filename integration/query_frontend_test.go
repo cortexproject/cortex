@@ -16,30 +16,66 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestQueryFrontendWithBlocksStorage(t *testing.T) {
-	runQueryFrontendTest(t, BlocksStorage, func(t *testing.T, s *e2e.Scenario) {
-		minio := e2edb.NewMinio(9000, BlocksStorage["-experimental.tsdb.s3.bucket-name"])
+type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
+
+func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
+
+		return "", BlocksStorageFlags
 	})
 }
 
-func TestQueryFrontendWithChunksStorage(t *testing.T) {
-	runQueryFrontendTest(t, ChunksStorage, func(t *testing.T, s *e2e.Scenario) {
+func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
+		require.NoError(t, s.StartAndWaitReady(minio))
+
+		return cortexConfigFile, e2e.EmptyFlags()
+	})
+}
+
+func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-
-		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorage, "")
+		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
 		// sure the tables have been created.
 		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
+
+		return "", ChunksStorageFlags
 	})
 }
 
-func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *testing.T, s *e2e.Scenario)) {
+func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(ChunksStorageConfig)))
+		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+
+		dynamo := e2edb.NewDynamoDB()
+		require.NoError(t, s.StartAndWaitReady(dynamo))
+
+		tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "")
+		require.NoError(t, s.StartAndWaitReady(tableManager))
+
+		// Wait until the first table-manager sync has completed, so that we're
+		// sure the tables have been created.
+		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
+
+		return cortexConfigFile, e2e.EmptyFlags()
+	})
+}
+
+func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
 
@@ -50,18 +86,18 @@ func runQueryFrontendTest(t *testing.T, flags map[string]string, setup func(t *t
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul))
 
-	setup(t, s)
+	configFile, flags := setup(t, s)
 
 	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
 
 	// Start the querier after the query-frontend otherwise we're not
 	// able to get the query-frontend network endpoint.
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkEndpoint(e2ecortex.GRPCPort),
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 

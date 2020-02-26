@@ -28,8 +28,15 @@ func getCortexProjectDir() string {
 }
 
 func writeFileToSharedDir(s *e2e.Scenario, dst string, content []byte) error {
+	dst = filepath.Join(s.SharedDir(), dst)
+
+	// Ensure the entire path of directories exist.
+	if err := os.MkdirAll(filepath.Dir(dst), os.ModePerm); err != nil {
+		return err
+	}
+
 	return ioutil.WriteFile(
-		filepath.Join(s.SharedDir(), dst),
+		dst,
 		content,
 		os.ModePerm)
 }

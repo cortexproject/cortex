@@ -25,7 +25,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 		"-config.file": filepath.Join(e2e.ContainerSharedDir, cortexConfigFile),
 	}
 
-	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009)
+	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex1))
 
 	// Get config from /config API endpoint.
@@ -40,6 +40,6 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	// Start again Cortex in single binary with the exported config
 	// and ensure it starts (pass the readiness probe).
 	require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, body))
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags, "", 9009)
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex2))
 }

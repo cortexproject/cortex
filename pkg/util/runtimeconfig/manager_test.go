@@ -164,6 +164,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
 	require.NoError(t, overridesManager.StartAsync(context.Background()))
+	require.NoError(t, overridesManager.AwaitRunning(context.Background()))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)

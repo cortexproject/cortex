@@ -155,11 +155,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
-		err := m.bucketRetentionLoop.StartAsync(ctx)
-		if err == nil {
-			err = m.bucketRetentionLoop.AwaitRunning(ctx)
-		}
-		return err
+		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
 	}
 	return nil
 }
@@ -167,8 +163,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 // Stop the TableManager
 func (m *TableManager) stopping() error {
 	if m.bucketRetentionLoop != nil {
-		m.bucketRetentionLoop.StopAsync()
-		_ = m.bucketRetentionLoop.AwaitTerminated(context.Background())
+		_ = services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
 	}
 	return nil
 }

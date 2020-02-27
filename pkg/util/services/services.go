@@ -94,6 +94,7 @@ func (f funcBasedListener) Failed(from State, failure error) {
 }
 
 // StartAndAwaitRunning starts the service, and then waits until it reaches Running state.
+// If service fails to start, its failure case is returned.
 // Service must be in New state when this function is called.
 //
 // Notice that context passed to the service for starting is the same as context used for waiting!
@@ -103,7 +104,12 @@ func StartAndAwaitRunning(ctx context.Context, service Service) error {
 		return err
 	}
 
-	return service.AwaitRunning(ctx)
+	err = service.AwaitRunning(ctx)
+	if e := service.FailureCase(); e != nil {
+		return e
+	}
+
+	return err
 }
 
 // StopAndAwaitTerminated asks service to stop, and then waits until service reaches Terminated

@@ -181,10 +181,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 		c.subservices, err = services.NewManager(c.ringLifecycler, c.ring)
 		if err == nil {
-			err = c.subservices.StartAsync(ctx)
-			if err == nil {
-				err = c.subservices.AwaitHealthy(ctx)
-			}
+			err = services.StartManagerAndAwaitHealthy(ctx, c.subservices)
 		}
 
 		if err != nil {
@@ -203,8 +200,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 func (c *Compactor) stopping() error {
 	if c.subservices != nil {
-		c.subservices.StopAsync()
-		_ = c.subservices.AwaitStopped(context.Background())
+		_ = services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
 	}
 
 	return nil

@@ -241,7 +241,8 @@ func (t *Cortex) initRuntimeConfig(cfg *Config) (services.Service, error) {
 
 func (t *Cortex) initOverrides(cfg *Config) (serv services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
-	// overrides don't have operational state, no need to return any service.
+	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
+	// so there is no need to return any service.
 	return nil, err
 }
 

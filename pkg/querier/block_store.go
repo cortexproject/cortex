@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -349,14 +350,16 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		return bs, nil
 	}
 
-	level.Info(u.logger).Log("msg", "creating user bucket store", "user", userID)
+	userLogger := util.WithUserID(userID, u.logger)
+
+	level.Info(userLogger).Log("msg", "creating user bucket store")
 
 	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
 
 	reg := prometheus.NewRegistry()
 	indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 	maxItemSizeBytes := indexCacheSizeBytes / 2
-	indexCache, err := storecache.NewInMemoryIndexCacheWithConfig(u.logger, reg, storecache.InMemoryIndexCacheConfig{
+	indexCache, err := storecache.NewInMemoryIndexCacheWithConfig(userLogger, reg, storecache.InMemoryIndexCacheConfig{
 		MaxSize:     storecache.Bytes(indexCacheSizeBytes),
 		MaxItemSize: storecache.Bytes(maxItemSizeBytes),
 	})
@@ -365,7 +368,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	}
 
 	fetcher, err := block.NewMetaFetcher(
-		u.logger,
+		userLogger,
 		u.cfg.BucketStore.MetaSyncConcurrency,
 		userBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
@@ -377,7 +380,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	}
 
 	bs, err = store.NewBucketStore(
-		u.logger,
+		userLogger,
 		reg,
 		userBkt,
 		fetcher,

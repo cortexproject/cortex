@@ -305,8 +305,10 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 
+	ulogger := util.WithUserID(userID, c.logger)
+
 	fetcher, err := block.NewMetaFetcher(
-		c.logger,
+		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
 		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
@@ -321,7 +323,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	}
 
 	syncer, err := compact.NewSyncer(
-		c.logger,
+		ulogger,
 		reg,
 		bucket,
 		fetcher,
@@ -334,7 +336,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	}
 
 	compactor, err := compact.NewBucketCompactor(
-		c.logger,
+		ulogger,
 		syncer,
 		c.tsdbCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),

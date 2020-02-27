@@ -16,8 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/services"
-
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -40,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -278,7 +277,7 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 			if s != nil {
 				// We pass servicesMap, which isn't yet finished. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findReverseDeps(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 
@@ -396,7 +395,7 @@ func orderedDeps(m moduleName) []moduleName {
 }
 
 // find modules in the supplied list, that depend on mod
-func findReverseDeps(mod moduleName, mods []moduleName) []moduleName {
+func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
 	result := []moduleName(nil)
 
 	for _, n := range mods {

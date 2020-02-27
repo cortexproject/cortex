@@ -214,20 +214,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
-	err := d.subservices.StartAsync(ctx)
-	if err != nil {
-		return err
-	}
-
 	// Only report success if all sub-services start properly
-	return d.subservices.AwaitHealthy(ctx)
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
 }
 
 // Called after distributor is asked to stop via StopAsync.
 func (d *Distributor) stopping() error {
-	// just stop everything, and wait until it has stopped.
-	d.subservices.StopAsync()
-	return d.subservices.AwaitStopped(context.Background())
+	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {

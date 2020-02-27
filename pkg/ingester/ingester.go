@@ -253,8 +253,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
-	i.StopAsync()
-	_ = i.AwaitTerminated(context.Background())
+	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
 }

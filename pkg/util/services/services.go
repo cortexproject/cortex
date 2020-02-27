@@ -107,8 +107,8 @@ func StartAndAwaitRunning(ctx context.Context, service Service) error {
 }
 
 // StopAndAwaitTerminated asks service to stop, and then waits until service reaches Terminated
-// or Failed state. On Terminated state, this function returns error. On Failed state, it returns
-// the failure case.
+// or Failed state. If service ends in Terminated state, this function returns error. On Failed state,
+// it returns the failure case. Other errors are possible too (eg. if context stops before service does).
 func StopAndAwaitTerminated(ctx context.Context, service Service) error {
 	service.StopAsync()
 	err := service.AwaitTerminated(ctx)
@@ -120,6 +120,6 @@ func StopAndAwaitTerminated(ctx context.Context, service Service) error {
 		return e
 	}
 
-	// should not happen, but just in case...
+	// can happen e.g. if context was canceled
 	return err
 }

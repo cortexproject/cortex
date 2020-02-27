@@ -584,7 +584,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 						require.NoError(b, err)
 					}
 				}
-				ing.StopAsync()
+				_ = services.StopAndAwaitTerminated(context.Background(), ing)
 			}
 		})
 	}

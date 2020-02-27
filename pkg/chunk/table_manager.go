@@ -206,6 +206,8 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
+
+	// don't return error, otherwise timer service would stop.
 	return nil
 }
 

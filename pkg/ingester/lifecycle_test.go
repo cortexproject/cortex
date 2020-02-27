@@ -73,8 +73,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.StopAsync() // doesn't actually unregister due to skipUnregister: true
-		require.NoError(t, ingester.AwaitTerminated(context.Background()))
+		// doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
@@ -84,8 +84,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.StopAsync() // doesn't actually unregister due to skipUnregister: true
-		require.NoError(t, ingester.AwaitTerminated(context.Background()))
+		// doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -137,7 +137,6 @@ func TestIngesterTransfer(t *testing.T) {
 	}
 
 	// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-	ing1.StopAsync()
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing1))
 
 	test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
@@ -175,7 +174,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
-	require.NoError(t, ing.StartAsync(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	test.Poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
 		return ing.lifecycler.GetState()
@@ -379,7 +378,7 @@ func TestIngesterFlush(t *testing.T) {
 	// Now stop the ingester.  Don't call shutdown, as it waits for all goroutines
 	// to exit.  We just want to check that by the time the token is removed from
 	// the ring, the data is in the chunk store.
-	ing.lifecycler.StopAsync()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing.lifecycler))
 	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
 		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.IngesterRingKey)
 		if err != nil {

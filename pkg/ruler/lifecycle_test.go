@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -28,8 +29,7 @@ func TestRulerShutdown(t *testing.T) {
 		return testutils.NumTokens(config.Ring.KVStore.Mock, "localhost", ring.RulerRingKey)
 	})
 
-	r.StopAsync()
-	require.NoError(t, r.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r))
 
 	// Wait until the tokens are unregistered from the ring
 	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
@@ -62,7 +62,7 @@ func TestRulerRestart(t *testing.T) {
 	// Create a new ruler which is expected to pick up tokens from the ring.
 	r, rcleanup = newTestRuler(t, config)
 	defer rcleanup()
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r)
 
 	// Wait until the ruler is ACTIVE in the ring.
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {

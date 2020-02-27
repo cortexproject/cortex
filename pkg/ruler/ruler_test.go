@@ -113,7 +113,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r)
+
 	n, err := r.getOrCreateNotifier("1")
 	require.NoError(t, err)
 
@@ -137,7 +138,7 @@ func TestRuler_Rules(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r)
 
 	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")

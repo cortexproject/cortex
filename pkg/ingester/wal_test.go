@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestWAL(t *testing.T) {
@@ -27,8 +29,7 @@ func TestWAL(t *testing.T) {
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
-	ing.StopAsync()
-	require.NoError(t, ing.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	for r := 0; r < numRestarts; r++ {
 		if r == numRestarts-1 {
@@ -48,6 +49,6 @@ func TestWAL(t *testing.T) {
 			userIDs, testData = pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, (r+1)*numSamplesPerSeriesPerPush)
 		}
 
-		ing.StopAsync()
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	}
 }

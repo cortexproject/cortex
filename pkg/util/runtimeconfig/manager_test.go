@@ -213,13 +213,12 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
-	require.NoError(t, overridesManager.StartAsync(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(0)
 
-	overridesManager.StopAsync()
-	require.NoError(t, overridesManager.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
 
 	select {
 	case _, ok := <-ch:

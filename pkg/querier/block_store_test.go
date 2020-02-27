@@ -66,15 +66,8 @@ func TestUserStore_InitialSync(t *testing.T) {
 
 			us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 			if err == nil {
-				err = us.StartAsync(context.Background())
-				if err == nil {
-					err = us.AwaitRunning(context.Background())
-					if us.FailureCase() != nil {
-						err = us.FailureCase()
-					}
-				}
-
-				defer us.StopAsync()
+				err = services.StartAndAwaitRunning(context.Background(), us)
+				defer services.StopAndAwaitTerminated(context.Background(), us)
 			}
 
 			require.Equal(t, testData.expectedErr, err)

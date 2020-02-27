@@ -71,7 +71,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
-	require.NoError(t, lifecycler1.StartAsync(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler1))
 
 	// Assert the first ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -245,13 +245,17 @@ func TestCheckReady(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	require.NoError(t, r.StartAsync(context.Background())) // r will terminate quickly, because mock ring has no WatchFunc, so it will exit.
-	defer r.StopAsync()
+	require.NoError(t, r.StartAsync(context.Background()))
+	// This is very atypical, but if we used AwaitRunning, that would fail, because of how quickly service terminates ...
+	// by the time we check for Running state, it is already terminated, because mock ring has no WatchFunc, so it
+	// will just exit.
+	require.NoError(t, r.AwaitTerminated(context.Background()))
+
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	require.NoError(t, l1.StartAsync(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
 	l1.setTokens(Tokens([]uint32{1}))
 
@@ -307,8 +311,7 @@ func TestTokensOnDisk(t *testing.T) {
 			len(desc.Ingesters["ing1"].Tokens) == 512
 	})
 
-	l1.StopAsync()
-	require.NoError(t, l1.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"

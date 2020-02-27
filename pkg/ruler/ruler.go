@@ -179,12 +179,8 @@ func (r *Ruler) starting(ctx context.Context) error {
 		}
 
 		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
-		if err != nil {
-			return err
-		}
-		err = r.subservices.StartAsync(ctx)
 		if err == nil {
-			err = r.subservices.AwaitHealthy(ctx)
+			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
 		}
 		return errors.Wrap(err, "failed to start ruler's services")
 	}
@@ -204,8 +200,7 @@ func (r *Ruler) stopping() error {
 
 	if r.subservices != nil {
 		// subservices manages ring and lifecycler, if sharding was enabled.
-		r.subservices.StopAsync()
-		_ = r.subservices.AwaitStopped(context.Background())
+		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
 
 	level.Info(r.logger).Log("msg", "stopping user managers")

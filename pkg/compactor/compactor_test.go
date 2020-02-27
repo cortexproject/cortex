@@ -90,8 +90,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.StopAsync()
-	require.NoError(t, c.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	assert.Equal(t, []string{
 		`level=info msg="discovering users from bucket"`,
@@ -181,8 +180,7 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		return prom_testutil.ToFloat64(c.compactionRunsFailed)
 	})
 
-	c.StopAsync()
-	require.NoError(t, c.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure the bucket iteration has been retried the configured number of times.
 	bucketClient.AssertNumberOfCalls(t, "Iter", 3)
@@ -289,8 +287,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.StopAsync()
-	require.NoError(t, c.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
@@ -362,8 +359,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
-	c.StopAsync()
-	require.NoError(t, c.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
@@ -422,7 +418,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
-		defer c.StopAsync()
+		defer services.StopAndAwaitTerminated(context.Background(), c)
 		defer cleanup()
 
 		compactors = append(compactors, c)

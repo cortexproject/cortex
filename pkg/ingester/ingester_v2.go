@@ -142,7 +142,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 }
 
 func (i *Ingester) startingV2(ctx context.Context) error {
-	// we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
+	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
 	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
@@ -152,10 +152,16 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
 		i.TSDBState.shippingService = services.NewBasicService(nil, i.shipBlocksLoop, nil)
-		_ = i.TSDBState.shippingService.StartAsync(ctx)
+		if err := services.StartAndAwaitRunning(ctx, i.TSDBState.shippingService); err != nil {
+			return errors.Wrap(err, "failed to start shipping")
+		}
 	}
 
 	i.TSDBState.compactionService = services.NewBasicService(nil, i.compactionLoop, nil)
+	if err := services.StartAndAwaitRunning(ctx, i.TSDBState.compactionService); err != nil {
+		return errors.Wrap(err, "failed to start compaction")
+	}
+
 	return nil
 }
 
@@ -166,17 +172,13 @@ func (i *Ingester) stoppingV2() error {
 		// because the blocks transfer should start only once it's guaranteed
 		// there's no shipping on-going.
 
-		i.TSDBState.shippingService.StopAsync()
-		_ = i.TSDBState.shippingService.AwaitTerminated(context.Background())
+		_ = services.StopAndAwaitTerminated(context.Background(), i.TSDBState.shippingService)
 	}
 
-	i.TSDBState.compactionService.StopAsync()
-	_ = i.TSDBState.compactionService.AwaitTerminated(context.Background())
+	_ = services.StopAndAwaitTerminated(context.Background(), i.TSDBState.compactionService)
 
 	// Next initiate our graceful exit from the ring.
-	i.lifecycler.StopAsync()
-	_ = i.lifecycler.AwaitTerminated(context.Background())
-	return i.lifecycler.FailureCase()
+	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 }
 
 func (i *Ingester) updateLoop(ctx context.Context) error {

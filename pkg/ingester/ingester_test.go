@@ -203,8 +203,7 @@ func TestIngesterAppend(t *testing.T) {
 	retrieveTestSamples(t, ing, userIDs, testData)
 
 	// Read samples back via chunk store.
-	ing.StopAsync()
-	require.NoError(t, ing.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, userIDs, testData)
 }
 
@@ -230,8 +229,7 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 	}
 
 	// Read samples back via chunk store.
-	ing.StopAsync()
-	require.NoError(t, ing.AwaitTerminated(context.Background()))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 func TestIngesterIdleFlush(t *testing.T) {
@@ -306,7 +304,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), ing)
 
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -337,7 +335,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), ing)
 
 	lp := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -368,7 +366,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), ing)
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -425,7 +423,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), ing)
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -489,7 +487,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	_, ing := newDefaultTestStore(b)
-	defer ing.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), ing)
 
 	var (
 		wg     sync.WaitGroup

@@ -55,17 +55,11 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 }
 
 func (b *BlockQueryable) starting(ctx context.Context) error {
-	err := b.us.StartAsync(ctx)
-	if err != nil {
-		return err
-	}
-
-	return errors.Wrap(b.us.AwaitRunning(ctx), "failed to start UserStore")
+	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start UserStore")
 }
 
 func (b *BlockQueryable) stopping() error {
-	b.us.StopAsync()
-	return errors.Wrap(b.us.AwaitTerminated(context.Background()), "stopping UserStore")
+	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping UserStore")
 }
 
 // Querier returns a new Querier on the storage.

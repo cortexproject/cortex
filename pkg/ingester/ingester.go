@@ -200,7 +200,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 func (i *Ingester) starting(ctx context.Context) error {
 	// Now that user states have been created, we can start the lifecycler.
-	// we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
+	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
 	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
@@ -243,9 +243,7 @@ func (i *Ingester) stopping() error {
 	i.wal.Stop()
 
 	// Next initiate our graceful exit from the ring.
-	i.lifecycler.StopAsync()
-	_ = i.lifecycler.AwaitTerminated(context.Background())
-	return i.lifecycler.FailureCase()
+	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 }
 
 // ShutdownHandler triggers the following set of operations in order:

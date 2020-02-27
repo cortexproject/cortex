@@ -92,3 +92,34 @@ func (f funcBasedListener) Failed(from State, failure error) {
 		f.failedFn(from, failure)
 	}
 }
+
+// StartAndAwaitRunning starts the service, and then waits until it reaches Running state.
+// Service must be in New state when this function is called.
+//
+// Notice that context passed to the service for starting is the same as context used for waiting!
+func StartAndAwaitRunning(ctx context.Context, service Service) error {
+	err := service.StartAsync(ctx)
+	if err != nil {
+		return err
+	}
+
+	return service.AwaitRunning(ctx)
+}
+
+// StopAndAwaitTerminated asks service to stop, and then waits until service reaches Terminated
+// or Failed state. On Terminated state, this function returns error. On Failed state, it returns
+// the failure case.
+func StopAndAwaitTerminated(ctx context.Context, service Service) error {
+	service.StopAsync()
+	err := service.AwaitTerminated(ctx)
+	if err == nil {
+		return nil
+	}
+
+	if e := service.FailureCase(); e != nil {
+		return e
+	}
+
+	// should not happen, but just in case...
+	return err
+}

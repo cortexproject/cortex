@@ -181,7 +181,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	am.active = true
 	am.activeMtx.Unlock()
 
-	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
+	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
 			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)

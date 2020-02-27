@@ -101,6 +101,8 @@ func (b *BasicService) StartAsync(parentContext context.Context) error {
 	return nil
 }
 
+// Returns true, if state switch succeeds, false if it fails. Returned state is current state before switch.
+// if state switching succeeds, stateFn is run with lock held.
 func (b *BasicService) switchState(from, to State, stateFn func()) (bool, State) {
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()

@@ -1,7 +1,6 @@
 package cortex
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -186,47 +185,6 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 
 	t.server = serv
 
-	serverDone := make(chan error, 1)
-
-	runFn := func(ctx context.Context) error {
-		go func() {
-			defer close(serverDone)
-			serverDone <- t.server.Run()
-		}()
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case err := <-serverDone:
-			if err != nil {
-				level.Info(util.Logger).Log("msg", "server failed", "err", err)
-			}
-			return err
-		}
-	}
-
-	stoppingFn := func() error {
-		// wait until all modules are done, and then shutdown server.
-		for m, s := range t.serviceMap {
-			if m == Server {
-				continue
-			}
-
-			_ = s.AwaitTerminated(context.Background())
-		}
-
-		// unblock Run, if it's still running
-		t.server.Stop()
-
-		// shutdown HTTP and gRPC servers
-		t.server.Shutdown()
-
-		// if not closed yet, wait until server stops.
-		<-serverDone
-		level.Info(util.Logger).Log("msg", "server stopped")
-		return nil
-	}
-
 	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
 		out, err := yaml.Marshal(cfg)
 		if err != nil {
@@ -241,7 +199,17 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		}
 	})
 
-	return services.NewBasicService(nil, runFn, stoppingFn), nil
+	servicesToWaitFor := func() []services.Service {
+		svs := []services.Service(nil)
+		for m, s := range t.serviceMap {
+			// Server should not wait for itself.
+			if m != Server {
+				svs = append(svs, s)
+			}
+		}
+		return svs
+	}
+	return NewServerService(t.server, servicesToWaitFor), nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {

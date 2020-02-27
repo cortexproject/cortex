@@ -26,6 +26,7 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -44,8 +45,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
-	require.NoError(t, ing.StartAsync(context.Background()))
-	require.NoError(t, ing.AwaitRunning(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	return store, ing
 }

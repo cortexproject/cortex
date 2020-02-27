@@ -15,6 +15,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestUserStore_InitialSync(t *testing.T) {
@@ -95,9 +96,8 @@ func TestUserStore_syncUserStores(t *testing.T) {
 
 	us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
-	require.NoError(t, us.StartAsync(context.Background()))
-	require.NoError(t, us.AwaitRunning(context.Background()))
-	defer us.StopAsync()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), us))
+	defer services.StopAndAwaitTerminated(context.Background(), us)
 
 	// Sync user stores and count the number of times the callback is called.
 	storesCount := int32(0)

@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -82,8 +83,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	require.NoError(t, c.StartAsync(context.Background()))
-	require.NoError(t, c.AwaitRunning(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -174,8 +174,7 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 
 	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	require.NoError(t, c.StartAsync(context.Background()))
-	require.NoError(t, c.AwaitRunning(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -277,8 +276,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	c, tsdbCompactor, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	require.NoError(t, c.StartAsync(context.Background()))
-	require.NoError(t, c.AwaitRunning(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -351,8 +349,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	c, tsdbCompactor, logs, _, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
-	require.NoError(t, c.StartAsync(context.Background()))
-	require.NoError(t, c.AwaitRunning(context.Background()))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -440,8 +437,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Start all compactors
 	for _, c := range compactors {
-		require.NoError(t, c.StartAsync(context.Background()))
-		require.NoError(t, c.AwaitRunning(context.Background()))
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	}
 
 	// Wait until each compactor sees all ACTIVE compactors in the ring

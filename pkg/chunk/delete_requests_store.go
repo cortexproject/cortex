@@ -19,13 +19,19 @@ import (
 type DeleteRequestStatus string
 
 const (
-	Received     DeleteRequestStatus = "0"
-	BuildingPlan DeleteRequestStatus = "1"
-	Deleting     DeleteRequestStatus = "2"
-	Processed    DeleteRequestStatus = "3"
+	Received     DeleteRequestStatus = "received"
+	BuildingPlan DeleteRequestStatus = "buildingPlan"
+	Deleting     DeleteRequestStatus = "deleting"
+	Processed    DeleteRequestStatus = "processed"
+
+	separator = "\000" // separator for series selectors in delete requests
 )
 
-var pendingDeleteRequestStatuses = []DeleteRequestStatus{Received, BuildingPlan, Deleting}
+var (
+	pendingDeleteRequestStatuses = []DeleteRequestStatus{Received, BuildingPlan, Deleting}
+
+	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
+)
 
 // DeleteRequest holds all the details about a delete request
 type DeleteRequest struct {
@@ -71,6 +77,20 @@ func NewDeleteStore(cfg DeleteStoreConfig, indexClient IndexClient) (*DeleteStor
 func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
 	requestID := generateUniqueID(userID, selectors)
 
+	for {
+		_, err := ds.GetDeleteRequest(ctx, userID, string(requestID))
+		if err != nil {
+			if err == ErrDeleteRequestNotFound {
+				break
+			}
+			return err
+		}
+
+		// we have a collision here, lets recreate a new requestID and check for collision
+		time.Sleep(time.Millisecond)
+		requestID = generateUniqueID(userID, selectors)
+	}
+
 	// userID, requestID
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
@@ -81,7 +101,7 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))
-	writeBatch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, "&")))
+	writeBatch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, separator)))
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -128,7 +148,7 @@ func (ds *DeleteStore) GetDeleteRequest(ctx context.Context, userID, requestID s
 	}
 
 	if len(deleteRequests) == 0 {
-		return nil, nil
+		return nil, ErrDeleteRequestNotFound
 	}
 
 	return &deleteRequests[0], nil
@@ -154,10 +174,11 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []In
 	err := ds.indexClient.QueryPages(ctx, deleteQuery, func(query IndexQuery, batch ReadBatch) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
-			split := strings.Split(string(itr.RangeValue()), ":")
+			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
+
 			deleteRequests = append(deleteRequests, DeleteRequest{
-				UserID:    split[0],
-				RequestID: split[1],
+				UserID:    userID,
+				RequestID: requestID,
 				Status:    DeleteRequestStatus(itr.Value()),
 			})
 		}
@@ -178,10 +199,10 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []In
 			deleteRequest, err = parseDeleteRequestTimestamps(itr.RangeValue(), deleteRequest)
 			if err != nil {
 				parseError = err
-				return
+				return false
 			}
 
-			deleteRequest.Selectors = strings.Split(string(itr.Value()), "&")
+			deleteRequest.Selectors = strings.Split(string(itr.Value()), separator)
 			deleteRequests[i] = deleteRequest
 
 			return true
@@ -250,4 +271,13 @@ func encodeUniqueID(t uint32) []byte {
 	encodedThroughBytes := make([]byte, 8)
 	hex.Encode(encodedThroughBytes, throughBytes)
 	return encodedThroughBytes
+}
+
+func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
+	lastIndex := strings.LastIndex(rangeValue, ":")
+
+	userID = rangeValue[:lastIndex]
+	requestID = rangeValue[lastIndex+1:]
+
+	return
 }

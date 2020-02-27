@@ -389,7 +389,7 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 
 	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
 	if err != nil {
-		return err
+		return
 	}
 
 	return
@@ -758,6 +758,6 @@ var modules = map[moduleName]module{
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
 	},
 }

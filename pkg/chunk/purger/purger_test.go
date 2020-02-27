@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/purger/purgeplan"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -64,8 +63,8 @@ var purgePlanTestCases = []struct {
 	deleteRequestInterval             model.Interval
 	expectedNumberOfPlans             int
 	numChunksToDelete                 int
-	firstChunkPartialDeletionInterval *purgeplan.Interval
-	lastChunkPartialDeletionInterval  *purgeplan.Interval
+	firstChunkPartialDeletionInterval *Interval
+	lastChunkPartialDeletionInterval  *Interval
 	batchSize                         int
 }{
 	{
@@ -81,7 +80,7 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{End: model.Time(millisecondPerDay / 2)},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      12 + 1, // one chunk for each hour + end time touches chunk at boundary
-		lastChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: int64(millisecondPerDay / 2),
+		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(millisecondPerDay / 2),
 			EndTimestampMs: int64(millisecondPerDay / 2)},
 	},
 	{
@@ -90,7 +89,7 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{End: modelTimeDay},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      24 + 1, // one chunk for each hour + end time touches chunk at boundary
-		lastChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: millisecondPerDay,
+		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: millisecondPerDay,
 			EndTimestampMs: millisecondPerDay},
 	},
 	{
@@ -100,9 +99,9 @@ var purgePlanTestCases = []struct {
 			End: model.Time(millisecondPerDay + millisecondPerDay/2)},
 		expectedNumberOfPlans: 2,
 		numChunksToDelete:     24 + 2, // one chunk for each hour + start and end time touches chunk at boundary
-		firstChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: int64(millisecondPerDay / 2),
+		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(millisecondPerDay / 2),
 			EndTimestampMs: int64(millisecondPerDay / 2)},
-		lastChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: millisecondPerDay + millisecondPerDay/2,
+		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: millisecondPerDay + millisecondPerDay/2,
 			EndTimestampMs: millisecondPerDay + millisecondPerDay/2},
 	},
 	{
@@ -112,9 +111,9 @@ var purgePlanTestCases = []struct {
 			End: model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute)},
 		expectedNumberOfPlans: 2,
 		numChunksToDelete:     24, // one chunk for each hour, no chunks touched at boundary
-		firstChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Minute)),
+		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Minute)),
 			EndTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Hour))},
-		lastChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Hour)),
+		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Hour)),
 			EndTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute))},
 	},
 	{
@@ -130,7 +129,7 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{Start: modelTimeDay.Add(-30 * time.Minute), End: modelTimeDay.Add(-15 * time.Minute)},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      1,
-		firstChunkPartialDeletionInterval: &purgeplan.Interval{StartTimestampMs: int64(modelTimeDay.Add(-30 * time.Minute)),
+		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(modelTimeDay.Add(-30 * time.Minute)),
 			EndTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute))},
 	},
 }
@@ -169,7 +168,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				require.Equal(t, tc.expectedNumberOfPlans, len(plans))
 
 				numPlans := tc.expectedNumberOfPlans
-				var nilPurgePlanInterval *purgeplan.Interval
+				var nilPurgePlanInterval *Interval
 				numChunks := 0
 
 				chunkIDs := map[string]struct{}{}

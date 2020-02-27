@@ -184,6 +184,7 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	}
 
 	t.server = serv
+	t.server.HTTP.HandleFunc("/", t.index)
 
 	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
 		out, err := yaml.Marshal(cfg)

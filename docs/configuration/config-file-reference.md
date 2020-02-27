@@ -108,13 +108,8 @@ Where default_value is the value to use if the environment variable is undefined
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
-# The configs_api_config configures the configs API used by the 'configs'
-# service to expose APIs to manage them.
-[configs_api: <configs_api_config>]
-
-# The configdb_config configures the config database storing rules and alerts,
-# and used by the 'configs' service to expose APIs to manage them.
-[configdb: <configdb_config>]
+# The configs_config configures the Cortex Configs API.
+[configs: <configs_config>]
 
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
@@ -2062,61 +2057,32 @@ The `fifo_cache_config` configures the local in-memory cache.
 [validity: <duration> | default = 0s]
 ```
 
-## `configs_api_config`
+## `configs_config`
 
-The `configs_api_config` configures the configs API used by the 'configs' service to expose APIs to manage them.
+The `configs_config` configures the Cortex Configs API.
 
 ```yaml
+database:
+  # URI where the database can be found (for dev you can use memory://)
+  # CLI flag: -configs.database.uri
+  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
+
+  # Path where the database migration files can be found
+  # CLI flag: -configs.database.migrations
+  [migrations_dir: <string> | default = ""]
+
+  # File containing password (username goes in URI)
+  # CLI flag: -configs.database.password-file
+  [password_file: <string> | default = ""]
+
 notifications:
   # Disable Email notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-email
-  [allow_email: <boolean> | default = false]
-
-  # Disable PagerDuty notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-pagerduty
-  [allow_pagerduty: <boolean> | default = false]
-
-  # Disable Pushover notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-pushover
-  [allow_pushover: <boolean> | default = false]
-
-  # Disable Slack notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-slack
-  [allow_slack: <boolean> | default = false]
-
-  # Disable OpsGenie notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-opsgenie
-  [allow_opsgenie: <boolean> | default = false]
+  # CLI flag: -configs.notifications.disable-email
+  [disable_email: <boolean> | default = false]
 
   # Disable WebHook notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-webhook
-  [allow_webhook: <boolean> | default = false]
-
-  # Disable VictorOps notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-victorops
-  [allow_victorops: <boolean> | default = false]
-
-  # Disable WeChat notifications for Alertmanager.
-  # CLI flag: -configs-api.notifications.disable-wechat
-  [allow_wechat: <boolean> | default = false]
-```
-
-## `configdb_config`
-
-The `configdb_config` configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.
-
-```yaml
-# URI where the database can be found (for dev you can use memory://)
-# CLI flag: -database.uri
-[uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
-
-# Path where the database migration files can be found
-# CLI flag: -database.migrations
-[migrationsdir: <string> | default = ""]
-
-# File containing password (username goes in URI)
-# CLI flag: -database.password-file
-[passwordfile: <string> | default = ""]
+  # CLI flag: -configs.notifications.disable-webhook
+  [disable_webhook: <boolean> | default = false]
 ```
 
 ## `configstore_config`

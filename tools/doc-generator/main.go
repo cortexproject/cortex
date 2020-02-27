@@ -6,16 +6,14 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/configs/api"
-
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/configs/api"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -145,14 +143,9 @@ var (
 			desc:       "The fifo_cache_config configures the local in-memory cache.",
 		},
 		{
-			name:       "configs_api_config",
+			name:       "configs_config",
 			structType: reflect.TypeOf(api.Config{}),
-			desc:       "The configs_api_config configures the configs API used by the 'configs' service to expose APIs to manage them.",
-		},
-		{
-			name:       "configdb_config",
-			structType: reflect.TypeOf(db.Config{}),
-			desc:       "The configdb_config configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.",
+			desc:       "The configs_config configures the Cortex Configs API.",
 		},
 		{
 			name:       "configstore_config",

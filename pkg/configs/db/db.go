@@ -14,9 +14,9 @@ import (
 
 // Config configures the database.
 type Config struct {
-	URI           string
-	MigrationsDir string
-	PasswordFile  string
+	URI           string `yaml:"uri"`
+	MigrationsDir string `yaml:"migrations_dir"`
+	PasswordFile  string `yaml:"password_file"`
 
 	// Allow injection of mock DBs for unit testing.
 	Mock DB `yaml:"-"`
@@ -24,9 +24,9 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
-	f.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
-	f.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
+	f.StringVar(&cfg.URI, "configs.database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
+	f.StringVar(&cfg.MigrationsDir, "configs.database.migrations", "", "Path where the database migration files can be found")
+	f.StringVar(&cfg.PasswordFile, "configs.database.password-file", "", "File containing password (username goes in URI)")
 }
 
 // DB is the interface for the database.

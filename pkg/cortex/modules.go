@@ -517,12 +517,12 @@ func (t *Cortex) stopRuler() error {
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
-	t.configDB, err = db.New(cfg.ConfigDB)
+	t.configDB, err = db.New(cfg.Configs.DB)
 	if err != nil {
 		return
 	}
 
-	t.configAPI = api.New(t.configDB, cfg.ConfigsAPI)
+	t.configAPI = api.New(t.configDB, cfg.Configs)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
 	return
 }

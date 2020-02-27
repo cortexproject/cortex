@@ -20,34 +20,23 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// Config configures the configs API.
+// Config configures Configs API
 type Config struct {
+	DB            db.Config           `yaml:"database"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
 // NotificationsConfig configures Alertmanager notifications method.
 type NotificationsConfig struct {
-	DisableEmail     bool `yaml:"allow_email"`
-	DisablePagerDuty bool `yaml:"allow_pagerduty"`
-	DisablePushover  bool `yaml:"allow_pushover"`
-	DisableSlack     bool `yaml:"allow_slack"`
-	DisableOpsGenie  bool `yaml:"allow_opsgenie"`
-	DisableWebHook   bool `yaml:"allow_webhook"`
-	DisableVictorOps bool `yaml:"allow_victorops"`
-	DisableWeChat    bool `yaml:"allow_wechat"`
-	// Hipchat has reached end of life and is no longer available
+	DisableEmail   bool `yaml:"disable_email"`
+	DisableWebHook bool `yaml:"disable_webhook"`
 }
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+// RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Notifications.DisableEmail, "configs-api.notifications.disable-email", false, "Disable Email notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisablePagerDuty, "configs-api.notifications.disable-pagerduty", false, "Disable PagerDuty notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisablePushover, "configs-api.notifications.disable-pushover", false, "Disable Pushover notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisableSlack, "configs-api.notifications.disable-slack", false, "Disable Slack notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisableOpsGenie, "configs-api.notifications.disable-opsgenie", false, "Disable OpsGenie notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisableWebHook, "configs-api.notifications.disable-webhook", false, "Disable WebHook notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisableVictorOps, "configs-api.notifications.disable-victorops", false, "Disable VictorOps notifications for Alertmanager.")
-	f.BoolVar(&cfg.Notifications.DisableWeChat, "configs-api.notifications.disable-wechat", false, "Disable WeChat notifications for Alertmanager.")
+	f.BoolVar(&cfg.Notifications.DisableEmail, "configs.notifications.disable-email", false, "Disable Email notifications for Alertmanager.")
+	f.BoolVar(&cfg.Notifications.DisableWebHook, "configs.notifications.disable-webhook", false, "Disable WebHook notifications for Alertmanager.")
+	cfg.DB.RegisterFlags(f)
 }
 
 // API implements the configs api.
@@ -209,26 +198,8 @@ func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 		if noCfg.DisableEmail && len(recv.EmailConfigs) > 0 {
 			return fmt.Errorf("email notifications are disabled in Cortex yet")
 		}
-		if noCfg.DisablePagerDuty && len(recv.PagerdutyConfigs) > 0 {
-			return fmt.Errorf("pager-duty notifications are disabled in Cortex yet")
-		}
-		if noCfg.DisablePushover && len(recv.PushoverConfigs) > 0 {
-			return fmt.Errorf("pushover notifications are disabled in Cortex yet")
-		}
-		if noCfg.DisableSlack && len(recv.SlackConfigs) > 0 {
-			return fmt.Errorf("slack notifications are disabled in Cortex yet")
-		}
-		if noCfg.DisableOpsGenie && len(recv.OpsGenieConfigs) > 0 {
-			return fmt.Errorf("ops-genie notifications are disabled in Cortex yet")
-		}
 		if noCfg.DisableWebHook && len(recv.WebhookConfigs) > 0 {
 			return fmt.Errorf("web-hook notifications are disabled in Cortex yet")
-		}
-		if noCfg.DisableVictorOps && len(recv.VictorOpsConfigs) > 0 {
-			return fmt.Errorf("victor-ops notifications are disabled in Cortex yet")
-		}
-		if noCfg.DisableWeChat && len(recv.WechatConfigs) > 0 {
-			return fmt.Errorf("we-chat notifications are disabled in Cortex yet")
 		}
 	}
 

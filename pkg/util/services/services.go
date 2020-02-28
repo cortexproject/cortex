@@ -98,6 +98,7 @@ func (f funcBasedListener) Failed(from State, failure error) {
 // Service must be in New state when this function is called.
 //
 // Notice that context passed to the service for starting is the same as context used for waiting!
+// If you need these contexts to be different, please use StartAsync and AwaitRunning directly.
 func StartAndAwaitRunning(ctx context.Context, service Service) error {
 	err := service.StartAsync(ctx)
 	if err != nil {

@@ -96,7 +96,7 @@ func TestReplicationStrategy(t *testing.T) {
 		}, "ingester", IngesterRingKey)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-		defer services.StopAndAwaitTerminated(context.Background(), r)
+		defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, tc.op)

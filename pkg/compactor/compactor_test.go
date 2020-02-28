@@ -418,7 +418,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
-		defer services.StopAndAwaitTerminated(context.Background(), c)
+		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 		defer cleanup()
 
 		compactors = append(compactors, c)

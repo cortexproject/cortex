@@ -138,7 +138,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	mtime.NowForce(start)
@@ -168,7 +168,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "test", replica1)
@@ -203,7 +203,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -238,7 +238,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -289,7 +289,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	mtime.NowForce(startTime)
@@ -350,7 +350,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	defer services.StopAndAwaitTerminated(context.Background(), c)
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time for user 1.
 	mtime.NowForce(start)
@@ -433,7 +433,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-			defer services.StopAndAwaitTerminated(context.Background(), c)
+			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 			// Init context used by the test
 			ctx, cancel := context.WithTimeout(ctxUser1, time.Second)

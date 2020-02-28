@@ -60,7 +60,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-	defer services.StopAndAwaitTerminated(context.Background(), r)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// Add the first ingester to the ring
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
@@ -134,12 +134,12 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1", true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler1))
-	defer services.StopAndAwaitTerminated(context.Background(), lifecycler1)
+	defer services.StopAndAwaitTerminated(context.Background(), lifecycler1) //nolint:errcheck
 
 	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2", true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler2))
-	defer services.StopAndAwaitTerminated(context.Background(), lifecycler2)
+	defer services.StopAndAwaitTerminated(context.Background(), lifecycler2) //nolint:errcheck
 
 	// Ensure each lifecycler reports 1 healthy instance, because they're
 	// in a different ring
@@ -169,7 +169,7 @@ func TestRingRestart(t *testing.T) {
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-	defer services.StopAndAwaitTerminated(context.Background(), r)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
@@ -279,7 +279,7 @@ func TestTokensOnDisk(t *testing.T) {
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-	defer services.StopAndAwaitTerminated(context.Background(), r)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	tokenDir, err := ioutil.TempDir(os.TempDir(), "tokens_on_disk")
 	require.NoError(t, err)
@@ -318,7 +318,7 @@ func TestTokensOnDisk(t *testing.T) {
 	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
-	defer services.StopAndAwaitTerminated(context.Background(), l2)
+	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
 
 	// Check this ingester joined, is active, and has 512 token.
 	var actTokens []uint32
@@ -353,7 +353,7 @@ func TestJoinInLeavingState(t *testing.T) {
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-	defer services.StopAndAwaitTerminated(context.Background(), r)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
 	cfg.NumTokens = 2

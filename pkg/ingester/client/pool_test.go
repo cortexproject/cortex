@@ -82,7 +82,7 @@ func TestIngesterCache(t *testing.T) {
 		ClientCleanupPeriod: 10 * time.Second,
 	}, mockReadRing{}, factory, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
-	defer services.StopAndAwaitTerminated(context.Background(), pool)
+	defer services.StopAndAwaitTerminated(context.Background(), pool) //nolint:errcheck
 
 	_, err := pool.GetClientFor("1")
 	require.NoError(t, err)

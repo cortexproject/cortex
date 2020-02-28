@@ -20,7 +20,7 @@ func TestRuler_rules(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer services.StopAndAwaitTerminated(context.Background(), r)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/rules", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")

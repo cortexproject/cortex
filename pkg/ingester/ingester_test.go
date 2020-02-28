@@ -304,7 +304,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer services.StopAndAwaitTerminated(context.Background(), ing)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -335,7 +335,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer services.StopAndAwaitTerminated(context.Background(), ing)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	lp := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -366,7 +366,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer services.StopAndAwaitTerminated(context.Background(), ing)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -423,7 +423,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer services.StopAndAwaitTerminated(context.Background(), ing)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -487,7 +487,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	_, ing := newDefaultTestStore(b)
-	defer services.StopAndAwaitTerminated(context.Background(), ing)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	var (
 		wg     sync.WaitGroup

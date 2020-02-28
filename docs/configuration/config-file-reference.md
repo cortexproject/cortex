@@ -2140,7 +2140,7 @@ bucket_store:
   [sync_interval: <duration> | default = 5m0s]
 
   # Size in bytes of in-memory index cache used to speed up blocks index lookups
-  # (shared across multiple tenants).
+  # (shared between all tenants).
   # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
   [index_cache_size_bytes: <int> | default = 1073741824]
 

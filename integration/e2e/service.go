@@ -218,6 +218,10 @@ func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) strin
 	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
+func (s *ConcreteService) SetReadinessProbe(probe *ReadinessProbe) {
+	s.readiness = probe
+}
+
 func (s *ConcreteService) Ready() error {
 	if !s.isExpectedRunning() {
 		return fmt.Errorf("service %s is stopped", s.Name())

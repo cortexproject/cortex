@@ -65,8 +65,7 @@ type TSDBState struct {
 	// transferring to a joining ingester
 	transferOnce sync.Once
 
-	shippingService   services.Service
-	compactionService services.Service
+	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
 
@@ -149,32 +148,34 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
 
+	// let's start the rest of subservices via manager
+	servs := []services.Service(nil)
+
+	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
+	servs = append(servs, compactionService)
+
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		i.TSDBState.shippingService = services.NewBasicService(nil, i.shipBlocksLoop, nil)
-		if err := services.StartAndAwaitRunning(ctx, i.TSDBState.shippingService); err != nil {
-			return errors.Wrap(err, "failed to start shipping")
-		}
+		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
+		servs = append(servs, shippingService)
 	}
 
-	i.TSDBState.compactionService = services.NewBasicService(nil, i.compactionLoop, nil)
-	if err := services.StartAndAwaitRunning(ctx, i.TSDBState.compactionService); err != nil {
-		return errors.Wrap(err, "failed to start compaction")
+	var err error
+	i.TSDBState.subservices, err = services.NewManager(servs...)
+	if err == nil {
+		err = services.StartManagerAndAwaitHealthy(ctx, i.TSDBState.subservices)
 	}
-
-	return nil
+	return errors.Wrap(err, "failed to start ingester components")
 }
 
 // runs when V2 ingester is stopping
 func (i *Ingester) stoppingV2() error {
-	if i.TSDBState.shippingService != nil {
-		// It's important to wait until shipper is finished,
-		// because the blocks transfer should start only once it's guaranteed
-		// there's no shipping on-going.
+	// It's important to wait until shipper is finished,
+	// because the blocks transfer should start only once it's guaranteed
+	// there's no shipping on-going.
 
-		_ = services.StopAndAwaitTerminated(context.Background(), i.TSDBState.shippingService)
+	if err := services.StopManagerAndAwaitStopped(context.Background(), i.TSDBState.subservices); err != nil {
+		level.Warn(util.Logger).Log("msg", "stopping ingester subservices", "err", err)
 	}
-
-	_ = services.StopAndAwaitTerminated(context.Background(), i.TSDBState.compactionService)
 
 	// Next initiate our graceful exit from the ring.
 	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)

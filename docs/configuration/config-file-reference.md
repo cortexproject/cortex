@@ -2139,10 +2139,10 @@ bucket_store:
   # CLI flag: -experimental.tsdb.bucket-store.sync-interval
   [sync_interval: <duration> | default = 5m0s]
 
-  # Size - in bytes - of a per-tenant in-memory index cache used to speed up
-  # blocks index lookups.
+  # Size in bytes of in-memory index cache used to speed up blocks index lookups
+  # (shared between all tenants).
   # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
-  [index_cache_size_bytes: <int> | default = 262144000]
+  [index_cache_size_bytes: <int> | default = 1073741824]
 
   # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
   # allocations.

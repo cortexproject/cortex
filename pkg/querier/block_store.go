@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/model"
@@ -31,15 +32,19 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger      log.Logger
-	cfg         tsdb.Config
-	bucket      objstore.Bucket
-	client      storepb.StoreClient
-	logLevel    logging.Level
-	tsdbMetrics *tsdbBucketStoreMetrics
+	logger             log.Logger
+	cfg                tsdb.Config
+	bucket             objstore.Bucket
+	client             storepb.StoreClient
+	logLevel           logging.Level
+	bucketStoreMetrics *tsdbBucketStoreMetrics
+	indexCacheMetrics  *tsdbIndexCacheMetrics
 
 	syncMint model.TimeOrDurationValue
 	syncMaxt model.TimeOrDurationValue
+
+	// Index cache shared across all tenants.
+	indexCache storecache.IndexCache
 
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
@@ -55,16 +60,20 @@ type UserStore struct {
 
 // NewUserStore returns a new UserStore
 func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
+	var err error
+
 	workersCtx, workersCancel := context.WithCancel(context.Background())
+	indexCacheRegistry := prometheus.NewRegistry()
 
 	u := &UserStore{
-		logger:        logger,
-		cfg:           cfg,
-		bucket:        bucketClient,
-		stores:        map[string]*store.BucketStore{},
-		logLevel:      logLevel,
-		tsdbMetrics:   newTSDBBucketStoreMetrics(),
-		workersCancel: workersCancel,
+		logger:             logger,
+		cfg:                cfg,
+		bucket:             bucketClient,
+		stores:             map[string]*store.BucketStore{},
+		logLevel:           logLevel,
+		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
+		indexCacheMetrics:  newTSDBIndexCacheMetrics(indexCacheRegistry),
+		workersCancel:      workersCancel,
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -73,15 +82,20 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	}
 
 	// Configure the time range to sync all blocks.
-	if err := u.syncMint.Set("0000-01-01T00:00:00Z"); err != nil {
+	if err = u.syncMint.Set("0000-01-01T00:00:00Z"); err != nil {
 		return nil, err
 	}
-	if err := u.syncMaxt.Set("9999-12-31T23:59:59Z"); err != nil {
+	if err = u.syncMaxt.Set("9999-12-31T23:59:59Z"); err != nil {
 		return nil, err
 	}
 
+	// Init the index cache.
+	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore, logger, indexCacheRegistry); err != nil {
+		return nil, errors.Wrap(err, "create index cache")
+	}
+
 	if registerer != nil {
-		registerer.MustRegister(u.syncTimes, u.tsdbMetrics)
+		registerer.MustRegister(u.syncTimes, u.bucketStoreMetrics, u.indexCacheMetrics)
 	}
 
 	serv := grpc.NewServer()
@@ -357,16 +371,6 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
 
 	reg := prometheus.NewRegistry()
-	indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
-	maxItemSizeBytes := indexCacheSizeBytes / 2
-	indexCache, err := storecache.NewInMemoryIndexCacheWithConfig(userLogger, reg, storecache.InMemoryIndexCacheConfig{
-		MaxSize:     storecache.Bytes(indexCacheSizeBytes),
-		MaxItemSize: storecache.Bytes(maxItemSizeBytes),
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	fetcher, err := block.NewMetaFetcher(
 		userLogger,
 		u.cfg.BucketStore.MetaSyncConcurrency,
@@ -385,7 +389,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		userBkt,
 		fetcher,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
-		indexCache,
+		u.indexCache,
 		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
 		u.cfg.BucketStore.MaxSampleCount,
 		u.cfg.BucketStore.MaxConcurrent,
@@ -402,7 +406,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	}
 
 	u.stores[userID] = bs
-	u.tsdbMetrics.addUserRegistry(userID, reg)
+	u.bucketStoreMetrics.addUserRegistry(userID, reg)
 
 	return bs, nil
 }

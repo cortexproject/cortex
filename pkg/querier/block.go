@@ -65,7 +65,7 @@ func (b *BlockQueryable) stopping() error {
 // Querier returns a new Querier on the storage.
 func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	if s := b.State(); s != services.Running {
-		return nil, errors.Errorf("BlockQueryable is not running: %v", s)
+		return nil, promql.ErrStorage{Err: errors.Errorf("BlockQueryable is not running: %v", s)}
 	}
 
 	userID, err := user.ExtractOrgID(ctx)

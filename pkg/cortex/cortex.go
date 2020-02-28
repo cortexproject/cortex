@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -302,6 +303,9 @@ func (t *Cortex) Run() error {
 		return err
 	}
 
+	// before starting servers, register /ready handler. It should reflect entire Cortex.
+	t.server.HTTP.Path("/ready").Handler(t.healthyHandler(sm))
+
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
 	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
@@ -345,6 +349,31 @@ func (t *Cortex) Run() error {
 	// We don't care about this error, as it cannot really fail. `err` has error from startup, which is more important.
 	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
 	return err
+}
+
+func (t *Cortex) healthyHandler(sm *services.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !sm.IsHealthy() {
+			msg := bytes.Buffer{}
+			msg.WriteString("Some services are not Running:\n")
+
+			byState := sm.ServicesByState()
+			for st, ls := range byState {
+				msg.WriteString(fmt.Sprintf("%v: %d\n", st, ls))
+			}
+
+			http.Error(w, msg.String(), http.StatusServiceUnavailable)
+		}
+
+		// Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.ingester != nil {
+			if err := t.ingester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

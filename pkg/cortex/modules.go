@@ -301,12 +301,6 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	// Once the execution reaches this point, all synchronous initialization has been
-	// done and the querier is ready to serve queries, so we're just returning a 202.
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
 	// TODO: If queryable returned from querier.New was a service, it could actually wait for storeQueryable
 	// (if it also implemented Service) to finish starting... and return error if it's not in Running state.
 	// This requires extra work, which is out of scope for this proof-of-concept...
@@ -366,7 +360,6 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 
 	client.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	t.server.HTTP.Handle("/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.ingester.Push)))

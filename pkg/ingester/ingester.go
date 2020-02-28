@@ -700,11 +700,9 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: should check if service is Running
-	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running {
+		return fmt.Errorf("service not Running: %v", s)
 	}
+	return i.lifecycler.CheckReady(ctx)
 }

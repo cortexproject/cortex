@@ -304,7 +304,7 @@ func (t *Cortex) Run() error {
 	}
 
 	// before starting servers, register /ready handler. It should reflect entire Cortex.
-	t.server.HTTP.Path("/ready").Handler(t.healthyHandler(sm))
+	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
@@ -351,7 +351,7 @@ func (t *Cortex) Run() error {
 	return err
 }
 
-func (t *Cortex) healthyHandler(sm *services.Manager) http.HandlerFunc {
+func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !sm.IsHealthy() {
 			msg := bytes.Buffer{}
@@ -363,6 +363,7 @@ func (t *Cortex) healthyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 
 			http.Error(w, msg.String(), http.StatusServiceUnavailable)
+			return
 		}
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,

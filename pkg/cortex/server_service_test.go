@@ -33,7 +33,7 @@ func TestServerStopViaContext(t *testing.T) {
 	require.NoError(t, s.AwaitTerminated(context.Background()))
 }
 
-func TestServerStop(t *testing.T) {
+func TestServerStopViaShutdown(t *testing.T) {
 	// server registers some metrics to default registry
 	savedRegistry := prometheus.DefaultRegisterer
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -49,6 +49,25 @@ func TestServerStop(t *testing.T) {
 
 	// we stop HTTP/gRPC Servers here... that should make server stop.
 	serv.Shutdown()
+
+	require.NoError(t, s.AwaitTerminated(context.Background()))
+}
+
+func TestServerStopViaStop(t *testing.T) {
+	// server registers some metrics to default registry
+	savedRegistry := prometheus.DefaultRegisterer
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	defer func() {
+		prometheus.DefaultRegisterer = savedRegistry
+	}()
+
+	serv, err := server.New(server.Config{})
+	require.NoError(t, err)
+
+	s := NewServerService(serv, func() []services.Service { return nil })
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
+
+	serv.Stop()
 
 	require.NoError(t, s.AwaitTerminated(context.Background()))
 }

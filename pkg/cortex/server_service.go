@@ -39,10 +39,7 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 			_ = s.AwaitTerminated(context.Background())
 		}
 
-		// unblock Run, if it's still running (e.g. service was asked to stop via StopAsync)
-		serv.Stop()
-
-		// shutdown HTTP and gRPC servers
+		// shutdown HTTP and gRPC servers (this also unblocks Run)
 		serv.Shutdown()
 
 		// if not closed yet, wait until server stops.

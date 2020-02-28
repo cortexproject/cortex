@@ -342,9 +342,8 @@ func (t *Cortex) Run() error {
 	}
 
 	// Stop all the services, and wait until they are all done.
-	sm.StopAsync()
-	// this can only return error if context is Done... ignore
-	_ = sm.AwaitStopped(context.Background())
+	// We don't care about this error, as it cannot really fail. `err` has error from startup, which is more important.
+	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
 	return err
 }
 

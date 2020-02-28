@@ -163,7 +163,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 // Stop the TableManager
 func (m *TableManager) stopping() error {
 	if m.bucketRetentionLoop != nil {
-		_ = services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
+		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
 	}
 	return nil
 }

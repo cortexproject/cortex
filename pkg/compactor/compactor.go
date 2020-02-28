@@ -200,9 +200,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 func (c *Compactor) stopping() error {
 	if c.subservices != nil {
-		_ = services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
+		return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
 	}
-
 	return nil
 }
 

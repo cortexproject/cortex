@@ -176,11 +176,6 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	// Ensure the alertmanager is set to active
-	am.activeMtx.Lock()
-	am.active = true
-	am.activeMtx.Unlock()
-
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
@@ -241,25 +236,37 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	go am.dispatcher.Run()
 	go am.inhibitor.Run()
 
+	// Ensure the alertmanager is set to active
+	am.activeMtx.Lock()
+	am.active = true
+	am.activeMtx.Unlock()
+
 	return nil
 }
 
+func (am *Alertmanager) isActive() bool {
+	am.activeMtx.Lock()
+	defer am.activeMtx.Unlock()
+	return am.active
+}
+
 // Pause running jobs in the alertmanager that are able to be restarted and sets
-// to inactive
+// to inactives
 func (am *Alertmanager) Pause() {
 	// Set to inactive
 	am.activeMtx.Lock()
 	am.active = false
 	am.activeMtx.Unlock()
 
-	// Ensure inhibitor is set before being called
+	// Stop the inhibitor and dispatcher which will be recreated when
+	// a new config is applied
 	if am.inhibitor != nil {
 		am.inhibitor.Stop()
+		am.inhibitor = nil
 	}
-
-	// Ensure dispatcher is set before being called
 	if am.dispatcher != nil {
 		am.dispatcher.Stop()
+		am.dispatcher = nil
 	}
 
 	// Remove all of the active silences from the alertmanager

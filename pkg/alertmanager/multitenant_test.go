@@ -123,9 +123,7 @@ func TestLoadAllConfigs(t *testing.T) {
 
 	userAM, exists := am.alertmanagers["user3"]
 	require.True(t, exists)
-	userAM.activeMtx.Lock()
-	require.False(t, userAM.active)
-	userAM.activeMtx.Unlock()
+	require.False(t, userAM.isActive())
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -142,7 +140,5 @@ func TestLoadAllConfigs(t *testing.T) {
 
 	userAM, exists = am.alertmanagers["user3"]
 	require.True(t, exists)
-	userAM.activeMtx.Lock()
-	require.True(t, userAM.active)
-	userAM.activeMtx.Unlock()
+	require.True(t, userAM.isActive())
 }

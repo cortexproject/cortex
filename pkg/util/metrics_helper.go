@@ -31,7 +31,7 @@ func (m singleValueWithLabelsMap) aggregateFn(labelsKey string, labelValues []st
 	m[labelsKey] = r
 }
 
-func (m singleValueWithLabelsMap) appendUserLabelValue(user string) {
+func (m singleValueWithLabelsMap) prependUserLabelValue(user string) {
 	for key, mlv := range m {
 		mlv.LabelValues = append([]string{user}, mlv.LabelValues...)
 		m[key] = mlv
@@ -175,7 +175,7 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prome
 	for user, userMetrics := range d {
 		result := singleValueWithLabelsMap{}
 		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn)
-		result.appendUserLabelValue(user)
+		result.prependUserLabelValue(user)
 		result.WriteToMetricChannel(out, desc, prometheus.GaugeValue)
 	}
 }

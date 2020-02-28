@@ -133,6 +133,7 @@ func newCompactor(
 		compactorCfg:                       compactorCfg,
 		storageCfg:                         storageCfg,
 		logger:                             logger,
+		syncerMetrics:                      newSyncerMetrics(registerer),
 		createBucketClientAndTsdbCompactor: createBucketClientAndTsdbCompactor,
 
 		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
@@ -152,7 +153,6 @@ func newCompactor(
 	// Register metrics.
 	if registerer != nil {
 		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed)
-		c.syncerMetrics = newSyncerMetrics(registerer)
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)

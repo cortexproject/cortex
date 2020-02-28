@@ -27,7 +27,7 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 			return nil
 		case err := <-serverDone:
 			if err != nil {
-				level.Info(util.Logger).Log("msg", "server failed", "err", err)
+				level.Error(util.Logger).Log("msg", "server failed", "err", err)
 			}
 			return err
 		}

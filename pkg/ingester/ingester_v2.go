@@ -599,11 +599,11 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
-
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
+	userLogger := util.WithUserID(userID, util.Logger)
 
 	// Create a new user database
-	db, err := tsdb.Open(udir, util.Logger, tsdbPromReg, &tsdb.Options{
+	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMilliseconds(),
 		NoLockfile:        true,
@@ -633,7 +633,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
 		userDB.shipper = shipper.New(
-			util.Logger,
+			userLogger,
 			tsdbPromReg,
 			udir,
 			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),

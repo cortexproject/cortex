@@ -81,7 +81,7 @@ The general [configuration documentation](../configuration/_index.md) also appli
 
 ### `storage_config`
 
-The `storage_config` block configures the storage engine.
+The `storage_config` configures the storage engine.
 
 ```yaml
 storage:
@@ -92,62 +92,51 @@ storage:
 
 ### `tsdb_config`
 
-The `tsdb_config` block configures the blocks storage engine (based on TSDB).
+The `tsdb_config` configures the experimental blocks storage.
 
 ```yaml
 tsdb:
-  # Backend storage to use. Either "s3" or "gcs".
-  # CLI flag: -experimental.tsdb.backend
-  backend: <string>
-
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -experimental.tsdb.dir
   [dir: <string> | default = "tsdb"]
 
   # TSDB blocks range period.
   # CLI flag: -experimental.tsdb.block-ranges-period
-  [ block_ranges_period: <list of duration> | default = [2h]]
+  [block_ranges_period: <list of duration> | default = 2h0m0s]
 
-  # TSDB blocks retention in the ingester before a block is removed. This
-  # should be larger than the block_ranges_period and large enough to give
-  # ingesters enough time to discover newly uploaded blocks.
+  # TSDB blocks retention in the ingester before a block is removed. This should
+  # be larger than the block_ranges_period and large enough to give ingesters
+  # enough time to discover newly uploaded blocks.
   # CLI flag: -experimental.tsdb.retention-period
-  [ retention_period: <duration> | default = 6h]
+  [retention_period: <duration> | default = 6h0m0s]
 
-  # How frequently the TSDB blocks are scanned and new ones are shipped to
-  # the storage. 0 means shipping is disabled.
+  # How frequently the TSDB blocks are scanned and new ones are shipped to the
+  # storage. 0 means shipping is disabled.
   # CLI flag: -experimental.tsdb.ship-interval
-  [ship_interval: <duration> | default = 1m]
+  [ship_interval: <duration> | default = 1m0s]
 
   # Maximum number of tenants concurrently shipping blocks to the storage.
   # CLI flag: -experimental.tsdb.ship-concurrency
   [ship_concurrency: <int> | default = 10]
 
-  # How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range.
-  # Must be greater than 0 and max 5 minutes.
-  # CLI flag: -experimental.tsdb.head-compaction-interval
-  [head_compaction_interval: <duration> | default = 1m]
+  # Backend storage to use. Either "s3" or "gcs".
+  # CLI flag: -experimental.tsdb.backend
+  [backend: <string> | default = "s3"]
 
-  # Maximum number of tenants concurrently compacting TSDB head into a new block.
-  # CLI flag: -experimental.tsdb.head-compaction-concurrency
-  [head_compaction_concurrency: <int> | default = 5]
-
-  # The bucket store configuration applies to queriers and configure how queriers
-  # iteract with the long-term storage backend.
   bucket_store:
-    # Directory to store synched TSDB index headers.
+    # Directory to store synchronized TSDB index headers.
     # CLI flag: -experimental.tsdb.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
-    # How frequently scan the bucket to look for changes (new blocks shipped by
-    # ingesters and blocks removed by retention or compaction).
+    # How frequently scan the bucket to look for changes (new blocks shipped by
+    # ingesters and blocks removed by retention or compaction). 0 disables it.
     # CLI flag: -experimental.tsdb.bucket-store.sync-interval
-    [sync_interval: <duration> | default = 5m]
+    [sync_interval: <duration> | default = 5m0s]
 
-    # Size - in bytes - of a per-tenant in-memory index cache used to speed up
+    # Size - in bytes - of a per-tenant in-memory index cache used to speed up
     # blocks index lookups.
     # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
-    [ index_cache_size_bytes: <int> | default = 262144000]
+    [index_cache_size_bytes: <int> | default = 262144000]
 
     # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
     # allocations.
@@ -172,162 +161,171 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
 
-  # Configures the S3 storage backend.
-  # Required only when "s3" backend has been selected.
+    # Number of Go routines to use when syncing block meta files from object
+    # storage per tenant.
+    # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
+    [meta_sync_concurrency: <int> | default = 20]
+
+  # How frequently does Cortex try to compact TSDB head. Block is only created
+  # if data covers smallest block range. Must be greater than 0 and max 5
+  # minutes.
+  # CLI flag: -experimental.tsdb.head-compaction-interval
+  [head_compaction_interval: <duration> | default = 1m0s]
+
+  # Maximum number of tenants concurrently compacting TSDB head into a new block
+  # CLI flag: -experimental.tsdb.head-compaction-concurrency
+  [head_compaction_concurrency: <int> | default = 5]
+
+  # limit the number of concurrently opening TSDB's on startup
+  # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
+  [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
   s3:
-    # S3 bucket name.
-    # CLI flag: -experimental.tsdb.s3.bucket-name string
-    bucket_name: <string>
-
-    # S3 access key ID. If empty, fallbacks to AWS SDK default logic.
-    # CLI flag: -experimental.tsdb.s3.access-key-id string
-    [access_key_id: <string>]
-
-    # S3 secret access key. If empty, fallbacks to AWS SDK default logic.
-    # CLI flag: -experimental.tsdb.s3.secret-access-key string
-    [secret_access_key: <string>]
-
-    # S3 endpoint without schema. By defaults it use the AWS S3 endpoint.
+    # S3 endpoint without schema
     # CLI flag: -experimental.tsdb.s3.endpoint
     [endpoint: <string> | default = ""]
 
-    # If enabled, use http:// for the S3 endpoint instead of https://.
-    # This could be useful in local dev/test environments while using
-    # an S3-compatible backend storage, like Minio.
+    # S3 bucket name
+    # CLI flag: -experimental.tsdb.s3.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # S3 secret access key
+    # CLI flag: -experimental.tsdb.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # S3 access key ID
+    # CLI flag: -experimental.tsdb.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # If enabled, use http:// for the S3 endpoint instead of https://. This
+    # could be useful in local dev/test environments while using an
+    # S3-compatible backend storage, like Minio.
     # CLI flag: -experimental.tsdb.s3.insecure
     [insecure: <boolean> | default = false]
 
-  # Configures the GCS storage backend.
-  # Required only when "gcs" backend has been selected.
   gcs:
-    # GCS bucket name.
+    # GCS bucket name
     # CLI flag: -experimental.tsdb.gcs.bucket-name
-    bucket_name: <string>
+    [bucket_name: <string> | default = ""]
 
-    # JSON representing either a Google Developers Console client_credentials.json
-    # file or a Google Developers service account key file. If empty, fallbacks to
-    # Google SDK default logic.
-    # CLI flag: -experimental.tsdb.gcs.service-account string
-    [ service_account: <string>]
+    # JSON representing either a Google Developers Console
+    # client_credentials.json file or a Google Developers service account key
+    # file. If empty, fallback to Google default logic.
+    # CLI flag: -experimental.tsdb.gcs.service-account
+    [service_account: <string> | default = ""]
 
-  # Configures the Azure storage backend
-  # Required only when "azure" backend has been selected.
   azure:
     # Azure storage account name
     # CLI flag: -experimental.tsdb.azure.account-name
-    account_name: <string>
+    [account_name: <string> | default = ""]
+
     # Azure storage account key
     # CLI flag: -experimental.tsdb.azure.account-key
-    account_key: <string>
+    [account_key: <string> | default = ""]
+
     # Azure storage container name
     # CLI flag: -experimental.tsdb.azure.container-name
-    container_name: <string>
-    # Azure storage endpoint suffix without schema.
-    # The account name will be prefixed to this value to create the FQDN
+    [container_name: <string> | default = ""]
+
+    # Azure storage endpoint suffix without schema. The account name will be
+    # prefixed to this value to create the FQDN
     # CLI flag: -experimental.tsdb.azure.endpoint-suffix
-    endpoint_suffix: <string>
+    [endpoint_suffix: <string> | default = ""]
+
     # Number of retries for recoverable errors
     # CLI flag: -experimental.tsdb.azure.max-retries
-    [ max_retries: <int> | default=20 ]
+    [max_retries: <int> | default = 20]
 ```
-
 ### `compactor_config`
 
-The `compactor_config` block configures the optional compactor service.
+The `compactor_config` configures the compactor for the experimental blocks storage.
 
 ```yaml
 compactor:
-    # List of compaction time ranges.
-    # CLI flag: -compactor.block-ranges
-    [block_ranges: <list of duration> | default = [2h,12h,24h]]
+  # List of compaction time ranges.
+  # CLI flag: -compactor.block-ranges
+  [block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
 
-    # Number of Go routines to use when syncing block index and chunks files
-    # from the long term storage.
-    # CLI flag: -compactor.block-sync-concurrency
-    [block_sync_concurrency: <int> | default = 20]
+  # Number of Go routines to use when syncing block index and chunks files from
+  # the long term storage.
+  # CLI flag: -compactor.block-sync-concurrency
+  [block_sync_concurrency: <int> | default = 20]
 
-    # Number of Go routines to use when syncing block meta files from the long
-    # term storage.
-    # CLI flag: -compactor.meta-sync-concurrency
-    [meta_sync_concurrency: <int> | default = 20]
+  # Number of Go routines to use when syncing block meta files from the long
+  # term storage.
+  # CLI flag: -compactor.meta-sync-concurrency
+  [meta_sync_concurrency: <int> | default = 20]
 
-    # Minimum age of fresh (non-compacted) blocks before they are being processed,
-    # in order to skip blocks that are still uploading from ingesters. Malformed
-    # blocks older than the maximum of consistency-delay and 30m will be removed.
-    # CLI flag: -compactor.consistency-delay
-    [consistency_delay: <duration> | default = 30m]
+  # Minimum age of fresh (non-compacted) blocks before they are being processed.
+  # Malformed blocks older than the maximum of consistency-delay and 48h0m0s
+  # will be removed.
+  # CLI flag: -compactor.consistency-delay
+  [consistency_delay: <duration> | default = 30m0s]
 
-    # Directory in which to cache downloaded blocks to compact and to store the
-    # newly created block during the compaction process.
-    # CLI flag: -compactor.data-dir
-    [data_dir: <string> | default = "./data"]
+  # Data directory in which to cache blocks and process compactions
+  # CLI flag: -compactor.data-dir
+  [data_dir: <string> | default = "./data"]
 
-    # The frequency at which the compactor should look for new blocks eligible for
-    # compaction and trigger their compaction.
-    # CLI flag: -compactor.compaction-interval
-    [compaction_interval: <duration> | default = 1h]
+  # The frequency at which the compaction runs
+  # CLI flag: -compactor.compaction-interval
+  [compaction_interval: <duration> | default = 1h0m0s]
 
-    # How many times to retry a failed compaction during a single compaction
-    # interval.
-    # CLI flag: -compactor.compaction-retries
-    [compaction_retries: <int> | default = 3]
+  # How many times to retry a failed compaction during a single compaction
+  # interval
+  # CLI flag: -compactor.compaction-retries
+  [compaction_retries: <int> | default = 3]
 
-    # Shard tenants across multiple compactor instances. Sharding is required if
-    # you run multiple compactor instances, in order to coordinate compactions
-    # and avoid race conditions leading to the same tenant blocks simultaneously
-    # compacted by different instances.
-    # CLI flag: -compactor.sharding-enabled
-    [sharding_enabled: <bool> | default = false]
+  # Shard tenants across multiple compactor instances. Sharding is required if
+  # you run multiple compactor instances, in order to coordinate compactions and
+  # avoid race conditions leading to the same tenant blocks simultaneously
+  # compacted by different instances.
+  # CLI flag: -compactor.sharding-enabled
+  [sharding_enabled: <boolean> | default = false]
 
-    # Configures the ring used when sharding is enabled.
-    sharding_ring:
-      kvstore:
-        # Backend storage to use for the ring. Supported values are: consul, etcd,
-        # inmemory, multi, memberlist (experimental).
-        # CLI flag: -compactor.ring.store
-        [store: <string> | default = "consul"]
+  sharding_ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, multi, memberlist (experimental).
+      # CLI flag: -compactor.ring.store
+      [store: <string> | default = "consul"]
 
-        # The prefix for the keys in the store. Should end with a /.
-        # CLI flag: -compactor.ring.prefix
-        [prefix: <string> | default = "collectors/"]
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -compactor.ring.prefix
+      [prefix: <string> | default = "collectors/"]
 
-        # The consul_config configures the consul client.
-        # The CLI flags prefix for this block config is: compactor.ring
-        [consul: <consul_config>]
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is: compactor.ring
+      [consul: <consul_config>]
 
-        # The etcd_config configures the etcd client.
-        # The CLI flags prefix for this block config is: compactor.ring
-        [etcd: <etcd_config>]
+      # The etcd_config configures the etcd client.
+      # The CLI flags prefix for this block config is: compactor.ring
+      [etcd: <etcd_config>]
 
-        # The memberlist_config configures the Gossip memberlist.
-        # The CLI flags prefix for this block config is: compactor.ring
-        [memberlist: <memberlist_config>]
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -compactor.ring.multi.primary
+        [primary: <string> | default = ""]
 
-        multi:
-          # Primary backend storage used by multi-client.
-          # CLI flag: -compactor.ring.multi.primary
-          [primary: <string> | default = ""]
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -compactor.ring.multi.secondary
+        [secondary: <string> | default = ""]
 
-          # Secondary backend storage used by multi-client.
-          # CLI flag: -compactor.ring.multi.secondary
-          [secondary: <string> | default = ""]
+        # Mirror writes to secondary store.
+        # CLI flag: -compactor.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
 
-          # Mirror writes to secondary store.
-          # CLI flag: -compactor.ring.multi.mirror-enabled
-          [mirror_enabled: <boolean> | default = false]
+        # Timeout for storing value to secondary store.
+        # CLI flag: -compactor.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
 
-          # Timeout for storing value to secondary store.
-          # CLI flag: -compactor.ring.multi.mirror-timeout
-          [mirror_timeout: <duration> | default = 2s]
+    # Period at which to heartbeat to the ring.
+    # CLI flag: -compactor.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
 
-      # Period at which to heartbeat to the ring.
-      # CLI flag: -compactor.ring.heartbeat-period
-      [heartbeat_period: <duration> | default = 5m]
-
-      # The heartbeat timeout after which compactors are considered unhealthy
-      # within the ring.
-      # CLI flag: -compactor.ring.heartbeat-timeout
-      [heartbeat_timeout: <duration> | default = 1m]
+    # The heartbeat timeout after which compactors are considered unhealthy
+    # within the ring.
+    # CLI flag: -compactor.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m0s]
 ```
 
 ## Known issues

@@ -105,6 +105,13 @@ Where default_value is the value to use if the environment variable is undefined
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
 
+# The tsdb_config configures the experimental blocks storage.
+[tsdb: <tsdb_config>]
+
+# The compactor_config configures the compactor for the experimental blocks
+# storage.
+[compactor: <compactor_config>]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
@@ -128,7 +135,7 @@ runtime_config:
 [memberlist: <memberlist_config>]
 ```
 
-## `server_config`
+### `server_config`
 
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
@@ -224,7 +231,7 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 [http_path_prefix: <string> | default = ""]
 ```
 
-## `distributor_config`
+### `distributor_config`
 
 The `distributor_config` configures the Cortex distributor.
 
@@ -358,7 +365,7 @@ ring:
   [heartbeat_timeout: <duration> | default = 1m0s]
 ```
 
-## `ingester_config`
+### `ingester_config`
 
 The `ingester_config` configures the Cortex ingester.
 
@@ -511,7 +518,7 @@ lifecycler:
 [rateupdateperiod: <duration> | default = 15s]
 ```
 
-## `querier_config`
+### `querier_config`
 
 The `querier_config` configures the Cortex querier.
 
@@ -564,7 +571,7 @@ The `querier_config` configures the Cortex querier.
 [active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 ```
 
-## `query_frontend_config`
+### `query_frontend_config`
 
 The `query_frontend_config` configures the Cortex query-frontend.
 
@@ -587,7 +594,7 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [log_queries_longer_than: <duration> | default = 0s]
 ```
 
-## `queryrange_config`
+### `queryrange_config`
 
 The `queryrange_config` configures the query splitting and caching in the Cortex query-frontend.
 
@@ -664,7 +671,7 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = false]
 ```
 
-## `ruler_config`
+### `ruler_config`
 
 The `ruler_config` configures the Cortex ruler.
 
@@ -785,7 +792,7 @@ ring:
 [enable_api: <boolean> | default = false]
 ```
 
-## `alertmanager_config`
+### `alertmanager_config`
 
 The `alertmanager_config` configures the Cortex alertmanager.
 
@@ -851,7 +858,7 @@ store:
     [path: <string> | default = ""]
 ```
 
-## `table_manager_config`
+### `table_manager_config`
 
 The `table_manager_config` configures the Cortex table-manager.
 
@@ -1181,7 +1188,7 @@ chunk_tables_provisioning:
   [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
-## `storage_config`
+### `storage_config`
 
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
 
@@ -1518,7 +1525,7 @@ index_queries_cache_config:
   [fifocache: <fifo_cache_config>]
 ```
 
-## `chunk_store_config`
+### `chunk_store_config`
 
 The `chunk_store_config` configures how Cortex stores the data (chunks storage engine).
 
@@ -1606,7 +1613,7 @@ write_dedupe_cache_config:
 [max_look_back_period: <duration> | default = 0s]
 ```
 
-## `ingester_client_config`
+### `ingester_client_config`
 
 The `ingester_client_config` configures how the Cortex distributors connect to the ingesters.
 
@@ -1650,7 +1657,7 @@ grpc_client_config:
     [maxretries: <int> | default = 10]
 ```
 
-## `frontend_worker_config`
+### `frontend_worker_config`
 
 The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
 
@@ -1706,7 +1713,7 @@ grpc_client_config:
     [maxretries: <int> | default = 10]
 ```
 
-## `etcd_config`
+### `etcd_config`
 
 The `etcd_config` configures the etcd client.
 
@@ -1724,7 +1731,7 @@ The `etcd_config` configures the etcd client.
 [max_retries: <int> | default = 10]
 ```
 
-## `consul_config`
+### `consul_config`
 
 The `consul_config` configures the consul client.
 
@@ -1755,7 +1762,7 @@ The `consul_config` configures the consul client.
 [watchkeyburstsize: <int> | default = 1]
 ```
 
-## `memberlist_config`
+### `memberlist_config`
 
 The `memberlist_config` configures the Gossip memberlist.
 
@@ -1830,7 +1837,7 @@ The `memberlist_config` configures the Gossip memberlist.
 [packet_write_timeout: <duration> | default = 5s]
 ```
 
-## `limits_config`
+### `limits_config`
 
 The `limits_config` configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).
 
@@ -1960,7 +1967,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [per_tenant_override_period: <duration> | default = 10s]
 ```
 
-## `redis_config`
+### `redis_config`
 
 The `redis_config` configures the Redis backend cache.
 
@@ -1995,7 +2002,7 @@ The `redis_config` configures the Redis backend cache.
 [enable_tls: <boolean> | default = false]
 ```
 
-## `memcached_config`
+### `memcached_config`
 
 The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
 
@@ -2013,7 +2020,7 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 [parallelism: <int> | default = 100]
 ```
 
-## `memcached_client_config`
+### `memcached_client_config`
 
 The `memcached_client_config` configures the client used to connect to Memcached.
 
@@ -2044,7 +2051,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 [consistent_hash: <boolean> | default = false]
 ```
 
-## `fifo_cache_config`
+### `fifo_cache_config`
 
 The `fifo_cache_config` configures the local in-memory cache.
 
@@ -2058,7 +2065,7 @@ The `fifo_cache_config` configures the local in-memory cache.
 [validity: <duration> | default = 0s]
 ```
 
-## `configdb_config`
+### `configdb_config`
 
 The `configdb_config` configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.
 
@@ -2076,7 +2083,7 @@ The `configdb_config` configures the config database storing rules and alerts, a
 [passwordfile: <string> | default = ""]
 ```
 
-## `configstore_config`
+### `configstore_config`
 
 The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager.
 
@@ -2088,4 +2095,240 @@ The `configstore_config` configures the config database storing rules and alerts
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout
 [clienttimeout: <duration> | default = 5s]
+```
+
+### `tsdb_config`
+
+The `tsdb_config` configures the experimental blocks storage.
+
+```yaml
+# Local directory to store TSDBs in the ingesters.
+# CLI flag: -experimental.tsdb.dir
+[dir: <string> | default = "tsdb"]
+
+# TSDB blocks range period.
+# CLI flag: -experimental.tsdb.block-ranges-period
+[block_ranges_period: <list of duration> | default = 2h0m0s]
+
+# TSDB blocks retention in the ingester before a block is removed. This should
+# be larger than the block_ranges_period and large enough to give ingesters
+# enough time to discover newly uploaded blocks.
+# CLI flag: -experimental.tsdb.retention-period
+[retention_period: <duration> | default = 6h0m0s]
+
+# How frequently the TSDB blocks are scanned and new ones are shipped to the
+# storage. 0 means shipping is disabled.
+# CLI flag: -experimental.tsdb.ship-interval
+[ship_interval: <duration> | default = 1m0s]
+
+# Maximum number of tenants concurrently shipping blocks to the storage.
+# CLI flag: -experimental.tsdb.ship-concurrency
+[ship_concurrency: <int> | default = 10]
+
+# Backend storage to use. Either "s3" or "gcs".
+# CLI flag: -experimental.tsdb.backend
+[backend: <string> | default = "s3"]
+
+bucket_store:
+  # Directory to store synchronized TSDB index headers.
+  # CLI flag: -experimental.tsdb.bucket-store.sync-dir
+  [sync_dir: <string> | default = "tsdb-sync"]
+
+  # How frequently scan the bucket to look for changes (new blocks shipped by
+  # ingesters and blocks removed by retention or compaction). 0 disables it.
+  # CLI flag: -experimental.tsdb.bucket-store.sync-interval
+  [sync_interval: <duration> | default = 5m0s]
+
+  # Size - in bytes - of a per-tenant in-memory index cache used to speed up
+  # blocks index lookups.
+  # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
+  [index_cache_size_bytes: <int> | default = 262144000]
+
+  # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
+  # allocations.
+  # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
+
+  # Max number of samples per query when loading series from the long-term
+  # storage. 0 disables the limit.
+  # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
+  [max_sample_count: <int> | default = 0]
+
+  # Max number of concurrent queries to execute against the long-term storage on
+  # a per-tenant basis.
+  # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
+  [max_concurrent: <int> | default = 20]
+
+  # Maximum number of concurrent tenants synching blocks.
+  # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency
+  [tenant_sync_concurrency: <int> | default = 10]
+
+  # Maximum number of concurrent blocks synching per tenant.
+  # CLI flag: -experimental.tsdb.bucket-store.block-sync-concurrency
+  [block_sync_concurrency: <int> | default = 20]
+
+  # Number of Go routines to use when syncing block meta files from object
+  # storage per tenant.
+  # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
+  [meta_sync_concurrency: <int> | default = 20]
+
+# How frequently does Cortex try to compact TSDB head. Block is only created if
+# data covers smallest block range. Must be greater than 0 and max 5 minutes.
+# CLI flag: -experimental.tsdb.head-compaction-interval
+[head_compaction_interval: <duration> | default = 1m0s]
+
+# Maximum number of tenants concurrently compacting TSDB head into a new block
+# CLI flag: -experimental.tsdb.head-compaction-concurrency
+[head_compaction_concurrency: <int> | default = 5]
+
+# limit the number of concurrently opening TSDB's on startup
+# CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
+[max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+s3:
+  # S3 endpoint without schema
+  # CLI flag: -experimental.tsdb.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -experimental.tsdb.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -experimental.tsdb.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -experimental.tsdb.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -experimental.tsdb.s3.insecure
+  [insecure: <boolean> | default = false]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -experimental.tsdb.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON representing either a Google Developers Console client_credentials.json
+  # file or a Google Developers service account key file. If empty, fallback to
+  # Google default logic.
+  # CLI flag: -experimental.tsdb.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -experimental.tsdb.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -experimental.tsdb.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -experimental.tsdb.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN
+  # CLI flag: -experimental.tsdb.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -experimental.tsdb.azure.max-retries
+  [max_retries: <int> | default = 20]
+```
+
+### `compactor_config`
+
+The `compactor_config` configures the compactor for the experimental blocks storage.
+
+```yaml
+# List of compaction time ranges.
+# CLI flag: -compactor.block-ranges
+[block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
+
+# Number of Go routines to use when syncing block index and chunks files from
+# the long term storage.
+# CLI flag: -compactor.block-sync-concurrency
+[block_sync_concurrency: <int> | default = 20]
+
+# Number of Go routines to use when syncing block meta files from the long term
+# storage.
+# CLI flag: -compactor.meta-sync-concurrency
+[meta_sync_concurrency: <int> | default = 20]
+
+# Minimum age of fresh (non-compacted) blocks before they are being processed.
+# Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
+# be removed.
+# CLI flag: -compactor.consistency-delay
+[consistency_delay: <duration> | default = 30m0s]
+
+# Data directory in which to cache blocks and process compactions
+# CLI flag: -compactor.data-dir
+[data_dir: <string> | default = "./data"]
+
+# The frequency at which the compaction runs
+# CLI flag: -compactor.compaction-interval
+[compaction_interval: <duration> | default = 1h0m0s]
+
+# How many times to retry a failed compaction during a single compaction
+# interval
+# CLI flag: -compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Shard tenants across multiple compactor instances. Sharding is required if you
+# run multiple compactor instances, in order to coordinate compactions and avoid
+# race conditions leading to the same tenant blocks simultaneously compacted by
+# different instances.
+# CLI flag: -compactor.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+sharding_ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, multi, memberlist (experimental).
+    # CLI flag: -compactor.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -compactor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 5s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring.
+  # CLI flag: -compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m0s]
 ```

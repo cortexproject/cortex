@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 // +build integration
 
-=======
->>>>>>> 8d6e4668e... Added integration test
 package main
 
 import (
@@ -23,36 +20,25 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 		flags map[string]string
 	}{
 		"querier running with ingester gRPC streaming disabled": {
-<<<<<<< HEAD
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
 				"-querier.ingester-streaming": "false",
 			}),
 		},
-=======
-			flags: mergeFlags(BlocksStorage, map[string]string{
-				"-querier.ingester-streaming": "false",
-			}),
-		},
 		"querier running with ingester gRPC streaming enabled": {
-			flags: mergeFlags(BlocksStorage, map[string]string{
+			flags: mergeFlags(BlocksStorageFlags, map[string]string{
 				"-querier.ingester-streaming": "true",
 			}),
 		},
->>>>>>> 8d6e4668e... Added integration test
 	}
 
 	for testName, testCfg := range tests {
 		t.Run(testName, func(t *testing.T) {
-<<<<<<< HEAD
 			const blockRangePeriod = 5 * time.Second
 
-=======
->>>>>>> 8d6e4668e... Added integration test
 			s, err := e2e.NewScenario(networkName)
 			require.NoError(t, err)
 			defer s.Close()
 
-<<<<<<< HEAD
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
 			flags := mergeFlags(testCfg.flags, map[string]string{
@@ -71,17 +57,6 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
 			ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
 			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
-=======
-			// Start dependencies.
-			consul := e2edb.NewConsul()
-			minio := e2edb.NewMinio(9000, BlocksStorage["-experimental.tsdb.s3.bucket-name"])
-			require.NoError(t, s.StartAndWaitReady(consul, minio))
-
-			// Start Cortex components.
-			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), testCfg.flags, "")
-			ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), testCfg.flags, "")
-			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), testCfg.flags, "")
->>>>>>> 8d6e4668e... Added integration test
 			require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 
 			// Wait until both the distributor and querier have updated the ring.
@@ -92,7 +67,6 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.NoError(t, err)
 
 			// Push some series to Cortex.
-<<<<<<< HEAD
 			series1Timestamp := time.Now()
 			series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
 			series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
@@ -165,20 +139,6 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items"))             // as before
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items_added_total")) // as before
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_querier_blocks_index_cache_hits_total"))          // this time has used the index cache
-=======
-			now := time.Now()
-			series, expectedVector := generateSeries("series_1", now)
-
-			res, err := c.Push(series)
-			require.NoError(t, err)
-			require.Equal(t, 200, res.StatusCode)
-
-			// Query the series.
-			result, err := c.Query("series_1", now)
-			require.NoError(t, err)
-			require.Equal(t, model.ValVector, result.Type())
-			assert.Equal(t, expectedVector, result.(model.Vector))
->>>>>>> 8d6e4668e... Added integration test
 		})
 	}
 }

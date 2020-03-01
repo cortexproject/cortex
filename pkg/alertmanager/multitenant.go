@@ -466,9 +466,6 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
 
-	userAM.activeMtx.Lock()
-	defer userAM.activeMtx.Unlock()
-
 	if !ok || !userAM.isActive() {
 		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
 		return

@@ -43,10 +43,14 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_alerts{state="suppressed",user="user3"} 200
 		# HELP cortex_alertmanager_alerts_invalid_total The total number of received alerts that were invalid.
 		# TYPE cortex_alertmanager_alerts_invalid_total counter
-		cortex_alertmanager_alerts_invalid_total 222
+		cortex_alertmanager_alerts_invalid_total{user="user1"} 2
+		cortex_alertmanager_alerts_invalid_total{user="user2"} 20
+		cortex_alertmanager_alerts_invalid_total{user="user3"} 200
 		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
 		# TYPE cortex_alertmanager_alerts_received_total counter
-		cortex_alertmanager_alerts_received_total 1110
+		cortex_alertmanager_alerts_received_total{user="user1"} 10
+		cortex_alertmanager_alerts_received_total{user="user2"} 100
+		cortex_alertmanager_alerts_received_total{user="user3"} 1000
 		# HELP cortex_alertmanager_nflog_gc_duration_seconds Duration of the last notification log garbage collection cycle.
 		# TYPE cortex_alertmanager_nflog_gc_duration_seconds summary
 		cortex_alertmanager_nflog_gc_duration_seconds_sum 111

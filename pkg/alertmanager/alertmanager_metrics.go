@@ -54,11 +54,11 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		alertsReceived: prometheus.NewDesc(
 			"cortex_alertmanager_alerts_received_total",
 			"The total number of received alerts.",
-			nil, nil),
+			[]string{"user"}, nil),
 		alertsInvalid: prometheus.NewDesc(
 			"cortex_alertmanager_alerts_invalid_total",
 			"The total number of received alerts that were invalid.",
-			nil, nil),
+			[]string{"user"}, nil),
 		numNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_total",
 			"The total number of attempted notifications.",
@@ -183,8 +183,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
 
-	data.SendSumOfCounters(out, m.alertsReceived, "alertmanager_alerts_received_total")
-	data.SendSumOfCounters(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")
+	data.SendSumOfCountersPerUser(out, m.alertsReceived, "alertmanager_alerts_received_total")
+	data.SendSumOfCountersPerUser(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")
 
 	data.SendSumOfCountersPerUser(out, m.numNotifications, "alertmanager_notifications_total")
 	data.SendSumOfCountersPerUser(out, m.numFailedNotifications, "alertmanager_notifications_failed_total")

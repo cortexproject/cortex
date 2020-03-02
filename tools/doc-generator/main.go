@@ -9,6 +9,8 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/weaveworks/common/server"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -29,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/server"
 )
 
 const (

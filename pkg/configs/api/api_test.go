@@ -263,6 +263,9 @@ var amCfgValidationTests = []struct {
 }
 
 func Test_ValidateAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
@@ -285,6 +288,9 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 }
 
 func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		cfg := userconfig.Config{AlertmanagerConfig: test.config}

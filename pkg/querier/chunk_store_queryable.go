@@ -104,7 +104,7 @@ func (s *chunkSeries) Iterator() storage.SeriesIterator {
 	return s.chunkIteratorFunc(s.chunks, model.Time(s.mint), model.Time(s.maxt))
 }
 
-// method from SeriesWithChunks interface
+// Chunks implements SeriesWithChunks interface.
 func (s *chunkSeries) Chunks() []chunk.Chunk {
 	return s.chunks
 }

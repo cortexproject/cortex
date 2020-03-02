@@ -40,41 +40,36 @@ var (
 		Name:      "dynamo_table_capacity_units",
 		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
-	retentionPeriodConfig = prometheus.NewGauge(prometheus.GaugeOpts{
+
+	expectedMinIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "retention_period",
-		Help:      "Configured retention period",
+		Name:      "expected_min_index_table_number",
+		Help:      "Expected min table number for index",
 	})
-	minIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
+	actualMinIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "min_index_table_number",
-		Help:      "Min table number for index",
+		Name:      "actual_min_index_table_number",
+		Help:      "Actual min table number for index",
 	})
-	minChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
+	expectedMinChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "min_chunk_table_number",
-		Help:      "Min table number for chunks",
+		Name:      "expected_min_chunk_table_number",
+		Help:      "Expected min table number for chunks",
 	})
-	indexTablePeriodConfigSec = prometheus.NewGauge(prometheus.GaugeOpts{
+	actualMinChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "index_table_period_config_sec",
-		Help:      "Configured table period for index table in seconds",
-	})
-	chunksTablePeriodConfigSec = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "chunks_table_period_config_sec",
-		Help:      "Configured table period for chunks table in seconds",
+		Name:      "actual_min_chunk_table_number",
+		Help:      "Actual min table number for chunks",
 	})
 )
 
 func init() {
 	prometheus.MustRegister(tableCapacity)
 	syncTableDuration.Register()
-	prometheus.MustRegister(retentionPeriodConfig)
-	prometheus.MustRegister(minIndexTableNumber)
-	prometheus.MustRegister(minChunkTableNumber)
-	prometheus.MustRegister(indexTablePeriodConfigSec)
-	prometheus.MustRegister(chunksTablePeriodConfigSec)
+	prometheus.MustRegister(expectedMinIndexTableNumber)
+	prometheus.MustRegister(actualMinIndexTableNumber)
+	prometheus.MustRegister(expectedMinChunkTableNumber)
+	prometheus.MustRegister(actualMinChunkTableNumber)
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -231,78 +226,84 @@ func (m *TableManager) loop(ctx context.Context) error {
 }
 
 func (m *TableManager) setRetentionMetrics() error {
-	if m.cfg.RetentionPeriod > 0 && m.cfg.RetentionDeletesEnabled {
-		tables, err := m.client.ListTables(context.Background())
-		if err != nil {
-			return err
+	if m.cfg.RetentionPeriod == 0 || !m.cfg.RetentionDeletesEnabled {
+		return nil
+	}
+
+	tables, err := m.client.ListTables(context.Background())
+	if err != nil {
+		return err
+	}
+
+	oldestChunkTableConfig := -1
+
+	// Collecting prefixes for index and chunk tables
+	indexTablePrefixes := map[string]struct{}{}
+	chunkTablePrefixes := map[string]struct{}{}
+	for i, cfg := range m.schemaCfg.Configs {
+		if cfg.IndexTables.Prefix != "" {
+			indexTablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
 		}
-
-		// Collecting prefixes for index and chunk tables
-		indexTablePrefixes := map[string]time.Duration{}
-		chunkTablePrefixes := map[string]time.Duration{}
-		for _, cfg := range m.schemaCfg.Configs {
-			if cfg.IndexTables.Prefix != "" {
-				indexTablePrefixes[cfg.IndexTables.Prefix] = cfg.IndexTables.Period
+		if cfg.ChunkTables.Prefix != "" {
+			if oldestChunkTableConfig != -1 {
+				oldestChunkTableConfig = i
 			}
-			if cfg.ChunkTables.Prefix != "" {
-				chunkTablePrefixes[cfg.ChunkTables.Prefix] = cfg.ChunkTables.Period
-			}
+			chunkTablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
 		}
+	}
 
-		lowestIndexTableNumber := -1
-		indexTablePeriod := time.Duration(0)
+	// setting expected min index table number assuming configs are in increasing order by time
+	retentionStartTime := mtime.Now().Add(-m.cfg.RetentionPeriod)
+	periodSecs := int64(m.schemaCfg.Configs[0].IndexTables.Period / time.Second)
+	expectedMinIndexTableNumber.Set(float64(retentionStartTime.Unix() / periodSecs))
 
-		lowestChunkTableNumber := -1
-		chunkTablePeriod := time.Duration(0)
+	if oldestChunkTableConfig != -1 {
+		// setting expected min chunk table number assuming configs are in increasing order by time
+		periodSecs = int64(m.schemaCfg.Configs[oldestChunkTableConfig].IndexTables.Period / time.Second)
+		expectedMinChunkTableNumber.Set(float64(retentionStartTime.Unix() / periodSecs))
+	}
 
-		// Finding min and max table number for index and chunk tables
-		for _, table := range tables {
-			for indexTablePrefix := range indexTablePrefixes {
-				if strings.HasPrefix(table, indexTablePrefix) {
-					tableNumber, err := strconv.Atoi(strings.Split(table, indexTablePrefix)[1])
-					if err != nil {
-						return err
-					}
-					if lowestIndexTableNumber == -1 || lowestIndexTableNumber > tableNumber {
-						lowestIndexTableNumber = tableNumber
-						indexTablePeriod = indexTablePrefixes[indexTablePrefix]
-					}
+	lowestIndexTableNumber := -1
+	lowestChunkTableNumber := -1
+
+	// Finding actual min table number for index and chunk tables
+	for _, table := range tables {
+		for indexTablePrefix := range indexTablePrefixes {
+			if strings.HasPrefix(table, indexTablePrefix) {
+				tableNumber, err := strconv.Atoi(strings.Split(table, indexTablePrefix)[1])
+				if err != nil {
+					return err
+				}
+				if lowestIndexTableNumber == -1 || lowestIndexTableNumber > tableNumber {
+					lowestIndexTableNumber = tableNumber
 				}
 			}
+		}
 
-			for chunkTablePrefix := range chunkTablePrefixes {
-				if strings.HasPrefix(table, chunkTablePrefix) {
-					tableNumber, err := strconv.Atoi(strings.Split(table, chunkTablePrefix)[1])
-					if err != nil {
-						return err
-					}
-					if lowestChunkTableNumber == -1 || lowestChunkTableNumber > tableNumber {
-						lowestChunkTableNumber = tableNumber
-						chunkTablePeriod = indexTablePrefixes[chunkTablePrefix]
-					}
+		for chunkTablePrefix := range chunkTablePrefixes {
+			if strings.HasPrefix(table, chunkTablePrefix) {
+				tableNumber, err := strconv.Atoi(strings.Split(table, chunkTablePrefix)[1])
+				if err != nil {
+					return err
+				}
+				if lowestChunkTableNumber == -1 || lowestChunkTableNumber > tableNumber {
+					lowestChunkTableNumber = tableNumber
 				}
 			}
 		}
+	}
 
-		if len(indexTablePrefixes) != 0 {
-			if lowestIndexTableNumber == -1 {
-				lowestIndexTableNumber = 0
-			}
+	if lowestIndexTableNumber == -1 {
+		lowestIndexTableNumber = 0
+	}
+	actualMinIndexTableNumber.Set(float64(lowestIndexTableNumber))
 
-			minIndexTableNumber.Set(float64(lowestIndexTableNumber))
-			indexTablePeriodConfigSec.Set(float64(indexTablePeriod / time.Second))
+	if len(chunkTablePrefixes) != 0 {
+		if lowestChunkTableNumber == -1 {
+			lowestChunkTableNumber = 0
 		}
 
-		if len(chunkTablePrefixes) != 0 {
-			if lowestChunkTableNumber == -1 {
-				lowestChunkTableNumber = 0
-			}
-
-			minChunkTableNumber.Set(float64(lowestChunkTableNumber))
-			chunksTablePeriodConfigSec.Set(float64(chunkTablePeriod / time.Second))
-		}
-
-		retentionPeriodConfig.Set(float64(m.cfg.RetentionPeriod))
+		actualMinChunkTableNumber.Set(float64(lowestChunkTableNumber))
 	}
 
 	return nil

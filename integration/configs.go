@@ -50,6 +50,7 @@ var (
 		"-experimental.tsdb.bucket-store.sync-interval": "5s",
 		"-experimental.tsdb.retention-period":           "5m",
 		"-experimental.tsdb.ship-interval":              "1m",
+		"-experimental.tsdb.head-compaction-interval":   "1s",
 		"-experimental.tsdb.s3.access-key-id":           e2edb.MinioAccessKey,
 		"-experimental.tsdb.s3.secret-access-key":       e2edb.MinioSecretKey,
 		"-experimental.tsdb.s3.bucket-name":             "cortex",

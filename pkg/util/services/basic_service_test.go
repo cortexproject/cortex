@@ -80,7 +80,7 @@ type testCase struct {
 	stopAfterAwaitRunning   bool
 
 	// Expected values
-	awaitRunningError    error
+	awaitRunningError    []error
 	awaitTerminatedError error
 	failureCase          error
 	listenerLog          []string
@@ -110,7 +110,7 @@ func TestAllFunctionality(t *testing.T) {
 
 		"start returns error": {
 			startRetVal:          errStartFailed,
-			awaitRunningError:    invalidServiceStateWithFailureError(Failed, Running, errStartFailed),
+			awaitRunningError:    []error{invalidServiceStateWithFailureError(Failed, Running, errStartFailed)},
 			awaitTerminatedError: invalidServiceStateWithFailureError(Failed, Terminated, errStartFailed), // Failed in start
 			failureCase:          errStartFailed,
 			listenerLog:          []string{"starting", "failed: Starting: start failed"},
@@ -119,7 +119,7 @@ func TestAllFunctionality(t *testing.T) {
 		"start is canceled via context and returns cancelation error": {
 			cancelAfterStartAsync: true,
 			startReturnContextErr: true,
-			awaitRunningError:     invalidServiceStateWithFailureError(Failed, Running, context.Canceled),
+			awaitRunningError:     []error{invalidServiceStateWithFailureError(Failed, Running, context.Canceled)},
 			awaitTerminatedError:  invalidServiceStateWithFailureError(Failed, Terminated, context.Canceled),
 			failureCase:           context.Canceled,
 			listenerLog:           []string{"starting", "failed: Starting: context canceled"},
@@ -128,19 +128,21 @@ func TestAllFunctionality(t *testing.T) {
 		"start is canceled via context, doesn't return error. Run shouldn't runFn, since context is canceled now.": {
 			cancelAfterStartAsync: true,
 			startReturnContextErr: false,
-			awaitRunningError:     invalidServiceStateError(Terminated, Running), // will never be Running
-			awaitTerminatedError:  nil,                                           // but still terminates correctly, since Start or RunningFn didn't return error
-			failureCase:           nil,                                           // start didn't return error, service stopped without calling run
-			listenerLog:           []string{"starting", "stopping: Starting", "terminated: Stopping"},
+			// we can observe Stopping or Terminated
+			awaitRunningError:    []error{invalidServiceStateError(Stopping, Running), invalidServiceStateError(Terminated, Running)},
+			awaitTerminatedError: nil, // but still terminates correctly, since Start or RunningFn didn't return error
+			failureCase:          nil, // start didn't return error, service stopped without calling run
+			listenerLog:          []string{"starting", "stopping: Starting", "terminated: Stopping"},
 		},
 
 		"start is canceled via StopAsync, but start doesn't return error": {
 			startReturnContextErr: false, // don't return error on cancellation, just stop early
 			stopAfterStartAsync:   true,
-			awaitRunningError:     invalidServiceStateError(Terminated, Running),
-			awaitTerminatedError:  nil, // stopped while starting, but no error. Should be in Terminated state.
-			failureCase:           nil, // start didn't return error, service stopped without calling run
-			listenerLog:           []string{"starting", "stopping: Starting", "terminated: Stopping"},
+			// we can observe Stopping or Terminated
+			awaitRunningError:    []error{invalidServiceStateError(Stopping, Running), invalidServiceStateError(Terminated, Running)},
+			awaitTerminatedError: nil, // stopped while starting, but no error. Should be in Terminated state.
+			failureCase:          nil, // start didn't return error, service stopped without calling run
+			listenerLog:          []string{"starting", "stopping: Starting", "terminated: Stopping"},
 		},
 
 		"runFn returns error": {
@@ -217,7 +219,13 @@ func runTestCase(t *testing.T, tc testCase) {
 	awaitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.Equal(t, tc.awaitRunningError, s.AwaitRunning(awaitCtx), "AwaitRunning")
+	awaitRunningErr := s.AwaitRunning(awaitCtx)
+
+	if len(tc.awaitRunningError) == 0 {
+		require.NoError(t, awaitRunningErr, "AwaitRunning")
+	} else {
+		require.Contains(t, tc.awaitRunningError, awaitRunningErr, "AwaitRunning")
+	}
 
 	if tc.cancelAfterAwaitRunning {
 		servCancel()

@@ -112,7 +112,7 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	if cfg.userID != "" {
 		apiCfg.RoundTripper = &nethttp.Transport{
 			RoundTripper: promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
+				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
 				return api.DefaultRoundTripper.RoundTrip(req)
 			}),
 		}

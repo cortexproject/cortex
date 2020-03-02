@@ -24,8 +24,6 @@ The API for reads also accepts HTTP/protobuf/snappy, and the path is `/api/prom/
 
 See the Prometheus documentation for [more information on the Prometheus remote write format](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations).
 
-
-
 ## Alerts & Rules API
 
 Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
@@ -166,3 +164,7 @@ Note that setting a new config will effectively "re-enable" the Rules and Alertm
 
 - Normal Response Codes: NoContent(204)
 - Error Response Codes: Unauthorized(401)
+
+#### Testing APIs
+
+`POST /push` - Push samples directly to ingesters.  Accepts requests in Prometheus remote write format.  Indended for performance testing and debugging.

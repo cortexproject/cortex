@@ -27,15 +27,6 @@ type timed struct {
 	d DB
 }
 
-func (t timed) errorCode(err error) string {
-	switch err {
-	case nil:
-		return "200"
-	default:
-		return "500"
-	}
-}
-
 func (t timed) GetConfig(ctx context.Context, userID string) (configs.View, error) {
 	var cfg configs.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -53,11 +44,9 @@ func (t timed) SetConfig(ctx context.Context, userID string, cfg configs.Config)
 }
 
 func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-		err  error
-	)
-	instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	var cfgs map[string]configs.View
+	err := instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
 		cfgs, err = t.d.GetAllConfigs(ctx)
 		return err
 	})
@@ -66,9 +55,7 @@ func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, erro
 }
 
 func (t timed) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-	)
+	var cfgs map[string]configs.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfgs, err = t.d.GetConfigs(ctx, since)

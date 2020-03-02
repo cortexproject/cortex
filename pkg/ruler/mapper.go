@@ -6,9 +6,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v2"
+
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 // mapper is designed to enusre the provided rule sets are identical
@@ -28,7 +29,7 @@ func newMapper(path string, logger log.Logger) *mapper {
 	}
 }
 
-func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGroup) (bool, []string, error) {
+func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.RuleGroup) (bool, []string, error) {
 	anyUpdated := false
 	filenames := []string{}
 
@@ -73,12 +74,12 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 	return anyUpdated, filenames, nil
 }
 
-func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename string) (bool, error) {
+func (m *mapper) writeRuleGroupsIfNewer(groups []legacy_rulefmt.RuleGroup, filename string) (bool, error) {
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].Name > groups[j].Name
 	})
 
-	rgs := rulefmt.RuleGroups{Groups: groups}
+	rgs := legacy_rulefmt.RuleGroups{Groups: groups}
 
 	d, err := yaml.Marshal(&rgs)
 	if err != nil {

@@ -119,7 +119,7 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 	return m
 }
 
-// TSDB metrics. Each tenant has its own registry, that TSDB code uses.
+// TSDB metrics collector. Each tenant has its own registry, that TSDB code uses.
 type tsdbMetrics struct {
 	// We aggregate metrics from individual TSDB registries into
 	// a single set of counters, which are exposed as Cortex metrics.

@@ -11,11 +11,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) storage.SeriesIterator
 
-func newChunkStoreQueryable(store ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
+func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		return &chunkStoreQuerier{
 			store:             store,
@@ -28,13 +30,13 @@ func newChunkStoreQueryable(store ChunkStore, chunkIteratorFunc chunkIteratorFun
 }
 
 type chunkStoreQuerier struct {
-	store             ChunkStore
+	store             chunkstore.ChunkStore
 	chunkIteratorFunc chunkIteratorFunc
 	ctx               context.Context
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *chunkStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
 		return nil, nil, err
@@ -45,6 +47,10 @@ func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels
 	}
 
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
+}
+
+func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 // Series in the returned set are sorted alphabetically by labels.
@@ -66,7 +72,7 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 		})
 	}
 
-	return newConcreteSeriesSet(series)
+	return seriesset.NewConcreteSeriesSet(series)
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

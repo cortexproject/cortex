@@ -28,6 +28,7 @@ func (s splitByInterval) Do(ctx context.Context, r Request) (Response, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs := splitQuery(r, s.interval)
+	splitByCounter.Add(float64(len(reqs)))
 
 	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {

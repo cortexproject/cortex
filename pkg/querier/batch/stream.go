@@ -1,8 +1,6 @@
 package batch
 
 import (
-	"fmt"
-
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
@@ -10,14 +8,6 @@ import (
 // and building new slices of non-overlapping batches.  Designed to be used
 // without allocations.
 type batchStream []promchunk.Batch
-
-func (bs batchStream) print() {
-	fmt.Println("[")
-	for _, b := range bs {
-		print(b)
-	}
-	fmt.Println("]")
-}
 
 // reset, hasNext, next, atTime etc are all inlined in go1.11.
 

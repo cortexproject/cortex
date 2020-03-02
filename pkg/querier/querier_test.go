@@ -3,6 +3,8 @@ package querier
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -192,11 +195,16 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		},
 	}
 
+	dir, err := ioutil.TempDir("", t.Name())
+	testutil.Ok(t, err)
+	defer os.RemoveAll(dir)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
+
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		MaxConcurrent: 10,
-		MaxSamples:    1e6,
-		Timeout:       1 * time.Minute,
+		Logger:             util.Logger,
+		ActiveQueryTracker: queryTracker,
+		MaxSamples:         1e6,
+		Timeout:            1 * time.Minute,
 	})
 	cfg := Config{}
 	for _, ingesterStreaming := range []bool{true, false} {
@@ -249,13 +257,18 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	return result
 }
 
-func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
+func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
+	dir, err := ioutil.TempDir("", "test_query")
+	testutil.Ok(t, err)
+	defer os.RemoveAll(dir)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
+
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		MaxConcurrent: 10,
-		MaxSamples:    1e6,
-		Timeout:       1 * time.Minute,
+		Logger:             util.Logger,
+		ActiveQueryTracker: queryTracker,
+		MaxSamples:         1e6,
+		Timeout:            1 * time.Minute,
 	})
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
@@ -358,11 +371,16 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		},
 	}
 
+	dir, err := ioutil.TempDir("", t.Name())
+	testutil.Ok(t, err)
+	defer os.RemoveAll(dir)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
+
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		MaxConcurrent: 10,
-		MaxSamples:    1e6,
-		Timeout:       1 * time.Minute,
+		Logger:             util.Logger,
+		ActiveQueryTracker: queryTracker,
+		MaxSamples:         1e6,
+		Timeout:            1 * time.Minute,
 	})
 	cfg := Config{}
 	for _, ingesterStreaming := range []bool{true, false} {

@@ -7,9 +7,9 @@ import (
 	"io/ioutil"
 	"net/url"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 // Config configures the database.
@@ -32,25 +32,25 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // DB is the interface for the database.
 type DB interface {
 	// GetRulesConfig gets the user's ruler config
-	GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error)
+	GetRulesConfig(ctx context.Context, userID string) (userconfig.VersionedRulesConfig, error)
 
 	// SetRulesConfig does a compare-and-swap (CAS) on the user's rules config.
 	// `oldConfig` must precisely match the current config in order to change the config to `newConfig`.
 	// Will return `true` if the config was updated, `false` otherwise.
-	SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error)
+	SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig userconfig.RulesConfig) (bool, error)
 
 	// GetAllRulesConfigs gets all of the ruler configs
-	GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error)
+	GetAllRulesConfigs(ctx context.Context) (map[string]userconfig.VersionedRulesConfig, error)
 
 	// GetRulesConfigs gets all of the configs that have been added or have
 	// changed since the provided config.
-	GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	GetRulesConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error)
 
-	GetConfig(ctx context.Context, userID string) (configs.View, error)
-	SetConfig(ctx context.Context, userID string, cfg configs.Config) error
+	GetConfig(ctx context.Context, userID string) (userconfig.View, error)
+	SetConfig(ctx context.Context, userID string, cfg userconfig.Config) error
 
-	GetAllConfigs(ctx context.Context) (map[string]configs.View, error)
-	GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error)
+	GetAllConfigs(ctx context.Context) (map[string]userconfig.View, error)
+	GetConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.View, error)
 
 	DeactivateConfig(ctx context.Context, userID string) error
 	RestoreConfig(ctx context.Context, userID string) error

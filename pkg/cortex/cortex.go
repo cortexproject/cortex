@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -81,7 +83,7 @@ type Config struct {
 	Compactor      compactor.Config         `yaml:"compactor,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
-	Configs       api.Config                                 `yaml:"configs,omitempty"`
+	Configs       configs.Config                             `yaml:"configs,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`

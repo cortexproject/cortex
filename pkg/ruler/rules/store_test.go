@@ -6,24 +6,25 @@ import (
 	"testing"
 	time "time"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
 
 var zeroTime time.Time
 
 type MockClient struct {
-	cfgs map[string]configs.VersionedRulesConfig
+	cfgs map[string]userconfig.VersionedRulesConfig
 	err  error
 }
 
-func (c *MockClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (c *MockClient) GetRules(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
 	return c.cfgs, c.err
 }
 
-func (c *MockClient) GetAlerts(ctx context.Context, since configs.ID) (*client.ConfigsResponse, error) {
+func (c *MockClient) GetAlerts(ctx context.Context, since userconfig.ID) (*client.ConfigsResponse, error) {
 	return nil, nil
 }
 
@@ -40,9 +41,9 @@ func Test_ConfigRuleStoreError(t *testing.T) {
 }
 
 func Test_ConfigRuleStoreReturn(t *testing.T) {
-	id := configs.ID(10)
+	id := userconfig.ID(10)
 	mock := &MockClient{
-		cfgs: map[string]configs.VersionedRulesConfig{
+		cfgs: map[string]userconfig.VersionedRulesConfig{
 			"user": {
 				ID:        id,
 				Config:    fakeRuleConfig(),
@@ -61,7 +62,7 @@ func Test_ConfigRuleStoreReturn(t *testing.T) {
 
 func Test_ConfigRuleStoreDelete(t *testing.T) {
 	mock := &MockClient{
-		cfgs: map[string]configs.VersionedRulesConfig{
+		cfgs: map[string]userconfig.VersionedRulesConfig{
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
@@ -74,9 +75,9 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 	store := NewConfigRuleStore(mock)
 	_, _ = store.ListAllRuleGroups(context.Background())
 
-	mock.cfgs["user"] = configs.VersionedRulesConfig{
+	mock.cfgs["user"] = userconfig.VersionedRulesConfig{
 		ID:        1,
-		Config:    configs.RulesConfig{},
+		Config:    userconfig.RulesConfig{},
 		DeletedAt: time.Unix(0, 1),
 	}
 
@@ -87,7 +88,7 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 
 func Test_ConfigRuleStoreAppend(t *testing.T) {
 	mock := &MockClient{
-		cfgs: map[string]configs.VersionedRulesConfig{
+		cfgs: map[string]userconfig.VersionedRulesConfig{
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
@@ -101,7 +102,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 	_, _ = store.ListAllRuleGroups(context.Background())
 
 	delete(mock.cfgs, "user")
-	mock.cfgs["user2"] = configs.VersionedRulesConfig{
+	mock.cfgs["user2"] = userconfig.VersionedRulesConfig{
 		ID:        1,
 		Config:    fakeRuleConfig(),
 		DeletedAt: zeroTime,
@@ -114,7 +115,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 
 func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 	mock := &MockClient{
-		cfgs: map[string]configs.VersionedRulesConfig{
+		cfgs: map[string]userconfig.VersionedRulesConfig{
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
@@ -136,32 +137,32 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 
 	store := NewConfigRuleStore(mock)
 	_, _ = store.ListAllRuleGroups(context.Background())
-	assert.Equal(t, configs.ID(100), store.since)
+	assert.Equal(t, userconfig.ID(100), store.since)
 
 	delete(mock.cfgs, "user")
 	delete(mock.cfgs, "user1")
-	mock.cfgs["user2"] = configs.VersionedRulesConfig{
+	mock.cfgs["user2"] = userconfig.VersionedRulesConfig{
 		ID:        50,
 		Config:    fakeRuleConfig(),
 		DeletedAt: zeroTime,
 	}
 
 	_, _ = store.ListAllRuleGroups(context.Background())
-	assert.Equal(t, configs.ID(100), store.since)
+	assert.Equal(t, userconfig.ID(100), store.since)
 
-	mock.cfgs["user2"] = configs.VersionedRulesConfig{
+	mock.cfgs["user2"] = userconfig.VersionedRulesConfig{
 		ID:        101,
 		Config:    fakeRuleConfig(),
 		DeletedAt: zeroTime,
 	}
 
 	_, _ = store.ListAllRuleGroups(context.Background())
-	assert.Equal(t, configs.ID(101), store.since)
+	assert.Equal(t, userconfig.ID(101), store.since)
 }
 
-func fakeRuleConfig() configs.RulesConfig {
-	return configs.RulesConfig{
-		FormatVersion: configs.RuleFormatV2,
+func fakeRuleConfig() userconfig.RulesConfig {
+	return userconfig.RulesConfig{
+		FormatVersion: userconfig.RuleFormatV2,
 		Files: map[string]string{
 			"test": `
 # Config no. 1.

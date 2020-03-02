@@ -15,14 +15,13 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Config configures Configs API
 type Config struct {
-	DB            db.Config           `yaml:"database"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
@@ -36,7 +35,6 @@ type NotificationsConfig struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Notifications.DisableEmail, "configs.notifications.disable-email", false, "Disable Email notifications for Alertmanager.")
 	f.BoolVar(&cfg.Notifications.DisableWebHook, "configs.notifications.disable-webhook", false, "Disable WebHook notifications for Alertmanager.")
-	cfg.DB.RegisterFlags(f)
 }
 
 // API implements the configs api.
@@ -134,7 +132,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	var cfg configs.Config
+	var cfg userconfig.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error decoding json body", "err", err)
@@ -206,12 +204,12 @@ func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 	return nil
 }
 
-func validateRulesFiles(c configs.Config) error {
+func validateRulesFiles(c userconfig.Config) error {
 	_, err := c.RulesConfig.Parse()
 	return err
 }
 
-func validateTemplateFiles(c configs.Config) error {
+func validateTemplateFiles(c userconfig.Config) error {
 	for fn, content := range c.TemplateFiles {
 		if _, err := template.New(fn).Parse(content); err != nil {
 			return err
@@ -221,14 +219,14 @@ func validateTemplateFiles(c configs.Config) error {
 	return nil
 }
 
-// ConfigsView renders multiple configurations, mapping userID to configs.View.
+// ConfigsView renders multiple configurations, mapping userID to userconfig.View.
 // Exposed only for tests.
 type ConfigsView struct {
-	Configs map[string]configs.View `json:"configs"`
+	Configs map[string]userconfig.View `json:"configs"`
 }
 
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
-	var cfgs map[string]configs.View
+	var cfgs map[string]userconfig.View
 	var cfgErr error
 	logger := util.WithContext(r.Context(), util.Logger)
 	rawSince := r.FormValue("since")
@@ -241,7 +239,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, cfgErr = a.db.GetConfigs(r.Context(), configs.ID(since))
+		cfgs, cfgErr = a.db.GetConfigs(r.Context(), userconfig.ID(since))
 	}
 
 	if cfgErr != nil {

@@ -29,9 +29,9 @@
   * configuration options
     * `-database.*` -> `-configs.database.*`
   * config file
-    * `configdb:` -> `configs:`
-    * `configdb.migrationsdir:` -> `configs.migrations_dir:`
-    * `configdb.passwordfile:` -> `configs.password_file:`
+    * `configdb.uri:` -> `configs.database.uri:`
+    * `configdb.migrationsdir:` -> `configs.database.migrations_dir:`
+    * `configdb.passwordfile:` -> `configs.database.password_file:`
 * [CHANGE] Experimental TSDB: the querier in-memory index cache used by the experimental blocks storage shifted from per-tenant to per-querier. The `-experimental.tsdb.bucket-store.index-cache-size-bytes` now configures the per-querier index cache max size instead of a per-tenant cache and its default has been increased to 1GB. #2189
 * [FEATURE] Added a read-only local alertmanager config store using files named corresponding to their tenant id. #2125
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947

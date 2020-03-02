@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 
+	errors "golang.org/x/xerrors"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
@@ -186,6 +188,11 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+var (
+	ErrEmailNotificationsAreDisabled   = errors.New("email notifications are disabled")
+	ErrWebhookNotificationsAreDisabled = errors.New("webhook notifications are disabled")
+)
+
 func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 	amCfg, err := amconfig.Load(cfg)
 	if err != nil {
@@ -194,10 +201,10 @@ func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 
 	for _, recv := range amCfg.Receivers {
 		if noCfg.DisableEmail && len(recv.EmailConfigs) > 0 {
-			return fmt.Errorf("email notifications are disabled")
+			return ErrEmailNotificationsAreDisabled
 		}
 		if noCfg.DisableWebHook && len(recv.WebhookConfigs) > 0 {
-			return fmt.Errorf("webhook notifications are disabled")
+			return ErrWebhookNotificationsAreDisabled
 		}
 	}
 

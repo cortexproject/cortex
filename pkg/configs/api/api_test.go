@@ -299,3 +299,25 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 		assert.Contains(t, resp.Body.String(), test.errContains, "test case %d", i)
 	}
 }
+
+func Test_SetConfig_ValidatesAlertmanagerConfig_WithEmailEnabled(t *testing.T) {
+	config := `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          email_configs:
+          - to: myteam@foobar.org`
+	setupWithEmailEnabled(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	cfg := userconfig.Config{AlertmanagerConfig: config}
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", readerFromConfig(t, cfg))
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+}

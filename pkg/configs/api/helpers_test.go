@@ -36,6 +36,17 @@ func setup(t *testing.T) {
 	counter = 0
 }
 
+// setup sets up the environment for the tests with email enabled.
+func setupWithEmailEnabled(t *testing.T) {
+	database = dbtest.Setup(t)
+	app = api.New(database, api.Config{
+		Notifications: api.NotificationsConfig{
+			DisableEmail: false,
+		},
+	})
+	counter = 0
+}
+
 // cleanup cleans up the environment after a test.
 func cleanup(t *testing.T) {
 	dbtest.Cleanup(t, database)

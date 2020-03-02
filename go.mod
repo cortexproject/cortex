@@ -65,6 +65,7 @@ require (
 	go.uber.org/atomic v1.5.0
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.7

@@ -10,15 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTsdbBucketStoreMetrics(t *testing.T) {
+func TestTSDBBucketStoreMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
 	tsdbMetrics := newTSDBBucketStoreMetrics()
 	mainReg.MustRegister(tsdbMetrics)
 
-	tsdbMetrics.addUserRegistry("user1", populateTSDBBucketStore(5328))
-	tsdbMetrics.addUserRegistry("user2", populateTSDBBucketStore(6908))
-	tsdbMetrics.addUserRegistry("user3", populateTSDBBucketStore(10283))
+	tsdbMetrics.addUserRegistry("user1", populateTSDBBucketStoreMetrics(5328))
+	tsdbMetrics.addUserRegistry("user2", populateTSDBBucketStoreMetrics(6908))
+	tsdbMetrics.addUserRegistry("user3", populateTSDBBucketStoreMetrics(10283))
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
@@ -141,46 +141,56 @@ func TestTsdbBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_querier_bucket_store_series_result_series summary
 			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_querier_bucket_store_series_result_series_count 6
+`))
+	require.NoError(t, err)
+}
 
+func TestTSDBIndexCacheMetrics(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+	cacheMetrics := newTSDBIndexCacheMetrics(populateTSDBIndexCacheMetrics(5328))
+	mainReg.MustRegister(cacheMetrics)
+
+	//noinspection ALL
+	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 			# HELP cortex_querier_blocks_index_cache_items_evicted_total TSDB: Total number of items that were evicted from the index cache.
 			# TYPE cortex_querier_blocks_index_cache_items_evicted_total counter
-			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Postings"} 1125950
-			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Series"} 1148469
+			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Postings"} 5328
+			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Series"} 10656
 
 			# HELP cortex_querier_blocks_index_cache_requests_total TSDB: Total number of requests to the cache.
 			# TYPE cortex_querier_blocks_index_cache_requests_total counter
-			cortex_querier_blocks_index_cache_requests_total{item_type="Postings"} 1170988
-			cortex_querier_blocks_index_cache_requests_total{item_type="Series"} 1193507
+			cortex_querier_blocks_index_cache_requests_total{item_type="Postings"} 15984
+			cortex_querier_blocks_index_cache_requests_total{item_type="Series"} 21312
 
 			# HELP cortex_querier_blocks_index_cache_hits_total TSDB: Total number of requests to the cache that were a hit.
 			# TYPE cortex_querier_blocks_index_cache_hits_total counter
-			cortex_querier_blocks_index_cache_hits_total{item_type="Postings"} 1216026
-			cortex_querier_blocks_index_cache_hits_total{item_type="Series"} 1238545
+			cortex_querier_blocks_index_cache_hits_total{item_type="Postings"} 26640
+			cortex_querier_blocks_index_cache_hits_total{item_type="Series"} 31968
 
 			# HELP cortex_querier_blocks_index_cache_items_added_total TSDB: Total number of items that were added to the index cache.
 			# TYPE cortex_querier_blocks_index_cache_items_added_total counter
-			cortex_querier_blocks_index_cache_items_added_total{item_type="Postings"} 1261064
-			cortex_querier_blocks_index_cache_items_added_total{item_type="Series"} 1283583
+			cortex_querier_blocks_index_cache_items_added_total{item_type="Postings"} 37296
+			cortex_querier_blocks_index_cache_items_added_total{item_type="Series"} 42624
 
 			# HELP cortex_querier_blocks_index_cache_items TSDB: Current number of items in the index cache.
 			# TYPE cortex_querier_blocks_index_cache_items gauge
-			cortex_querier_blocks_index_cache_items{item_type="Postings"} 1306102
-			cortex_querier_blocks_index_cache_items{item_type="Series"} 1328621
+			cortex_querier_blocks_index_cache_items{item_type="Postings"} 47952
+			cortex_querier_blocks_index_cache_items{item_type="Series"} 53280
 
 			# HELP cortex_querier_blocks_index_cache_items_size_bytes TSDB: Current byte size of items in the index cache.
 			# TYPE cortex_querier_blocks_index_cache_items_size_bytes gauge
-			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Postings"} 1351140
-			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Series"} 1373659
+			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Postings"} 58608
+			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Series"} 63936
 
 			# HELP cortex_querier_blocks_index_cache_total_size_bytes TSDB: Current byte size of items (both value and key) in the index cache.
 			# TYPE cortex_querier_blocks_index_cache_total_size_bytes gauge
-			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Postings"} 1396178
-			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Series"} 1418697
+			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Postings"} 69264
+			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Series"} 74592
 
 			# HELP cortex_querier_blocks_index_cache_items_overflowed_total TSDB: Total number of items that could not be added to the cache due to being too big.
 			# TYPE cortex_querier_blocks_index_cache_items_overflowed_total counter
-			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Postings"} 1441216
-			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Series"} 1463735
+			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Postings"} 79920
+			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Series"} 85248
 
 `))
 	require.NoError(t, err)
@@ -210,7 +220,7 @@ func benchmarkMetricsCollection(b *testing.B, users int) {
 
 	base := 123456.0
 	for i := 0; i < users; i++ {
-		tsdbMetrics.addUserRegistry(fmt.Sprintf("user-%d", i), populateTSDBBucketStore(base*float64(i)))
+		tsdbMetrics.addUserRegistry(fmt.Sprintf("user-%d", i), populateTSDBBucketStoreMetrics(base*float64(i)))
 	}
 
 	b.ResetTimer()
@@ -219,7 +229,7 @@ func benchmarkMetricsCollection(b *testing.B, users int) {
 	}
 }
 
-func populateTSDBBucketStore(base float64) *prometheus.Registry {
+func populateTSDBBucketStoreMetrics(base float64) *prometheus.Registry {
 	reg := prometheus.NewRegistry()
 	m := newBucketStoreMetrics(reg)
 
@@ -265,24 +275,30 @@ func populateTSDBBucketStore(base float64) *prometheus.Registry {
 	m.queriesDropped.Add(31 * base)
 	m.queriesLimit.Add(32 * base)
 
+	return reg
+}
+
+func populateTSDBIndexCacheMetrics(base float64) *prometheus.Registry {
+	reg := prometheus.NewRegistry()
 	c := newIndexStoreCacheMetrics(reg)
 
-	c.evicted.WithLabelValues(cacheTypePostings).Add(base * 50)
-	c.evicted.WithLabelValues(cacheTypeSeries).Add(base * 51)
-	c.requests.WithLabelValues(cacheTypePostings).Add(base * 52)
-	c.requests.WithLabelValues(cacheTypeSeries).Add(base * 53)
-	c.hits.WithLabelValues(cacheTypePostings).Add(base * 54)
-	c.hits.WithLabelValues(cacheTypeSeries).Add(base * 55)
-	c.added.WithLabelValues(cacheTypePostings).Add(base * 56)
-	c.added.WithLabelValues(cacheTypeSeries).Add(base * 57)
-	c.current.WithLabelValues(cacheTypePostings).Set(base * 58)
-	c.current.WithLabelValues(cacheTypeSeries).Set(base * 59)
-	c.currentSize.WithLabelValues(cacheTypePostings).Set(base * 60)
-	c.currentSize.WithLabelValues(cacheTypeSeries).Set(base * 61)
-	c.totalCurrentSize.WithLabelValues(cacheTypePostings).Set(base * 62)
-	c.totalCurrentSize.WithLabelValues(cacheTypeSeries).Set(base * 63)
-	c.overflow.WithLabelValues(cacheTypePostings).Add(base * 64)
-	c.overflow.WithLabelValues(cacheTypeSeries).Add(base * 65)
+	c.evicted.WithLabelValues(cacheTypePostings).Add(base * 1)
+	c.evicted.WithLabelValues(cacheTypeSeries).Add(base * 2)
+	c.requests.WithLabelValues(cacheTypePostings).Add(base * 3)
+	c.requests.WithLabelValues(cacheTypeSeries).Add(base * 4)
+	c.hits.WithLabelValues(cacheTypePostings).Add(base * 5)
+	c.hits.WithLabelValues(cacheTypeSeries).Add(base * 6)
+	c.added.WithLabelValues(cacheTypePostings).Add(base * 7)
+	c.added.WithLabelValues(cacheTypeSeries).Add(base * 8)
+	c.current.WithLabelValues(cacheTypePostings).Set(base * 9)
+	c.current.WithLabelValues(cacheTypeSeries).Set(base * 10)
+	c.currentSize.WithLabelValues(cacheTypePostings).Set(base * 11)
+	c.currentSize.WithLabelValues(cacheTypeSeries).Set(base * 12)
+	c.totalCurrentSize.WithLabelValues(cacheTypePostings).Set(base * 13)
+	c.totalCurrentSize.WithLabelValues(cacheTypeSeries).Set(base * 14)
+	c.overflow.WithLabelValues(cacheTypePostings).Add(base * 15)
+	c.overflow.WithLabelValues(cacheTypeSeries).Add(base * 16)
+
 	return reg
 }
 

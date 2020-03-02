@@ -108,3 +108,17 @@ services:
       - 8006:8006
     volumes:
       - ./config:/cortex/config
+
+  query-frontend:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8007:8007
+    volumes:
+      - ./config:/cortex/config

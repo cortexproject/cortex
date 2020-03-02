@@ -10,7 +10,7 @@ import (
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := azure.Config{
 		StorageAccountName: cfg.StorageAccountName,
-		StorageAccountKey:  cfg.StorageAccountKey,
+		StorageAccountKey:  cfg.StorageAccountKey.Value,
 		ContainerName:      cfg.ContainerName,
 		Endpoint:           cfg.Endpoint,
 		MaxRetries:         cfg.MaxRetries,

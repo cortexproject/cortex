@@ -47,5 +47,13 @@ func (v URLValue) MarshalYAML() (interface{}, error) {
 		return "", nil
 	}
 
-	return v.URL.String(), nil
+	// Mask out passwords when marshalling URLs back to YAML.
+	u := *v.URL
+	if u.User != nil {
+		if _, set := u.User.Password(); set {
+			u.User = url.UserPassword(u.User.Username(), "********")
+		}
+	}
+
+	return u.String(), nil
 }

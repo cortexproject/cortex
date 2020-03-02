@@ -12,7 +12,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		Bucket:    cfg.BucketName,
 		Endpoint:  cfg.Endpoint,
 		AccessKey: cfg.AccessKeyID,
-		SecretKey: cfg.SecretAccessKey,
+		SecretKey: cfg.SecretAccessKey.Value,
 		Insecure:  cfg.Insecure,
 	}
 

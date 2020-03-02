@@ -28,6 +28,7 @@
 * [CHNAGE] Renamed Configs configuration options. #2187
   * configuration options
     * `-database.*` -> `-configs.database.*`
+    * `-database.migrations` -> `-configs.database.migrations-dir`
   * config file
     * `configdb.uri:` -> `configs.database.uri:`
     * `configdb.migrationsdir:` -> `configs.database.migrations_dir:`

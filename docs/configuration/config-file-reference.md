@@ -2075,7 +2075,7 @@ database:
   [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
 
   # Path where the database migration files can be found
-  # CLI flag: -configs.database.migrations
+  # CLI flag: -configs.database.migrations-dir
   [migrations_dir: <string> | default = ""]
 
   # File containing password (username goes in URI)

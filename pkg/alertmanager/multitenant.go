@@ -308,7 +308,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for user, userAM := range am.alertmanagers {
 		if _, exists := cfgs[user]; !exists {
 			// The user alertmanager is only paused in order to retain the prometheus metrics
-			// it has reported to it's registry. If a new config for this user appears, this structure
+			// it has reported to its registry. If a new config for this user appears, this structure
 			// will be reused.
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
 			userAM.Pause()
@@ -466,7 +466,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
 
-	if !ok || !userAM.isActive() {
+	if !ok || !userAM.IsActive() {
 		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
 		return
 	}

@@ -244,7 +244,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	return nil
 }
 
-func (am *Alertmanager) isActive() bool {
+func (am *Alertmanager) IsActive() bool {
 	am.activeMtx.Lock()
 	defer am.activeMtx.Unlock()
 	return am.active

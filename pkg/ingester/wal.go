@@ -270,7 +270,7 @@ func (w *walWrapper) performCheckpoint() (err error) {
 	}
 
 	// We delete the WAL segments which are before the previous checkpoint and not before the
-	// current checkpoint. This is because if the latest checkpoint crashes for any reason, we
+	// current checkpoint. This is because if the latest checkpoint is corrupted for any reason, we
 	// should be able to recover from the older checkpoint which would need the older WAL segments.
 	if err := w.wal.Truncate(lastCh - 1); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
@@ -376,7 +376,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 	return wireChunks, cp.Log(buf)
 }
 
-func recoverFromWAL(ingester *Ingester) (returnErr error) {
+func recoverFromWAL(ingester *Ingester) error {
 	walDir := ingester.cfg.WALConfig.Dir
 
 	nWorkers := runtime.GOMAXPROCS(0)
@@ -395,17 +395,15 @@ func recoverFromWAL(ingester *Ingester) (returnErr error) {
 	}
 	elapsed := time.Since(start)
 	level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
-	defer func() {
-		if returnErr == nil {
-			ingester.userStatesMtx.Lock()
-			ingester.userStates = userStates
-			ingester.userStatesMtx.Unlock()
-		}
-	}()
 
 	if segExists, err := segmentsExist(walDir); err == nil && !segExists {
 		level.Info(util.Logger).Log("msg", "no segments found, skipping recover from segments")
+		ingester.userStatesMtx.Lock()
+		ingester.userStates = userStates
+		ingester.userStatesMtx.Unlock()
 		return nil
+	} else if err != nil {
+		return err
 	}
 
 	level.Info(util.Logger).Log("msg", "recovering from WAL", "dir", walDir, "start_segment", idx)
@@ -416,6 +414,9 @@ func recoverFromWAL(ingester *Ingester) (returnErr error) {
 	elapsed = time.Since(start)
 	level.Info(util.Logger).Log("msg", "recovered from WAL", "time", elapsed.String())
 
+	ingester.userStatesMtx.Lock()
+	ingester.userStates = userStates
+	ingester.userStatesMtx.Unlock()
 	return nil
 }
 

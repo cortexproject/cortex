@@ -290,7 +290,7 @@ func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleN
 	return servicesMap, nil
 }
 
-// Run starts Cortex running, and blocks until a signal is received.
+// Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
 	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)

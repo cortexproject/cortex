@@ -110,7 +110,6 @@ func main() {
 	}
 
 	runtime.KeepAlive(ballast)
-	util.CheckFatal("stopping cortex", err)
 }
 
 // Parse -config.file and -config.expand-env option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.

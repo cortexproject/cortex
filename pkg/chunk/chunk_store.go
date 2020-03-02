@@ -77,26 +77,28 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 type store struct {
 	cfg StoreConfig
 
-	index  IndexClient
-	chunks Client
-	schema Schema
-	limits StoreLimits
+	index            IndexClient
+	chunks           Client
+	schema           Schema
+	limits           StoreLimits
+	tombstonesLoader TombstonesLoader
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits) (Store, error) {
+func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits, tombstonesLoader TombstonesLoader) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
 	}
 
 	return &store{
-		cfg:     cfg,
-		index:   index,
-		chunks:  chunks,
-		schema:  schema,
-		limits:  limits,
-		Fetcher: fetcher,
+		cfg:              cfg,
+		index:            index,
+		chunks:           chunks,
+		schema:           schema,
+		limits:           limits,
+		Fetcher:          fetcher,
+		tombstonesLoader: tombstonesLoader,
 	}, nil
 }
 
@@ -251,7 +253,14 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
-	return labelNamesFromChunks(allChunks), nil
+
+	filteredChunks, err := c.applyTombstonesToChunks(userID, allChunks, from, through)
+	if err != nil {
+		level.Error(log).Log("msg", "applyTombstonesToChunks", "err", err)
+		return nil, err
+	}
+
+	return labelNamesFromChunks(filteredChunks), nil
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
@@ -329,6 +338,8 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	filtered := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
+	// ToDo: Maybe check MaxChunksPerQuery after filtering out deleted chunks?
+	// But it could be a waste of resources to download all the chunks and find that all of them were deleted
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
 		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery)
@@ -345,6 +356,42 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, filters)
+	return c.applyTombstonesToChunks(userID, filteredChunks, from, through)
+}
+
+// filters out completely deleted chunks and sets deletedIntervals for partially deleted chunks
+func (c *store) applyTombstonesToChunks(userID string, chunks []Chunk, queryRangeFrom, queryRangeThrough model.Time) ([]Chunk, error) {
+	tombstonesSet, err := c.tombstonesLoader.GetPendingTombstones(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if tombstonesSet.Len() == 0 || !tombstonesSet.HasTombstonesForInterval(queryRangeFrom, queryRangeThrough) {
+		return chunks, nil
+	}
+
+	filteredChunks := make([]Chunk, 0, len(chunks))
+	for i := range chunks {
+		deletedIntervals := tombstonesSet.GetDeletedIntervals(chunks[i].Metric, chunks[i].From, chunks[i].Through)
+		// whole chunk deleted
+		if len(deletedIntervals) == 1 && deletedIntervals[0].Start == chunks[i].From && deletedIntervals[0].End == chunks[i].Through {
+			continue
+		}
+
+		if len(deletedIntervals) != 0 {
+			level.Debug(util.Logger).Log("msg", "chunk partially deleted",
+				"chunk-id", chunks[i].ExternalKey(), "deleted intervals", deletedIntervals)
+		}
+
+		chunks[i].deletedIntervals = deletedIntervals
+		filteredChunks = append(filteredChunks, chunks[i])
+	}
+
+	if len(filteredChunks) != len(chunks) {
+		level.Info(util.Logger).Log("msg", "chunks filtered using tombstones",
+			"before", len(chunks), "after", len(filteredChunks))
+	}
+
 	return filteredChunks, nil
 }
 

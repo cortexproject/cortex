@@ -10,6 +10,7 @@ import (
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/intervals"
 )
 
 // StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
@@ -73,7 +74,9 @@ func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk
 		firstTime, lastTime := model.Time(i.StartTimestampMs), model.Time(i.EndTimestampMs)
 		// As the lifetime of this chunk is scopes to this request, we don't need
 		// to supply a fingerprint.
-		out = append(out, chunk.NewChunk(userID, 0, metric, o, firstTime, lastTime))
+		c := chunk.NewChunk(userID, 0, metric, o, firstTime, lastTime)
+		c.SetDeletedIntervals(intervals.ClientIntervalsToModelIntervals(i.DeletedIntervals))
+		out = append(out, c)
 	}
 	return out, nil
 }

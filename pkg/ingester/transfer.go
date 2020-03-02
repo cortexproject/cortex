@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/intervals"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -359,6 +361,7 @@ func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, err
 			StartTimestampMs: int64(d.FirstTime),
 			EndTimestampMs:   int64(d.LastTime),
 			Encoding:         int32(d.C.Encoding()),
+			DeletedIntervals: intervals.ModelIntervalsToClientIntervals(d.deletedIntervals),
 		}
 
 		buf := bytes.NewBuffer(make([]byte, 0, d.C.Size()))

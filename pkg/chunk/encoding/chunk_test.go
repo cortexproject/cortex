@@ -221,3 +221,169 @@ func testChunkBatch(t *testing.T, encoding Encoding, samples int) {
 	require.False(t, iter.Scan())
 	require.NoError(t, iter.Err())
 }
+
+func TestDeletedChunkIterator_Value(t *testing.T) {
+	numSamples := 500
+
+	chunkInterval := model.Interval{End: model.Time((numSamples - 1) * step)}
+
+	for _, tc := range []struct {
+		name             string
+		deletedIntervals []model.Interval
+		seekAt           model.Time
+	}{
+		{
+			name: "delete first 10 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+		},
+		{
+			name: "delete last 10 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.End.Add(-10 * time.Minute), End: chunkInterval.End},
+			},
+		},
+		{
+			name: "delete first 5 minutes and last 5 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(5 * time.Minute)},
+				{Start: chunkInterval.End.Add(-5 * time.Minute), End: chunkInterval.End},
+			},
+		},
+		{
+			name: "delete in the middle",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start.Add(5 * time.Minute), End: chunkInterval.End.Add(-5 * time.Minute)},
+			},
+		},
+		{
+			name: "seek in the middle of deleted interval",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+			seekAt: chunkInterval.Start.Add(5 * time.Minute),
+		},
+		{
+			name: "seek past deleted interval",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+			seekAt: chunkInterval.Start.Add(11 * time.Minute),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chunk := mkChunk(t, DefaultEncoding, 500)
+
+			itr := NewDeletedChunkIterator(chunk.NewIterator(nil), tc.deletedIntervals)
+
+			if tc.seekAt != 0 {
+				itr.FindAtOrAfter(tc.seekAt)
+				validateSampleFromPartiallyDeletedChunk(t, itr.Value(), tc.deletedIntervals)
+			}
+
+			for itr.Scan() {
+				validateSampleFromPartiallyDeletedChunk(t, itr.Value(), tc.deletedIntervals)
+			}
+
+		})
+	}
+}
+
+func TestDeletedChunkIterator_Batch(t *testing.T) {
+	numSamples := 500
+
+	chunkInterval := model.Interval{End: model.Time((numSamples - 1) * step)}
+
+	for _, tc := range []struct {
+		name             string
+		deletedIntervals []model.Interval
+		seekAt           model.Time
+	}{
+		{
+			name: "delete first 10 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+		},
+		{
+			name: "delete last 10 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.End.Add(-10 * time.Minute), End: chunkInterval.End},
+			},
+		},
+		{
+			name: "delete first 5 minutes and last 5 minutes",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(5 * time.Minute)},
+				{Start: chunkInterval.End.Add(-5 * time.Minute), End: chunkInterval.End},
+			},
+		},
+		{
+			name: "delete in the middle",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start.Add(5 * time.Minute), End: chunkInterval.End.Add(-5 * time.Minute)},
+			},
+		},
+		{
+			name: "seek in the middle of deleted interval",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+			seekAt: chunkInterval.Start.Add(5 * time.Minute),
+		},
+		{
+			name: "seek past deleted interval",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(10 * time.Minute)},
+			},
+			seekAt: chunkInterval.Start.Add(11 * time.Minute),
+		},
+		{
+			name: "delete first batch partially",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.Start, End: chunkInterval.Start.Add(time.Duration((BatchSize / 2) * step))},
+			},
+			seekAt: chunkInterval.Start.Add(11 * time.Minute),
+		},
+		{
+			name: "delete last batch partially",
+			deletedIntervals: []model.Interval{
+				{Start: chunkInterval.End.Add(-time.Duration((BatchSize / 2) * step)), End: chunkInterval.End},
+			},
+			seekAt: chunkInterval.Start.Add(11 * time.Minute),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chunk := mkChunk(t, DefaultEncoding, 500)
+
+			itr := NewDeletedChunkIterator(chunk.NewIterator(nil), tc.deletedIntervals)
+
+			if tc.seekAt != 0 {
+				itr.FindAtOrAfter(tc.seekAt)
+				batch := itr.Batch(BatchSize)
+				for i := 0; i < batch.Length; i++ {
+					validateSampleFromPartiallyDeletedChunk(t, model.SamplePair{Timestamp: model.Time(batch.Timestamps[i]),
+						Value: model.SampleValue(batch.Values[i])}, tc.deletedIntervals)
+				}
+			}
+
+			for itr.Scan() {
+				batch := itr.Batch(BatchSize)
+				for i := 0; i < batch.Length; i++ {
+					validateSampleFromPartiallyDeletedChunk(t, model.SamplePair{Timestamp: model.Time(batch.Timestamps[i]),
+						Value: model.SampleValue(batch.Values[i])}, tc.deletedIntervals)
+				}
+			}
+
+		})
+	}
+}
+
+func validateSampleFromPartiallyDeletedChunk(t *testing.T, samplePair model.SamplePair, deletedIntervals []model.Interval) {
+	for _, interval := range deletedIntervals {
+		require.Equal(t, false, inbound(samplePair.Timestamp, interval))
+	}
+
+	require.Equal(t, model.SampleValue(samplePair.Timestamp/model.Time(step)), samplePair.Value)
+}

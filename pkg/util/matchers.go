@@ -21,3 +21,26 @@ func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers [
 	}
 	return
 }
+
+// CompareMatchersWithLabels compares matchers with labels and returns true if they match otherwise it returns false
+func CompareMatchersWithLabels(allMatchers []*labels.Matcher, labels labels.Labels) bool {
+	filters, matchers := SplitFiltersAndMatchers(allMatchers)
+	labelsMap := make(map[string]string, len(labels))
+	for i := range labels {
+		labelsMap[string(labels[i].Name)] = string(labels[i].Value)
+	}
+
+	for i := range matchers {
+		if !matchers[i].Matches(labelsMap[matchers[i].Name]) {
+			return false
+		}
+	}
+
+	for i := range filters {
+		if _, isOK := labelsMap[filters[i].Name]; isOK {
+			return false
+		}
+	}
+
+	return true
+}

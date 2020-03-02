@@ -43,7 +43,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, nil)
+	ing, err := New(cfg, clientConfig, overrides, store, nil, chunk.NewTombstonesLoader(nil))
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 

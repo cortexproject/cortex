@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/intervals"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -13,6 +15,18 @@ import (
 type StoreLimits interface {
 	MaxChunksPerQuery(userID string) int
 	MaxQueryLength(userID string) time.Duration
+}
+
+// TombstonesAnalyzer helps with analyzing pending tombstones
+type TombstonesAnalyzer interface {
+	GetDeletedIntervals(labels labels.Labels, from, to model.Time) intervals.Intervals
+	Len() int
+	HasTombstonesForInterval(from, to model.Time) bool
+}
+
+// TombstonesLoader keeps tombstones loaded in memory
+type TombstonesLoader interface {
+	GetPendingTombstones(userID string) (TombstonesAnalyzer, error)
 }
 
 // Store for chunks.
@@ -41,7 +55,8 @@ type CompositeStore struct {
 }
 
 type compositeStore struct {
-	stores []compositeStoreEntry
+	tombstonesLoader TombstonesLoader
+	stores           []compositeStoreEntry
 }
 
 type compositeStoreEntry struct {
@@ -51,8 +66,8 @@ type compositeStoreEntry struct {
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.
-func NewCompositeStore() CompositeStore {
-	return CompositeStore{}
+func NewCompositeStore(tombstonesLoader TombstonesLoader) CompositeStore {
+	return CompositeStore{compositeStore{tombstonesLoader: tombstonesLoader}}
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
@@ -62,9 +77,9 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 	var err error
 	switch cfg.Schema {
 	case "v9", "v10", "v11":
-		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
+		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits, c.tombstonesLoader)
 	default:
-		store, err = newStore(storeCfg, schema, index, chunks, limits)
+		store, err = newStore(storeCfg, schema, index, chunks, limits, c.tombstonesLoader)
 	}
 	if err != nil {
 		return err

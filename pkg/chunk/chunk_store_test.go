@@ -82,7 +82,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	store := NewCompositeStore()
+	store := NewCompositeStore(NewTombstonesLoader(nil))
 	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
 	require.NoError(t, err)
 	return store

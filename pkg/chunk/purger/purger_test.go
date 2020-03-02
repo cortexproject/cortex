@@ -25,7 +25,7 @@ const (
 )
 
 func setupStoresAndPurger(t *testing.T) (*chunk.DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
-	deleteStore, err := testutils.SetupTestDeleteStore()
+	deleteStore, err := chunk.SetupTestDeleteStore()
 	require.NoError(t, err)
 
 	chunkStore, err := testutils.SetupTestChunkStore()

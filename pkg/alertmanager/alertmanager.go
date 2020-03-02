@@ -244,6 +244,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	return nil
 }
 
+// IsActive returns if the alertmanager is currently running
+// or is paused
 func (am *Alertmanager) IsActive() bool {
 	am.activeMtx.Lock()
 	defer am.activeMtx.Unlock()

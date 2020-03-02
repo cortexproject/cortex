@@ -2181,7 +2181,7 @@ bucket_store:
 # CLI flag: -experimental.tsdb.head-compaction-concurrency
 [head_compaction_concurrency: <int> | default = 5]
 
-# Power of 2 to use for the number of shards of series to use in TSDB. Reducing
+# The number of shards of series to use in TSDB (must be a power of 2). Reducing
 # this will decrease memory footprint, but can negatively impact performance.
 # CLI flag: -experimental.tsdb.stripe-size
 [stripe_size: <int> | default = 16384]

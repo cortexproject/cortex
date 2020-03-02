@@ -194,15 +194,15 @@ prime-minikube: save-images
 	done
 
 # Generates the config file documentation.
-doc:
-	cp ./docs/configuration/config-file-reference.template ./docs/configuration/config-file-reference.md
-	go run ./tools/doc-generator/ >> ./docs/configuration/config-file-reference.md
+doc: clean-doc
+	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template >> ./docs/configuration/config-file-reference.md
+	go run ./tools/doc-generator ./docs/operations/blocks-storage.template           >> ./docs/operations/blocks-storage.md
 
 clean-doc:
-	rm -f ./docs/configuration/config-file-reference.md
+	rm -f ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md
 
-check-doc: clean-doc doc
-	@git diff --exit-code -- ./docs/configuration/config-file-reference.md
+check-doc: doc
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md
 
 web-serve:
 	cd website && hugo --config config.toml -v server

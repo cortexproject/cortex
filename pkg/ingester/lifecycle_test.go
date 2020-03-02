@@ -430,7 +430,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg1.TSDBConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
-				SecretAccessKey: "dummy",
+				SecretAccessKey: flagext.Secret{Value: "dummy"},
 				AccessKeyID:     "dummy",
 			}
 			cfg1.LifecyclerConfig.ID = "ingester1"
@@ -457,7 +457,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg2.TSDBConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
-				SecretAccessKey: "dummy",
+				SecretAccessKey: flagext.Secret{Value: "dummy"},
 				AccessKeyID:     "dummy",
 			}
 			cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock

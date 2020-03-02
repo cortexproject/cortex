@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -99,7 +98,6 @@ type Distributor struct {
 	ingestersRing ring.ReadRing
 	ingesterPool  *ingester_client.Pool
 	limits        *validation.Overrides
-	billingClient *billing.Client
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances
@@ -115,9 +113,7 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
-	BillingConfig billing.Config             `yaml:"billing,omitempty"`
-	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
+	PoolConfig ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
@@ -136,12 +132,10 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
 	cfg.DistributorRing.RegisterFlags(f)
 
-	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
@@ -159,15 +153,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
-		}
-	}
-
-	var billingClient *billing.Client
-	if cfg.EnableBilling {
-		var err error
-		billingClient, err = billing.NewClient(cfg.BillingConfig)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -204,7 +189,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
 		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
-		billingClient:        billingClient,
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),

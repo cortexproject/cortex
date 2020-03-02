@@ -17,6 +17,10 @@ func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+func EmptyFlags() map[string]string {
+	return map[string]string{}
+}
+
 func MergeFlags(inputs ...map[string]string) map[string]string {
 	output := map[string]string{}
 

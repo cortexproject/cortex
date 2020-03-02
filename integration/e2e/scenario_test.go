@@ -1,3 +1,5 @@
+// +build integration
+
 package e2e_test
 
 import (

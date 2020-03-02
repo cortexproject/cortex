@@ -28,8 +28,8 @@ type Config struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.Var(&cfg.ConfigsAPIURL, prefix+"userconfig.url", "URL of configs API server.")
-	f.DurationVar(&cfg.ClientTimeout, prefix+"userconfig.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
+	f.Var(&cfg.ConfigsAPIURL, prefix+"configs.url", "URL of configs API server.")
+	f.DurationVar(&cfg.ClientTimeout, prefix+"configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 }
 
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{

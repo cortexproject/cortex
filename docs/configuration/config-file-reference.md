@@ -2082,14 +2082,15 @@ database:
   # CLI flag: -configs.database.password-file
   [password_file: <string> | default = ""]
 
-notifications:
-  # Disable Email notifications for Alertmanager.
-  # CLI flag: -configs.notifications.disable-email
-  [disable_email: <boolean> | default = false]
+api:
+  notifications:
+    # Disable Email notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-email
+    [disable_email: <boolean> | default = false]
 
-  # Disable WebHook notifications for Alertmanager.
-  # CLI flag: -configs.notifications.disable-webhook
-  [disable_webhook: <boolean> | default = false]
+    # Disable WebHook notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-webhook
+    [disable_webhook: <boolean> | default = false]
 ```
 
 ### `configstore_config`

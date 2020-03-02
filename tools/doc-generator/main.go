@@ -9,14 +9,12 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/weaveworks/common/server"
-
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
-	"github.com/cortexproject/cortex/pkg/configs/api"
+	"github.com/cortexproject/cortex/pkg/configs"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -31,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/weaveworks/common/server"
 )
 
 const (
@@ -149,7 +148,7 @@ var (
 		},
 		{
 			name:       "configs_config",
-			structType: reflect.TypeOf(api.Config{}),
+			structType: reflect.TypeOf(configs.Config{}),
 			desc:       "The configs_config configures the Cortex Configs DB and API.",
 		},
 		{

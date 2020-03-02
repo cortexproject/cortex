@@ -359,7 +359,7 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 			byState := sm.ServicesByState()
 			for st, ls := range byState {
-				msg.WriteString(fmt.Sprintf("%v: %d\n", st, ls))
+				msg.WriteString(fmt.Sprintf("%v: %d\n", st, len(ls)))
 			}
 
 			http.Error(w, msg.String(), http.StatusServiceUnavailable)

@@ -46,13 +46,16 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 }
 
 // requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func requestAsUser(t *testing.T, userID string, method, urlStr string, contentType string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
 	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
 	err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
 	require.NoError(t, err)
+	if contentType != "" {
+		r.Header.Set("Content-Type", contentType)
+	}
 	app.ServeHTTP(w, r)
 	return w
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"testing"
 
@@ -46,14 +47,14 @@ type configurable struct {
 
 // post a config
 func (c configurable) post(t *testing.T, userID string, config configs.Config) configs.View {
-	w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
+	w := requestAsUser(t, userID, "POST", c.Endpoint, "", readerFromConfig(t, config))
 	require.Equal(t, http.StatusNoContent, w.Code)
 	return c.get(t, userID)
 }
 
 // get a config
 func (c configurable) get(t *testing.T, userID string) configs.View {
-	w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+	w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 	return parseView(t, w.Body.Bytes())
 }
 
@@ -75,7 +76,7 @@ func Test_GetConfig_NotFound(t *testing.T) {
 
 	userID := makeUserID()
 	for _, c := range allClients {
-		w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+		w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	}
 }
@@ -100,11 +101,11 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 	config := makeConfig()
 	for _, c := range allClients {
 		{
-			w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
+			w := requestAsUser(t, userID, "POST", c.Endpoint, "", readerFromConfig(t, config))
 			assert.Equal(t, http.StatusNoContent, w.Code)
 		}
 		{
-			w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+			w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 			assert.Equal(t, config, parseView(t, w.Body.Bytes()).Config)
 		}
 	}
@@ -254,7 +255,7 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 	defer cleanup(t)
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", "", strings.NewReader(test.config))
 		data := map[string]string{}
 		err := json.Unmarshal(resp.Body.Bytes(), &data)
 		assert.NoError(t, err, "test case %d", i)
@@ -279,7 +280,7 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		cfg := configs.Config{AlertmanagerConfig: test.config}
-		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", readerFromConfig(t, cfg))
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
 
 		if !test.shouldFail {
 			assert.Equal(t, http.StatusNoContent, resp.Code, "test case %d", i)
@@ -294,16 +295,46 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 func Test_SetConfig_BodyFormat(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
-	for _, format := range []string{"testdata/config.yml", "testdata/config.json"} {
-		testSetConfigBodyFormat(format, t)
+	for _, bodyFile := range []string{"testdata/config.yml", "testdata/config.json"} {
+		var contentType string
+		switch path.Ext(bodyFile) {
+		case ".yml":
+			contentType = "text/yaml"
+		default:
+			contentType = "text/json"
+		}
+		testSetConfigBodyFormat(bodyFile, contentType, t)
 	}
 }
 
-func testSetConfigBodyFormat(format string, t *testing.T) {
+func testSetConfigBodyFormat(bodyFile string, contentType string, t *testing.T) {
 	userID := makeUserID()
-	file, err := os.Open(format)
+	file, err := os.Open(bodyFile)
 	require.NoError(t, err)
 	defer file.Close()
-	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", file)
-	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s", resp.Body.String())
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", contentType, file)
+	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s Content-Type: %s", resp.Body.String(), contentType)
+}
+
+func TestParseConfigFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultFormat string
+		expected      string
+	}{
+		{"", api.FormatInvalid, api.FormatInvalid},
+		{"", api.FormatJSON, api.FormatJSON},
+		{"application/json", api.FormatInvalid, api.FormatJSON},
+		{"application/yaml", api.FormatInvalid, api.FormatYAML},
+		{"application/json, application/yaml", api.FormatInvalid, api.FormatJSON},
+		{"application/yaml, application/json", api.FormatInvalid, api.FormatYAML},
+		{"text/plain, application/yaml", api.FormatInvalid, api.FormatYAML},
+		{"application/yaml; a=1", api.FormatInvalid, api.FormatYAML},
+	}
+	for _, test := range tests {
+		t.Run(test.name+"_"+test.expected, func(t *testing.T) {
+			actual := api.ParseConfigFormat(test.name, test.defaultFormat)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
 }

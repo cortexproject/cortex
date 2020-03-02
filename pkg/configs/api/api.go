@@ -196,10 +196,10 @@ func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 
 	for _, recv := range amCfg.Receivers {
 		if noCfg.DisableEmail && len(recv.EmailConfigs) > 0 {
-			return fmt.Errorf("email notifications are disabled in Cortex yet")
+			return fmt.Errorf("email notifications are disabled")
 		}
 		if noCfg.DisableWebHook && len(recv.WebhookConfigs) > 0 {
-			return fmt.Errorf("web-hook notifications are disabled in Cortex yet")
+			return fmt.Errorf("webhook notifications are disabled")
 		}
 	}
 

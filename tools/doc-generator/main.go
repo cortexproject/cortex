@@ -145,7 +145,7 @@ var (
 		{
 			name:       "configs_config",
 			structType: reflect.TypeOf(api.Config{}),
-			desc:       "The configs_config configures the Cortex Configs API.",
+			desc:       "The configs_config configures the Cortex Configs DB and API.",
 		},
 		{
 			name:       "configstore_config",

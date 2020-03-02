@@ -22,6 +22,8 @@ message RuleGroupDesc {
   repeated RuleDesc rules = 4;
   bool deleted = 5;
   string user = 6;
+  google.protobuf.Timestamp evaluationTimestamp = 7  [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Duration evaluationDuration = 8 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule
@@ -44,6 +46,8 @@ message RuleDesc {
   string health = 8;
   string lastError = 9;
   repeated AlertDesc alerts = 10;
+  google.protobuf.Timestamp evaluationTimestamp = 11  [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Duration evaluationDuration = 12 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
 }
 
 message AlertDesc {

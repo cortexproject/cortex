@@ -30,6 +30,7 @@
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
+  * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable.
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
 * [FEATURE] Add ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
@@ -65,7 +66,7 @@
 * [BUGFIX] The gauge `cortex_overrides_last_reload_successful` is now only exported by components that use a `RuntimeConfigManager`. Previously, for components that do not initialize a `RuntimeConfigManager` (such as the compactor) the gauge was initialized with 0 (indicating error state) and then never updated, resulting in a false-negative permanent error state. #2092
 * [BUGFIX] Fixed WAL metric names, added the `cortex_` prefix.
 * [BUGFIX] Restored histogram `cortex_configs_request_duration_seconds` #2138
-* [BUGFIX] Fix wrong syntax for `url` in config-file-reference. #2148
+* [ENHANCEMENT] Fix wrong syntax for `url` in config-file-reference. #2148
 
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
 

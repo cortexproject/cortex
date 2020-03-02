@@ -36,6 +36,7 @@
 * [FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. #2165
 * [FEATURE] Allow Prometheus remote write directly to ingesters. #1491
 * [FEATURE] Add flag `-experimental.tsdb.stripe-size` to expose TSDB stripe size option. #2185
+* [ENHANCEMENT] Alertmanager: Expose Per-tenant alertmanager metrics #2124
 * [ENHANCEMENT] Add `status` label to `cortex_alertmanager_configs` metric to gauge the number of valid and invalid configs. #2125
 * [ENHANCEMENT] Cassandra Authentication: added the `custom_authenticators` config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in [gocql](https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27) #2093
 * [ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with `cortex_compactor_`. #2023

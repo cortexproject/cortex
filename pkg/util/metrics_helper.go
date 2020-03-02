@@ -31,6 +31,13 @@ func (m singleValueWithLabelsMap) aggregateFn(labelsKey string, labelValues []st
 	m[labelsKey] = r
 }
 
+func (m singleValueWithLabelsMap) prependUserLabelValue(user string) {
+	for key, mlv := range m {
+		mlv.LabelValues = append([]string{user}, mlv.LabelValues...)
+		m[key] = mlv
+	}
+}
+
 func (m singleValueWithLabelsMap) WriteToMetricChannel(out chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType) {
 	for _, cr := range m {
 		out <- prometheus.MustNewConstMetric(desc, valueType, cr.Value, cr.LabelValues...)
@@ -160,6 +167,17 @@ func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, des
 
 func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string, labelNames ...string) {
 	d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames).WriteToMetricChannel(out, desc, prometheus.GaugeValue)
+}
+
+// SendSumOfGaugesPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
+// first label on the provided metric Desc
+func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
+	for user, userMetrics := range d {
+		result := singleValueWithLabelsMap{}
+		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn)
+		result.prependUserLabelValue(user)
+		result.WriteToMetricChannel(out, desc, prometheus.GaugeValue)
+	}
 }
 
 func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) singleValueWithLabelsMap {

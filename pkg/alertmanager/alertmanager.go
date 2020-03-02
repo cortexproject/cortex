@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
@@ -66,6 +67,9 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
+
+	activeMtx sync.Mutex
+	active    bool
 }
 
 var webReload = make(chan chan error)
@@ -81,17 +85,16 @@ func init() {
 }
 
 // New creates a new Alertmanager.
-func New(cfg *Config) (*Alertmanager, error) {
+func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am := &Alertmanager{
-		cfg:    cfg,
-		logger: log.With(cfg.Logger, "user", cfg.UserID),
-		stop:   make(chan struct{}),
+		cfg:       cfg,
+		logger:    log.With(cfg.Logger, "user", cfg.UserID),
+		stop:      make(chan struct{}),
+		active:    false,
+		activeMtx: sync.Mutex{},
 	}
 
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	am.registry = prometheus.NewRegistry()
+	am.registry = reg
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -233,12 +236,64 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	go am.dispatcher.Run()
 	go am.inhibitor.Run()
 
+	// Ensure the alertmanager is set to active
+	am.activeMtx.Lock()
+	am.active = true
+	am.activeMtx.Unlock()
+
 	return nil
+}
+
+// IsActive returns if the alertmanager is currently running
+// or is paused
+func (am *Alertmanager) IsActive() bool {
+	am.activeMtx.Lock()
+	defer am.activeMtx.Unlock()
+	return am.active
+}
+
+// Pause running jobs in the alertmanager that are able to be restarted and sets
+// to inactives
+func (am *Alertmanager) Pause() {
+	// Set to inactive
+	am.activeMtx.Lock()
+	am.active = false
+	am.activeMtx.Unlock()
+
+	// Stop the inhibitor and dispatcher which will be recreated when
+	// a new config is applied
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+		am.inhibitor = nil
+	}
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+		am.dispatcher = nil
+	}
+
+	// Remove all of the active silences from the alertmanager
+	silences, _, err := am.silences.Query()
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "unable to retrieve silences for removal", "err", err)
+	}
+	for _, si := range silences {
+		err = am.silences.Expire(si.Id)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "unable to remove silence", "err", err, "silence", si.Id)
+		}
+	}
 }
 
 // Stop stops the Alertmanager.
 func (am *Alertmanager) Stop() {
-	am.dispatcher.Stop()
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 	am.wg.Wait()

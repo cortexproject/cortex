@@ -77,6 +77,7 @@ func TestLoadAllConfigs(t *testing.T) {
 		logger:           log.NewNopLogger(),
 		stop:             make(chan struct{}),
 		done:             make(chan struct{}),
+		metrics:          newAlertmanagerMetrics(),
 	}
 
 	// Ensure the configs are synced correctly
@@ -112,10 +113,32 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
-	// Test Delete User
+	// Test Delete User, ensure config is remove but alertmananger
+	// exists and is set to inactive
 	delete(mockStore.configs, "user3")
 	require.NoError(t, am.updateConfigs())
 	currentConfig, exists = am.cfgs["user3"]
 	require.False(t, exists)
-	require.Equal(t, alerts.AlertConfigDesc{}, currentConfig)
+	require.Equal(t, "", currentConfig.RawConfig)
+
+	userAM, exists := am.alertmanagers["user3"]
+	require.True(t, exists)
+	require.False(t, userAM.isActive())
+
+	// Ensure when a 3rd config is re-added, it is synced correctly
+	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+		User:      "user3",
+		RawConfig: simpleConfigOne,
+		Templates: []*alerts.TemplateDesc{},
+	}
+
+	require.NoError(t, am.updateConfigs())
+
+	currentConfig, exists = am.cfgs["user3"]
+	require.True(t, exists)
+	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
+
+	userAM, exists = am.alertmanagers["user3"]
+	require.True(t, exists)
+	require.True(t, userAM.isActive())
 }

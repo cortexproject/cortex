@@ -143,7 +143,8 @@ type MultitenantAlertmanager struct {
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
-	logger log.Logger
+	logger  log.Logger
+	metrics *alertmanagerMetrics
 
 	peer *cluster.Peer
 
@@ -152,7 +153,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -174,7 +175,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	if cfg.ClusterBindAddr != "" {
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
-			prometheus.DefaultRegisterer,
+			registerer,
 			cfg.ClusterBindAddr,
 			cfg.ClusterAdvertiseAddr,
 			cfg.Peers,
@@ -205,12 +206,18 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]alerts.AlertConfigDesc{},
 		alertmanagers:  map[string]*Alertmanager{},
+		metrics:        newAlertmanagerMetrics(),
 		peer:           peer,
 		store:          store,
 		logger:         log.With(logger, "component", "MultiTenantAlertmanager"),
 		stop:           make(chan struct{}),
 		done:           make(chan struct{}),
 	}
+
+	if registerer != nil {
+		registerer.MustRegister(am.metrics)
+	}
+
 	return am, nil
 }
 
@@ -300,15 +307,17 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	defer am.alertmanagersMtx.Unlock()
 	for user, userAM := range am.alertmanagers {
 		if _, exists := cfgs[user]; !exists {
-			level.Info(am.logger).Log("msg", "deleting per-tenant alertmanager", "user", user)
-			userAM.Stop()
-			delete(am.alertmanagers, user)
+			// The user alertmanager is only paused in order to retain the prometheus metrics
+			// it has reported to its registry. If a new config for this user appears, this structure
+			// will be reused.
+			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
+			userAM.Pause()
 			delete(am.cfgs, user)
-			level.Info(am.logger).Log("msg", "deleted per-tenant alertmanager", "user", user)
+			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
 	totalConfigs.WithLabelValues("invalid").Set(float64(invalid))
-	totalConfigs.WithLabelValues("valid").Set(float64(len(am.alertmanagers) - invalid))
+	totalConfigs.WithLabelValues("valid").Set(float64(len(am.cfgs) - invalid))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
@@ -423,6 +432,8 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	reg := prometheus.NewRegistry()
+	am.metrics.addUserRegistry(userID, reg)
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
@@ -431,7 +442,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		PeerTimeout: am.cfg.PeerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
-	})
+	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
 	}
@@ -439,6 +450,8 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	if err := newAM.ApplyConfig(userID, amConfig); err != nil {
 		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
 	}
+
+	am.metrics.addUserRegistry(userID, reg)
 	return newAM, nil
 }
 
@@ -452,7 +465,8 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Lock()
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
-	if !ok {
+
+	if !ok || !userAM.IsActive() {
 		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
 		return
 	}

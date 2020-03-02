@@ -103,6 +103,7 @@ func (s *chunkSeries) Iterator() storage.SeriesIterator {
 	return s.chunkIteratorFunc(s.chunks, model.Time(s.mint), model.Time(s.maxt))
 }
 
+// implements SeriesWithChunks
 func (s *chunkSeries) Chunks() []chunk.Chunk {
 	return s.chunks
 }

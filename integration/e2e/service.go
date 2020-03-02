@@ -429,6 +429,10 @@ func (s *HTTPService) metrics() (_ string, err error) {
 	return string(body), err
 }
 
+func (s *HTTPService) HTTPPort() int {
+	return s.httpPort
+}
+
 func (s *HTTPService) HTTPEndpoint() string {
 	return s.Endpoint(s.httpPort)
 }

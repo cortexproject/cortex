@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	HTTPPort = 80
+	httpPort = 80
 	grpcPort = 9095
 )
 
@@ -48,8 +48,8 @@ func NewDistributorWithConfigFile(name, consulAddress, configFile string, flags 
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }
@@ -83,8 +83,8 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 			"-querier.frontend-client.backoff-retries":    "1",
 			"-querier.worker-parallelism":                 "1",
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }
@@ -117,8 +117,8 @@ func NewIngesterWithConfigFile(name, consulAddress, configFile string, flags map
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }
@@ -143,8 +143,8 @@ func NewTableManagerWithConfigFile(name, configFile string, flags map[string]str
 			"-target":    "table-manager",
 			"-log.level": "warn",
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }
@@ -169,8 +169,8 @@ func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]st
 			"-target":    "query-frontend",
 			"-log.level": "warn",
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }
@@ -205,8 +205,8 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 			"-target":    "alertmanager",
 			"-log.level": "warn",
 		}, flags))...),
-		e2e.NewReadinessProbe(HTTPPort, "/ready", 204),
-		HTTPPort,
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
+		httpPort,
 		grpcPort,
 	)
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -61,6 +62,7 @@ const (
 	AlertManager
 	Compactor
 	MemberlistKV
+	DataPurger
 	All
 )
 
@@ -98,6 +100,8 @@ func (m moduleName) String() string {
 		return "compactor"
 	case MemberlistKV:
 		return "memberlist-kv"
+	case DataPurger:
+		return "data-purger"
 	case All:
 		return "all"
 	default:
@@ -148,6 +152,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "compactor":
 		*m = Compactor
+		return nil
+	case "data-purger":
+		*m = DataPurger
 		return nil
 	case "all":
 		*m = All
@@ -381,6 +388,10 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 	}
 
 	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -591,6 +602,62 @@ func (t *Cortex) stopMemberlistKV() (err error) {
 	return nil
 }
 
+func (t *Cortex) initDataPurger(cfg *Config) (err error) {
+	if !cfg.DataPurgerConfig.Enable {
+		return nil
+	}
+
+	var indexClient chunk.IndexClient
+	indexClient, err = storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
+	if err != nil {
+		return
+	}
+
+	var deleteStore *chunk.DeleteStore
+	deleteStore, err = chunk.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
+	if err != nil {
+		return
+	}
+
+	var storageClient chunk.ObjectClient
+	storageClient, err = storage.NewObjectClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
+	if err != nil {
+		return
+	}
+
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, deleteStore, t.store, storageClient)
+	if err != nil {
+		return
+	}
+
+	err = t.dataPurger.Init()
+	if err != nil {
+		return
+	}
+
+	go t.dataPurger.Run()
+
+	var deleteRequestHandler *purger.DeleteRequestHandler
+	deleteRequestHandler, err = purger.NewDeleteRequestHandler(deleteStore)
+	if err != nil {
+		return
+	}
+
+	adminRouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix + "/api/v1/admin/tsdb").Subrouter()
+
+	adminRouter.Path("/delete_series").Methods("PUT", "POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
+	adminRouter.Path("/delete_series").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
+
+	return
+}
+
+func (t *Cortex) stopDataPurger() error {
+	if t.dataPurger != nil {
+		t.dataPurger.Stop()
+	}
+	return nil
+}
+
 type module struct {
 	deps []moduleName
 	init func(t *Cortex, cfg *Config) error
@@ -687,6 +754,12 @@ var modules = map[moduleName]module{
 		deps: []moduleName{Server},
 		init: (*Cortex).initCompactor,
 		stop: (*Cortex).stopCompactor,
+	},
+
+	DataPurger: {
+		deps: []moduleName{Store, Server},
+		init: (*Cortex).initDataPurger,
+		stop: (*Cortex).stopDataPurger,
 	},
 
 	All: {

@@ -550,45 +550,36 @@ func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
 	}), nil
 }
 
-func (t *Cortex) initDataPurger(cfg *Config) (err error) {
+func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 	if !cfg.DataPurgerConfig.Enable {
-		return nil
+		return nil, nil
 	}
 
 	var indexClient chunk.IndexClient
-	indexClient, err = storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
+	indexClient, err := storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	var deleteStore *chunk.DeleteStore
-	deleteStore, err = chunk.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
+	deleteStore, err := chunk.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	var storageClient chunk.ObjectClient
-	storageClient, err = storage.NewObjectClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
+	storageClient, err := storage.NewObjectClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, deleteStore, t.store, storageClient)
 	if err != nil {
-		return
+		return nil, err
 	}
-
-	err = t.dataPurger.Init()
-	if err != nil {
-		return
-	}
-
-	go t.dataPurger.Run()
 
 	var deleteRequestHandler *purger.DeleteRequestHandler
 	deleteRequestHandler, err = purger.NewDeleteRequestHandler(deleteStore)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	adminRouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix + "/api/v1/admin/tsdb").Subrouter()
@@ -596,14 +587,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 	adminRouter.Path("/delete_series").Methods("PUT", "POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
 	adminRouter.Path("/delete_series").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
 
-	return
-}
-
-func (t *Cortex) stopDataPurger() error {
-	if t.dataPurger != nil {
-		t.dataPurger.Stop()
-	}
-	return nil
+	return t.dataPurger, nil
 }
 
 type module struct {
@@ -699,9 +683,8 @@ var modules = map[moduleName]module{
 	},
 
 	DataPurger: {
-		deps: []moduleName{Store, Server},
-		init: (*Cortex).initDataPurger,
-		stop: (*Cortex).stopDataPurger,
+		deps:           []moduleName{Store, Server},
+		wrappedService: (*Cortex).initDataPurger,
 	},
 
 	All: {

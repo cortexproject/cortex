@@ -1,3 +1,10 @@
+---
+title: "Caching in Cortex"
+linkTitle: "Caching in Cortex"
+weight: 1
+slug: caching
+---
+
 # Caching in Cortex
 
 Correctly configured caching is important for a production-ready Cortex cluster.

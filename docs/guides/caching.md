@@ -14,11 +14,11 @@ Cortex has many opportunities for using caching to accelerate queries and reduce
 * Index lookups for one label on one day
 * Reducing duplication of writes.
 
-This doc aimes to describe what each cache does, how to configure them and how to tune them.
+This doc aims to describe what each cache does, how to configure them and how to tune them.
 
 ## Cortex Caching Options
 
-Cortex can use various different techniques and services for caching.
+Cortex can use various different technologies for caching - Memcached, Redis or an in-processd FIFO cache.
 The recommended caching technology for production workloads is [Memcached](https://memcached.org/).
 Using Memcached in your Cortex install means results from one process can be re-used by another.
 In-process caching can cut fetch times slightly and reduce the load on Memcached, but can only be used by a single process.
@@ -117,7 +117,7 @@ Items stay in the cache indefinitely.
 The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags without a prefix.
 
 It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
-You can use the follow query (from the [cortex-mixin]()) to estimate the required number of memcached replicas:
+You can use the follow query (from the [cortex-mixin](https://github.com/grafana/cortex-jsonnet)) to estimate the required number of memcached replicas:
 
 ```promql
 // 4 x in-memory series size = 24hrs of data.

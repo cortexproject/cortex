@@ -1,4 +1,4 @@
-package api_test
+package api
 
 import (
 	"encoding/json"
@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/api"
 )
 
 const (
@@ -152,10 +151,10 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	for _, c := range allClients {
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{}}, found)
+		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{}}, found)
 	}
 }
 
@@ -171,10 +170,10 @@ func Test_GetAllConfigs(t *testing.T) {
 		view := c.post(t, userID, config)
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
 			userID: view,
 		}}, found)
 	}
@@ -194,10 +193,10 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
 			userID: lastCreated,
 		}}, found)
 	}
@@ -215,10 +214,10 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 
 		w := request(t, "GET", fmt.Sprintf("%s?since=%d", c.PrivateEndpoint, config2.ID), nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
 			userID3: config3,
 		}}, found)
 	}
@@ -314,4 +313,27 @@ func testSetConfigBodyFormat(bodyFile string, contentType string, t *testing.T) 
 	defer file.Close()
 	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", contentType, file)
 	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s Content-Type: %s", resp.Body.String(), contentType)
+}
+
+func TestParseConfigFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultFormat string
+		expected      string
+	}{
+		{"", FormatInvalid, FormatInvalid},
+		{"", FormatJSON, FormatJSON},
+		{"application/json", FormatInvalid, FormatJSON},
+		{"application/yaml", FormatInvalid, FormatYAML},
+		{"application/json, application/yaml", FormatInvalid, FormatJSON},
+		{"application/yaml, application/json", FormatInvalid, FormatYAML},
+		{"text/plain, application/yaml", FormatInvalid, FormatYAML},
+		{"application/yaml; a=1", FormatInvalid, FormatYAML},
+	}
+	for _, test := range tests {
+		t.Run(test.name+"_"+test.expected, func(t *testing.T) {
+			actual := parseConfigFormat(test.name, test.defaultFormat)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
 }

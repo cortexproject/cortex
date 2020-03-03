@@ -14,8 +14,9 @@ mkdir -p ${OUTPUT_CONTENT_DIR}
 
 # Copy original content.
 cp -r ${ORIGINAL_CONTENT_DIR}/* ${OUTPUT_CONTENT_DIR}
-cp -r CONTRIBUTING.md code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
+cp -r code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
 cp GOVERNANCE.md ${OUTPUT_CONTENT_DIR}/governance/_index.md
+cp CONTRIBUTING.md ${OUTPUT_CONTENT_DIR}/contributing/_index.md
 cp images/* ${WEBSITE_DIR}/static/images
 
 # Add headers to special CODE_OF_CONDUCT.md, CONTRIBUTING.md and CHANGELOG.md files.
@@ -49,8 +50,8 @@ originalpath: CONTRIBUTING.md
 weight: 10
 ---
 EOT
-)" > ${OUTPUT_CONTENT_DIR}/CONTRIBUTING.md
-tail -n +2 CONTRIBUTING.md >> ${OUTPUT_CONTENT_DIR}/CONTRIBUTING.md
+)" > ${OUTPUT_CONTENT_DIR}/contributing/_index.md
+tail -n +2 CONTRIBUTING.md >> ${OUTPUT_CONTENT_DIR}/contributing/_index.md
 
 echo "$(cat <<EOT
 ---

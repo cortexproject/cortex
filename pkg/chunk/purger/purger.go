@@ -90,12 +90,6 @@ func NewDataPurger(cfg Config, deleteStore *chunk.DeleteStore, chunkStore chunk.
 
 // Run keeps pulling delete requests for planning after initializing necessary things
 func (dp *DataPurger) Run() {
-	err := dp.init()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing purger", "err", err)
-		return
-	}
-
 	dp.wg.Add(1)
 	defer dp.wg.Done()
 
@@ -115,8 +109,8 @@ func (dp *DataPurger) Run() {
 	}
 }
 
-// init starts workers, scheduler and then loads in process delete requests
-func (dp *DataPurger) init() error {
+// Init starts workers, scheduler and then loads in process delete requests
+func (dp *DataPurger) Init() error {
 	dp.runWorkers()
 	go dp.jobScheduler()
 

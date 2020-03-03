@@ -630,6 +630,11 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 		return
 	}
 
+	err = t.dataPurger.Init()
+	if err != nil {
+		return
+	}
+
 	go t.dataPurger.Run()
 
 	var deleteRequestHandler *purger.DeleteRequestHandler

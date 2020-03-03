@@ -314,7 +314,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 	require.NoError(t, err)
 
 	// load in process delete requests by calling Run
-	require.NoError(t, newPurger.init())
+	require.NoError(t, newPurger.Init())
 
 	defer func() {
 		newPurger.Stop()

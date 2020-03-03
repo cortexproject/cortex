@@ -14,7 +14,7 @@ The following initial setup is required only once:
 
 1. Install [Hugo](https://gohugo.io/) `v0.59.1`
 2. Install [Node.js](https://nodejs.org/en/) (or via [`nvm`](https://github.com/nvm-sh/nvm))
-3. Install required Node modules
+3. Install required Node modules with:
    ```
    cd website && npm install -g postcss-cli autoprefixer
    ```

@@ -3,14 +3,13 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"net/http"
 	"strconv"
-
-	errors "golang.org/x/xerrors"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -20,6 +19,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/util"
+)
+
+var (
+	ErrEmailNotificationsAreDisabled   = errors.New("email notifications are disabled")
+	ErrWebhookNotificationsAreDisabled = errors.New("webhook notifications are disabled")
 )
 
 // Config configures Configs API
@@ -187,11 +191,6 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 		"status": "success",
 	})
 }
-
-var (
-	ErrEmailNotificationsAreDisabled   = errors.New("email notifications are disabled")
-	ErrWebhookNotificationsAreDisabled = errors.New("webhook notifications are disabled")
-)
 
 func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 	amCfg, err := amconfig.Load(cfg)

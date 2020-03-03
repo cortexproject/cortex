@@ -245,7 +245,7 @@ var amCfgValidationTests = []struct {
           email_configs:
           - to: myteam@foobar.org`,
 		shouldFail:  true,
-		errContains: "email notifications are disabled",
+		errContains: api.ErrEmailNotificationsAreDisabled.Error(),
 	}, {
 		config: `
         global:

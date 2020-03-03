@@ -13,10 +13,10 @@ The Cortex documentation is compiled into a website published at [cortexmetrics.
 The following initial setup is required only once:
 
 1. Install [Hugo](https://gohugo.io/) `v0.59.1`
-2. Install [Node.js](https://nodejs.org/en/) (or via [`nvm`](https://github.com/nvm-sh/nvm))
+2. Install [Node.js](https://nodejs.org/en/) `v12` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
 3. Install required Node modules with:
    ```
-   cd website && npm install -g postcss-cli autoprefixer
+   cd website && npm install postcss-cli autoprefixer && cd -
    ```
 4. Run `make BUILD_IN_CONTAINER=false web-build`
 

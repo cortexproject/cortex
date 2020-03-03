@@ -97,7 +97,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch ParseConfigFormat(r.Header.Get("Accept"), FormatJSON) {
+	switch parseConfigFormat(r.Header.Get("Accept"), FormatJSON) {
 	case FormatJSON:
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(cfg)
@@ -105,8 +105,8 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		err = yaml.NewEncoder(w).Encode(cfg)
 	default:
-		// should not be here
-		level.Error(logger).Log("msg", "unknown Format")
+		// should never reach this point
+		level.Error(logger).Log("msg", "unexpected error detecting the config format")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	if err != nil {
@@ -125,7 +125,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), util.Logger)
 
 	var cfg configs.Config
-	switch ParseConfigFormat(r.Header.Get("Content-Type"), FormatJSON) {
+	switch parseConfigFormat(r.Header.Get("Content-Type"), FormatJSON) {
 	case FormatJSON:
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 			// XXX: Untested
@@ -141,9 +141,9 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		// should not be here
-		level.Error(logger).Log("msg", "unknown Format")
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		// should never reach this point
+		level.Error(logger).Log("msg", "unexpected error detecting the config format")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -313,7 +313,7 @@ const (
 	FormatYAML    = "yaml"
 )
 
-func ParseConfigFormat(v string, defaultFormat string) string {
+func parseConfigFormat(v string, defaultFormat string) string {
 	if v == "" {
 		return defaultFormat
 	}

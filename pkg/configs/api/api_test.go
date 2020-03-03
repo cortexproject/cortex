@@ -315,26 +315,3 @@ func testSetConfigBodyFormat(bodyFile string, contentType string, t *testing.T) 
 	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", contentType, file)
 	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s Content-Type: %s", resp.Body.String(), contentType)
 }
-
-func TestParseConfigFormat(t *testing.T) {
-	tests := []struct {
-		name          string
-		defaultFormat string
-		expected      string
-	}{
-		{"", api.FormatInvalid, api.FormatInvalid},
-		{"", api.FormatJSON, api.FormatJSON},
-		{"application/json", api.FormatInvalid, api.FormatJSON},
-		{"application/yaml", api.FormatInvalid, api.FormatYAML},
-		{"application/json, application/yaml", api.FormatInvalid, api.FormatJSON},
-		{"application/yaml, application/json", api.FormatInvalid, api.FormatYAML},
-		{"text/plain, application/yaml", api.FormatInvalid, api.FormatYAML},
-		{"application/yaml; a=1", api.FormatInvalid, api.FormatYAML},
-	}
-	for _, test := range tests {
-		t.Run(test.name+"_"+test.expected, func(t *testing.T) {
-			actual := api.ParseConfigFormat(test.name, test.defaultFormat)
-			assert.Equal(t, test.expected, actual)
-		})
-	}
-}

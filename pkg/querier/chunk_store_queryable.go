@@ -87,6 +87,7 @@ func (q *chunkStoreQuerier) Close() error {
 	return nil
 }
 
+// Implements SeriesWithChunks
 type chunkSeries struct {
 	labels            labels.Labels
 	chunks            []chunk.Chunk
@@ -103,6 +104,7 @@ func (s *chunkSeries) Iterator() storage.SeriesIterator {
 	return s.chunkIteratorFunc(s.chunks, model.Time(s.mint), model.Time(s.maxt))
 }
 
+// Chunks implements SeriesWithChunks interface.
 func (s *chunkSeries) Chunks() []chunk.Chunk {
 	return s.chunks
 }

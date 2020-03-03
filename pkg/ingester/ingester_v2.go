@@ -609,6 +609,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMilliseconds(),
 		NoLockfile:        true,
+		StripeSize:        i.cfg.TSDBConfig.StripeSize,
 	})
 	if err != nil {
 		return nil, err

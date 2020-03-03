@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
@@ -80,4 +81,84 @@ func makeLabels(namesAndValues ...string) []*dto.LabelPair {
 	}
 
 	return out
+}
+
+// TestSendSumOfGaugesPerUserWithLabels tests to ensure multiple metrics for the same user with a matching label are
+// summed correctly
+func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
+	user1Metric := prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "test_metric"}, []string{"label_one", "label_two"})
+	user2Metric := prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "test_metric"}, []string{"label_one", "label_two"})
+	user1Metric.WithLabelValues("a", "b").Set(100)
+	user1Metric.WithLabelValues("a", "c").Set(80)
+	user2Metric.WithLabelValues("a", "b").Set(60)
+	user2Metric.WithLabelValues("a", "c").Set(40)
+
+	user1Reg := prometheus.NewRegistry()
+	user2Reg := prometheus.NewRegistry()
+	user1Reg.MustRegister(user1Metric)
+	user2Reg.MustRegister(user2Metric)
+
+	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
+		"user-1": user1Reg,
+		"user-2": user2Reg,
+	})
+
+	desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
+	actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one")
+	})
+	require.NoError(t, err)
+	expected := []*dto.Metric{
+		{Label: makeLabels("label_one", "a", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(180)}},
+		{Label: makeLabels("label_one", "a", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+	}
+	require.ElementsMatch(t, expected, actual)
+
+	desc = prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
+	actual, err = collectMetrics(func(out chan prometheus.Metric) {
+		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_two")
+	})
+	require.NoError(t, err)
+	expected = []*dto.Metric{
+		{Label: makeLabels("label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+		{Label: makeLabels("label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
+		{Label: makeLabels("label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
+		{Label: makeLabels("label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+	}
+	require.ElementsMatch(t, expected, actual)
+
+	desc = prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
+	actual, err = collectMetrics(func(out chan prometheus.Metric) {
+		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
+	})
+	require.NoError(t, err)
+	expected = []*dto.Metric{
+		{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+		{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
+		{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
+		{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+	}
+	require.ElementsMatch(t, expected, actual)
+}
+
+func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error) {
+	out := make(chan prometheus.Metric)
+
+	go func() {
+		send(out)
+		close(out)
+	}()
+
+	metrics := []*dto.Metric{}
+	for m := range out {
+		collected := &dto.Metric{}
+		err := m.Write(collected)
+		if err != nil {
+			return nil, err
+		}
+
+		metrics = append(metrics, collected)
+	}
+
+	return metrics, nil
 }

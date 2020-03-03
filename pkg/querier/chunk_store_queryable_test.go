@@ -15,6 +15,9 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
+// Make sure that chunkSeries implements SeriesWithChunks
+var _ SeriesWithChunks = &chunkSeries{}
+
 func TestChunkQueryable(t *testing.T) {
 	for _, testcase := range testcases {
 		for _, encoding := range encodings {

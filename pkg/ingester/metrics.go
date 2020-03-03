@@ -106,6 +106,7 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			m.memSeries,
 			m.memUsers,
 			m.walReplayDuration,
+			m.walCorruptionsTotal,
 		)
 
 		if registerMetricsConflictingWithTSDB {

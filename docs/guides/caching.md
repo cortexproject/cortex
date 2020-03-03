@@ -1,16 +1,18 @@
 ---
 title: "Caching in Cortex"
 linkTitle: "Caching in Cortex"
-weight: 1
+weight: 5
 slug: caching
 ---
 
-# Caching in Cortex
-
 Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost.  Cortex can use a cache for:
-* Individual chunks
+
 * The results of a whole query
+
+And for the chunk storage:
+
+* Individual chunks
 * Index lookups for one label on one day
 * Reducing duplication of writes.
 
@@ -18,7 +20,7 @@ This doc aims to describe what each cache does, how to configure them and how to
 
 ## Cortex Caching Options
 
-Cortex can use various different technologies for caching - Memcached, Redis or an in-processd FIFO cache.
+Cortex can use various different technologies for caching - Memcached, Redis or an in-process FIFO cache.
 The recommended caching technology for production workloads is [Memcached](https://memcached.org/).
 Using Memcached in your Cortex install means results from one process can be re-used by another.
 In-process caching can cut fetch times slightly and reduce the load on Memcached, but can only be used by a single process.
@@ -32,7 +34,7 @@ For small deployments you can use a single memcached cluster for all the caching
 For large deployments we recommend separate memcached deployments for each of the caching opportunities, as this allows more sophisticated sizing, monitoring and configuration of each cache.
 For help provisioning and monitoring memcached clusters using [tanka](https://github.com/grafana/tanka), see the [memcached jsonnet module](https://github.com/grafana/jsonnet-libs/tree/master/memcached) and the [memcached-mixin](https://github.com/grafana/jsonnet-libs/tree/master/memcached-mixin).
 
-Cortex uses DNS discovery to find the various memcached servers in a cluster.
+Cortex uses DNS SRV records to find the various memcached servers in a cluster.
 You should ensure your memcached servers are not behind any kind of load balancer.
 If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services).
 
@@ -63,7 +65,7 @@ The flags used to configure memcached are common for each caching caching opport
     Period with which to poll DNS for memcache servers. (default 1m0s)
 ```
 
-See [MemcachedConfig documentation](/docs/configuration/config-file-reference.md#memcached_config) if you use a config file with Cortex.
+See the [`memcached_config`](../configuration/config-file-reference.md#memcached_config) and [`memcached_client_config`](../configuration/config-file-reference.md#memcached_client_config) documentation if you use a config file with Cortex.
 
 ### FIFO Cache (Experimental)
 
@@ -82,6 +84,9 @@ To enable the FIFO cache, use the following flags:
 -<prefix>.fifocache.size int
     The number of entries to cache.
 ```
+
+See [`fifo_cache_config` documentation](../configuration/config-file-reference.md#fifo-cache-config) if you use a config file with Cortex.
+
 
 ### Redis (Experimental)
 
@@ -104,6 +109,8 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
     Maximum time to wait before giving up on redis requests. (default 100ms)
 ```
 
+See [`redis_config` documentation](../configuration/config-file-reference.md#redis-config) if you use a config file with Cortex.
+
 ## Cortex Caching Opportunities
 
 ### Chunks Cache
@@ -117,7 +124,7 @@ Items stay in the cache indefinitely.
 The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags without a prefix.
 
 It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
-You can use the follow query (from the [cortex-mixin](https://github.com/grafana/cortex-jsonnet)) to estimate the required number of memcached replicas:
+You can use the following query (from the [cortex-mixin](https://github.com/grafana/cortex-jsonnet)) to estimate the required number of memcached replicas:
 
 ```promql
 // 4 x in-memory series size = 24hrs of data.

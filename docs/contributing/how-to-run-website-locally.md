@@ -5,7 +5,7 @@ weight: 2
 slug: how-to-run-the-website-locally
 ---
 
-The Cortex documentation is compiled into a website published at [cortexmetrics.io](https://cortexmetrics.io/). This document explains how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.
+The Cortex documentation is compiled into a website published at [cortexmetrics.io](https://cortexmetrics.io/). These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.
 
 
 ## Initial setup

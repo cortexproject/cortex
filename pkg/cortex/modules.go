@@ -603,7 +603,7 @@ func (t *Cortex) stopMemberlistKV() (err error) {
 }
 
 func (t *Cortex) initDataPurger(cfg *Config) (err error) {
-	if !cfg.DataPurgerConfig.EnablePurger {
+	if !cfg.DataPurgerConfig.Enable {
 		return nil
 	}
 
@@ -620,7 +620,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (err error) {
 	}
 
 	var storageClient chunk.ObjectClient
-	storageClient, err = storage.NewStorageClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
+	storageClient, err = storage.NewObjectClient(cfg.DataPurgerConfig.ObjectStoreType, cfg.Storage)
 	if err != nil {
 		return
 	}

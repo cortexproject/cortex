@@ -170,7 +170,7 @@ var (
 		},
 		{
 			name:       "purger_config",
-			structType: reflect.TypeOf(purger.DataPurgerConfig{}),
+			structType: reflect.TypeOf(purger.Config{}),
 			desc:       "The purger_config configures the purger which takes care of delete requests",
 		},
 	}

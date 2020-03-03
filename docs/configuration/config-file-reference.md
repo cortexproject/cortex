@@ -2357,8 +2357,8 @@ The `purger_config` configures the purger which takes care of delete requests
 ```yaml
 # Enable purger to allow deletion of series. Be aware that Delete series feature
 # is still experimental
-# CLI flag: -purger.enable-purger
-[enable_purger: <boolean> | default = false]
+# CLI flag: -purger.enable
+[enable: <boolean> | default = false]
 
 # Number of workers executing delete plans in parallel
 # CLI flag: -purger.num-workers

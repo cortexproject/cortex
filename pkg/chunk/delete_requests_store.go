@@ -19,16 +19,16 @@ import (
 type DeleteRequestStatus string
 
 const (
-	Received     DeleteRequestStatus = "received"
-	BuildingPlan DeleteRequestStatus = "buildingPlan"
-	Deleting     DeleteRequestStatus = "deleting"
-	Processed    DeleteRequestStatus = "processed"
+	StatusReceived     DeleteRequestStatus = "received"
+	StatusBuildingPlan DeleteRequestStatus = "buildingPlan"
+	StatusDeleting     DeleteRequestStatus = "deleting"
+	StatusProcessed    DeleteRequestStatus = "processed"
 
 	separator = "\000" // separator for series selectors in delete requests
 )
 
 var (
-	pendingDeleteRequestStatuses = []DeleteRequestStatus{Received, BuildingPlan, Deleting}
+	pendingDeleteRequestStatuses = []DeleteRequestStatus{StatusReceived, StatusBuildingPlan, StatusDeleting}
 
 	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 )
@@ -97,7 +97,7 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 	// Add an entry with userID, requestID as range key and status as value to make it easy to manage and lookup status
 	// We don't want to set anything in hash key here since we would want to find delete requests by just status
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(Received))
+	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(StatusReceived))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))

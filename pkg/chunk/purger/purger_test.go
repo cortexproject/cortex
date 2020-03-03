@@ -33,7 +33,7 @@ func setupStoresAndPurger(t *testing.T) (*chunk.DeleteStore, chunk.Store, chunk.
 	storageClient, err := testutils.SetupTestObjectStore()
 	require.NoError(t, err)
 
-	var cfg DataPurgerConfig
+	var cfg Config
 	flagext.DefaultValues(&cfg)
 
 	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient)
@@ -308,10 +308,13 @@ func TestDataPurger_Restarts(t *testing.T) {
 	dataPurger.Stop()
 
 	// create a new purger to check whether it picks up in process delete requests
-	var cfg DataPurgerConfig
+	var cfg Config
 	flagext.DefaultValues(&cfg)
 	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient)
 	require.NoError(t, err)
+
+	// load in process delete requests by calling Run
+	require.NoError(t, newPurger.init())
 
 	defer func() {
 		newPurger.Stop()
@@ -343,7 +346,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 
 	deleteRequests, err = deleteStore.GetAllDeleteRequestsForUser(context.Background(), userID)
 	require.NoError(t, err)
-	require.Equal(t, chunk.Processed, deleteRequests[0].Status)
+	require.Equal(t, chunk.StatusProcessed, deleteRequests[0].Status)
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {

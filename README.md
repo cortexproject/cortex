@@ -29,7 +29,7 @@ should read:
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
 1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/cassandra/)
 
-For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
+For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
 ## Further reading
 

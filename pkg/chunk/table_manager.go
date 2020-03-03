@@ -28,48 +28,49 @@ const (
 	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
-var (
-	syncTableDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+type tableManagerMetrics struct {
+	syncTableDuration *prometheus.HistogramVec
+	tableCapacity     *prometheus.GaugeVec
+	createFailures    prometheus.Gauge
+	deleteFailures    prometheus.Gauge
+}
+
+func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
+	m := tableManagerMetrics{}
+	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_sync_tables_seconds",
 		Help:      "Time spent doing SyncTables.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"}))
-	tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	}, []string{"operation", "status_code"})
+
+	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_table_capacity_units",
 		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
-	expectedMinIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "expected_min_index_table_number",
-		Help:      "Expected min table number for index",
+		Name:      "table_manager_create_failures",
+		Help:      "Number of times table creation attempt failed",
 	})
-	actualMinIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.deleteFailures = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "actual_min_index_table_number",
-		Help:      "Actual min table number for index",
+		Name:      "table_manager_delete_failures",
+		Help:      "Number of times table deletion attempt failed",
 	})
-	expectedMinChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "expected_min_chunk_table_number",
-		Help:      "Expected min table number for chunks",
-	})
-	actualMinChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "actual_min_chunk_table_number",
-		Help:      "Actual min table number for chunks",
-	})
-)
 
-func init() {
-	prometheus.MustRegister(tableCapacity)
-	syncTableDuration.Register()
-	prometheus.MustRegister(expectedMinIndexTableNumber)
-	prometheus.MustRegister(actualMinIndexTableNumber)
-	prometheus.MustRegister(expectedMinChunkTableNumber)
-	prometheus.MustRegister(actualMinChunkTableNumber)
+	if r != nil {
+		r.MustRegister(
+			m.syncTableDuration,
+			m.tableCapacity,
+			m.createFailures,
+			m.deleteFailures,
+		)
+	}
+
+	return &m
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -149,13 +150,14 @@ type TableManager struct {
 	schemaCfg    SchemaConfig
 	maxChunkAge  time.Duration
 	bucketClient BucketClient
+	metrics      *tableManagerMetrics
 
 	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient) (*TableManager, error) {
+	objectClient BucketClient, registerer prometheus.Registerer) (*TableManager, error) {
 
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -171,6 +173,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		maxChunkAge:  maxChunkAge,
 		client:       tableClient,
 		bucketClient: objectClient,
+		metrics:      newTableManagerMetrics(registerer),
 	}
 
 	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
@@ -225,90 +228,6 @@ func (m *TableManager) loop(ctx context.Context) error {
 	}
 }
 
-func (m *TableManager) setRetentionMetrics() error {
-	if m.cfg.RetentionPeriod == 0 || !m.cfg.RetentionDeletesEnabled {
-		return nil
-	}
-
-	tables, err := m.client.ListTables(context.Background())
-	if err != nil {
-		return err
-	}
-
-	oldestChunkTableConfig := -1
-
-	// Collecting prefixes for index and chunk tables
-	indexTablePrefixes := map[string]struct{}{}
-	chunkTablePrefixes := map[string]struct{}{}
-	for i, cfg := range m.schemaCfg.Configs {
-		if cfg.IndexTables.Prefix != "" {
-			indexTablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
-		}
-		if cfg.ChunkTables.Prefix != "" {
-			if oldestChunkTableConfig != -1 {
-				oldestChunkTableConfig = i
-			}
-			chunkTablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
-		}
-	}
-
-	// setting expected min index table number assuming configs are in increasing order by time
-	retentionStartTime := mtime.Now().Add(-m.cfg.RetentionPeriod)
-	periodSecs := int64(m.schemaCfg.Configs[0].IndexTables.Period / time.Second)
-	expectedMinIndexTableNumber.Set(float64(retentionStartTime.Unix() / periodSecs))
-
-	if oldestChunkTableConfig != -1 {
-		// setting expected min chunk table number assuming configs are in increasing order by time
-		periodSecs = int64(m.schemaCfg.Configs[oldestChunkTableConfig].IndexTables.Period / time.Second)
-		expectedMinChunkTableNumber.Set(float64(retentionStartTime.Unix() / periodSecs))
-	}
-
-	lowestIndexTableNumber := -1
-	lowestChunkTableNumber := -1
-
-	// Finding actual min table number for index and chunk tables
-	for _, table := range tables {
-		for indexTablePrefix := range indexTablePrefixes {
-			if strings.HasPrefix(table, indexTablePrefix) {
-				tableNumber, err := strconv.Atoi(strings.Split(table, indexTablePrefix)[1])
-				if err != nil {
-					return err
-				}
-				if lowestIndexTableNumber == -1 || lowestIndexTableNumber > tableNumber {
-					lowestIndexTableNumber = tableNumber
-				}
-			}
-		}
-
-		for chunkTablePrefix := range chunkTablePrefixes {
-			if strings.HasPrefix(table, chunkTablePrefix) {
-				tableNumber, err := strconv.Atoi(strings.Split(table, chunkTablePrefix)[1])
-				if err != nil {
-					return err
-				}
-				if lowestChunkTableNumber == -1 || lowestChunkTableNumber > tableNumber {
-					lowestChunkTableNumber = tableNumber
-				}
-			}
-		}
-	}
-
-	if lowestIndexTableNumber == -1 {
-		lowestIndexTableNumber = 0
-	}
-	actualMinIndexTableNumber.Set(float64(lowestIndexTableNumber))
-
-	if len(chunkTablePrefixes) != 0 {
-		if lowestChunkTableNumber == -1 {
-			lowestChunkTableNumber = 0
-		}
-
-		actualMinChunkTableNumber.Set(float64(lowestChunkTableNumber))
-	}
-
-	return nil
-}
-
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
@@ -338,10 +257,6 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 
 	if err := m.createTables(ctx, toCreate); err != nil {
 		return err
-	}
-
-	if err := m.setRetentionMetrics(); err != nil {
-		level.Error(util.Logger).Log("msg", "error setting retention metrics", "err", err)
 	}
 
 	return m.updateTables(ctx, toCheckThroughput)
@@ -476,9 +391,12 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
+			m.metrics.createFailures.Add(1)
 			return err
 		}
 	}
+
+	m.metrics.createFailures.Set(0)
 	return nil
 }
 
@@ -492,9 +410,12 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
+			m.metrics.deleteFailures.Add(1)
 			return err
 		}
 	}
+
+	m.metrics.deleteFailures.Set(0)
 	return nil
 }
 
@@ -506,8 +427,8 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			return err
 		}
 
-		tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
-		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
+		m.metrics.tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
+		m.metrics.tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
 		if m.cfg.ThroughputUpdatesDisabled {
 			continue

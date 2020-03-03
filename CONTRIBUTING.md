@@ -105,6 +105,6 @@ You have to commit the changes to `go.mod` and `go.sum` before submitting the pu
 
 ### Documentation
 
-The Cortex documentation is compiled into a website published at [cortexmetrics.io](https://cortexmetrics.io/). Please see "[How to run the website locally](./how-to-run-website-locally.md)" to build and run the website locally.
+The Cortex documentation is compiled into a website published at [cortexmetrics.io](https://cortexmetrics.io/). Please see "[How to run the website locally](./how-to-run-website-locally.md)" for instructions.
 
 Note: if you attempt to view pages on Github it's likely that you might find broken links or pages. That is expected and should not be address unless  it is causing issues with the site that is produced as part of the build.

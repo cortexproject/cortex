@@ -18,7 +18,7 @@ In-process caching can cut fetch times slightly and reduce the load on Memcached
 
 If multiple caches are enabled for each caching opportunities, they will be tiered – writes will go to all caches, but reads will first go to the in-memory FIFO cache, then memcached, then redis.
 
-## Memcached
+### Memcached
 
 For small deployments you can use a single memcached cluster for all the caching opportunities – the keys do not collide.
 
@@ -58,7 +58,7 @@ The flags used to configure memcached are common for each caching caching opport
 
 See [MemcachedConfig documentation](/docs/configuration/config-file-reference.md#memcached_config) if you use a config file with Cortex.
 
-## FIFO Cache (Experimental)
+### FIFO Cache (Experimental)
 
 The FIFO cache is an in-memory, in-process (non-shared) cache that uses a First-In-First-Out (FIFO) eviction strategy.
 The FIFO cache is useful for simple scenarios where deploying an additional memcached server is too much work, such as when experimenting with the Query Frontend.
@@ -76,7 +76,7 @@ To enable the FIFO cache, use the following flags:
     The number of entries to cache.
 ```
 
-## Redis (Experimental)
+### Redis (Experimental)
 
 You can also use [Redis](https://redis.io/) for out-of-process caching; this is a relatively new addition to Cortex and is under active development.
 

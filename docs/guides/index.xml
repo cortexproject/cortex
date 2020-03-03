@@ -100,19 +100,8 @@ example to save on inter-zone bandwidth charges at AWS) they will use
 significantly more CPU (approx 100% more for distributor and 50% more
 for ingester).&lt;/p&gt;
 &lt;h3 id=&#34;caching&#34;&gt;Caching&lt;/h3&gt;
-&lt;p&gt;Cortex can retain data in-process or in Memcached to speed up various
-queries by caching:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;individual chunks&lt;/li&gt;
-&lt;li&gt;index lookups for one label on one day&lt;/li&gt;
-&lt;li&gt;the results of a whole query&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;You should always include Memcached in your Cortex install so results
-from one process can be re-used by another. In-process caching can cut
-fetch times slightly and reduce the load on Memcached.&lt;/p&gt;
-&lt;p&gt;Ingesters can also be configured to use Memcached to avoid re-writing
-index and chunk data which has already been stored in the back-end
-database. Again, highly recommended.&lt;/p&gt;
+&lt;p&gt;Correctly configured caching is important for a production-ready Cortex cluster.&lt;/p&gt;
+&lt;p&gt;See &lt;a href=&#34;/docs/guides/caching/&#34;&gt;Caching In Cortex&lt;/a&gt; for more information.&lt;/p&gt;
 &lt;h3 id=&#34;orchestration&#34;&gt;Orchestration&lt;/h3&gt;
 &lt;p&gt;Because Cortex is designed to run multiple instances of each component
 (ingester, querier, etc.), you probably want to automate the placement
@@ -319,7 +308,136 @@ replica: replica2
 &lt;p&gt;These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;cluster&lt;/code&gt;, &lt;code&gt;prometheus&lt;/code&gt;, etc.&lt;/p&gt;
 &lt;p&gt;The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p&gt;
 &lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
-&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
+&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Caching in Cortex</title><link>/docs/guides/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/caching/</guid><description>
+&lt;p&gt;Correctly configured caching is important for a production-ready Cortex cluster.
+Cortex has many opportunities for using caching to accelerate queries and reduce cost. Cortex can use a cache for:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The results of a whole query&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;And for the chunk storage:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Individual chunks&lt;/li&gt;
+&lt;li&gt;Index lookups for one label on one day&lt;/li&gt;
+&lt;li&gt;Reducing duplication of writes.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This doc aims to describe what each cache does, how to configure them and how to tune them.&lt;/p&gt;
+&lt;h2 id=&#34;cortex-caching-options&#34;&gt;Cortex Caching Options&lt;/h2&gt;
+&lt;p&gt;Cortex can use various different technologies for caching - Memcached, Redis or an in-process FIFO cache.
+The recommended caching technology for production workloads is &lt;a href=&#34;https://memcached.org/&#34;&gt;Memcached&lt;/a&gt;.
+Using Memcached in your Cortex install means results from one process can be re-used by another.
+In-process caching can cut fetch times slightly and reduce the load on Memcached, but can only be used by a single process.&lt;/p&gt;
+&lt;p&gt;If multiple caches are enabled for each caching opportunities, they will be tiered – writes will go to all caches, but reads will first go to the in-memory FIFO cache, then memcached, then redis.&lt;/p&gt;
+&lt;h3 id=&#34;memcached&#34;&gt;Memcached&lt;/h3&gt;
+&lt;p&gt;For small deployments you can use a single memcached cluster for all the caching opportunities – the keys do not collide.&lt;/p&gt;
+&lt;p&gt;For large deployments we recommend separate memcached deployments for each of the caching opportunities, as this allows more sophisticated sizing, monitoring and configuration of each cache.
+For help provisioning and monitoring memcached clusters using &lt;a href=&#34;https://github.com/grafana/tanka&#34;&gt;tanka&lt;/a&gt;, see the &lt;a href=&#34;https://github.com/grafana/jsonnet-libs/tree/master/memcached&#34;&gt;memcached jsonnet module&lt;/a&gt; and the &lt;a href=&#34;https://github.com/grafana/jsonnet-libs/tree/master/memcached-mixin&#34;&gt;memcached-mixin&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Cortex uses DNS SRV records to find the various memcached servers in a cluster.
+You should ensure your memcached servers are not behind any kind of load balancer.
+If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached &lt;a href=&#34;https://kubernetes.io/docs/concepts/services-networking/service/#headless-services&#34;&gt;headless service&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The flags used to configure memcached are common for each caching caching opportunity, differentiated by a prefix:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;-&amp;lt;prefix&amp;gt;.memcache.write-back-buffer int
+How many chunks to buffer for background write back. (default 10000)
+-&amp;lt;prefix&amp;gt;.memcache.write-back-goroutines int
+How many goroutines to use to write back to memcache. (default 10)
+-&amp;lt;prefix&amp;gt;.memcached.batchsize int
+How many keys to fetch in each batch.
+-&amp;lt;prefix&amp;gt;.memcached.consistent-hash
+Use consistent hashing to distribute to memcache servers.
+-&amp;lt;prefix&amp;gt;.memcached.expiration duration
+How long keys stay in the memcache.
+-&amp;lt;prefix&amp;gt;.memcached.hostname string
+Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.
+-&amp;lt;prefix&amp;gt;.memcached.max-idle-conns int
+Maximum number of idle connections in pool. (default 16)
+-&amp;lt;prefix&amp;gt;.memcached.parallelism int
+Maximum active requests to memcache. (default 100)
+-&amp;lt;prefix&amp;gt;.memcached.service string
+SRV service used to discover memcache servers. (default &amp;quot;memcached&amp;quot;)
+-&amp;lt;prefix&amp;gt;.memcached.timeout duration
+Maximum time to wait before giving up on memcached requests. (default 100ms)
+-&amp;lt;prefix&amp;gt;.memcached.update-interval duration
+Period with which to poll DNS for memcache servers. (default 1m0s)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;See the &lt;a href=&#34;/docs/configuration/configuration-file/#memcached_config&#34;&gt;&lt;code&gt;memcached_config&lt;/code&gt;&lt;/a&gt; and &lt;a href=&#34;/docs/configuration/configuration-file/#memcached_client_config&#34;&gt;&lt;code&gt;memcached_client_config&lt;/code&gt;&lt;/a&gt; documentation if you use a config file with Cortex.&lt;/p&gt;
+&lt;h3 id=&#34;fifo-cache-experimental&#34;&gt;FIFO Cache (Experimental)&lt;/h3&gt;
+&lt;p&gt;The FIFO cache is an in-memory, in-process (non-shared) cache that uses a First-In-First-Out (FIFO) eviction strategy.
+The FIFO cache is useful for simple scenarios where deploying an additional memcached server is too much work, such as when experimenting with the Query Frontend.
+The FIFO cache can also be used in front of Memcached to reduce latency for commonly accessed keys.
+The FIFO cache stores a fixed number of entries, and therefore it’s memory usage depends on the caches value’s size.&lt;/p&gt;
+&lt;p&gt;To enable the FIFO cache, use the following flags:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;-&amp;lt;prefix&amp;gt;.cache.enable-fifocache
+Enable in-memory cache.
+-&amp;lt;prefix&amp;gt;.fifocache.duration duration
+The expiry duration for the cache.
+-&amp;lt;prefix&amp;gt;.fifocache.size int
+The number of entries to cache.
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;See &lt;a href=&#34;/docs/configuration/configuration-file/#fifo-cache-config&#34;&gt;&lt;code&gt;fifo_cache_config&lt;/code&gt; documentation&lt;/a&gt; if you use a config file with Cortex.&lt;/p&gt;
+&lt;h3 id=&#34;redis-experimental&#34;&gt;Redis (Experimental)&lt;/h3&gt;
+&lt;p&gt;You can also use &lt;a href=&#34;https://redis.io/&#34;&gt;Redis&lt;/a&gt; for out-of-process caching; this is a relatively new addition to Cortex and is under active development.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;-&amp;lt;prefix&amp;gt;.redis.enable-tls
+Enables connecting to redis with TLS.
+-&amp;lt;prefix&amp;gt;.redis.endpoint string
+Redis service endpoint to use when caching chunks. If empty, no redis will be used.
+-&amp;lt;prefix&amp;gt;.redis.expiration duration
+How long keys stay in the redis.
+-&amp;lt;prefix&amp;gt;.redis.max-active-conns int
+Maximum number of active connections in pool.
+-&amp;lt;prefix&amp;gt;.redis.max-idle-conns int
+Maximum number of idle connections in pool. (default 80)
+-&amp;lt;prefix&amp;gt;.redis.password value
+Password to use when connecting to redis.
+-&amp;lt;prefix&amp;gt;.redis.timeout duration
+Maximum time to wait before giving up on redis requests. (default 100ms)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;See &lt;a href=&#34;/docs/configuration/configuration-file/#redis-config&#34;&gt;&lt;code&gt;redis_config&lt;/code&gt; documentation&lt;/a&gt; if you use a config file with Cortex.&lt;/p&gt;
+&lt;h2 id=&#34;cortex-caching-opportunities&#34;&gt;Cortex Caching Opportunities&lt;/h2&gt;
+&lt;h3 id=&#34;chunks-cache&#34;&gt;Chunks Cache&lt;/h3&gt;
+&lt;p&gt;The chunk cache stores immutable compressed chunks.
+The cache is used by queries to reduce load on the chunk store.
+These are typically a few KB in size, and depend mostly on the duration and encoding of your chunks.
+The chunk cache is a write-through cache - chunks are written to the cache as they are flushed to the chunk store. This ensures the cache always contains the most recent chunks.
+Items stay in the cache indefinitely.&lt;/p&gt;
+&lt;p&gt;The chunk cache should be configured on the &lt;strong&gt;ingester&lt;/strong&gt;, &lt;strong&gt;querier&lt;/strong&gt; and &lt;strong&gt;ruler&lt;/strong&gt; using the flags without a prefix.&lt;/p&gt;
+&lt;p&gt;It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
+You can use the following query (from the &lt;a href=&#34;https://github.com/grafana/cortex-jsonnet&#34;&gt;cortex-mixin&lt;/a&gt;) to estimate the required number of memcached replicas:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-promql&#34; data-lang=&#34;promql&#34;&gt;// 4 x in-memory series size = 24hrs of data.
+(
+4 *
+sum by(cluster, namespace) (
+cortex_ingester_memory_series{job=~&amp;#34;.+/ingester&amp;#34;}
+*
+cortex_ingester_chunk_size_bytes_sum{job=~&amp;#34;.+/ingester&amp;#34;}
+/
+cortex_ingester_chunk_size_bytes_count{job=~&amp;#34;.+/ingester&amp;#34;}
+)
+/ 1e9
+)
+&amp;gt;
+(
+sum by (cluster, namespace) (memcached_limit_bytes{job=~&amp;#34;.+/memcached&amp;#34;}) / 1e9
+)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h3 id=&#34;index-read-cache&#34;&gt;Index Read Cache&lt;/h3&gt;
+&lt;p&gt;The index read cache stores entire rows from the inverted label index.
+The cache is used by queries to reduce load on the index.
+These are typically only a few KB in size, but can grow up to many MB for very high cardinality metrics.
+The index read cache is populated when there is a cache miss.&lt;/p&gt;
+&lt;p&gt;The index read cache should be configured on the &lt;strong&gt;querier&lt;/strong&gt; and &lt;strong&gt;ruler&lt;/strong&gt;, using the flags with the &lt;code&gt;-store.index-cache-read&lt;/code&gt; prefix.&lt;/p&gt;
+&lt;h3 id=&#34;query-results-cache&#34;&gt;Query Results Cache&lt;/h3&gt;
+&lt;p&gt;The query results cache contains protobuf &amp;amp; snappy encoded query results.
+These query results can potentially be very large, and as such the maximum value size in memcached should be increased beyond the default &lt;code&gt;1M&lt;/code&gt;.
+The cache is populated when there is a cache miss.
+Items stay in the cache indefinitely.&lt;/p&gt;
+&lt;p&gt;The query results cache should be configured on the &lt;strong&gt;query-frontend&lt;/strong&gt; using flags with &lt;code&gt;-frontend.cache&lt;/code&gt; prefix.&lt;/p&gt;
+&lt;h3 id=&#34;index-write-cache&#34;&gt;Index Write Cache&lt;/h3&gt;
+&lt;p&gt;The index write cache is used to avoid re-writing index and chunk data which has already been stored in the back-end database, aka “deduplication”.
+This can reduce write load on your backend-database by around 12x.&lt;/p&gt;
+&lt;p&gt;You should not use in-process caching for the index write cache - most of the deduplication comes from replication between ingesters.&lt;/p&gt;
+&lt;p&gt;The index write cache contains row and column keys written to the index.
+If an entry is in the index write cache it will not be written to the index.
+As such, entries are only written to the index write cache &lt;em&gt;after&lt;/em&gt; being successfully written to the index.
+Data stays in the index indefinitely or until it is evicted by newer entries.&lt;/p&gt;
+&lt;p&gt;The index write cache should be configures on the &lt;strong&gt;ingesters&lt;/strong&gt; using flags with the &lt;code&gt;-store.index-cache-write&lt;/code&gt; prefix.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
 &lt;p&gt;The &lt;a href=&#34;/docs/architecture/#ingester&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
 data in memory. When we want to shut down an ingester, either for
 software version update or to drain a node for maintenance, this data

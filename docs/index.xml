@@ -3073,7 +3073,26 @@ Set this to &lt;code&gt;true&lt;/code&gt; to recover data from an existing WAL. 
 &lt;li&gt;Invite to &lt;a href=&#34;https://groups.google.com/forum/#!forum/cortex-team&#34;&gt;&lt;code&gt;cortex-team&lt;/code&gt; group&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href=&#34;https://quay.io/organization/cortexproject?tab=teams&#34;&gt;Quay.io repository&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href=&#34;https://lists.cncf.io/g/cncf-cortex-maintainers&#34;&gt;CNCF &lt;code&gt;cncf-cortex-maintainers&lt;/code&gt; mailing list&lt;/a&gt; (via &lt;a href=&#34;https://servicedesk.cncf.io&#34;&gt;CNCF Service Desk&lt;/a&gt;)&lt;/li&gt;
-&lt;/ol&gt;</description></item><item><title>Docs: Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>
+&lt;/ol&gt;</description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
+&lt;p&gt;The Cortex documentation is compiled into a website published at &lt;a href=&#34;https://cortexmetrics.io/&#34;&gt;cortexmetrics.io&lt;/a&gt;. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p&gt;
+&lt;h2 id=&#34;initial-setup&#34;&gt;Initial setup&lt;/h2&gt;
+&lt;p&gt;The following initial setup is required only once:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Install &lt;a href=&#34;https://gohugo.io/&#34;&gt;Hugo&lt;/a&gt; &lt;code&gt;v0.59.1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Install &lt;a href=&#34;https://nodejs.org/en/&#34;&gt;Node.js&lt;/a&gt; &lt;code&gt;v12&lt;/code&gt; or above (alternatively via &lt;a href=&#34;https://github.com/nvm-sh/nvm&#34;&gt;&lt;code&gt;nvm&lt;/code&gt;&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Install required Node modules with:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cd website &amp;amp;&amp;amp; npm install postcss-cli autoprefixer &amp;amp;&amp;amp; cd -
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Run &lt;code&gt;make BUILD_IN_CONTAINER=false web-build&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;run-it&#34;&gt;Run it&lt;/h2&gt;
+&lt;p&gt;Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href=&#34;http://localhost:1313/&#34;&gt;&lt;code&gt;http://localhost:1313/&lt;/code&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Keep this running&lt;/span&gt;
+make web-serve&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Whenever you change the content of &lt;code&gt;docs/&lt;/code&gt; or markdown files in the repository root &lt;code&gt;/&lt;/code&gt; you should run:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make &lt;span style=&#34;color:#000&#34;&gt;BUILD_IN_CONTAINER&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;false&lt;/span&gt; web-pre&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make &lt;span style=&#34;color:#000&#34;&gt;BUILD_IN_CONTAINER&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;false&lt;/span&gt; doc web-pre&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>
 &lt;p&gt;The query auditor is a tool bundled in the Cortex repository, but &lt;strong&gt;not&lt;/strong&gt; included in Docker images &amp;ndash; this must be built from source. It&amp;rsquo;s primarily useful for those &lt;em&gt;developing&lt;/em&gt; Cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).&lt;/p&gt;
 &lt;h2 id=&#34;how-it-works&#34;&gt;How it works&lt;/h2&gt;
 &lt;p&gt;The &lt;code&gt;query-audit&lt;/code&gt; tool performs a set of queries against two backends that expose the Prometheus read API. This is generally the &lt;code&gt;query-frontend&lt;/code&gt; component of two Cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:&lt;/p&gt;
@@ -4125,83 +4144,7 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;pre&gt;&lt;code&gt;docker run -d --name=grafana -p 3000:3000 grafana/grafana
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code&gt;http://localhost:9009/api/prom&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Contributing</title><link>/docs/contributing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/</guid><description>
-&lt;p&gt;Welcome! We&amp;rsquo;re excited that you&amp;rsquo;re interested in contributing. Below are some basic guidelines.&lt;/p&gt;
-&lt;h2 id=&#34;workflow&#34;&gt;Workflow&lt;/h2&gt;
-&lt;p&gt;Cortex follows a standard GitHub pull request workflow. If you&amp;rsquo;re unfamiliar with this workflow, read the very helpful &lt;a href=&#34;https://guides.github.com/introduction/flow/&#34;&gt;Understanding the GitHub flow&lt;/a&gt; guide from GitHub.&lt;/p&gt;
-&lt;p&gt;You are welcome to create draft PRs at any stage of readiness - this
-can be helpful to ask for assistance or to develop an idea. But before
-a piece of work is finished it should:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Be organised into one or more commits, each of which has a commit message that describes all changes made in that commit (&amp;lsquo;why&amp;rsquo; more than &amp;lsquo;what&amp;rsquo; - we can read the diffs to see the code that changed).&lt;/li&gt;
-&lt;li&gt;Each commit should build towards the whole - don&amp;rsquo;t leave in back-tracks and mistakes that you later corrected.&lt;/li&gt;
-&lt;li&gt;Have tests for new functionality or tests that would have caught the bug being fixed.&lt;/li&gt;
-&lt;li&gt;Include a CHANGELOG message if users of Cortex need to hear about what you did.&lt;/li&gt;
-&lt;li&gt;If you have made any changes to flags or config, run &lt;code&gt;make doc&lt;/code&gt; and commit the changed files to update the config file documentation.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id=&#34;formatting&#34;&gt;Formatting&lt;/h2&gt;
-&lt;p&gt;Cortex projects uses &lt;code&gt;goimports&lt;/code&gt; tool (&lt;code&gt;go get golang.org/x/tools/cmd/goimports&lt;/code&gt; to install) to format the Go files, and sort imports. We use goimports with &lt;code&gt;-local github.com/cortexproject/cortex&lt;/code&gt; parameter, to put Cortex internal imports into a separate group. We try to keep imports sorted into three groups: imports from standard library, imports of 3rd party packages and internal Cortex imports. Goimports will fix the order, but will keep existing newlines between imports in the groups. We try to avoid extra newlines like that.&lt;/p&gt;
-&lt;p&gt;You&amp;rsquo;re using an IDE you may find useful the following settings for the Cortex project:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://cortexmetrics.io/docs/contributing/vscode-goimports-settings.json&#34;&gt;VSCode&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id=&#34;developer-certificates-of-origin-dcos&#34;&gt;Developer Certificates of Origin (DCOs)&lt;/h2&gt;
-&lt;p&gt;Before submitting your work in a pull request, make sure that &lt;em&gt;all&lt;/em&gt; commits are signed off with a &lt;strong&gt;Developer Certificate of Origin&lt;/strong&gt; (DCO). Here&amp;rsquo;s an example:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;git commit -s -m &lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;Here is my signed commit&amp;#34;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;You can find further instructions &lt;a href=&#34;https://github.com/probot/dco#how-it-works&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;
-&lt;h2 id=&#34;building-cortex&#34;&gt;Building Cortex&lt;/h2&gt;
-&lt;p&gt;To build:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;make
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;(By default, the build runs in a Docker container, using an image built
-with all the tools required. The source code is mounted from where you
-run &lt;code&gt;make&lt;/code&gt; into the build container as a Docker volume.)&lt;/p&gt;
-&lt;p&gt;To run the test suite:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;make test
-&lt;/code&gt;&lt;/pre&gt;
-&lt;h2 id=&#34;playing-in-minikube&#34;&gt;Playing in &lt;code&gt;minikube&lt;/code&gt;&lt;/h2&gt;
-&lt;p&gt;First, start &lt;code&gt;minikube&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;You may need to load the Docker images into your minikube environment. There is
-a convenient rule in the Makefile to do this:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;make prime-minikube
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Then run Cortex in minikube:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;kubectl apply -f ./k8s
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;(these manifests use &lt;code&gt;latest&lt;/code&gt; tags, i.e. this will work if you have
-just built the images and they are available on the node(s) in your
-Kubernetes cluster)&lt;/p&gt;
-&lt;p&gt;Cortex will sit behind an nginx instance exposed on port 30080. A job is deployed to scrape itself. Try it:&lt;/p&gt;
-&lt;p&gt;&lt;a href=&#34;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&#34;&gt;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&lt;/a&gt;&lt;/p&gt;
-&lt;p&gt;If that doesn&amp;rsquo;t work, your Minikube might be using a different ip address. Check with &lt;code&gt;minikube status&lt;/code&gt;.&lt;/p&gt;
-&lt;h3 id=&#34;dependency-management&#34;&gt;Dependency management&lt;/h3&gt;
-&lt;p&gt;We uses &lt;a href=&#34;https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more&#34;&gt;Go modules&lt;/a&gt; to manage dependencies on external packages.
-This requires a working Go environment with version 1.11 or greater, git and &lt;a href=&#34;http://wiki.bazaar.canonical.com/Download&#34;&gt;bzr&lt;/a&gt; installed.&lt;/p&gt;
-&lt;p&gt;To add or update a new dependency, use the &lt;code&gt;go get&lt;/code&gt; command:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Pick the latest tagged release.&lt;/span&gt;
-go get example.com/some/module/pkg
-&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Pick a specific version.&lt;/span&gt;
-go get example.com/some/module/pkg@vX.Y.Z&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;Tidy up the &lt;code&gt;go.mod&lt;/code&gt; and &lt;code&gt;go.sum&lt;/code&gt; files:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;go mod tidy
-go mod vendor
-git add go.mod go.sum vendor
-git commit&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;You have to commit the changes to &lt;code&gt;go.mod&lt;/code&gt; and &lt;code&gt;go.sum&lt;/code&gt; before submitting the pull request.&lt;/p&gt;
-&lt;h3 id=&#34;documentation&#34;&gt;Documentation&lt;/h3&gt;
-&lt;p&gt;You will find a docs folder in this project that is turned into the website that you will find at &lt;a href=&#34;https://cortexmetrics.io/&#34;&gt;cortexmetrics.io&lt;/a&gt;.&lt;/p&gt;
-&lt;p&gt;Note:
-If you attempt to view pages on Github it&amp;rsquo;s likely that you might find broken links or pages. That is expected and should not be address unless
-it is causing issues with the site that is produced as part of the build.&lt;/p&gt;
-&lt;p&gt;To build the &lt;a href=&#34;https://gohugo.io/&#34;&gt;Hugo&lt;/a&gt; based documentation web site&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make clean-doc check-doc web-build&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;To run the site locally&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;After building the site above&lt;/li&gt;
-&lt;li&gt;Install &lt;a href=&#34;https://gohugo.io/&#34;&gt;Hugo&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;Execute the following command to start the web server&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make web-serve&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
-&lt;/ol&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
+&lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;[FEATURE] Fan out parallelizable queries to backend queriers concurrently. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1878&#34;&gt;#1878&lt;/a&gt;

@@ -1,0 +1,9 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Governance</title><link>/docs/governance/</link><description>Recent content in Governance on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/governance/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: How to add a maintainer</title><link>/docs/governance/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/governance/how-to-add-a-maintainer/</guid><description>
+&lt;p&gt;New maintainers are proposed by an existing maintainer and are elected by &lt;a href=&#34;/docs/governance/#changes-in-maintainership&#34;&gt;majority vote&lt;/a&gt;. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Submit a PR to add the new member to &lt;code&gt;MAINTAINERS&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href=&#34;https://github.com/orgs/cortexproject/people&#34;&gt;GitHub organization&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href=&#34;https://groups.google.com/forum/#!forum/cortex-team&#34;&gt;&lt;code&gt;cortex-team&lt;/code&gt; group&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href=&#34;https://quay.io/organization/cortexproject?tab=teams&#34;&gt;Quay.io repository&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href=&#34;https://lists.cncf.io/g/cncf-cortex-maintainers&#34;&gt;CNCF &lt;code&gt;cncf-cortex-maintainers&lt;/code&gt; mailing list&lt;/a&gt; (via &lt;a href=&#34;https://servicedesk.cncf.io&#34;&gt;CNCF Service Desk&lt;/a&gt;)&lt;/li&gt;
+&lt;/ol&gt;</description></item></channel></rss>

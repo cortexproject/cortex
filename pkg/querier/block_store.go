@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -71,7 +72,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		logLevel:           logLevel,
 		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
 		indexCacheMetrics:  newTSDBIndexCacheMetrics(indexCacheRegistry),
-		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
+		syncTimes: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
@@ -93,7 +94,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	}
 
 	if registerer != nil {
-		registerer.MustRegister(u.syncTimes, u.bucketStoreMetrics, u.indexCacheMetrics)
+		registerer.MustRegister(u.bucketStoreMetrics, u.indexCacheMetrics)
 	}
 
 	u.Service = services.NewBasicService(u.starting, u.syncStoresLoop, u.stopping)

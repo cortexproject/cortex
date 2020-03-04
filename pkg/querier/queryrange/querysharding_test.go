@@ -91,6 +91,8 @@ func TestQueryshardingMiddleware(t *testing.T) {
 				},
 				PrometheusCodec,
 				0,
+				nil,
+				nil,
 			).Wrap(c.next)
 
 			// escape hatch for custom tests
@@ -389,6 +391,8 @@ func TestQueryshardingCorrectness(t *testing.T) {
 				shardingConf,
 				PrometheusCodec,
 				0,
+				nil,
+				nil,
 			)
 
 			downstream := &downstreamHandler{
@@ -404,11 +408,7 @@ func TestQueryshardingCorrectness(t *testing.T) {
 			})
 
 			mapperware := MiddlewareFunc(func(next Handler) Handler {
-				return &astMapperware{
-					confs:  shardingConf,
-					logger: log.NewNopLogger(),
-					next:   next,
-				}
+				return newASTMapperware(shardingConf, next, log.NewNopLogger(), nil)
 			})
 
 			r := req.WithQuery(tc.query)
@@ -450,6 +450,8 @@ func TestShardSplitting(t *testing.T) {
 		},
 		PrometheusCodec,
 		end.Sub(start)/2, // shard 1/2 of the req
+		nil,
+		nil,
 	)
 
 	downstream := &downstreamHandler{
@@ -563,6 +565,8 @@ func BenchmarkQuerySharding(b *testing.B) {
 					},
 					PrometheusCodec,
 					0,
+					nil,
+					nil,
 				).Wrap(downstream)
 
 				b.Run(

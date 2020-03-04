@@ -8,6 +8,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -85,6 +87,8 @@ func NewQueryShardMiddleware(
 	confs ShardingConfigs,
 	codec Codec,
 	minShardingLookback time.Duration,
+	metrics *InstrumentMiddlewareMetrics,
+	registerer prometheus.Registerer,
 ) Middleware {
 
 	noshards := !confs.hasShards()
@@ -99,11 +103,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := MiddlewareFunc(func(next Handler) Handler {
-		return &astMapperware{
-			confs:  confs,
-			logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
-			next:   next,
-		}
+		return newASTMapperware(confs, next, logger, registerer)
 	})
 
 	shardingware := MiddlewareFunc(func(next Handler) Handler {
@@ -119,12 +119,12 @@ func NewQueryShardMiddleware(
 			codec:               codec,
 			MinShardingLookback: minShardingLookback,
 			shardingware: MergeMiddlewares(
-				InstrumentMiddleware("shardingware"),
+				InstrumentMiddleware("shardingware", metrics),
 				mapperware,
 				shardingware,
 			).Wrap(next),
 			now:  time.Now,
-			next: InstrumentMiddleware("sharding-bypass").Wrap(next),
+			next: InstrumentMiddleware("sharding-bypass", metrics).Wrap(next),
 		}
 	})
 
@@ -134,6 +134,24 @@ type astMapperware struct {
 	confs  ShardingConfigs
 	logger log.Logger
 	next   Handler
+
+	// Metrics.
+	registerer       prometheus.Registerer
+	mappedASTCounter prometheus.Counter
+}
+
+func newASTMapperware(confs ShardingConfigs, next Handler, logger log.Logger, registerer prometheus.Registerer) *astMapperware {
+	return &astMapperware{
+		confs:      confs,
+		logger:     log.With(logger, "middleware", "QueryShard.astMapperware"),
+		next:       next,
+		registerer: registerer,
+		mappedASTCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "frontend_mapped_asts_total",
+			Help:      "Total number of queries that have undergone AST mapping",
+		}),
+	}
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
@@ -144,7 +162,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 		return ast.next.Do(ctx, r)
 	}
 
-	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher)
+	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher, ast.registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +184,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 
 	strMappedQuery := mappedQuery.String()
 	level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
-	mappedASTCounter.Inc()
+	ast.mappedASTCounter.Inc()
 
 	return ast.next.Do(ctx, r.WithQuery(strMappedQuery))
 

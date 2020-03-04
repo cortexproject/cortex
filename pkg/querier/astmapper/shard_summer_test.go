@@ -120,7 +120,7 @@ func TestShardSummer(t *testing.T) {
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 
-			summer, err := NewShardSummer(c.shards, orSquasher)
+			summer, err := NewShardSummer(c.shards, orSquasher, nil)
 			require.Nil(t, err)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)
@@ -148,7 +148,7 @@ func TestShardSummerWithEncoding(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			summer, err := NewShardSummer(c.shards, VectorSquasher)
+			summer, err := NewShardSummer(c.shards, VectorSquasher, nil)
 			require.Nil(t, err)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -44,9 +45,14 @@ func NewProxy(cfg Config, registerer prometheus.Registerer) (*Proxy, error) {
 		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, name == cfg.PreferredBackend))
 	}
 
-	// At least 2 backends are required
+	// At least 1 backend is required
+	if len(p.backends) < 1 {
+		return nil, errors.New("at least 1 backend is required")
+	}
+
+	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
-		return nil, errors.New("at least 2 backends are required")
+		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfil the purpose of the proxy and compare results.")
 	}
 
 	return p, nil

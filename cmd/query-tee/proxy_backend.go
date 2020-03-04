@@ -39,14 +39,10 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 				DialContext: (&net.Dialer{
 					Timeout:   30 * time.Second,
 					KeepAlive: 30 * time.Second,
-					DualStack: true,
 				}).DialContext,
-				MaxIdleConns:          10000,
-				MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
-				IdleConnTimeout:       90 * time.Second,
-				DisableKeepAlives:     true,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
+				IdleConnTimeout:     90 * time.Second,
 			},
 		},
 	}

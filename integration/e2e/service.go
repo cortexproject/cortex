@@ -218,6 +218,10 @@ func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) strin
 	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
+func (s *ConcreteService) SetReadinessProbe(probe *ReadinessProbe) {
+	s.readiness = probe
+}
+
 func (s *ConcreteService) Ready() error {
 	if !s.isExpectedRunning() {
 		return fmt.Errorf("service %s is stopped", s.Name())
@@ -423,6 +427,10 @@ func (s *HTTPService) metrics() (_ string, err error) {
 	body, err := ioutil.ReadAll(res.Body)
 
 	return string(body), err
+}
+
+func (s *HTTPService) HTTPPort() int {
+	return s.httpPort
 }
 
 func (s *HTTPService) HTTPEndpoint() string {

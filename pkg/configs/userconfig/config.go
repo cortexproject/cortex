@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"gopkg.in/yaml.v2"
+
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -52,6 +56,18 @@ func (v RuleFormatVersion) MarshalJSON() ([]byte, error) {
 	}
 }
 
+// MarshalYAML implements yaml.Marshaler.
+func (v RuleFormatVersion) MarshalYAML() (interface{}, error) {
+	switch v {
+	case RuleFormatV1:
+		return yaml.Marshal("1")
+	case RuleFormatV2:
+		return yaml.Marshal("2")
+	default:
+		return nil, fmt.Errorf("unknown rule format version %d", v)
+	}
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
 	var s string
@@ -69,6 +85,23 @@ func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (v *RuleFormatVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	switch s {
+	case "1":
+		*v = RuleFormatV1
+	case "2":
+		*v = RuleFormatV2
+	default:
+		return fmt.Errorf("unknown rule format version %q", s)
+	}
+	return nil
+}
+
 // A Config is a Cortex configuration for a single user.
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
@@ -81,10 +114,10 @@ type Config struct {
 // saved in the config DB that didn't have a rule format version yet and
 // just had a top-level field for the rule files.
 type configCompat struct {
-	RulesFiles         map[string]string `json:"rules_files"`
-	RuleFormatVersion  RuleFormatVersion `json:"rule_format_version"`
-	TemplateFiles      map[string]string `json:"template_files"`
-	AlertmanagerConfig string            `json:"alertmanager_config"`
+	RulesFiles         map[string]string `json:"rules_files" yaml:"rules_files"`
+	RuleFormatVersion  RuleFormatVersion `json:"rule_format_version" yaml:"rule_format_version"`
+	TemplateFiles      map[string]string `json:"template_files" yaml:"template_files"`
+	AlertmanagerConfig string            `json:"alertmanager_config" yaml:"alertmanager_config"`
 }
 
 // MarshalJSON implements json.Marshaler.
@@ -99,11 +132,40 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	return json.Marshal(compat)
 }
 
+// MarshalYAML implements yaml.Marshaler.
+func (c Config) MarshalYAML() (interface{}, error) {
+	compat := &configCompat{
+		RulesFiles:         c.RulesConfig.Files,
+		RuleFormatVersion:  c.RulesConfig.FormatVersion,
+		TemplateFiles:      c.TemplateFiles,
+		AlertmanagerConfig: c.AlertmanagerConfig,
+	}
+
+	return yaml.Marshal(compat)
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (c *Config) UnmarshalJSON(data []byte) error {
 	compat := configCompat{}
 	if err := json.Unmarshal(data, &compat); err != nil {
 		return err
+	}
+	*c = Config{
+		RulesConfig: RulesConfig{
+			Files:         compat.RulesFiles,
+			FormatVersion: compat.RuleFormatVersion,
+		},
+		TemplateFiles:      compat.TemplateFiles,
+		AlertmanagerConfig: compat.AlertmanagerConfig,
+	}
+	return nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	compat := configCompat{}
+	if err := unmarshal(&compat); err != nil {
+		return errors.WithStack(err)
 	}
 	*c = Config{
 		RulesConfig: RulesConfig{

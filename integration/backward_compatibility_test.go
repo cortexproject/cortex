@@ -34,8 +34,12 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	// Start Cortex components (ingester running on previous version).
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, previousVersionImage)
+	// Old table-manager doesn't expose a readiness probe, so we just check if the / returns 404
+	tableManager.SetReadinessProbe(e2e.NewReadinessProbe(tableManager.HTTPPort(), "/", 404))
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	// Old ring didn't have /ready probe, use /ring instead.
+	distributor.SetReadinessProbe(e2e.NewReadinessProbe(distributor.HTTPPort(), "/ring", 200))
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're

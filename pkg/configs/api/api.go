@@ -8,8 +8,12 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -121,12 +125,22 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(cfg); err != nil {
+	switch parseConfigFormat(r.Header.Get("Accept"), FormatJSON) {
+	case FormatJSON:
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(cfg)
+	case FormatYAML:
+		w.Header().Set("Content-Type", "application/yaml")
+		err = yaml.NewEncoder(w).Encode(cfg)
+	default:
+		// should never reach this point
+		level.Error(logger).Log("msg", "unexpected error detecting the config format")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	if err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error encoding config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
 }
 
@@ -139,12 +153,28 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), util.Logger)
 
 	var cfg userconfig.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		// XXX: Untested
-		level.Error(logger).Log("msg", "error decoding json body", "err", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	switch parseConfigFormat(r.Header.Get("Content-Type"), FormatJSON) {
+	case FormatJSON:
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			// XXX: Untested
+			level.Error(logger).Log("msg", "error decoding json body", "err", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case FormatYAML:
+		if err := yaml.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			// XXX: Untested
+			level.Error(logger).Log("msg", "error decoding yaml body", "err", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	default:
+		// should never reach this point
+		level.Error(logger).Log("msg", "unexpected error detecting the config format")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig, a.cfg.Notifications); err != nil && cfg.AlertmanagerConfig != "" {
 		level.Error(logger).Log("msg", "invalid Alertmanager config", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
@@ -306,4 +336,30 @@ func (a *API) restoreConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	level.Info(logger).Log("msg", "config restored", "userID", userID)
 	w.WriteHeader(http.StatusOK)
+}
+
+const (
+	FormatInvalid = "invalid"
+	FormatJSON    = "json"
+	FormatYAML    = "yaml"
+)
+
+func parseConfigFormat(v string, defaultFormat string) string {
+	if v == "" {
+		return defaultFormat
+	}
+	parts := strings.Split(v, ",")
+	for _, part := range parts {
+		mimeType, _, err := mime.ParseMediaType(part)
+		if err != nil {
+			continue
+		}
+		switch mimeType {
+		case "application/json":
+			return FormatJSON
+		case "text/yaml", "text/x-yaml", "application/yaml", "application/x-yaml":
+			return FormatYAML
+		}
+	}
+	return defaultFormat
 }

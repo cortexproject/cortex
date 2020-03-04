@@ -43,22 +43,22 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 	}{
 		"one backend returning 2xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
 			},
 			expectedStatus: 200,
 			expectedRes:    querySingleMetric1,
 		},
 		"one backend returning 5xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/api/v1/query", 500, "")},
 			},
 			expectedStatus: 500,
 			expectedRes:    "",
 		},
 		"two backends without path prefix": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric2)},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric2)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -66,11 +66,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"two backends with the same path prefix": {
 			backends: []mockedBackend{
-				mockedBackend{
+				{
 					pathPrefix: "/api/prom",
 					handler:    mockQueryResponse("/api/prom/api/v1/query", 200, querySingleMetric1),
 				},
-				mockedBackend{
+				{
 					pathPrefix: "/api/prom",
 					handler:    mockQueryResponse("/api/prom/api/v1/query", 200, querySingleMetric2),
 				},
@@ -81,11 +81,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"two backends with different path prefix": {
 			backends: []mockedBackend{
-				mockedBackend{
+				{
 					pathPrefix: "/prefix-1",
 					handler:    mockQueryResponse("/prefix-1/api/v1/query", 200, querySingleMetric1),
 				},
-				mockedBackend{
+				{
 					pathPrefix: "/prefix-2",
 					handler:    mockQueryResponse("/prefix-2/api/v1/query", 200, querySingleMetric2),
 				},
@@ -96,8 +96,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 4xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 400, "")},
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/api/v1/query", 400, "")},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      400,
@@ -105,8 +105,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 500, "")},
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -114,8 +114,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"non-preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/api/v1/query", 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -123,8 +123,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"all backends returns 5xx": {
 			backends: []mockedBackend{
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 500, "")},
-				mockedBackend{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/api/v1/query", 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      500,

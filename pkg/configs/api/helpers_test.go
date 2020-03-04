@@ -1,4 +1,4 @@
-package api_test
+package api
 
 import (
 	"bytes"
@@ -13,13 +13,12 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/dbtest"
 )
 
 var (
-	app      *api.API
+	app      *API
 	database db.DB
 	counter  int
 )
@@ -27,7 +26,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(database)
+	app = New(database)
 	counter = 0
 }
 
@@ -46,13 +45,16 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 }
 
 // requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func requestAsUser(t *testing.T, userID string, method, urlStr string, contentType string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
 	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
 	err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
 	require.NoError(t, err)
+	if contentType != "" {
+		r.Header.Set("Content-Type", contentType)
+	}
 	app.ServeHTTP(w, r)
 	return w
 }

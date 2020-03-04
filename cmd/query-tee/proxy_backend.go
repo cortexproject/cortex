@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"time"
 
 	"github.com/pkg/errors"
@@ -68,7 +69,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	req.URL.Host = b.endpoint.Host
 
 	// Prepend the endpoint path to the request path.
-	req.URL.Path = b.endpoint.Path + req.URL.Path
+	req.URL.Path = path.Join(b.endpoint.Path, req.URL.Path)
 
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.

@@ -404,4 +404,56 @@ samples: 52
 start: 2019-11-25 00:00:00 +0000 UTC
 end: 2019-11-25 01:00:00 +0000 UTC
 step: 5m0s
-&lt;/code&gt;&lt;/pre&gt;</description></item></channel></rss>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Query Tee (service)</title><link>/docs/operations/query-tee/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-tee/</guid><description>
+&lt;p&gt;The &lt;code&gt;query-tee&lt;/code&gt; is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.&lt;/p&gt;
+&lt;p&gt;This service exposes Prometheus-compatible read API endpoints and, for each received request, performs the request against all backends tracking the response time of each backend and then sends back to the client one of the received responses.&lt;/p&gt;
+&lt;h2 id=&#34;how-to-run-it&#34;&gt;How to run it&lt;/h2&gt;
+&lt;p&gt;You can run &lt;code&gt;query-tee&lt;/code&gt; in two ways:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Build it from sources&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;go run ./cmd/query-tee -help
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Run it via the provided Docker image&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker run quay.io/cortexproject/query-tee -help
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The service requires at least 1 backend endpoint (but 2 are required in order to compare performances) configured as comma-separated HTTP(S) URLs via the CLI flag &lt;strong&gt;&lt;code&gt;-backend.endpoints&lt;/code&gt;&lt;/strong&gt;. For each incoming request, &lt;code&gt;query-tee&lt;/code&gt; will clone the request and send it to each backend, tracking performance metrics for each backend before sending back the response to the client.&lt;/p&gt;
+&lt;h2 id=&#34;how-it-works&#34;&gt;How it works&lt;/h2&gt;
+&lt;h3 id=&#34;api-endpoints&#34;&gt;API endpoints&lt;/h3&gt;
+&lt;p&gt;The following Prometheus API endpoints are supported by &lt;code&gt;query-tee&lt;/code&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/query&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/query_range&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/labels&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/label/{name}/values&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/series&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;authentication&#34;&gt;Authentication&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; supports &lt;a href=&#34;https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication&#34;&gt;HTTP basic authentication&lt;/a&gt;. It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.&lt;/p&gt;
+&lt;p&gt;The request sent from the &lt;code&gt;query-tee&lt;/code&gt; to the backend includes HTTP basic authentication when one of the following conditions are met:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If the endpoint URL has username and password, &lt;code&gt;query-tee&lt;/code&gt; uses it.&lt;/li&gt;
+&lt;li&gt;If the endpoint URL has username only, &lt;code&gt;query-tee&lt;/code&gt; keeps the username and inject the password received in the incoming request (if any).&lt;/li&gt;
+&lt;li&gt;If the endpoint URL has no username and no password, &lt;code&gt;query-tee&lt;/code&gt; forwards the incoming request basic authentication (if any).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;backend-response-selection&#34;&gt;Backend response selection&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; allows to configure a preferred backend from which picking the response to send back to the client. The preferred backend can be configured via the CLI flag &lt;code&gt;-backend.preferred=&amp;lt;hostname&amp;gt;&lt;/code&gt;, setting it to the hostname of the preferred backend.&lt;/p&gt;
+&lt;p&gt;When a preferred backend &lt;strong&gt;is set&lt;/strong&gt;, &lt;code&gt;query-tee&lt;/code&gt; sends back to the client:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The preferred backend response if the status code is 2xx or 4xx&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received 2xx or 4xx response if at least a backend succeeded&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received response&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When a preferred backend &lt;strong&gt;is not set&lt;/strong&gt;, &lt;code&gt;query-tee&lt;/code&gt; sends back to the client:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The first received 2xx or 4xx response if at least a backend succeeded&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received response&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;em&gt;Note: from the &lt;code&gt;query-tee&lt;/code&gt; perspective, a backend request is considered successful even if the status code is 4xx because it generally means the error is due to an invalid request and not to a backend issue.&lt;/em&gt;&lt;/p&gt;
+&lt;h3 id=&#34;exported-metrics&#34;&gt;Exported metrics&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; exposes the following Prometheus metrics on the port configured via the CLI flag &lt;code&gt;-server.metrics-port&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# HELP cortex_querytee_request_duration_seconds Time (in seconds) spent serving HTTP requests.&lt;/span&gt;
+&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# TYPE cortex_querytee_request_duration_seconds histogram&lt;/span&gt;
+cortex_querytee_request_duration_seconds_bucket&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;,le&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;bucket&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;
+cortex_querytee_request_duration_seconds_sum&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;
+cortex_querytee_request_duration_seconds_count&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item></channel></rss>

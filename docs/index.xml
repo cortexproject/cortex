@@ -3403,7 +3403,59 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;frontend&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;log_queries_longer_than&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws/</guid><description>
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Query Tee (service)</title><link>/docs/operations/query-tee/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-tee/</guid><description>
+&lt;p&gt;The &lt;code&gt;query-tee&lt;/code&gt; is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.&lt;/p&gt;
+&lt;p&gt;This service exposes Prometheus-compatible read API endpoints and, for each received request, performs the request against all backends tracking the response time of each backend and then sends back to the client one of the received responses.&lt;/p&gt;
+&lt;h2 id=&#34;how-to-run-it&#34;&gt;How to run it&lt;/h2&gt;
+&lt;p&gt;You can run &lt;code&gt;query-tee&lt;/code&gt; in two ways:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Build it from sources&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;go run ./cmd/query-tee -help
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Run it via the provided Docker image&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;docker run quay.io/cortexproject/query-tee -help
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The service requires at least 1 backend endpoint (but 2 are required in order to compare performances) configured as comma-separated HTTP(S) URLs via the CLI flag &lt;strong&gt;&lt;code&gt;-backend.endpoints&lt;/code&gt;&lt;/strong&gt;. For each incoming request, &lt;code&gt;query-tee&lt;/code&gt; will clone the request and send it to each backend, tracking performance metrics for each backend before sending back the response to the client.&lt;/p&gt;
+&lt;h2 id=&#34;how-it-works&#34;&gt;How it works&lt;/h2&gt;
+&lt;h3 id=&#34;api-endpoints&#34;&gt;API endpoints&lt;/h3&gt;
+&lt;p&gt;The following Prometheus API endpoints are supported by &lt;code&gt;query-tee&lt;/code&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/query&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/query_range&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/labels&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/label/{name}/values&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/series&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;authentication&#34;&gt;Authentication&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; supports &lt;a href=&#34;https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication&#34;&gt;HTTP basic authentication&lt;/a&gt;. It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.&lt;/p&gt;
+&lt;p&gt;The request sent from the &lt;code&gt;query-tee&lt;/code&gt; to the backend includes HTTP basic authentication when one of the following conditions are met:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If the endpoint URL has username and password, &lt;code&gt;query-tee&lt;/code&gt; uses it.&lt;/li&gt;
+&lt;li&gt;If the endpoint URL has username only, &lt;code&gt;query-tee&lt;/code&gt; keeps the username and inject the password received in the incoming request (if any).&lt;/li&gt;
+&lt;li&gt;If the endpoint URL has no username and no password, &lt;code&gt;query-tee&lt;/code&gt; forwards the incoming request basic authentication (if any).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;backend-response-selection&#34;&gt;Backend response selection&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; allows to configure a preferred backend from which picking the response to send back to the client. The preferred backend can be configured via the CLI flag &lt;code&gt;-backend.preferred=&amp;lt;hostname&amp;gt;&lt;/code&gt;, setting it to the hostname of the preferred backend.&lt;/p&gt;
+&lt;p&gt;When a preferred backend &lt;strong&gt;is set&lt;/strong&gt;, &lt;code&gt;query-tee&lt;/code&gt; sends back to the client:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The preferred backend response if the status code is 2xx or 4xx&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received 2xx or 4xx response if at least a backend succeeded&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received response&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When a preferred backend &lt;strong&gt;is not set&lt;/strong&gt;, &lt;code&gt;query-tee&lt;/code&gt; sends back to the client:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The first received 2xx or 4xx response if at least a backend succeeded&lt;/li&gt;
+&lt;li&gt;Otherwise, the first received response&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;em&gt;Note: from the &lt;code&gt;query-tee&lt;/code&gt; perspective, a backend request is considered successful even if the status code is 4xx because it generally means the error is due to an invalid request and not to a backend issue.&lt;/em&gt;&lt;/p&gt;
+&lt;h3 id=&#34;exported-metrics&#34;&gt;Exported metrics&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; exposes the following Prometheus metrics on the port configured via the CLI flag &lt;code&gt;-server.metrics-port&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# HELP cortex_querytee_request_duration_seconds Time (in seconds) spent serving HTTP requests.&lt;/span&gt;
+&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# TYPE cortex_querytee_request_duration_seconds histogram&lt;/span&gt;
+cortex_querytee_request_duration_seconds_bucket&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;,le&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;bucket&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;
+cortex_querytee_request_duration_seconds_sum&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;
+cortex_querytee_request_duration_seconds_count&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;backend&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;hostname&amp;gt;&amp;#34;&lt;/span&gt;,method&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;method&amp;gt;&amp;#34;&lt;/span&gt;,route&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;route&amp;gt;&amp;#34;&lt;/span&gt;,status_code&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;lt;status&amp;gt;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws/</guid><description>
 &lt;p&gt;[this is a work in progress]&lt;/p&gt;
 &lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running-in-production/&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
 &lt;h2 id=&#34;credentials&#34;&gt;Credentials&lt;/h2&gt;
@@ -4251,6 +4303,7 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;li&gt;[FEATURE] Allow Prometheus remote write directly to ingesters. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1491&#34;&gt;#1491&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Add flag &lt;code&gt;-experimental.tsdb.stripe-size&lt;/code&gt; to expose TSDB stripe size option. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2185&#34;&gt;#2185&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Experimental Delete Series: Added support for Deleting Series with Prometheus style API. Needs to be enabled first by setting &lt;code&gt;--purger.enable&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt;. Deletion only supported when using &lt;code&gt;boltdb&lt;/code&gt; and &lt;code&gt;filesystem&lt;/code&gt; as index and object store respectively. Support for other stores to follow in separate PRs &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2103&#34;&gt;#2103&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Introduced new standalone service &lt;code&gt;query-tee&lt;/code&gt; that can be used for testing purposes to send the same Prometheus query to multiple backends (ie. two Cortex clusters ingesting the same metrics) and compare the performances. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2203&#34;&gt;#2203&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Alertmanager: Expose Per-tenant alertmanager metrics &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2124&#34;&gt;#2124&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Add &lt;code&gt;status&lt;/code&gt; label to &lt;code&gt;cortex_alertmanager_configs&lt;/code&gt; metric to gauge the number of valid and invalid configs. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Cassandra Authentication: added the &lt;code&gt;custom_authenticators&lt;/code&gt; config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in &lt;a href=&#34;https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27&#34;&gt;gocql&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2093&#34;&gt;#2093&lt;/a&gt;&lt;/li&gt;

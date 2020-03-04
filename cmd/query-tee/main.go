@@ -48,14 +48,16 @@ func main() {
 	}
 
 	// Run the proxy.
-	proxy, err := NewProxy(cfg, registry)
+	proxy, err := NewProxy(cfg, util.Logger, registry)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 
-	if err := proxy.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "Server error", "err", err.Error())
+	if err := proxy.Start(); err != nil {
+		level.Error(util.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
 		os.Exit(1)
 	}
+
+	proxy.Await()
 }

@@ -19,7 +19,9 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		}, []string{"backend", "method", "route", "status_code"}),
 	}
 
-	registerer.MustRegister(m.durationMetric)
+	if registerer != nil {
+		registerer.MustRegister(m.durationMetric)
+	}
 
 	return m
 }

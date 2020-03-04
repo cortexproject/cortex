@@ -1,5 +1,6 @@
 cmd/test-exporter/test-exporter
 cmd/cortex/cortex
+cmd/query-tee/query-tee
 .uptodate
 .pkg
 .cache

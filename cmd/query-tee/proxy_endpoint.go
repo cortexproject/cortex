@@ -46,17 +46,18 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			status, body, err := b.ForwardRequest(r)
 			elapsed := time.Now().Sub(start)
 
-			resCh <- &backendResponse{
+			res := &backendResponse{
 				backend: b,
 				status:  status,
 				body:    body,
 				err:     err,
 				elapsed: elapsed,
 			}
+			resCh <- res
 
 			// Log with a level based on the backend response.
 			lvl := level.Debug
-			if err != nil || status >= 500 {
+			if !res.succeeded() {
 				lvl = level.Warn
 			}
 
@@ -73,12 +74,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for res := range resCh {
 		responses = append(responses, res)
 
-		status := 500
-		if res.err == nil {
-			status = res.status
-		}
-
-		p.metrics.durationMetric.WithLabelValues(res.backend.name, r.Method, p.routeName, strconv.Itoa(status)).Observe(res.elapsed.Seconds())
+		p.metrics.durationMetric.WithLabelValues(res.backend.name, r.Method, p.routeName, strconv.Itoa(res.statusCode())).Observe(res.elapsed.Seconds())
 	}
 
 	// Select the response to send back to the client.
@@ -94,16 +90,16 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *ProxyEndpoint) pickResponseForDownstream(responses []*backendResponse) *backendResponse {
-	// Look for a successfull response (or 4xx) from the preferred backend.
+	// Look for a successfull response from the preferred backend.
 	for _, res := range responses {
-		if res.backend.preferred && res.err == nil && res.status < 500 {
+		if res.backend.preferred && res.succeeded() {
 			return res
 		}
 	}
 
-	// Look for any other successful response (or 4xx).
+	// Look for any other successful response.
 	for _, res := range responses {
-		if res.err == nil && res.status < 500 {
+		if res.succeeded() {
 			return res
 		}
 	}
@@ -118,4 +114,21 @@ type backendResponse struct {
 	body    []byte
 	err     error
 	elapsed time.Duration
+}
+
+func (r *backendResponse) succeeded() bool {
+	if r.err != nil {
+		return false
+	}
+
+	// We consider the response successful if it's a 2xx or 4xx (but not 429).
+	return (r.status >= 200 && r.status < 300) || (r.status >= 400 && r.status < 500 && r.status != 429)
+}
+
+func (r *backendResponse) statusCode() int {
+	if r.err != nil || r.status <= 0 {
+		return 500
+	}
+
+	return r.status
 }

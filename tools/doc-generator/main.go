@@ -17,8 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
+	"github.com/cortexproject/cortex/pkg/configs"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -149,9 +149,9 @@ var (
 			desc:       "The fifo_cache_config configures the local in-memory cache.",
 		},
 		{
-			name:       "configdb_config",
-			structType: reflect.TypeOf(db.Config{}),
-			desc:       "The configdb_config configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.",
+			name:       "configs_config",
+			structType: reflect.TypeOf(configs.Config{}),
+			desc:       "The configs_config configures the Cortex Configs DB and API.",
 		},
 		{
 			name:       "configstore_config",

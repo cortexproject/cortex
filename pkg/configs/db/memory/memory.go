@@ -6,50 +6,50 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
-	cfgs map[string]configs.View
+	cfgs map[string]userconfig.View
 	id   uint
 }
 
 // New creates a new in-memory database
 func New(_, _ string) (*DB, error) {
 	return &DB{
-		cfgs: map[string]configs.View{},
+		cfgs: map[string]userconfig.View{},
 		id:   0,
 	}, nil
 }
 
 // GetConfig gets the user's configuration.
-func (d *DB) GetConfig(ctx context.Context, userID string) (configs.View, error) {
+func (d *DB) GetConfig(ctx context.Context, userID string) (userconfig.View, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return configs.View{}, sql.ErrNoRows
+		return userconfig.View{}, sql.ErrNoRows
 	}
 	return c, nil
 }
 
 // SetConfig sets configuration for a user.
-func (d *DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
+func (d *DB) SetConfig(ctx context.Context, userID string, cfg userconfig.Config) error {
 	if !cfg.RulesConfig.FormatVersion.IsValid() {
 		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
 	}
-	d.cfgs[userID] = configs.View{Config: cfg, ID: configs.ID(d.id)}
+	d.cfgs[userID] = userconfig.View{Config: cfg, ID: userconfig.ID(d.id)}
 	d.id++
 	return nil
 }
 
-// GetAllConfigs gets all of the configs.
-func (d *DB) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
+// GetAllConfigs gets all of the userconfig.
+func (d *DB) GetAllConfigs(ctx context.Context) (map[string]userconfig.View, error) {
 	return d.cfgs, nil
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d *DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
-	cfgs := map[string]configs.View{}
+func (d *DB) GetConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.View, error) {
+	cfgs := map[string]userconfig.View{}
 	for user, c := range d.cfgs {
 		if c.ID > since {
 			cfgs[user] = c
@@ -67,7 +67,7 @@ func (d *DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt ti
 		return err
 	}
 	cv.DeletedAt = deletedAt
-	cv.ID = configs.ID(d.id)
+	cv.ID = userconfig.ID(d.id)
 	d.cfgs[userID] = cv
 	d.id++
 	return nil
@@ -89,36 +89,36 @@ func (d *DB) Close() error {
 }
 
 // GetRulesConfig gets the rules config for a user.
-func (d *DB) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
+func (d *DB) GetRulesConfig(ctx context.Context, userID string) (userconfig.VersionedRulesConfig, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+		return userconfig.VersionedRulesConfig{}, sql.ErrNoRows
 	}
 	cfg := c.GetVersionedRulesConfig()
 	if cfg == nil {
-		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+		return userconfig.VersionedRulesConfig{}, sql.ErrNoRows
 	}
 	return *cfg, nil
 }
 
 // SetRulesConfig sets the rules config for a user.
-func (d *DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+func (d *DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig userconfig.RulesConfig) (bool, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return true, d.SetConfig(ctx, userID, configs.Config{RulesConfig: newConfig})
+		return true, d.SetConfig(ctx, userID, userconfig.Config{RulesConfig: newConfig})
 	}
 	if !oldConfig.Equal(c.Config.RulesConfig) {
 		return false, nil
 	}
-	return true, d.SetConfig(ctx, userID, configs.Config{
+	return true, d.SetConfig(ctx, userID, userconfig.Config{
 		AlertmanagerConfig: c.Config.AlertmanagerConfig,
 		RulesConfig:        newConfig,
 	})
 }
 
 // GetAllRulesConfigs gets the rules configs for all users that have them.
-func (d *DB) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
-	cfgs := map[string]configs.VersionedRulesConfig{}
+func (d *DB) GetAllRulesConfigs(ctx context.Context) (map[string]userconfig.VersionedRulesConfig, error) {
+	cfgs := map[string]userconfig.VersionedRulesConfig{}
 	for user, c := range d.cfgs {
 		cfg := c.GetVersionedRulesConfig()
 		if cfg != nil {
@@ -130,8 +130,8 @@ func (d *DB) GetAllRulesConfigs(ctx context.Context) (map[string]configs.Version
 
 // GetRulesConfigs gets the rules configs that have changed
 // since the given config version.
-func (d *DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	cfgs := map[string]configs.VersionedRulesConfig{}
+func (d *DB) GetRulesConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
+	cfgs := map[string]userconfig.VersionedRulesConfig{}
 	for user, c := range d.cfgs {
 		if c.ID <= since {
 			continue

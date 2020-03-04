@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 var response = `{
@@ -38,15 +38,15 @@ func TestDoRequest(t *testing.T) {
 	resp, err := doRequest(server.URL, 1*time.Second, 0)
 	assert.Nil(t, err)
 
-	expected := ConfigsResponse{Configs: map[string]configs.View{
+	expected := ConfigsResponse{Configs: map[string]userconfig.View{
 		"2": {
 			ID: 1,
-			Config: configs.Config{
-				RulesConfig: configs.RulesConfig{
+			Config: userconfig.Config{
+				RulesConfig: userconfig.RulesConfig{
 					Files: map[string]string{
 						"recording.rules": "groups:\n- name: demo-service-alerts\n  interval: 15s\n  rules:\n  - alert: SomethingIsUp\n    expr: up == 1\n",
 					},
-					FormatVersion: configs.RuleFormatV2,
+					FormatVersion: userconfig.RuleFormatV2,
 				},
 			},
 		},

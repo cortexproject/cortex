@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -87,7 +89,7 @@ type Config struct {
 	DataPurgerConfig purger.Config            `yaml:"purger,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
+	Configs       configs.Config                             `yaml:"configs,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
@@ -123,7 +125,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.DataPurgerConfig.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
-	c.ConfigDB.RegisterFlags(f)
+	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")

@@ -493,12 +493,12 @@ func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 }
 
 func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
-	t.configDB, err = db.New(cfg.ConfigDB)
+	t.configDB, err = db.New(cfg.Configs.DB)
 	if err != nil {
 		return
 	}
 
-	t.configAPI = api.New(t.configDB)
+	t.configAPI = api.New(t.configDB, cfg.Configs.API)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
 	return services.NewIdleService(nil, func() error {
 		t.configDB.Close()

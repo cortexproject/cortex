@@ -118,9 +118,8 @@ Where default_value is the value to use if the environment variable is undefined
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
-# The configdb_config configures the config database storing rules and alerts,
-# and used by the 'configs' service to expose APIs to manage them.
-[configdb: <configdb_config>]
+# The configs_config configures the Cortex Configs DB and API.
+[configs: <configs_config>]
 
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
@@ -2081,22 +2080,33 @@ The `fifo_cache_config` configures the local in-memory cache.
 [validity: <duration> | default = 0s]
 ```
 
-### `configdb_config`
+### `configs_config`
 
-The `configdb_config` configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.
+The `configs_config` configures the Cortex Configs DB and API.
 
 ```yaml
-# URI where the database can be found (for dev you can use memory://)
-# CLI flag: -database.uri
-[uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
+database:
+  # URI where the database can be found (for dev you can use memory://)
+  # CLI flag: -configs.database.uri
+  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
 
-# Path where the database migration files can be found
-# CLI flag: -database.migrations
-[migrationsdir: <string> | default = ""]
+  # Path where the database migration files can be found
+  # CLI flag: -configs.database.migrations-dir
+  [migrations_dir: <string> | default = ""]
 
-# File containing password (username goes in URI)
-# CLI flag: -database.password-file
-[passwordfile: <string> | default = ""]
+  # File containing password (username goes in URI)
+  # CLI flag: -configs.database.password-file
+  [password_file: <string> | default = ""]
+
+api:
+  notifications:
+    # Disable Email notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-email
+    [disable_email: <boolean> | default = false]
+
+    # Disable WebHook notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-webhook
+    [disable_webhook: <boolean> | default = false]
 ```
 
 ### `configstore_config`

@@ -3,15 +3,16 @@ package configdb
 import (
 	"context"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
 
 // Store is a concrete implementation of RuleStore that sources rules from the config service
 type Store struct {
 	configClient client.Client
-	since        configs.ID
+	since        userconfig.ID
 	alertConfigs map[string]alerts.AlertConfigDesc
 }
 

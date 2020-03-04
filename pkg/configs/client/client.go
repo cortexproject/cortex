@@ -9,17 +9,18 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-// Config says where we can find the ruler configs.
+// Config says where we can find the ruler userconfig.
 type Config struct {
 	ConfigsAPIURL flagext.URLValue
 	ClientTimeout time.Duration // HTTP timeout duration for requests made to the Weave Cloud configs service.
@@ -34,18 +35,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "configs_request_duration_seconds",
-	Help:      "Time spent requesting configs.",
+	Help:      "Time spent requesting userconfig.",
 	Buckets:   prometheus.DefBuckets,
 }, []string{"operation", "status_code"}))
 
 // Client is what the ruler and altermanger needs from a config store to process rules.
 type Client interface {
 	// GetRules returns all Cortex configurations from a configs API server
-	// that have been updated after the given configs.ID was last updated.
-	GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	// that have been updated after the given userconfig.ID was last updated.
+	GetRules(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error)
 
 	// GetAlerts fetches all the alerts that have changes since since.
-	GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error)
+	GetAlerts(ctx context.Context, since userconfig.ID) (*ConfigsResponse, error)
 }
 
 // New creates a new ConfigClient.
@@ -63,7 +64,7 @@ type ConfigDBClient struct {
 }
 
 // GetRules implements Client
-func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (c ConfigDBClient) GetRules(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -78,7 +79,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[str
 	if err != nil {
 		return nil, err
 	}
-	configs := map[string]configs.VersionedRulesConfig{}
+	configs := map[string]userconfig.VersionedRulesConfig{}
 	for id, view := range response.Configs {
 		cfg := view.GetVersionedRulesConfig()
 		if cfg != nil {
@@ -89,7 +90,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[str
 }
 
 // GetAlerts implements Client.
-func (c ConfigDBClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
+func (c ConfigDBClient) GetAlerts(ctx context.Context, since userconfig.ID) (*ConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -104,7 +105,7 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since configs.ID) (*Confi
 	return response, err
 }
 
-func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {
+func doRequest(endpoint string, timeout time.Duration, since userconfig.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -132,17 +133,17 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*Confi
 	return &config, nil
 }
 
-// ConfigsResponse is a response from server for GetConfigs.
+// ConfigsResponse is a response from server for Getuserconfig.
 type ConfigsResponse struct {
 	// The version since which these configs were changed
-	since configs.ID
+	since userconfig.ID
 
-	// Configs maps user ID to their latest configs.View.
-	Configs map[string]configs.View `json:"configs"`
+	// Configs maps user ID to their latest userconfig.View.
+	Configs map[string]userconfig.View `json:"configs"`
 }
 
-// GetLatestConfigID returns the last config ID from a set of configs.
-func (c ConfigsResponse) GetLatestConfigID() configs.ID {
+// GetLatestConfigID returns the last config ID from a set of userconfig.
+func (c ConfigsResponse) GetLatestConfigID() userconfig.ID {
 	latest := c.since
 	for _, config := range c.Configs {
 		if config.ID > latest {

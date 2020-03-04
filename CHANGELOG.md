@@ -26,6 +26,14 @@
 * [CHANGE] Updated Prometheus dependency to v2.16.0. This Prometheus version uses Active Query Tracker to limit concurrent queries. In order to keep `-querier.max-concurrent` working, Active Query Tracker is enabled by default, and is configured to store its data to `active-query-tracker` directory (relative to current directory when Cortex started). This can be changed by using `-querier.active-query-tracker-dir` option. Purpose of Active Query Tracker is to log queries that were running when Cortex crashes. This logging happens on next Cortex start. #2088
 * [CHANGE] Experimental TSDB: TSDB head compaction interval and concurrency is now configurable (defaults to 1 min interval and 5 concurrent head compactions). New options: `-experimental.tsdb.head-compaction-interval` and `-experimental.tsdb.head-compaction-concurrency`. #2172
 * [CHANGE] Remove fluentd-based billing infrastructure and flags such as `-distributor.enable-billing`. #1491
+* [CHANGE] Renamed Configs configuration options. #2187
+  * configuration options
+    * `-database.*` -> `-configs.database.*`
+    * `-database.migrations` -> `-configs.database.migrations-dir`
+  * config file
+    * `configdb.uri:` -> `configs.database.uri:`
+    * `configdb.migrationsdir:` -> `configs.database.migrations_dir:`
+    * `configdb.passwordfile:` -> `configs.database.password_file:`
 * [CHANGE] Experimental TSDB: the querier in-memory index cache used by the experimental blocks storage shifted from per-tenant to per-querier. The `-experimental.tsdb.bucket-store.index-cache-size-bytes` now configures the per-querier index cache max size instead of a per-tenant cache and its default has been increased to 1GB. #2189
 * [CHANGE] If you are vendoring Cortex and use its components in your project, be aware that many Cortex components no longer start automatically when they are created. You may want to review PR and attached document. #2166
 * [CHANGE] Cortex now has /ready probe for all services, not just ingester and querier as before. In single-binary mode, /ready reports 204 only if all components are running properly. #2166
@@ -35,8 +43,11 @@
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
   * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
-* [FEATURE] Add ability to override YAML config file settings using environment variables. #2147
+* [FEATURE] Added ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
+* [FEATURE] Added flags to disable Alertmanager notifications methods. #2187
+  * `-configs.notifications.disable-email`
+  * `-configs.notifications.disable-webhook`
 * [FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. #2165
 * [FEATURE] Allow Prometheus remote write directly to ingesters. #1491
 * [FEATURE] Add flag `-experimental.tsdb.stripe-size` to expose TSDB stripe size option. #2185

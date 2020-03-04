@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -18,20 +20,46 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+var (
+	ErrEmailNotificationsAreDisabled   = errors.New("email notifications are disabled")
+	ErrWebhookNotificationsAreDisabled = errors.New("webhook notifications are disabled")
+)
+
+// Config configures Configs API
+type Config struct {
+	Notifications NotificationsConfig `yaml:"notifications"`
+}
+
+// NotificationsConfig configures Alertmanager notifications method.
+type NotificationsConfig struct {
+	DisableEmail   bool `yaml:"disable_email"`
+	DisableWebHook bool `yaml:"disable_webhook"`
+}
+
+// RegisterFlags adds the flags required to configure this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Notifications.DisableEmail, "configs.notifications.disable-email", false, "Disable Email notifications for Alertmanager.")
+	f.BoolVar(&cfg.Notifications.DisableWebHook, "configs.notifications.disable-webhook", false, "Disable WebHook notifications for Alertmanager.")
+}
+
 // API implements the configs api.
 type API struct {
-	db db.DB
 	http.Handler
+	db  db.DB
+	cfg Config
 }
 
 // New creates a new API
-func New(database db.DB) *API {
-	a := &API{db: database}
+func New(database db.DB, cfg Config) *API {
+	a := &API{
+		db:  database,
+		cfg: cfg,
+	}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -124,7 +152,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	var cfg configs.Config
+	var cfg userconfig.Config
 	switch parseConfigFormat(r.Header.Get("Content-Type"), FormatJSON) {
 	case FormatJSON:
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
@@ -147,7 +175,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig); err != nil && cfg.AlertmanagerConfig != "" {
+	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig, a.cfg.Notifications); err != nil && cfg.AlertmanagerConfig != "" {
 		level.Error(logger).Log("msg", "invalid Alertmanager config", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
 		return
@@ -180,7 +208,7 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = validateAlertmanagerConfig(string(cfg)); err != nil {
+	if err = validateAlertmanagerConfig(string(cfg), a.cfg.Notifications); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		util.WriteJSONResponse(w, map[string]string{
 			"status": "error",
@@ -194,27 +222,30 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func validateAlertmanagerConfig(cfg string) error {
+func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 	amCfg, err := amconfig.Load(cfg)
 	if err != nil {
 		return err
 	}
 
 	for _, recv := range amCfg.Receivers {
-		if len(recv.EmailConfigs) != 0 {
-			return fmt.Errorf("email notifications are not supported in Cortex yet")
+		if noCfg.DisableEmail && len(recv.EmailConfigs) > 0 {
+			return ErrEmailNotificationsAreDisabled
+		}
+		if noCfg.DisableWebHook && len(recv.WebhookConfigs) > 0 {
+			return ErrWebhookNotificationsAreDisabled
 		}
 	}
 
 	return nil
 }
 
-func validateRulesFiles(c configs.Config) error {
+func validateRulesFiles(c userconfig.Config) error {
 	_, err := c.RulesConfig.Parse()
 	return err
 }
 
-func validateTemplateFiles(c configs.Config) error {
+func validateTemplateFiles(c userconfig.Config) error {
 	for fn, content := range c.TemplateFiles {
 		if _, err := template.New(fn).Parse(content); err != nil {
 			return err
@@ -224,14 +255,14 @@ func validateTemplateFiles(c configs.Config) error {
 	return nil
 }
 
-// ConfigsView renders multiple configurations, mapping userID to configs.View.
+// ConfigsView renders multiple configurations, mapping userID to userconfig.View.
 // Exposed only for tests.
 type ConfigsView struct {
-	Configs map[string]configs.View `json:"configs"`
+	Configs map[string]userconfig.View `json:"configs"`
 }
 
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
-	var cfgs map[string]configs.View
+	var cfgs map[string]userconfig.View
 	var cfgErr error
 	logger := util.WithContext(r.Context(), util.Logger)
 	rawSince := r.FormValue("since")
@@ -244,7 +275,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, cfgErr = a.db.GetConfigs(r.Context(), configs.ID(since))
+		cfgs, cfgErr = a.db.GetConfigs(r.Context(), userconfig.ID(since))
 	}
 
 	if cfgErr != nil {

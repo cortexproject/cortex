@@ -9,10 +9,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/dbtest"
 )
@@ -26,7 +27,22 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = New(database)
+	app = New(database, Config{
+		Notifications: NotificationsConfig{
+			DisableEmail: true,
+		},
+	})
+	counter = 0
+}
+
+// setup sets up the environment for the tests with email enabled.
+func setupWithEmailEnabled(t *testing.T) {
+	database = dbtest.Setup(t)
+	app = New(database, Config{
+		Notifications: NotificationsConfig{
+			DisableEmail: false,
+		},
+	})
 	counter = 0
 }
 
@@ -71,8 +87,8 @@ func makeUserID() string {
 }
 
 // makeConfig makes some arbitrary configuration.
-func makeConfig() configs.Config {
-	return configs.Config{
+func makeConfig() userconfig.Config {
+	return userconfig.Config{
 		AlertmanagerConfig: makeString(`
             # Config no. %d.
             route:
@@ -80,19 +96,19 @@ func makeConfig() configs.Config {
 
             receivers:
             - name: noop`),
-		RulesConfig: configs.RulesConfig{},
+		RulesConfig: userconfig.RulesConfig{},
 	}
 }
 
-func readerFromConfig(t *testing.T, config configs.Config) io.Reader {
+func readerFromConfig(t *testing.T, config userconfig.Config) io.Reader {
 	b, err := json.Marshal(config)
 	require.NoError(t, err)
 	return bytes.NewReader(b)
 }
 
-// parseView parses a configs.View from JSON.
-func parseView(t *testing.T, b []byte) configs.View {
-	var x configs.View
+// parseView parses a userconfig.View from JSON.
+func parseView(t *testing.T, b []byte) userconfig.View {
+	var x userconfig.View
 	err := json.Unmarshal(b, &x)
 	require.NoError(t, err, "Could not unmarshal JSON: %v", string(b))
 	return x

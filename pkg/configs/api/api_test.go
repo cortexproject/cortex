@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 const (
@@ -45,14 +45,14 @@ type configurable struct {
 }
 
 // post a config
-func (c configurable) post(t *testing.T, userID string, config configs.Config) configs.View {
+func (c configurable) post(t *testing.T, userID string, config userconfig.Config) userconfig.View {
 	w := requestAsUser(t, userID, "POST", c.Endpoint, "", readerFromConfig(t, config))
 	require.Equal(t, http.StatusNoContent, w.Code)
 	return c.get(t, userID)
 }
 
 // get a config
-func (c configurable) get(t *testing.T, userID string) configs.View {
+func (c configurable) get(t *testing.T, userID string) userconfig.View {
 	w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 	return parseView(t, w.Body.Bytes())
 }
@@ -154,11 +154,11 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{}}, found)
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{}}, found)
 	}
 }
 
-// GetAllConfigs returns all created configs.
+// GetAllConfigs returns all created userconfig.
 func Test_GetAllConfigs(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
@@ -173,13 +173,13 @@ func Test_GetAllConfigs(t *testing.T) {
 		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID: view,
 		}}, found)
 	}
 }
 
-// GetAllConfigs returns the *newest* versions of all created configs.
+// GetAllConfigs returns the *newest* versions of all created userconfig.
 func Test_GetAllConfigs_Newest(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
@@ -196,7 +196,7 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID: lastCreated,
 		}}, found)
 	}
@@ -217,7 +217,7 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID3: config3,
 		}}, found)
 	}
@@ -245,13 +245,27 @@ var amCfgValidationTests = []struct {
           email_configs:
           - to: myteam@foobar.org`,
 		shouldFail:  true,
-		errContains: "email notifications are not supported in Cortex yet",
+		errContains: ErrEmailNotificationsAreDisabled.Error(),
+	}, {
+		config: `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          slack_configs:
+          - api_url: http://slack`,
+		shouldFail: false,
 	},
 }
 
 func Test_ValidateAlertmanagerConfig(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", "", strings.NewReader(test.config))
@@ -276,9 +290,10 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		cfg := configs.Config{AlertmanagerConfig: test.config}
+		cfg := userconfig.Config{AlertmanagerConfig: test.config}
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
 
 		if !test.shouldFail {
@@ -289,6 +304,28 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.Code, "test case %d", i)
 		assert.Contains(t, resp.Body.String(), test.errContains, "test case %d", i)
 	}
+}
+
+func Test_SetConfig_ValidatesAlertmanagerConfig_WithEmailEnabled(t *testing.T) {
+	config := `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          email_configs:
+          - to: myteam@foobar.org`
+	setupWithEmailEnabled(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	cfg := userconfig.Config{AlertmanagerConfig: config}
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
 }
 
 func Test_SetConfig_BodyFormat(t *testing.T) {

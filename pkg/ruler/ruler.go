@@ -569,6 +569,8 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*rules.Ru
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
+	// len(rgs) can't be larger than len(rulers.Ingesters)
+	// alloc it in advance to avoid realloc
 	rgs := make([]*rules.RuleGroupDesc, 0, len(rulers.Ingesters))
 
 	for _, rlr := range rulers.Ingesters {

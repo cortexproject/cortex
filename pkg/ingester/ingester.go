@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -23,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -91,6 +93,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
 // MemorySeriesStorage.
 type Ingester struct {
+	services.Service
+
 	cfg          Config
 	clientConfig client.Config
 
@@ -100,9 +104,6 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
 	limiter    *SeriesLimiter
-
-	quit chan struct{}
-	done sync.WaitGroup
 
 	userStatesMtx sync.RWMutex // protects userStates and stopped
 	userStates    *userStates
@@ -157,7 +158,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		metrics:      newIngesterMetrics(registerer, true),
 		limits:       limits,
 		chunkStore:   chunkStore,
-		quit:         make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 	}
 
@@ -193,24 +193,31 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return nil, err
 	}
 
-	// Now that user states have been created, we can start the lifecycler
-	i.lifecycler.Start()
+	// TODO: lot more stuff can be put into startingFn (esp. WAL replay), but for now keep it in New
+	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
+	return i, nil
+}
 
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
-	for j := 0; j < cfg.ConcurrentFlushes; j++ {
+func (i *Ingester) starting(ctx context.Context) error {
+	// Now that user states have been created, we can start the lifecycler.
+	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
+	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
+	}
+	if err := i.lifecycler.AwaitRunning(ctx); err != nil {
+		return errors.Wrap(err, "failed to start lifecycler")
+	}
+
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		go i.flushLoop(j)
 	}
 
-	i.done.Add(1)
-	go i.loop()
-
-	return i, nil
+	return nil
 }
 
-func (i *Ingester) loop() {
-	defer i.done.Done()
-
+func (i *Ingester) loop(ctx context.Context) error {
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
 
@@ -225,28 +232,18 @@ func (i *Ingester) loop() {
 		case <-rateUpdateTicker.C:
 			i.userStates.updateRates()
 
-		case <-i.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
 
-// Shutdown beings the process to stop this ingester.
-func (i *Ingester) Shutdown() {
-	select {
-	case <-i.quit:
-		// Ingester was already shutdown.
-		return
-	default:
-		// First wait for our flush loop to stop.
-		close(i.quit)
-		i.done.Wait()
+// stopping is run when ingester is asked to stop
+func (i *Ingester) stopping() error {
+	i.wal.Stop()
 
-		i.wal.Stop()
-
-		// Next initiate our graceful exit from the ring.
-		i.lifecycler.Shutdown()
-	}
+	// Next initiate our graceful exit from the ring.
+	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 }
 
 // ShutdownHandler triggers the following set of operations in order:
@@ -256,7 +253,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
-	i.Shutdown()
+	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -703,10 +700,9 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running {
+		return fmt.Errorf("service not Running: %v", s)
 	}
+	return i.lifecycler.CheckReady(ctx)
 }

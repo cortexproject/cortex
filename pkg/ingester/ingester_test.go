@@ -26,6 +26,7 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -44,6 +45,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	return store, ing
 }
@@ -201,7 +203,7 @@ func TestIngesterAppend(t *testing.T) {
 	retrieveTestSamples(t, ing, userIDs, testData)
 
 	// Read samples back via chunk store.
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, userIDs, testData)
 }
 
@@ -227,7 +229,7 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 	}
 
 	// Read samples back via chunk store.
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 func TestIngesterIdleFlush(t *testing.T) {
@@ -302,7 +304,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -333,7 +335,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	defer ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	lp := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -364,7 +366,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -421,7 +423,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
-	defer ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -485,7 +487,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	_, ing := newDefaultTestStore(b)
-	defer ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	var (
 		wg     sync.WaitGroup
@@ -582,7 +584,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 						require.NoError(b, err)
 					}
 				}
-				ing.Shutdown()
+				_ = services.StopAndAwaitTerminated(context.Background(), ing)
 			}
 		})
 	}

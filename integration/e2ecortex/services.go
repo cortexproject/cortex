@@ -48,7 +48,7 @@ func NewDistributorWithConfigFile(name, consulAddress, configFile string, flags 
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
 		}, flags))...),
-		e2e.NewReadinessProbe(httpPort, "/ring", 200),
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
 	)
@@ -143,8 +143,7 @@ func NewTableManagerWithConfigFile(name, configFile string, flags map[string]str
 			"-target":    "table-manager",
 			"-log.level": "warn",
 		}, flags))...),
-		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(httpPort, "/", 404),
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
 	)
@@ -170,8 +169,7 @@ func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]st
 			"-target":    "query-frontend",
 			"-log.level": "warn",
 		}, flags))...),
-		// The query-frontend doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(httpPort, "/", 404),
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
 	)
@@ -207,8 +205,7 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 			"-target":    "alertmanager",
 			"-log.level": "warn",
 		}, flags))...),
-		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 404
-		e2e.NewReadinessProbe(httpPort, "/", 404),
+		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
 	)

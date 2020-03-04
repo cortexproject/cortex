@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type mockIngester struct {
@@ -80,7 +81,8 @@ func TestIngesterCache(t *testing.T) {
 		RemoteTimeout:       50 * time.Millisecond,
 		ClientCleanupPeriod: 10 * time.Second,
 	}, mockReadRing{}, factory, log.NewNopLogger())
-	defer pool.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
+	defer services.StopAndAwaitTerminated(context.Background(), pool) //nolint:errcheck
 
 	_, err := pool.GetClientFor("1")
 	require.NoError(t, err)

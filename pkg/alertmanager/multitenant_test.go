@@ -6,7 +6,6 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -65,20 +64,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	am := &MultitenantAlertmanager{
-		cfg: &MultitenantAlertmanagerConfig{
-			ExternalURL: externalURL,
-			DataDir:     tempDir,
-		},
-		store:            mockStore,
-		cfgs:             map[string]alerts.AlertConfigDesc{},
-		alertmanagersMtx: sync.Mutex{},
-		alertmanagers:    map[string]*Alertmanager{},
-		logger:           log.NewNopLogger(),
-		stop:             make(chan struct{}),
-		done:             make(chan struct{}),
-		metrics:          newAlertmanagerMetrics(),
-	}
+	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		ExternalURL: externalURL,
+		DataDir:     tempDir,
+	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 
 	// Ensure the configs are synced correctly
 	require.NoError(t, am.updateConfigs())
@@ -123,7 +112,7 @@ func TestLoadAllConfigs(t *testing.T) {
 
 	userAM, exists := am.alertmanagers["user3"]
 	require.True(t, exists)
-	require.False(t, userAM.isActive())
+	require.False(t, userAM.IsActive())
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -140,5 +129,5 @@ func TestLoadAllConfigs(t *testing.T) {
 
 	userAM, exists = am.alertmanagers["user3"]
 	require.True(t, exists)
-	require.True(t, userAM.isActive())
+	require.True(t, userAM.IsActive())
 }

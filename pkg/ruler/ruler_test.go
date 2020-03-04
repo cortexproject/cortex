@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
@@ -81,6 +82,7 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	l = level.NewFilter(l, level.AllowInfo())
 	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
 	ruler.loadRules(context.Background())
@@ -111,7 +113,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
 	n, err := r.getOrCreateNotifier("1")
 	require.NoError(t, err)
 
@@ -135,7 +138,7 @@ func TestRuler_Rules(t *testing.T) {
 
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
-	defer r.Stop()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// test user1
 	ctx := user.InjectOrgID(context.Background(), "user1")

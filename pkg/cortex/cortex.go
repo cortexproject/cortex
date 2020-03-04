@@ -1,8 +1,11 @@
 package cortex
 
 import (
+	"bytes"
+	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/go-kit/kit/log"
@@ -36,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -163,6 +167,9 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
+	// set during initialization
+	serviceMap map[moduleName]services.Service
+
 	server        *server.Server
 	ring          *ring.Ring
 	overrides     *validation.Overrides
@@ -203,10 +210,13 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex.setupAuthMiddleware(&cfg)
 
-	if err := cortex.init(&cfg, cfg.Target); err != nil {
+	serviceMap, err := cortex.initModuleServices(&cfg, cfg.Target)
+	if err != nil {
 		return nil, err
 	}
 
+	cortex.serviceMap = serviceMap
+	cortex.server.HTTP.Handle("/services", http.HandlerFunc(cortex.servicesHandler))
 	return cortex, nil
 }
 
@@ -242,49 +252,128 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 	}
 }
 
-func (t *Cortex) init(cfg *Config, m moduleName) error {
+func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleName]services.Service, error) {
+	servicesMap := map[moduleName]services.Service{}
+
 	// initialize all of our dependencies first
-	for _, dep := range orderedDeps(m) {
-		if err := t.initModule(cfg, dep); err != nil {
-			return err
+	deps := orderedDeps(target)
+	deps = append(deps, target) // lastly, initialize the requested module
+
+	for ix, n := range deps {
+		mod := modules[n]
+
+		var serv services.Service
+
+		if mod.service != nil {
+			s, err := mod.service(t, cfg)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
+			}
+			serv = s
+		} else if mod.wrappedService != nil {
+			s, err := mod.wrappedService(t, cfg)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
+			}
+			if s != nil {
+				// We pass servicesMap, which isn't yet finished. By the time service starts,
+				// it will be fully built, so there is no need for extra synchronization.
+				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findInverseDependencies(n, deps[ix+1:]))
+			}
+		}
+
+		if serv != nil {
+			servicesMap[n] = serv
 		}
 	}
-	// lastly, initialize the requested module
-	return t.initModule(cfg, m)
+
+	return servicesMap, nil
 }
 
-func (t *Cortex) initModule(cfg *Config, m moduleName) error {
-	level.Info(util.Logger).Log("msg", "initialising", "module", m)
-	if modules[m].init != nil {
-		if err := modules[m].init(t, cfg); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", m))
-		}
-	}
-	return nil
-}
-
-// Run starts Cortex running, and blocks until a signal is received.
+// Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	return t.server.Run()
-}
-
-// Stop gracefully stops a Cortex.
-func (t *Cortex) Stop() error {
-	t.stopModule(t.target)
-	deps := orderedDeps(t.target)
-	// iterate over our deps in reverse order and call stopModule
-	for i := len(deps) - 1; i >= 0; i-- {
-		t.stopModule(deps[i])
+	// get all services, create service manager and tell it to start
+	servs := []services.Service(nil)
+	for _, s := range t.serviceMap {
+		servs = append(servs, s)
 	}
-	return nil
+
+	sm, err := services.NewManager(servs...)
+	if err != nil {
+		return err
+	}
+
+	// before starting servers, register /ready handler. It should reflect entire Cortex.
+	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+
+	// Let's listen for events from this manager, and log them.
+	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
+	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
+	serviceFailed := func(service services.Service) {
+		// if any service fails, stop entire Cortex
+		sm.StopAsync()
+
+		// let's find out which module failed
+		for m, s := range t.serviceMap {
+			if s == service {
+				level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				return
+			}
+		}
+
+		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+	}
+
+	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
+
+	// Currently it's the Server that reacts on signal handler,
+	// so get Server service, and wait until it gets to Stopping state.
+	// It will also be stopped via service manager if any service fails (see attached service listener)
+	// Attach listener before starting services, or we may miss the notification.
+	serverStopping := make(chan struct{})
+	t.serviceMap[Server].AddListener(services.NewListener(nil, nil, func(from services.State) {
+		close(serverStopping)
+	}, nil, nil))
+
+	// Start all services. This can really only fail if some service is already
+	// in other state than New, which should not be the case.
+	err = sm.StartAsync(context.Background())
+	if err == nil {
+		// no error starting the services, now let's just wait until Server module
+		// transitions to Stopping (after SIGTERM or when some service fails),
+		// and then initiate shutdown
+		<-serverStopping
+	}
+
+	// Stop all the services, and wait until they are all done.
+	// We don't care about this error, as it cannot really fail. `err` has error from startup, which is more important.
+	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
+	return err
 }
 
-func (t *Cortex) stopModule(m moduleName) {
-	level.Info(util.Logger).Log("msg", "stopping", "module", m)
-	if modules[m].stop != nil {
-		if err := modules[m].stop(t); err != nil {
-			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
+func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !sm.IsHealthy() {
+			msg := bytes.Buffer{}
+			msg.WriteString("Some services are not Running:\n")
+
+			byState := sm.ServicesByState()
+			for st, ls := range byState {
+				msg.WriteString(fmt.Sprintf("%v: %d\n", st, len(ls)))
+			}
+
+			http.Error(w, msg.String(), http.StatusServiceUnavailable)
+			return
 		}
+
+		// Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.ingester != nil {
+			if err := t.ingester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -331,5 +420,21 @@ func orderedDeps(m moduleName) []moduleName {
 			result = append(result, name)
 		}
 	}
+	return result
+}
+
+// find modules in the supplied list, that depend on mod
+func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
+	result := []moduleName(nil)
+
+	for _, n := range mods {
+		for _, d := range modules[n].deps {
+			if d == mod {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+
 	return result
 }

@@ -131,20 +131,9 @@ for ingester).
 
 ### Caching
 
-Cortex can retain data in-process or in Memcached to speed up various
-queries by caching:
+Correctly configured caching is important for a production-ready Cortex cluster.
 
- * individual chunks
- * index lookups for one label on one day
- * the results of a whole query
-
-You should always include Memcached in your Cortex install so results
-from one process can be re-used by another. In-process caching can cut
-fetch times slightly and reduce the load on Memcached.
-
-Ingesters can also be configured to use Memcached to avoid re-writing
-index and chunk data which has already been stored in the back-end
-database. Again, highly recommended.
+See [Caching In Cortex](caching.md) for more information.
 
 ### Orchestration
 
@@ -235,7 +224,7 @@ killing them is a last resort and should not be left to a machine.
 ### Remote writing Prometheus
 
 To configure your Prometheus instances for remote writes take a look at
-the [Prometheus Remote Write Config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write). We recommend to tune the following 
+the [Prometheus Remote Write Config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write). We recommend to tune the following
 parameters of the `queue_config`:
 
 ```yaml

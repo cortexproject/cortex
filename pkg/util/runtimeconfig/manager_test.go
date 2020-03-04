@@ -1,6 +1,7 @@
 package runtimeconfig
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type TestLimits struct {
@@ -76,9 +79,10 @@ func TestNewOverridesManager(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// Cleaning up
-	overridesManager.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
@@ -110,6 +114,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
@@ -137,7 +142,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.Equal(t, 100, to.Overrides["user2"].Limit1) // from defaults
 
 	// Cleaning up
-	overridesManager.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
@@ -158,6 +163,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
@@ -207,11 +213,12 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(0)
 
-	overridesManager.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
 
 	select {
 	case _, ok := <-ch:

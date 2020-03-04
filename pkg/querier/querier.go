@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -31,7 +30,8 @@ type Config struct {
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
-	QueryStoreAfter time.Duration `yaml:"query_store_after"`
+	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
+	MaxQueryIntoFuture time.Duration `yaml:"max_query_into_future"`
 
 	// The default evaluation interval for the promql engine.
 	// Needs to be configured for subqueries to work as it is the default
@@ -64,6 +64,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
@@ -136,6 +137,19 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 // NewQueryable creates a new Queryable for cortex.
 func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		now := time.Now()
+
+		if cfg.MaxQueryIntoFuture > 0 {
+			maxQueryTime := util.TimeMilliseconds(now.Add(cfg.MaxQueryIntoFuture))
+
+			if mint > maxQueryTime {
+				return storage.NoopQuerier(), nil
+			}
+			if maxt > maxQueryTime {
+				maxt = maxQueryTime
+			}
+		}
+
 		q := querier{
 			ctx:         ctx,
 			mint:        mint,
@@ -150,14 +164,13 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 
 		q.metadataQuerier = dqr
 
-		// Include ingester only if maxt is within queryIngestersWithin w.r.t. current time.
-		now := model.Now()
-		if cfg.QueryIngestersWithin == 0 || maxt >= int64(now.Add(-cfg.QueryIngestersWithin)) {
+		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
+		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeMilliseconds(now.Add(-cfg.QueryIngestersWithin)) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= int64(now.Add(-cfg.QueryStoreAfter)) {
+		if cfg.QueryStoreAfter == 0 || mint <= util.TimeMilliseconds(now.Add(-cfg.QueryStoreAfter)) {
 			cqr, err := store.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err

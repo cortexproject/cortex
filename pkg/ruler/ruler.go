@@ -34,6 +34,7 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -104,6 +105,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ruler evaluates rules.
 type Ruler struct {
+	services.Service
+
 	cfg         Config
 	engine      *promql.Engine
 	queryable   promStorage.Queryable
@@ -111,8 +114,9 @@ type Ruler struct {
 	alertURL    *url.URL
 	notifierCfg *config.Config
 
-	lifecycler *ring.Lifecycler
-	ring       *ring.Ring
+	lifecycler  *ring.Lifecycler
+	ring        *ring.Ring
+	subservices *services.Manager
 
 	store          rules.RuleStore
 	mapper         *mapper
@@ -122,9 +126,6 @@ type Ruler struct {
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
-
-	done       chan struct{}
-	terminated chan struct{}
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -153,52 +154,53 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		pusher:       pusher,
 		mapper:       newMapper(cfg.RulePath, logger),
 		userManagers: map[string]*promRules.Manager{},
-		done:         make(chan struct{}),
-		terminated:   make(chan struct{}),
 		registry:     reg,
 		logger:       logger,
 	}
 
+	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
+	return ruler, nil
+}
+
+func (r *Ruler) starting(ctx context.Context) error {
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
-	if cfg.EnableSharding {
-		lifecyclerCfg := cfg.Ring.ToLifecyclerConfig()
-		ruler.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, ruler, "ruler", ring.RulerRingKey, true)
+	if r.cfg.EnableSharding {
+		lifecyclerCfg := r.cfg.Ring.ToLifecyclerConfig()
+		var err error
+		r.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, r, "ruler", ring.RulerRingKey, true)
 		if err != nil {
-			return nil, err
+			return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 		}
 
-		ruler.lifecycler.Start()
-
-		ruler.ring, err = ring.New(lifecyclerCfg.RingConfig, "ruler", ring.RulerRingKey)
+		r.ring, err = ring.New(lifecyclerCfg.RingConfig, "ruler", ring.RulerRingKey)
 		if err != nil {
-			return nil, err
+			return errors.Wrap(err, "failed to initialize ruler's ring")
 		}
+
+		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
+		if err == nil {
+			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
+		}
+		return errors.Wrap(err, "failed to start ruler's services")
 	}
 
-	go ruler.run()
-	level.Info(logger).Log("msg", "ruler up and running")
-
-	return ruler, nil
+	// TODO: ideally, ruler would wait until its queryable is finished starting.
+	return nil
 }
 
 // Stop stops the Ruler.
 // Each function of the ruler is terminated before leaving the ring
-func (r *Ruler) Stop() {
-	close(r.done)
-	<-r.terminated
-
+func (r *Ruler) stopping() error {
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
 		n.stop()
 	}
 	r.notifiersMtx.Unlock()
 
-	if r.cfg.EnableSharding {
-		level.Info(r.logger).Log("msg", "attempting shutdown lifecycle")
-		r.lifecycler.Shutdown()
-		level.Info(r.logger).Log("msg", "shutting down the ring")
-		r.ring.Stop()
+	if r.subservices != nil {
+		// subservices manages ring and lifecycler, if sharding was enabled.
+		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
 
 	level.Info(r.logger).Log("msg", "stopping user managers")
@@ -216,6 +218,7 @@ func (r *Ruler) Stop() {
 	wg.Wait()
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
+	return nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -327,19 +330,19 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Ruler) run() {
-	defer close(r.terminated)
+func (r *Ruler) run(ctx context.Context) error {
+	level.Info(r.logger).Log("msg", "ruler up and running")
 
 	tick := time.NewTicker(r.cfg.PollInterval)
 	defer tick.Stop()
 
-	r.loadRules(context.Background())
+	r.loadRules(ctx)
 	for {
 		select {
-		case <-r.done:
-			return
+		case <-ctx.Done():
+			return nil
 		case <-tick.C:
-			r.loadRules(context.Background())
+			r.loadRules(ctx)
 		}
 	}
 }

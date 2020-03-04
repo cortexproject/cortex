@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "rule_format_version": "2",
+  "rules_files": {
+    "rule1.yml": "groups:\n- name: container_spec_memory_limit_bytes:container\n  rules:\n  - record: container_spec_memory_limit_bytes:container\n    expr: max by (namespace,container)(container_spec_memory_limit_bytes{container!=\"POD\",container!=\"\"})\n"
+  },
+  "template_files": {
+    "myorg.tmpl": "{{ define \"slack.myorg.text\" }}https://internal.myorg.net/wiki/alerts/{{ .GroupLabels.app }}/{{ .GroupLabels.alertname }}{{ end}}\n"
+  },
+  "alertmanager_config": "route:\n  receiver: noop\nreceivers:\n  - name: noop\n"
+}

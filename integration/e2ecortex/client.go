@@ -128,7 +128,7 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	_, body, _, err := c.alertmanagerClient.Do(ctx, req) // Ignoring warnings.
+	_, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return nil, err
 	}

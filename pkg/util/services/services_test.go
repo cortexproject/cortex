@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -10,6 +11,8 @@ import (
 )
 
 func TestIdleService(t *testing.T) {
+	t.Parallel()
+
 	started := false
 	stopped := false
 
@@ -36,6 +39,8 @@ func TestIdleService(t *testing.T) {
 }
 
 func TestTimerService(t *testing.T) {
+	t.Parallel()
+
 	iterations := int64(0)
 
 	s := NewTimerService(100*time.Millisecond, nil, func(ctx context.Context) error {
@@ -58,4 +63,68 @@ func TestTimerService(t *testing.T) {
 	s.StopAsync()
 	require.NoError(t, s.AwaitTerminated(context.Background()))
 	require.Equal(t, Terminated, s.State())
+}
+
+func TestHelperFunctionsNoError(t *testing.T) {
+	t.Parallel()
+
+	s := NewIdleService(nil, nil)
+	require.NoError(t, StartAndAwaitRunning(context.Background(), s))
+	require.NoError(t, StopAndAwaitTerminated(context.Background(), s))
+}
+
+func TestHelperFunctionsStartError(t *testing.T) {
+	t.Parallel()
+
+	e := errors.New("some error")
+	s := NewIdleService(func(serviceContext context.Context) error { return e }, nil)
+
+	require.Equal(t, e, StartAndAwaitRunning(context.Background(), s))
+	require.Equal(t, e, StopAndAwaitTerminated(context.Background(), s))
+}
+
+func TestHelperFunctionsStartTooSlow(t *testing.T) {
+	t.Parallel()
+
+	s := NewIdleService(func(serviceContext context.Context) error {
+		// ignores context
+		time.Sleep(1 * time.Second)
+		return nil
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		// cancel context early
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	require.Equal(t, context.Canceled, StartAndAwaitRunning(ctx, s))
+	require.NoError(t, StopAndAwaitTerminated(context.Background(), s))
+}
+
+func TestHelperFunctionsStopError(t *testing.T) {
+	t.Parallel()
+
+	e := errors.New("some error")
+	s := NewIdleService(nil, func() error { return e })
+
+	require.NoError(t, StartAndAwaitRunning(context.Background(), s))
+	require.Equal(t, e, StopAndAwaitTerminated(context.Background(), s))
+}
+
+func TestHelperFunctionsStopTooSlow(t *testing.T) {
+	t.Parallel()
+
+	s := NewIdleService(nil, func() error { time.Sleep(1 * time.Second); return nil })
+
+	require.NoError(t, StartAndAwaitRunning(context.Background(), s))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	require.Equal(t, context.DeadlineExceeded, StopAndAwaitTerminated(ctx, s))
+	require.NoError(t, StopAndAwaitTerminated(context.Background(), s))
 }

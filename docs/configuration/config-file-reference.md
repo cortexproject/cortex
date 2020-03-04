@@ -112,6 +112,9 @@ Where default_value is the value to use if the environment variable is undefined
 # storage.
 [compactor: <compactor_config>]
 
+# The purger_config configures the purger which takes care of delete requests
+[purger: <purger_config>]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
@@ -558,6 +561,10 @@ The `querier_config` configures the Cortex querier.
 # ingesters. 0 means all queries are sent to store.
 # CLI flag: -querier.query-store-after
 [query_store_after: <duration> | default = 0s]
+
+# Maximum duration into the future you can query. 0 to disable.
+# CLI flag: -querier.max-query-into-future
+[max_query_into_future: <duration> | default = 10m0s]
 
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
@@ -1523,6 +1530,15 @@ index_queries_cache_config:
   # The fifo_cache_config configures the local in-memory cache.
   # The CLI flags prefix for this block config is: store.index-cache-read
   [fifocache: <fifo_cache_config>]
+
+delete_store:
+  # Store for keeping delete request
+  # CLI flag: -deletes.store
+  [store: <string> | default = ""]
+
+  # Name of the table which stores delete requests
+  # CLI flag: -deletes.requests-table-name
+  [requests_table_name: <string> | default = "delete_requests"]
 ```
 
 ### `chunk_store_config`
@@ -2181,6 +2197,11 @@ bucket_store:
 # CLI flag: -experimental.tsdb.head-compaction-concurrency
 [head_compaction_concurrency: <int> | default = 5]
 
+# The number of shards of series to use in TSDB (must be a power of 2). Reducing
+# this will decrease memory footprint, but can negatively impact performance.
+# CLI flag: -experimental.tsdb.stripe-size
+[stripe_size: <int> | default = 16384]
+
 # limit the number of concurrently opening TSDB's on startup
 # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
 [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
@@ -2331,4 +2352,23 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m0s]
+```
+
+### `purger_config`
+
+The `purger_config` configures the purger which takes care of delete requests
+
+```yaml
+# Enable purger to allow deletion of series. Be aware that Delete series feature
+# is still experimental
+# CLI flag: -purger.enable
+[enable: <boolean> | default = false]
+
+# Number of workers executing delete plans in parallel
+# CLI flag: -purger.num-workers
+[num_workers: <int> | default = 2]
+
+# Name of the object store to use for storing delete plans
+# CLI flag: -purger.object-store-type
+[object_store_type: <string> | default = ""]
 ```

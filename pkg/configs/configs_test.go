@@ -3,8 +3,11 @@ package configs
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
@@ -37,10 +40,31 @@ var ruleFile = `groups:
     annotations:
       message: I am a message`
 
-func TestUnmarshalLegacyConfigWithMissingRuleFormatVersionSucceeds(t *testing.T) {
+func TestUnmarshalJSONLegacyConfigWithMissingRuleFormatVersionSucceeds(t *testing.T) {
 	actual := Config{}
 	buf := []byte(`{"rules_files": {"a": "b"}}`)
 	assert.Nil(t, json.Unmarshal(buf, &actual))
+
+	expected := Config{
+		RulesConfig: RulesConfig{
+			Files: map[string]string{
+				"a": "b",
+			},
+			FormatVersion: RuleFormatV1,
+		},
+	}
+
+	assert.Equal(t, expected, actual)
+}
+
+func TestUnmarshalYAMLLegacyConfigWithMissingRuleFormatVersionSucceeds(t *testing.T) {
+	actual := Config{}
+	buf := []byte(strings.TrimSpace(`
+rule_format_version: '1'
+rules_files:
+  a: b
+`))
+	assert.Nil(t, yaml.Unmarshal(buf, &actual))
 
 	expected := Config{
 		RulesConfig: RulesConfig{

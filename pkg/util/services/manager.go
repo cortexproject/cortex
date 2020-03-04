@@ -306,3 +306,24 @@ func (f funcBasedManagerListener) Failure(service Service) {
 		f.failure(service)
 	}
 }
+
+// StartManagerAndAwaitHealthy starts the manager (which in turns starts all services managed by it), and then waits
+// until it reaches Running state. All services that this manager manages must be in New state, otherwise starting
+// will fail.
+//
+// Notice that context passed to the manager for starting its services is the same as context used for waiting!
+func StartManagerAndAwaitHealthy(ctx context.Context, manager *Manager) error {
+	err := manager.StartAsync(ctx)
+	if err != nil {
+		return err
+	}
+
+	return manager.AwaitHealthy(ctx)
+}
+
+// StopManagerAndAwaitStopped asks manager to stop its services, and then waits
+// until manager reaches the stopped state or context is stopped.
+func StopManagerAndAwaitStopped(ctx context.Context, manager *Manager) error {
+	manager.StopAsync()
+	return manager.AwaitStopped(ctx)
+}

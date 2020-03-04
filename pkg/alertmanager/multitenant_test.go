@@ -6,7 +6,6 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -65,19 +64,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	am := &MultitenantAlertmanager{
-		cfg: &MultitenantAlertmanagerConfig{
-			ExternalURL: externalURL,
-			DataDir:     tempDir,
-		},
-		store:            mockStore,
-		cfgs:             map[string]alerts.AlertConfigDesc{},
-		alertmanagersMtx: sync.Mutex{},
-		alertmanagers:    map[string]*Alertmanager{},
-		logger:           log.NewNopLogger(),
-		stop:             make(chan struct{}),
-		done:             make(chan struct{}),
-	}
+	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		ExternalURL: externalURL,
+		DataDir:     tempDir,
+	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 
 	// Ensure the configs are synced correctly
 	require.NoError(t, am.updateConfigs())
@@ -112,10 +102,32 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
-	// Test Delete User
+	// Test Delete User, ensure config is remove but alertmananger
+	// exists and is set to inactive
 	delete(mockStore.configs, "user3")
 	require.NoError(t, am.updateConfigs())
 	currentConfig, exists = am.cfgs["user3"]
 	require.False(t, exists)
-	require.Equal(t, alerts.AlertConfigDesc{}, currentConfig)
+	require.Equal(t, "", currentConfig.RawConfig)
+
+	userAM, exists := am.alertmanagers["user3"]
+	require.True(t, exists)
+	require.False(t, userAM.IsActive())
+
+	// Ensure when a 3rd config is re-added, it is synced correctly
+	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+		User:      "user3",
+		RawConfig: simpleConfigOne,
+		Templates: []*alerts.TemplateDesc{},
+	}
+
+	require.NoError(t, am.updateConfigs())
+
+	currentConfig, exists = am.cfgs["user3"]
+	require.True(t, exists)
+	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
+
+	userAM, exists = am.alertmanagers["user3"]
+	require.True(t, exists)
+	require.True(t, userAM.IsActive())
 }

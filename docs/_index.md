@@ -36,7 +36,7 @@ should read:
 1. [A general guide to running Cortex](running.md)
 1. [Information regarding configuring Cortex](arguments.md)
 
-For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
+For a guide to contributing to Cortex, see the [contributor guidelines](contributing/).
 
 ## Further reading
 

@@ -21,11 +21,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // BlockQueryable is a storage.Queryable implementation for blocks storage
 type BlockQueryable struct {
+	services.Service
+
 	us *UserStore
 }
 
@@ -46,12 +49,25 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 	}
 
 	b := &BlockQueryable{us: us}
+	b.Service = services.NewIdleService(b.starting, b.stopping)
 
 	return b, nil
 }
 
+func (b *BlockQueryable) starting(ctx context.Context) error {
+	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start UserStore")
+}
+
+func (b *BlockQueryable) stopping() error {
+	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping UserStore")
+}
+
 // Querier returns a new Querier on the storage.
 func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	if s := b.State(); s != services.Running {
+		return nil, promql.ErrStorage{Err: errors.Errorf("BlockQueryable is not running: %v", s)}
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, promql.ErrStorage{Err: err}

@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -128,6 +129,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
 // organizations.
 type MultitenantAlertmanager struct {
+	services.Service
+
 	cfg *MultitenantAlertmanagerConfig
 
 	store AlertStore
@@ -143,16 +146,14 @@ type MultitenantAlertmanager struct {
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
-	logger log.Logger
+	logger  log.Logger
+	metrics *alertmanagerMetrics
 
 	peer *cluster.Peer
-
-	stop chan struct{}
-	done chan struct{}
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -174,7 +175,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	if cfg.ClusterBindAddr != "" {
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
-			prometheus.DefaultRegisterer,
+			registerer,
 			cfg.ClusterBindAddr,
 			cfg.ClusterAdvertiseAddr,
 			cfg.Peers,
@@ -200,45 +201,47 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		return nil, err
 	}
 
+	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, logger, registerer), nil
+}
+
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, logger log.Logger, registerer prometheus.Registerer) *MultitenantAlertmanager {
 	am := &MultitenantAlertmanager{
 		cfg:            cfg,
 		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]alerts.AlertConfigDesc{},
 		alertmanagers:  map[string]*Alertmanager{},
+		metrics:        newAlertmanagerMetrics(),
 		peer:           peer,
 		store:          store,
 		logger:         log.With(logger, "component", "MultiTenantAlertmanager"),
-		stop:           make(chan struct{}),
-		done:           make(chan struct{}),
 	}
-	return am, nil
+
+	if registerer != nil {
+		registerer.MustRegister(am.metrics)
+	}
+
+	am.Service = services.NewTimerService(am.cfg.PollInterval, am.starting, am.iteration, am.stopping)
+	return am
 }
 
-// Run the MultitenantAlertmanager.
-func (am *MultitenantAlertmanager) Run() {
-	defer close(am.done)
-
+func (am *MultitenantAlertmanager) starting(ctx context.Context) error {
 	// Load initial set of all configurations before polling for new ones.
 	am.syncConfigs(am.loadAllConfigs())
-	ticker := time.NewTicker(am.cfg.PollInterval)
-	for {
-		select {
-		case <-ticker.C:
-			err := am.updateConfigs()
-			if err != nil {
-				level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
-			}
-		case <-am.stop:
-			ticker.Stop()
-			return
-		}
-	}
+	return nil
 }
 
-// Stop stops the MultitenantAlertmanager.
-func (am *MultitenantAlertmanager) Stop() {
-	close(am.stop)
-	<-am.done
+func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
+	err := am.updateConfigs()
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
+	}
+	// Returning error here would stop "MultitenantAlertmanager" service completely,
+	// so we return nil to keep service running.
+	return nil
+}
+
+// stopping runs when MultitenantAlertmanager transitions to Stopping state.
+func (am *MultitenantAlertmanager) stopping() error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
 		am.Stop()
@@ -249,6 +252,7 @@ func (am *MultitenantAlertmanager) Stop() {
 		level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
 	}
 	level.Debug(am.logger).Log("msg", "stopping")
+	return nil
 }
 
 // Load the full set of configurations from the alert store, retrying with backoff
@@ -300,15 +304,17 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	defer am.alertmanagersMtx.Unlock()
 	for user, userAM := range am.alertmanagers {
 		if _, exists := cfgs[user]; !exists {
-			level.Info(am.logger).Log("msg", "deleting per-tenant alertmanager", "user", user)
-			userAM.Stop()
-			delete(am.alertmanagers, user)
+			// The user alertmanager is only paused in order to retain the prometheus metrics
+			// it has reported to its registry. If a new config for this user appears, this structure
+			// will be reused.
+			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
+			userAM.Pause()
 			delete(am.cfgs, user)
-			level.Info(am.logger).Log("msg", "deleted per-tenant alertmanager", "user", user)
+			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
 	totalConfigs.WithLabelValues("invalid").Set(float64(invalid))
-	totalConfigs.WithLabelValues("valid").Set(float64(len(am.alertmanagers) - invalid))
+	totalConfigs.WithLabelValues("valid").Set(float64(len(am.cfgs) - invalid))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
@@ -423,6 +429,8 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	reg := prometheus.NewRegistry()
+	am.metrics.addUserRegistry(userID, reg)
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
@@ -431,7 +439,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		PeerTimeout: am.cfg.PeerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
-	})
+	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
 	}
@@ -439,6 +447,8 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	if err := newAM.ApplyConfig(userID, amConfig); err != nil {
 		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
 	}
+
+	am.metrics.addUserRegistry(userID, reg)
 	return newAM, nil
 }
 
@@ -452,7 +462,8 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Lock()
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
-	if !ok {
+
+	if !ok || !userAM.IsActive() {
 		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
 		return
 	}

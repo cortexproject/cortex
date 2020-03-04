@@ -494,10 +494,12 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	for _, group := range groups {
 		interval := group.Interval()
 		groupDesc := &rules.RuleGroupDesc{
-			Name:      group.Name(),
-			Namespace: strings.TrimPrefix(group.File(), prefix),
-			Interval:  interval,
-			User:      userID,
+			Name:                group.Name(),
+			Namespace:           strings.TrimPrefix(group.File(), prefix),
+			Interval:            interval,
+			User:                userID,
+			EvaluationTimestamp: group.GetEvaluationTimestamp(),
+			EvaluationDuration:  group.GetEvaluationDuration(),
 		}
 		for _, r := range group.Rules() {
 			lastError := ""
@@ -524,23 +526,27 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 					})
 				}
 				ruleDesc = &rules.RuleDesc{
-					State:       rule.State().String(),
-					Alert:       rule.Name(),
-					Alerts:      alerts,
-					Expr:        rule.Query().String(),
-					For:         rule.Duration(),
-					Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
-					Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
-					Health:      string(rule.Health()),
-					LastError:   lastError,
+					Expr:                rule.Query().String(),
+					Alert:               rule.Name(),
+					For:                 rule.Duration(),
+					Labels:              client.FromLabelsToLabelAdapters(rule.Labels()),
+					Annotations:         client.FromLabelsToLabelAdapters(rule.Annotations()),
+					State:               rule.State().String(),
+					Health:              string(rule.Health()),
+					LastError:           lastError,
+					Alerts:              alerts,
+					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
+					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			case *promRules.RecordingRule:
 				ruleDesc = &rules.RuleDesc{
-					Record:    rule.Name(),
-					Expr:      rule.Query().String(),
-					Labels:    client.FromLabelsToLabelAdapters(rule.Labels()),
-					Health:    string(rule.Health()),
-					LastError: lastError,
+					Record:              rule.Name(),
+					Expr:                rule.Query().String(),
+					Labels:              client.FromLabelsToLabelAdapters(rule.Labels()),
+					Health:              string(rule.Health()),
+					LastError:           lastError,
+					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
+					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			default:
 				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
@@ -563,7 +569,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*rules.Ru
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	rgs := []*rules.RuleGroupDesc{}
+	// len(rgs) can't be larger than len(rulers.Ingesters)
+	// alloc it in advance to avoid realloc
+	rgs := make([]*rules.RuleGroupDesc, 0, len(rulers.Ingesters))
 
 	for _, rlr := range rulers.Ingesters {
 		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())

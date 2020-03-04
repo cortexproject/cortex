@@ -33,6 +33,7 @@
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
+  * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
 * [FEATURE] Add ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`

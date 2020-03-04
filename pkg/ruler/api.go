@@ -3,6 +3,7 @@ package ruler
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -70,33 +71,39 @@ type RuleGroup struct {
 	// In order to preserve rule ordering, while exposing type (alerting or recording)
 	// specific properties, both alerting and recording rules are exposed in the
 	// same array.
-	Rules    []rule  `json:"rules"`
-	Interval float64 `json:"interval"`
+	Rules          []rule    `json:"rules"`
+	Interval       float64   `json:"interval"`
+	LastEvaluation time.Time `json:"lastEvaluation"`
+	EvaluationTime float64   `json:"evaluationTime"`
 }
 
 type rule interface{}
 
 type alertingRule struct {
 	// State can be "pending", "firing", "inactive".
-	State       string        `json:"state"`
-	Name        string        `json:"name"`
-	Query       string        `json:"query"`
-	Duration    float64       `json:"duration"`
-	Labels      labels.Labels `json:"labels"`
-	Annotations labels.Labels `json:"annotations"`
-	Alerts      []*Alert      `json:"alerts"`
-	Health      string        `json:"health"`
-	LastError   string        `json:"lastError,omitempty"`
-	Type        v1.RuleType   `json:"type"`
+	State          string        `json:"state"`
+	Name           string        `json:"name"`
+	Query          string        `json:"query"`
+	Duration       float64       `json:"duration"`
+	Labels         labels.Labels `json:"labels"`
+	Annotations    labels.Labels `json:"annotations"`
+	Alerts         []*Alert      `json:"alerts"`
+	Health         string        `json:"health"`
+	LastError      string        `json:"lastError,omitempty"`
+	Type           v1.RuleType   `json:"type"`
+	LastEvaluation time.Time     `json:"lastEvaluation"`
+	EvaluationTime float64       `json:"evaluationTime"`
 }
 
 type recordingRule struct {
-	Name      string        `json:"name"`
-	Query     string        `json:"query"`
-	Labels    labels.Labels `json:"labels,omitempty"`
-	Health    string        `json:"health"`
-	LastError string        `json:"lastError,omitempty"`
-	Type      v1.RuleType   `json:"type"`
+	Name           string        `json:"name"`
+	Query          string        `json:"query"`
+	Labels         labels.Labels `json:"labels,omitempty"`
+	Health         string        `json:"health"`
+	LastError      string        `json:"lastError,omitempty"`
+	Type           v1.RuleType   `json:"type"`
+	LastEvaluation time.Time     `json:"lastEvaluation"`
+	EvaluationTime float64       `json:"evaluationTime"`
 }
 
 func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
@@ -140,10 +147,12 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 
 	for _, g := range rgs {
 		grp := RuleGroup{
-			Name:     g.Name,
-			File:     g.Namespace,
-			Interval: g.Interval.Seconds(),
-			Rules:    make([]rule, len(g.Rules)),
+			Name:           g.Name,
+			File:           g.Namespace,
+			Rules:          make([]rule, len(g.Rules)),
+			Interval:       g.Interval.Seconds(),
+			LastEvaluation: g.GetEvaluationTimestamp(),
+			EvaluationTime: g.GetEvaluationDuration().Seconds(),
 		}
 
 		for i, rl := range g.Rules {
@@ -159,30 +168,39 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 					})
 				}
 				grp.Rules[i] = alertingRule{
-					State:       rl.GetState(),
-					Name:        rl.GetAlert(),
-					Query:       rl.GetExpr(),
-					Duration:    rl.For.Seconds(),
-					Labels:      client.FromLabelAdaptersToLabels(rl.Labels),
-					Annotations: client.FromLabelAdaptersToLabels(rl.Annotations),
-					Alerts:      alerts,
-					Health:      rl.GetHealth(),
-					LastError:   rl.GetLastError(),
-					Type:        v1.RuleTypeAlerting,
+					State:          rl.GetState(),
+					Name:           rl.GetAlert(),
+					Query:          rl.GetExpr(),
+					Duration:       rl.For.Seconds(),
+					Labels:         client.FromLabelAdaptersToLabels(rl.Labels),
+					Annotations:    client.FromLabelAdaptersToLabels(rl.Annotations),
+					Alerts:         alerts,
+					Health:         rl.GetHealth(),
+					LastError:      rl.GetLastError(),
+					LastEvaluation: rl.GetEvaluationTimestamp(),
+					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
+					Type:           v1.RuleTypeAlerting,
 				}
 			} else {
 				grp.Rules[i] = recordingRule{
-					Name:      rl.GetRecord(),
-					Query:     rl.GetExpr(),
-					Labels:    client.FromLabelAdaptersToLabels(rl.Labels),
-					Health:    rl.GetHealth(),
-					LastError: rl.GetLastError(),
-					Type:      v1.RuleTypeRecording,
+					Name:           rl.GetRecord(),
+					Query:          rl.GetExpr(),
+					Labels:         client.FromLabelAdaptersToLabels(rl.Labels),
+					Health:         rl.GetHealth(),
+					LastError:      rl.GetLastError(),
+					LastEvaluation: rl.GetEvaluationTimestamp(),
+					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
+					Type:           v1.RuleTypeRecording,
 				}
 			}
 		}
 		groups = append(groups, &grp)
 	}
+
+	// keep data.groups are in order
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].File < groups[j].File
+	})
 
 	b, err := json.Marshal(&response{
 		Status: "success",

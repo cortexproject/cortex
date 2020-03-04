@@ -71,6 +71,9 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	req.URL.Scheme = b.endpoint.Scheme
 	req.URL.Host = b.endpoint.Host
 
+	// Prepend the endpoint path to the request path.
+	req.URL.Path = b.endpoint.Path + req.URL.Path
+
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.
 	// - If the endpoint has user only, keep it and use the request password (if any).

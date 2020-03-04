@@ -201,7 +201,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
-	err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
+	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
 
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)

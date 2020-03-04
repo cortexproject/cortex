@@ -4213,7 +4213,10 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;--experimental.distributor.user-subring-size&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;[FEATURE] Added flag &lt;code&gt;-experimental.ruler.enable-api&lt;/code&gt; to enable the ruler api which implements the Prometheus API &lt;code&gt;/api/v1/rules&lt;/code&gt; and &lt;code&gt;/api/v1/alerts&lt;/code&gt; endpoints under the configured &lt;code&gt;-http.prefix&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1999&#34;&gt;#1999&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Added flag &lt;code&gt;-experimental.ruler.enable-api&lt;/code&gt; to enable the ruler api which implements the Prometheus API &lt;code&gt;/api/v1/rules&lt;/code&gt; and &lt;code&gt;/api/v1/alerts&lt;/code&gt; endpoints under the configured &lt;code&gt;-http.prefix&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1999&#34;&gt;#1999&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;[ENHANCEMENT] Support &lt;code&gt;lastEvaluation&lt;/code&gt; and &lt;code&gt;evaluationTime&lt;/code&gt; in &lt;code&gt;/api/v1/rules&lt;/code&gt; endpoints and make order of groups stable. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2196&#34;&gt;#2196&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2113&#34;&gt;#2113&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Add ability to override YAML config file settings using environment variables. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2147&#34;&gt;#2147&lt;/a&gt;
 &lt;ul&gt;

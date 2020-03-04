@@ -44,7 +44,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			start := time.Now()
 			status, body, err := b.ForwardRequest(r)
-			elapsed := time.Now().Sub(start)
+			elapsed := time.Since(start)
 
 			res := &backendResponse{
 				backend: b,
@@ -90,7 +90,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *ProxyEndpoint) pickResponseForDownstream(responses []*backendResponse) *backendResponse {
-	// Look for a successfull response from the preferred backend.
+	// Look for a successful response from the preferred backend.
 	for _, res := range responses {
 		if res.backend.preferred && res.succeeded() {
 			return res

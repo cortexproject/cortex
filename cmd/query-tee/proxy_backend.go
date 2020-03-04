@@ -33,7 +33,7 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 		preferred: preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return errors.New("The query-tee proxy does not follow redirects.")
+				return errors.New("the query-tee proxy does not follow redirects.")
 			},
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,

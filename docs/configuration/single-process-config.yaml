@@ -28,7 +28,10 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
-  #chunk_idle_period: 15m
+  # We want our ingesters to flush chunks at the same time to optimise
+  # deduplication opportunities.
+  spreadflushes: true
+  chunkagejitter: 0
 
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by

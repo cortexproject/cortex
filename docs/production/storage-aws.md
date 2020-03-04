@@ -1,7 +1,7 @@
 ---
-title: "Running Cortex at AWS"
-linkTitle: "Running Cortex at AWS"
-weight: 3
+title: "Running Cortex with AWS Services"
+linkTitle: "Running Cortex with AWS Services"
+weight: 2
 slug: aws
 ---
 

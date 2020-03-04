@@ -33,8 +33,8 @@ project. Before deploying Cortex with a permanent storage backend you
 should read:
 
 1. [An overview of Cortex's architecture](architecture.md)
-1. [A general guide to running Cortex](running.md)
-1. [Information regarding configuring Cortex](arguments.md)
+1. [A guide to running Cortex](production/running.md)
+1. [Information regarding configuring Cortex](configuration/arguments.md)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](contributing/).
 

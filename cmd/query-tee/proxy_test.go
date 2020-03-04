@@ -132,7 +132,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			p, err := NewProxy(cfg, log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			require.NotNil(t, p)
-			defer p.Stop()
+			defer p.Stop() //nolint:errcheck
 
 			require.NoError(t, p.Start())
 
@@ -146,8 +146,6 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
 			assert.Equal(t, testData.expectedRes, string(body))
-
-			// TODO: check metrics?
 		})
 	}
 }
@@ -163,7 +161,7 @@ func mockQueryResponse(path string, status int, res string) http.HandlerFunc {
 		// Send back the mocked response.
 		w.WriteHeader(status)
 		if status == http.StatusOK {
-			w.Write([]byte(res))
+			_, _ = w.Write([]byte(res))
 		}
 	}
 }

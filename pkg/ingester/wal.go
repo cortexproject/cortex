@@ -209,10 +209,27 @@ func (w *walWrapper) performCheckpoint() (err error) {
 	if err != nil {
 		return err
 	}
+	if lastSegment < 0 {
+		// There are no WAL segments. No need of checkpoint yet.
+		return nil
+	}
 
 	_, lastCh, err := lastCheckpoint(w.wal.Dir())
 	if err != nil {
 		return err
+	}
+
+	if lastCh == lastSegment {
+		// As the checkpoint name is taken from last WAL segment, we need to ensure
+		// a new segment for every checkpoint so that the old checkpoint is not overwritten.
+		if err := w.wal.NextSegment(); err != nil {
+			return err
+		}
+
+		_, lastSegment, err = w.wal.Segments()
+		if err != nil {
+			return err
+		}
 	}
 
 	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
@@ -252,9 +269,10 @@ func (w *walWrapper) performCheckpoint() (err error) {
 		return errors.Wrap(err, "rename checkpoint directory")
 	}
 
-	// The last segment might still have been active during the checkpointing,
-	// hence delete only the segments before that.
-	if err := w.wal.Truncate(lastSegment - 1); err != nil {
+	// We delete the WAL segments which are before the previous checkpoint and not before the
+	// current checkpoint created. This is because if the latest checkpoint is corrupted for any reason, we
+	// should be able to recover from the older checkpoint which would need the older WAL segments.
+	if err := w.wal.Truncate(lastCh); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
 		// We can try again next time.
 		level.Error(util.Logger).Log("msg", "error deleting old WAL segments", "err", err)
@@ -307,7 +325,7 @@ func lastCheckpoint(dir string) (string, int, error) {
 	return "", -1, nil
 }
 
-// deleteCheckpoints deletes all checkpoints in a directory which is <= maxIndex.
+// deleteCheckpoints deletes all checkpoints in a directory which is < maxIndex.
 func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 	w.checkpointDeleteTotal.Inc()
 	defer func() {
@@ -358,59 +376,115 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 	return wireChunks, cp.Log(buf)
 }
 
-func recoverFromWAL(ingester *Ingester) (err error) {
-	walDir := ingester.cfg.WALConfig.Dir
-	// Use a local userStates, so we don't need to worry about locking.
-	userStates := newUserStates(ingester.limiter, ingester.cfg, ingester.metrics)
+type walRecoveryParameters struct {
+	walDir      string
+	ingester    *Ingester
+	numWorkers  int
+	stateCache  []map[string]*userState
+	seriesCache []map[string]map[uint64]*memorySeries
+}
 
-	defer func() {
-		if err == nil {
-			ingester.userStatesMtx.Lock()
-			ingester.userStates = userStates
-			ingester.userStatesMtx.Unlock()
-		}
-	}()
+func recoverFromWAL(ingester *Ingester) error {
+	params := walRecoveryParameters{
+		walDir:     ingester.cfg.WALConfig.Dir,
+		numWorkers: runtime.GOMAXPROCS(0),
+		ingester:   ingester,
+	}
 
-	lastCheckpointDir, idx, err := lastCheckpoint(walDir)
+	params.stateCache = make([]map[string]*userState, params.numWorkers)
+	params.seriesCache = make([]map[string]map[uint64]*memorySeries, params.numWorkers)
+	for i := 0; i < params.numWorkers; i++ {
+		params.stateCache[i] = make(map[string]*userState)
+		params.seriesCache[i] = make(map[string]map[uint64]*memorySeries)
+	}
+
+	level.Info(util.Logger).Log("msg", "recovering from checkpoint")
+	start := time.Now()
+	userStates, idx, err := processCheckpointWithRepair(params)
 	if err != nil {
 		return err
 	}
+	elapsed := time.Since(start)
+	level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
 
-	nWorkers := runtime.GOMAXPROCS(0)
-	stateCache := make([]map[string]*userState, nWorkers)
-	seriesCache := make([]map[string]map[uint64]*memorySeries, nWorkers)
-	for i := 0; i < nWorkers; i++ {
-		stateCache[i] = make(map[string]*userState)
-		seriesCache[i] = make(map[string]map[uint64]*memorySeries)
-	}
-
-	if idx >= 0 {
-		// Checkpoint exists.
-		level.Info(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
-		start := time.Now()
-		if err := processCheckpoint(lastCheckpointDir, userStates, nWorkers, stateCache, seriesCache); err != nil {
-			return err
-		}
-		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
-	} else {
-		level.Info(util.Logger).Log("msg", "no checkpoint found")
-	}
-
-	if segExists, err := segmentsExist(walDir); err == nil && !segExists {
+	if segExists, err := segmentsExist(params.walDir); err == nil && !segExists {
 		level.Info(util.Logger).Log("msg", "no segments found, skipping recover from segments")
+		ingester.userStatesMtx.Lock()
+		ingester.userStates = userStates
+		ingester.userStatesMtx.Unlock()
 		return nil
-	}
-
-	level.Info(util.Logger).Log("msg", "recovering from WAL", "dir", walDir, "start_segment", idx)
-	start := time.Now()
-	if err := processWAL(walDir, idx, userStates, nWorkers, stateCache, seriesCache); err != nil {
+	} else if err != nil {
 		return err
 	}
-	elapsed := time.Since(start)
+
+	level.Info(util.Logger).Log("msg", "recovering from WAL", "dir", params.walDir, "start_segment", idx)
+	start = time.Now()
+	if err := processWALWithRepair(idx, userStates, params); err != nil {
+		return err
+	}
+	elapsed = time.Since(start)
 	level.Info(util.Logger).Log("msg", "recovered from WAL", "time", elapsed.String())
 
+	ingester.userStatesMtx.Lock()
+	ingester.userStates = userStates
+	ingester.userStatesMtx.Unlock()
 	return nil
+}
+
+func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int, error) {
+
+	// Use a local userStates, so we don't need to worry about locking.
+	userStates := newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics)
+
+	lastCheckpointDir, idx, err := lastCheckpoint(params.walDir)
+	if err != nil {
+		return nil, -1, err
+	}
+	if idx < 0 {
+		level.Info(util.Logger).Log("msg", "no checkpoint found")
+		return userStates, -1, nil
+	}
+
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("recovering from %s", lastCheckpointDir))
+
+	err = processCheckpoint(lastCheckpointDir, userStates, params)
+	if err == nil {
+		return userStates, idx, nil
+	}
+
+	// We don't call repair on checkpoint as losing even a single record is like losing the entire data of a series.
+	// We try recovering from the older checkpoint instead.
+	params.ingester.metrics.walCorruptionsTotal.Inc()
+	level.Error(util.Logger).Log("msg", "checkpoint recovery failed, deleting this checkpoint and trying to recover from old checkpoint", "err", err)
+
+	// Deleting this checkpoint to try the previous checkpoint.
+	if err := os.RemoveAll(lastCheckpointDir); err != nil {
+		return nil, -1, errors.Wrapf(err, "unable to delete checkpoint directory %s", lastCheckpointDir)
+	}
+
+	// If we have reached this point, it means the last checkpoint was deleted.
+	// Now the last checkpoint will be the one before the deleted checkpoint.
+	lastCheckpointDir, idx, err = lastCheckpoint(params.walDir)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	// Creating new userStates to discard the old chunks.
+	userStates = newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics)
+	if idx < 0 {
+		// There was only 1 checkpoint. We don't error in this case
+		// as for the first checkpoint entire WAL will/should be present.
+		return userStates, -1, nil
+	}
+
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("attempting recovery from %s", lastCheckpointDir))
+	if err := processCheckpoint(lastCheckpointDir, userStates, params); err != nil {
+		// We won't attempt the repair again even if its the old checkpoint.
+		params.ingester.metrics.walCorruptionsTotal.Inc()
+		return nil, -1, err
+	}
+
+	return userStates, idx, nil
 }
 
 // segmentsExist is a stripped down version of
@@ -432,8 +506,7 @@ func segmentsExist(dir string) (bool, error) {
 }
 
 // processCheckpoint loads the chunks of the series present in the last checkpoint.
-func processCheckpoint(name string, userStates *userStates, nWorkers int,
-	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
+func processCheckpoint(name string, userStates *userStates, params walRecoveryParameters) error {
 
 	reader, closer, err := newWalReader(name, -1)
 	if err != nil {
@@ -442,10 +515,10 @@ func processCheckpoint(name string, userStates *userStates, nWorkers int,
 	defer closer.Close()
 
 	var (
-		inputs = make([]chan *Series, nWorkers)
+		inputs = make([]chan *Series, params.numWorkers)
 		// errChan is to capture the errors from goroutine.
 		// The channel size is nWorkers+1 to not block any worker if all of them error out.
-		errChan    = make(chan error, nWorkers)
+		errChan    = make(chan error, params.numWorkers)
 		wg         = sync.WaitGroup{}
 		seriesPool = &sync.Pool{
 			New: func() interface{} {
@@ -454,13 +527,13 @@ func processCheckpoint(name string, userStates *userStates, nWorkers int,
 		}
 	)
 
-	wg.Add(nWorkers)
-	for i := 0; i < nWorkers; i++ {
+	wg.Add(params.numWorkers)
+	for i := 0; i < params.numWorkers; i++ {
 		inputs[i] = make(chan *Series, 300)
 		go func(input <-chan *Series, stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries) {
 			processCheckpointRecord(userStates, seriesPool, stateCache, seriesCache, input, errChan)
 			wg.Done()
-		}(inputs[i], stateCache[i], seriesCache[i])
+		}(inputs[i], params.stateCache[i], params.seriesCache[i])
 	}
 
 	var capturedErr error
@@ -485,18 +558,18 @@ Loop:
 			// Only acts upon the first error received.
 			break Loop
 		default:
-			mod := s.Fingerprint % uint64(nWorkers)
+			mod := s.Fingerprint % uint64(params.numWorkers)
 			inputs[mod] <- s
 		}
 	}
 
-	for i := 0; i < nWorkers; i++ {
+	for i := 0; i < params.numWorkers; i++ {
 		close(inputs[i])
 	}
 	wg.Wait()
 	// If any worker errored out, some input channels might not be empty.
 	// Hence drain them.
-	for i := 0; i < nWorkers; i++ {
+	for i := 0; i < params.numWorkers; i++ {
 		for range inputs[i] {
 		}
 	}
@@ -569,11 +642,38 @@ type samplesWithUserID struct {
 	userID  string
 }
 
-// processWAL processes the records in the WAL concurrently.
-func processWAL(name string, startSegment int, userStates *userStates, nWorkers int,
-	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
+func processWALWithRepair(startSegment int, userStates *userStates, params walRecoveryParameters) error {
 
-	reader, closer, err := newWalReader(name, startSegment)
+	corruptErr := processWAL(startSegment, userStates, params)
+	if corruptErr == nil {
+		return nil
+	}
+
+	params.ingester.metrics.walCorruptionsTotal.Inc()
+	level.Error(util.Logger).Log("msg", "error in replaying from WAL", "err", corruptErr)
+
+	// Attempt repair.
+	level.Info(util.Logger).Log("msg", "attempting repair of the WAL")
+	w, err := wal.New(util.Logger, nil, params.walDir, true)
+	if err != nil {
+		return err
+	}
+
+	err = w.Repair(corruptErr)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error in repairing WAL", "err", err)
+	}
+	var multiErr tsdb_errors.MultiError
+	multiErr.Add(err)
+	multiErr.Add(w.Close())
+
+	return multiErr.Err()
+}
+
+// processWAL processes the records in the WAL concurrently.
+func processWAL(startSegment int, userStates *userStates, params walRecoveryParameters) error {
+
+	reader, closer, err := newWalReader(params.walDir, startSegment)
 	if err != nil {
 		return err
 	}
@@ -581,16 +681,16 @@ func processWAL(name string, startSegment int, userStates *userStates, nWorkers 
 
 	var (
 		wg      sync.WaitGroup
-		inputs  = make([]chan *samplesWithUserID, nWorkers)
-		outputs = make([]chan *samplesWithUserID, nWorkers)
+		inputs  = make([]chan *samplesWithUserID, params.numWorkers)
+		outputs = make([]chan *samplesWithUserID, params.numWorkers)
 		// errChan is to capture the errors from goroutine.
 		// The channel size is nWorkers to not block any worker if all of them error out.
-		errChan = make(chan error, nWorkers)
-		shards  = make([]*samplesWithUserID, nWorkers)
+		errChan = make(chan error, params.numWorkers)
+		shards  = make([]*samplesWithUserID, params.numWorkers)
 	)
 
-	wg.Add(nWorkers)
-	for i := 0; i < nWorkers; i++ {
+	wg.Add(params.numWorkers)
+	for i := 0; i < params.numWorkers; i++ {
 		outputs[i] = make(chan *samplesWithUserID, 300)
 		inputs[i] = make(chan *samplesWithUserID, 300)
 		shards[i] = &samplesWithUserID{}
@@ -599,7 +699,7 @@ func processWAL(name string, startSegment int, userStates *userStates, nWorkers 
 			stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries) {
 			processWALSamples(userStates, stateCache, seriesCache, input, output, errChan)
 			wg.Done()
-		}(inputs[i], outputs[i], stateCache[i], seriesCache[i])
+		}(inputs[i], outputs[i], params.stateCache[i], params.seriesCache[i])
 	}
 
 	var (
@@ -649,7 +749,7 @@ Loop:
 			if len(record.Samples) < m {
 				m = len(record.Samples)
 			}
-			for i := 0; i < nWorkers; i++ {
+			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) == 0 {
 					// It is possible that the previous iteration did not put
 					// anything in this shard. In that case no need to get a new buffer.
@@ -668,10 +768,10 @@ Loop:
 				}
 			}
 			for _, sam := range record.Samples[:m] {
-				mod := sam.Fingerprint % uint64(nWorkers)
+				mod := sam.Fingerprint % uint64(params.numWorkers)
 				shards[mod].samples = append(shards[mod].samples, sam)
 			}
-			for i := 0; i < nWorkers; i++ {
+			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) > 0 {
 					inputs[i] <- shards[i]
 				}
@@ -680,7 +780,7 @@ Loop:
 		}
 	}
 
-	for i := 0; i < nWorkers; i++ {
+	for i := 0; i < params.numWorkers; i++ {
 		close(inputs[i])
 		for range outputs[i] {
 		}
@@ -688,7 +788,7 @@ Loop:
 	wg.Wait()
 	// If any worker errored out, some input channels might not be empty.
 	// Hence drain them.
-	for i := 0; i < nWorkers; i++ {
+	for i := 0; i < params.numWorkers; i++ {
 		for range inputs[i] {
 		}
 	}

@@ -116,7 +116,7 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
 	series := []*storepb.Series(nil)
@@ -130,7 +130,7 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, promql.ErrStorage{Err: err}
 		}
 
 		// response may either contain series or warning. If it's warning, we get nil here.

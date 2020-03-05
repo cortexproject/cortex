@@ -53,12 +53,12 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_create_failures",
-		Help:      "Number of times table creation attempt failed",
+		Help:      "Number of table creation failures during the last table-manager reconciliation",
 	})
 	m.deleteFailures = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_delete_failures",
-		Help:      "Number of times table deletion attempt failed",
+		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
 	if r != nil {
@@ -387,20 +387,29 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 }
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	var firstErr error
+
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
-			m.metrics.createFailures.Add(1)
-			return err
+			numFailures += 1
+			level.Error(util.Logger).Log("msg", "error creating table", "table", desc.Name, "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 
-	m.metrics.createFailures.Set(0)
-	return nil
+	m.metrics.createFailures.Set(float64(numFailures))
+	return firstErr
 }
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	var firstErr error
+
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
 		if !m.cfg.RetentionDeletesEnabled {
@@ -410,13 +419,16 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
-			m.metrics.deleteFailures.Add(1)
-			return err
+			numFailures += 1
+			level.Error(util.Logger).Log("msg", "error deleting table", "table", desc.Name, "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 
-	m.metrics.deleteFailures.Set(0)
-	return nil
+	m.metrics.deleteFailures.Set(float64(numFailures))
+	return firstErr
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {

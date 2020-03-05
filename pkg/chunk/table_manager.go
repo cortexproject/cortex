@@ -393,7 +393,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
-			numFailures += 1
+			numFailures++
 			level.Error(util.Logger).Log("msg", "error creating table", "table", desc.Name, "err", err)
 			if firstErr == nil {
 				firstErr = err
@@ -418,7 +418,7 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
-			numFailures += 1
+			numFailures++
 			level.Error(util.Logger).Log("msg", "error deleting table", "table", desc.Name, "err", err)
 			if firstErr == nil {
 				firstErr = err

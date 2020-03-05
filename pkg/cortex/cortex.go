@@ -86,8 +86,8 @@ type Config struct {
 	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB             tsdb.Config              `yaml:"tsdb" doc:"hidden"`
-	Compactor        compactor.Config         `yaml:"compactor,omitempty" doc:"hidden"`
+	TSDB             tsdb.Config              `yaml:"tsdb"`
+	Compactor        compactor.Config         `yaml:"compactor,omitempty"`
 	DataPurgerConfig purger.Config            `yaml:"purger,omitempty"`
 
 	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
@@ -322,7 +322,11 @@ func (t *Cortex) Run() error {
 		// let's find out which module failed
 		for m, s := range t.serviceMap {
 			if s == service {
-				level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				if service.FailureCase() == util.ErrStopCortex {
+					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+				} else {
+					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				}
 				return
 			}
 		}

@@ -252,11 +252,11 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 		return nil, err
 	}
 
-	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
+	i.Service = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
 	return i, nil
 }
 
-func (i *Ingester) startingFlusher(ctx context.Context) error {
+func (i *Ingester) startingForFlusher(ctx context.Context) error {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)

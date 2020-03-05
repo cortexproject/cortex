@@ -383,8 +383,6 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 }
 
 func (t *Cortex) initFlusher(cfg *Config) (serv services.Service, err error) {
-	// By the end of this call, the chunks should be recovered
-	// from the WAL and flushed.
 	t.flusher, err = flusher.New(
 		cfg.Flusher,
 		cfg.Ingester,

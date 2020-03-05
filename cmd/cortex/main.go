@@ -8,7 +8,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -106,24 +105,9 @@ func main() {
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := t.Run(); err != nil {
-			level.Error(util.Logger).Log("msg", "error running Cortex", "err", err)
-		}
-	}()
-
-	// if cfg.Target.IsJob() {
-	// 	err = t.Stop()
-	// }
-
-	wg.Wait()
-
-	// if !cfg.Target.IsJob() {
-	// 	err = t.Stop()
-	// }
+	if err := t.Run(); err != nil {
+		level.Error(util.Logger).Log("msg", "error running Cortex", "err", err)
+	}
 
 	runtime.KeepAlive(ballast)
 }

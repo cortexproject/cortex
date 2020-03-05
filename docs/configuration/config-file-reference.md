@@ -25,7 +25,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 
 ### Use environment variables in the configuration
 
-You can use environment variable references in the config file to set values that need to be configurable during deployment.
+You can use environment variable references in the config file to set values that need to be configurable during deployment by using the `-config.expand-env` flag.
 To do this, use:
 
 ```

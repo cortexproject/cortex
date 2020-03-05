@@ -50,16 +50,14 @@ The following schema is used both when retrieving the current configs from the A
 {
     "id": 99,
     "rule_format_version": "2",
-    "config": {
-        "alertmanager_config": "<standard alertmanager.yaml config>",
-        "rules_files": {
-            "rules.yaml": "<standard rules.yaml config>",
-            "rules2.yaml": "<standard rules.yaml config>"
-         },
-        "template_files": {
-            "templates.tmpl": "<standard template file>",
-            "templates2.tmpl": "<standard template file>"
-        }
+    "alertmanager_config": "<standard alertmanager.yaml config>",
+    "rules_files": {
+        "rules.yaml": "<standard rules.yaml config>",
+        "rules2.yaml": "<standard rules.yaml config>"
+     },
+    "template_files": {
+        "templates.tmpl": "<standard template file>",
+        "templates2.tmpl": "<standard template file>"
     }
 }
 ```

@@ -393,10 +393,7 @@ func (m *errChunkStore) Querier(ctx context.Context, mint, maxt int64) (storage.
 	return storage.NoopQuerier(), errDistributorError
 }
 
-type errDistributor struct {
-	m model.Matrix
-	r *client.QueryStreamResponse
-}
+type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 

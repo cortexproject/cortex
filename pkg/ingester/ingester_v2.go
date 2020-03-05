@@ -632,10 +632,11 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 			batchSize = 0
 			timeseries = timeseries[:0]
 		}
+	}
 
-		if err := ss.Err(); err != nil {
-			return err
-		}
+	// Ensure no error occurred while iterating the series set.
+	if err := ss.Err(); err != nil {
+		return err
 	}
 
 	// Final flush any existing metrics

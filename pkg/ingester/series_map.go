@@ -23,6 +23,7 @@ type seriesMap struct {
 type shard struct {
 	mtx sync.Mutex
 	m   map[model.Fingerprint]*memorySeries
+
 	// Align this struct.
 	_ [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*memorySeries{})]byte
 }

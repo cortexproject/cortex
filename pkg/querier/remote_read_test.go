@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 func TestRemoteReadHandler(t *testing.T) {
@@ -86,11 +87,15 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m mockQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	if sp == nil {
 		panic(fmt.Errorf("select params must be set"))
 	}
-	return matrixToSeriesSet(m.matrix), nil, nil
+	return series.MatrixToSeriesSet(m.matrix), nil, nil
+}
+
+func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return m.SelectSorted(sp, matchers...)
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

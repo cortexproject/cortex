@@ -117,7 +117,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		{
 			input: []Response{},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 			},
 		},
 
@@ -132,7 +132,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result:     []SampleStream{},
@@ -157,7 +157,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result:     []SampleStream{},
@@ -198,7 +198,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
@@ -223,7 +223,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
@@ -247,7 +247,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
 			expected: &PrometheusResponse{
-				Status: statusSuccess,
+				Status: StatusSuccess,
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{

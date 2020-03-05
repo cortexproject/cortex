@@ -50,15 +50,6 @@ const (
 // Constants for instrumentation.
 const namespace = "prometheus"
 
-var (
-	groupInterval = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "", "rule_group_interval_seconds"),
-		"The interval of a rule group.",
-		[]string{"rule_group"},
-		nil,
-	)
-)
-
 // Metrics for rule evaluation.
 type Metrics struct {
 	evalDuration        prometheus.Summary
@@ -67,6 +58,7 @@ type Metrics struct {
 	iterationDuration   prometheus.Summary
 	iterationsMissed    prometheus.Counter
 	iterationsScheduled prometheus.Counter
+	groupInterval       *prometheus.GaugeVec
 	groupLastEvalTime   *prometheus.GaugeVec
 	groupLastDuration   *prometheus.GaugeVec
 	groupRules          *prometheus.GaugeVec
@@ -111,6 +103,14 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 			Name:      "rule_group_iterations_total",
 			Help:      "The total number of scheduled rule group evaluations, whether executed or missed.",
 		}),
+		groupInterval: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "rule_group_interval_seconds",
+				Help:      "The interval of a rule group.",
+			},
+			[]string{"rule_group"},
+		),
 		groupLastEvalTime: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
@@ -145,6 +145,7 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 			m.iterationDuration,
 			m.iterationsMissed,
 			m.iterationsScheduled,
+			m.groupInterval,
 			m.groupLastEvalTime,
 			m.groupLastDuration,
 			m.groupRules,
@@ -248,6 +249,7 @@ func NewGroup(name, file string, interval time.Duration, rules []Rule, shouldRes
 	metrics.groupLastEvalTime.WithLabelValues(groupKey(file, name))
 	metrics.groupLastDuration.WithLabelValues(groupKey(file, name))
 	metrics.groupRules.WithLabelValues(groupKey(file, name)).Set(float64(len(rules)))
+	metrics.groupInterval.WithLabelValues(groupKey(file, name)).Set(interval.Seconds())
 
 	return &Group{
 		name:                 name,
@@ -286,6 +288,13 @@ func (g *Group) run(ctx context.Context) {
 	case <-g.done:
 		return
 	}
+
+	ctx = promql.NewOriginContext(ctx, map[string]interface{}{
+		"ruleGroup": map[string]string{
+			"file": g.File(),
+			"name": g.Name(),
+		},
+	})
 
 	iter := func() {
 		g.metrics.iterationsScheduled.Inc()
@@ -612,7 +621,6 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			g.staleSeries = nil
 		}
 	}
-
 }
 
 // RestoreForState restores the 'for' state of the alerts
@@ -820,10 +828,6 @@ func NewManager(o *ManagerOptions) *Manager {
 		logger: o.Logger,
 	}
 
-	if o.Registerer != nil {
-		o.Registerer.MustRegister(m)
-	}
-
 	o.Metrics.iterationsMissed.Inc()
 	return m
 }
@@ -868,7 +872,7 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 		// check if new group equals with the old group, if yes then skip it.
 		// If not equals, stop it and wait for it to finish the current iteration.
 		// Then copy it into the new group.
-		gn := groupKey(newg.name, newg.file)
+		gn := groupKey(newg.file, newg.name)
 		oldg, ok := m.groups[gn]
 		delete(m.groups, gn)
 
@@ -895,8 +899,14 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 	}
 
 	// Stop remaining old groups.
-	for _, oldg := range m.groups {
+	for n, oldg := range m.groups {
 		oldg.stop()
+		if m := oldg.metrics; m != nil {
+			m.groupInterval.DeleteLabelValues(n)
+			m.groupLastEvalTime.DeleteLabelValues(n)
+			m.groupLastDuration.DeleteLabelValues(n)
+			m.groupRules.DeleteLabelValues(n)
+		}
 	}
 
 	wg.Wait()
@@ -927,14 +937,14 @@ func (m *Manager) LoadGroups(
 
 			rules := make([]Rule, 0, len(rg.Rules))
 			for _, r := range rg.Rules {
-				expr, err := promql.ParseExpr(r.Expr)
+				expr, err := promql.ParseExpr(r.Expr.Value)
 				if err != nil {
 					return nil, []error{errors.Wrap(err, fn)}
 				}
 
-				if r.Alert != "" {
+				if r.Alert.Value != "" {
 					rules = append(rules, NewAlertingRule(
-						r.Alert,
+						r.Alert.Value,
 						expr,
 						time.Duration(r.For),
 						labels.FromMap(r.Labels),
@@ -946,13 +956,13 @@ func (m *Manager) LoadGroups(
 					continue
 				}
 				rules = append(rules, NewRecordingRule(
-					r.Record,
+					r.Record.Value,
 					expr,
 					labels.FromMap(r.Labels),
 				))
 			}
 
-			groups[groupKey(rg.Name, fn)] = NewGroup(rg.Name, fn, itv, rules, shouldRestore, m.opts)
+			groups[groupKey(fn, rg.Name)] = NewGroup(rg.Name, fn, itv, rules, shouldRestore, m.opts)
 		}
 	}
 
@@ -960,8 +970,8 @@ func (m *Manager) LoadGroups(
 }
 
 // Group names need not be unique across filenames.
-func groupKey(name, file string) string {
-	return name + ";" + file
+func groupKey(file, name string) string {
+	return file + ";" + name
 }
 
 // RuleGroups returns the list of manager's rule groups.
@@ -1010,19 +1020,4 @@ func (m *Manager) AlertingRules() []*AlertingRule {
 	}
 
 	return alerts
-}
-
-// Describe implements prometheus.Collector.
-func (m *Manager) Describe(ch chan<- *prometheus.Desc) {
-	ch <- groupInterval
-}
-
-// Collect implements prometheus.Collector.
-func (m *Manager) Collect(ch chan<- prometheus.Metric) {
-	for _, g := range m.RuleGroups() {
-		ch <- prometheus.MustNewConstMetric(groupInterval,
-			prometheus.GaugeValue,
-			g.interval.Seconds(),
-			groupKey(g.file, g.name))
-	}
 }

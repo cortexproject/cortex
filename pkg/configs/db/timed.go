@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 var (
@@ -27,17 +27,8 @@ type timed struct {
 	d DB
 }
 
-func (t timed) errorCode(err error) string {
-	switch err {
-	case nil:
-		return "200"
-	default:
-		return "500"
-	}
-}
-
-func (t timed) GetConfig(ctx context.Context, userID string) (configs.View, error) {
-	var cfg configs.View
+func (t timed) GetConfig(ctx context.Context, userID string) (userconfig.View, error) {
+	var cfg userconfig.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfg, err = t.d.GetConfig(ctx, userID) // Warning: this will produce an incorrect result if the configID ever overflows
@@ -46,18 +37,16 @@ func (t timed) GetConfig(ctx context.Context, userID string) (configs.View, erro
 	return cfg, err
 }
 
-func (t timed) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
+func (t timed) SetConfig(ctx context.Context, userID string, cfg userconfig.Config) error {
 	return instrument.CollectedRequest(ctx, "DB.SetConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return t.d.SetConfig(ctx, userID, cfg) // Warning: this will produce an incorrect result if the configID ever overflows
 	})
 }
 
-func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-		err  error
-	)
-	instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+func (t timed) GetAllConfigs(ctx context.Context) (map[string]userconfig.View, error) {
+	var cfgs map[string]userconfig.View
+	err := instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
 		cfgs, err = t.d.GetAllConfigs(ctx)
 		return err
 	})
@@ -65,10 +54,8 @@ func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, erro
 	return cfgs, err
 }
 
-func (t timed) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
-	var (
-		cfgs map[string]configs.View
-	)
+func (t timed) GetConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.View, error) {
+	var cfgs map[string]userconfig.View
 	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfgs, err = t.d.GetConfigs(ctx, since)
@@ -96,8 +83,8 @@ func (t timed) Close() error {
 	})
 }
 
-func (t timed) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
-	var cfg configs.VersionedRulesConfig
+func (t timed) GetRulesConfig(ctx context.Context, userID string) (userconfig.VersionedRulesConfig, error) {
+	var cfg userconfig.VersionedRulesConfig
 	err := instrument.CollectedRequest(ctx, "DB.GetRulesConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfg, err = t.d.GetRulesConfig(ctx, userID)
@@ -107,7 +94,7 @@ func (t timed) GetRulesConfig(ctx context.Context, userID string) (configs.Versi
 	return cfg, err
 }
 
-func (t timed) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg configs.RulesConfig) (bool, error) {
+func (t timed) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg userconfig.RulesConfig) (bool, error) {
 	var updated bool
 	err := instrument.CollectedRequest(ctx, "DB.SetRulesConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
@@ -118,8 +105,8 @@ func (t timed) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg
 	return updated, err
 }
 
-func (t timed) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
-	var cfgs map[string]configs.VersionedRulesConfig
+func (t timed) GetAllRulesConfigs(ctx context.Context) (map[string]userconfig.VersionedRulesConfig, error) {
+	var cfgs map[string]userconfig.VersionedRulesConfig
 	err := instrument.CollectedRequest(ctx, "DB.GetAllRulesConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfgs, err = t.d.GetAllRulesConfigs(ctx)
@@ -129,8 +116,8 @@ func (t timed) GetAllRulesConfigs(ctx context.Context) (map[string]configs.Versi
 	return cfgs, err
 }
 
-func (t timed) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	var cfgs map[string]configs.VersionedRulesConfig
+func (t timed) GetRulesConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
+	var cfgs map[string]userconfig.VersionedRulesConfig
 	err := instrument.CollectedRequest(ctx, "DB.GetRulesConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		cfgs, err = t.d.GetRulesConfigs(ctx, since)

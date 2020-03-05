@@ -132,6 +132,9 @@ type errQuerier struct {
 func (q *errQuerier) Select(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return errSeriesSet{err: q.err}, nil, q.err
 }
+func (q *errQuerier) SelectSorted(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return errSeriesSet{err: q.err}, nil, q.err
+}
 func (q *errQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, q.err
 }

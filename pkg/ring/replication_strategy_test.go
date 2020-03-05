@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestReplicationStrategy(t *testing.T) {
@@ -93,6 +95,8 @@ func TestReplicationStrategy(t *testing.T) {
 			ReplicationFactor: tc.RF,
 		}, "ingester", IngesterRingKey)
 		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+		defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, tc.op)

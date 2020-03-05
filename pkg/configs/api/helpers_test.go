@@ -1,4 +1,4 @@
-package api_test
+package api
 
 import (
 	"bytes"
@@ -9,17 +9,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/dbtest"
 )
 
 var (
-	app      *api.API
+	app      *API
 	database db.DB
 	counter  int
 )
@@ -27,7 +27,22 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(database)
+	app = New(database, Config{
+		Notifications: NotificationsConfig{
+			DisableEmail: true,
+		},
+	})
+	counter = 0
+}
+
+// setup sets up the environment for the tests with email enabled.
+func setupWithEmailEnabled(t *testing.T) {
+	database = dbtest.Setup(t)
+	app = New(database, Config{
+		Notifications: NotificationsConfig{
+			DisableEmail: false,
+		},
+	})
 	counter = 0
 }
 
@@ -46,12 +61,16 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 }
 
 // requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func requestAsUser(t *testing.T, userID string, method, urlStr string, contentType string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
 	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
-	user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+	err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+	require.NoError(t, err)
+	if contentType != "" {
+		r.Header.Set("Content-Type", contentType)
+	}
 	app.ServeHTTP(w, r)
 	return w
 }
@@ -68,8 +87,8 @@ func makeUserID() string {
 }
 
 // makeConfig makes some arbitrary configuration.
-func makeConfig() configs.Config {
-	return configs.Config{
+func makeConfig() userconfig.Config {
+	return userconfig.Config{
 		AlertmanagerConfig: makeString(`
             # Config no. %d.
             route:
@@ -77,19 +96,19 @@ func makeConfig() configs.Config {
 
             receivers:
             - name: noop`),
-		RulesConfig: configs.RulesConfig{},
+		RulesConfig: userconfig.RulesConfig{},
 	}
 }
 
-func readerFromConfig(t *testing.T, config configs.Config) io.Reader {
+func readerFromConfig(t *testing.T, config userconfig.Config) io.Reader {
 	b, err := json.Marshal(config)
 	require.NoError(t, err)
 	return bytes.NewReader(b)
 }
 
-// parseView parses a configs.View from JSON.
-func parseView(t *testing.T, b []byte) configs.View {
-	var x configs.View
+// parseView parses a userconfig.View from JSON.
+func parseView(t *testing.T, b []byte) userconfig.View {
+	var x userconfig.View
 	err := json.Unmarshal(b, &x)
 	require.NoError(t, err, "Could not unmarshal JSON: %v", string(b))
 	return x

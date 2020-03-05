@@ -24,6 +24,9 @@ adopters:
 - name: REWE Digital
   url: https://rewe-digital.com/
   logo: rewe.png
+- name: SysEleven
+  url: https://www.syseleven.de/
+  logo: syseleven.png
 - name: Weaveworks
   url: https://www.weave.works/
   logo: weaveworks.svg

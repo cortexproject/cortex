@@ -1,13 +1,17 @@
 package compactor
 
 import (
+	"html/template"
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-const (
-	shardingDisabledPage = `
+var (
+	compactorStatusPageTemplate = template.Must(template.New("main").Parse(`
 	<!DOCTYPE html>
 	<html>
 		<head>
@@ -16,20 +20,34 @@ const (
 		</head>
 		<body>
 			<h1>Cortex Compactor Ring</h1>
-			<p>Compactor has no ring because sharding is disabled.</p>
+			<p>{{ .Message }}</p>
 		</body>
-	</html>
-	`
+	</html>`))
 )
 
+func writeMessage(w http.ResponseWriter, message string) {
+	w.WriteHeader(http.StatusOK)
+	err := compactorStatusPageTemplate.Execute(w, struct {
+		Message string
+	}{Message: message})
+
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "unable to serve compactor ring page", "err", err)
+	}
+}
+
 func (c *Compactor) RingHandler(w http.ResponseWriter, req *http.Request) {
-	if c.compactorCfg.ShardingEnabled {
-		c.ring.ServeHTTP(w, req)
+	if !c.compactorCfg.ShardingEnabled {
+		writeMessage(w, "Compactor has no ring because sharding is disabled.")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(shardingDisabledPage)); err != nil {
-		level.Error(c.logger).Log("msg", "unable to serve compactor ring page", "err", err)
+	if c.State() != services.Running {
+		// we cannot read the ring before Compactor is in Running state,
+		// because that would lead to race condition.
+		writeMessage(w, "Compactor is not running yet.")
+		return
 	}
+
+	c.ring.ServeHTTP(w, req)
 }

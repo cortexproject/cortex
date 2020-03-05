@@ -1,17 +1,18 @@
-package api_test
+package api
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path"
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/api"
 )
 
 const (
@@ -44,15 +45,15 @@ type configurable struct {
 }
 
 // post a config
-func (c configurable) post(t *testing.T, userID string, config configs.Config) configs.View {
-	w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
+func (c configurable) post(t *testing.T, userID string, config userconfig.Config) userconfig.View {
+	w := requestAsUser(t, userID, "POST", c.Endpoint, "", readerFromConfig(t, config))
 	require.Equal(t, http.StatusNoContent, w.Code)
 	return c.get(t, userID)
 }
 
 // get a config
-func (c configurable) get(t *testing.T, userID string) configs.View {
-	w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+func (c configurable) get(t *testing.T, userID string) userconfig.View {
+	w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 	return parseView(t, w.Body.Bytes())
 }
 
@@ -74,7 +75,7 @@ func Test_GetConfig_NotFound(t *testing.T) {
 
 	userID := makeUserID()
 	for _, c := range allClients {
-		w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+		w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	}
 }
@@ -99,11 +100,11 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 	config := makeConfig()
 	for _, c := range allClients {
 		{
-			w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
+			w := requestAsUser(t, userID, "POST", c.Endpoint, "", readerFromConfig(t, config))
 			assert.Equal(t, http.StatusNoContent, w.Code)
 		}
 		{
-			w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
+			w := requestAsUser(t, userID, "GET", c.Endpoint, "", nil)
 			assert.Equal(t, config, parseView(t, w.Body.Bytes()).Config)
 		}
 	}
@@ -150,14 +151,14 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	for _, c := range allClients {
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{}}, found)
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{}}, found)
 	}
 }
 
-// GetAllConfigs returns all created configs.
+// GetAllConfigs returns all created userconfig.
 func Test_GetAllConfigs(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
@@ -169,16 +170,16 @@ func Test_GetAllConfigs(t *testing.T) {
 		view := c.post(t, userID, config)
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID: view,
 		}}, found)
 	}
 }
 
-// GetAllConfigs returns the *newest* versions of all created configs.
+// GetAllConfigs returns the *newest* versions of all created userconfig.
 func Test_GetAllConfigs_Newest(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
@@ -192,10 +193,10 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 
 		w := request(t, "GET", c.PrivateEndpoint, nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID: lastCreated,
 		}}, found)
 	}
@@ -213,10 +214,10 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 
 		w := request(t, "GET", fmt.Sprintf("%s?since=%d", c.PrivateEndpoint, config2.ID), nil)
 		assert.Equal(t, http.StatusOK, w.Code)
-		var found api.ConfigsView
+		var found ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
+		assert.Equal(t, ConfigsView{Configs: map[string]userconfig.View{
 			userID3: config3,
 		}}, found)
 	}
@@ -244,14 +245,30 @@ var amCfgValidationTests = []struct {
           email_configs:
           - to: myteam@foobar.org`,
 		shouldFail:  true,
-		errContains: "email notifications are not supported in Cortex yet",
+		errContains: ErrEmailNotificationsAreDisabled.Error(),
+	}, {
+		config: `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          slack_configs:
+          - api_url: http://slack`,
+		shouldFail: false,
 	},
 }
 
 func Test_ValidateAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", "", strings.NewReader(test.config))
 		data := map[string]string{}
 		err := json.Unmarshal(resp.Body.Bytes(), &data)
 		assert.NoError(t, err, "test case %d", i)
@@ -271,10 +288,13 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 }
 
 func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		cfg := configs.Config{AlertmanagerConfig: test.config}
-		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", readerFromConfig(t, cfg))
+		cfg := userconfig.Config{AlertmanagerConfig: test.config}
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
 
 		if !test.shouldFail {
 			assert.Equal(t, http.StatusNoContent, resp.Code, "test case %d", i)
@@ -283,5 +303,74 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, resp.Code, "test case %d", i)
 		assert.Contains(t, resp.Body.String(), test.errContains, "test case %d", i)
+	}
+}
+
+func Test_SetConfig_ValidatesAlertmanagerConfig_WithEmailEnabled(t *testing.T) {
+	config := `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          email_configs:
+          - to: myteam@foobar.org`
+	setupWithEmailEnabled(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	cfg := userconfig.Config{AlertmanagerConfig: config}
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+}
+
+func Test_SetConfig_BodyFormat(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+	for _, bodyFile := range []string{"testdata/config.yml", "testdata/config.json"} {
+		var contentType string
+		switch path.Ext(bodyFile) {
+		case ".yml":
+			contentType = "text/yaml"
+		default:
+			contentType = "text/json"
+		}
+		testSetConfigBodyFormat(bodyFile, contentType, t)
+	}
+}
+
+func testSetConfigBodyFormat(bodyFile string, contentType string, t *testing.T) {
+	userID := makeUserID()
+	file, err := os.Open(bodyFile)
+	require.NoError(t, err)
+	defer file.Close()
+	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", contentType, file)
+	assert.Equal(t, http.StatusNoContent, resp.Code, "error body: %s Content-Type: %s", resp.Body.String(), contentType)
+}
+
+func TestParseConfigFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		defaultFormat string
+		expected      string
+	}{
+		{"", FormatInvalid, FormatInvalid},
+		{"", FormatJSON, FormatJSON},
+		{"application/json", FormatInvalid, FormatJSON},
+		{"application/yaml", FormatInvalid, FormatYAML},
+		{"application/json, application/yaml", FormatInvalid, FormatJSON},
+		{"application/yaml, application/json", FormatInvalid, FormatYAML},
+		{"text/plain, application/yaml", FormatInvalid, FormatYAML},
+		{"application/yaml; a=1", FormatInvalid, FormatYAML},
+	}
+	for _, test := range tests {
+		t.Run(test.name+"_"+test.expected, func(t *testing.T) {
+			actual := parseConfigFormat(test.name, test.defaultFormat)
+			assert.Equal(t, test.expected, actual)
+		})
 	}
 }

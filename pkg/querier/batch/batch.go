@@ -1,8 +1,6 @@
 package batch
 
 import (
-	"fmt"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
 
@@ -27,10 +25,6 @@ type iterator interface {
 	Batch() promchunk.Batch
 
 	Err() error
-}
-
-func print(b promchunk.Batch) {
-	fmt.Println("  ", b.Timestamps, b.Index, b.Length)
 }
 
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.

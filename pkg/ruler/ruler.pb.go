@@ -10,8 +10,11 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -25,7 +28,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type RulesRequest struct {
 }
@@ -43,7 +46,7 @@ func (m *RulesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_RulesRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +82,7 @@ func (m *RulesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_RulesResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -249,6 +252,14 @@ type RulerServer interface {
 	Rules(context.Context, *RulesRequest) (*RulesResponse, error)
 }
 
+// UnimplementedRulerServer can be embedded to have forward compatible implementations.
+type UnimplementedRulerServer struct {
+}
+
+func (*UnimplementedRulerServer) Rules(ctx context.Context, req *RulesRequest) (*RulesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Rules not implemented")
+}
+
 func RegisterRulerServer(s *grpc.Server, srv RulerServer) {
 	s.RegisterService(&_Ruler_serviceDesc, srv)
 }
@@ -287,7 +298,7 @@ var _Ruler_serviceDesc = grpc.ServiceDesc{
 func (m *RulesRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -295,17 +306,22 @@ func (m *RulesRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *RulesRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RulesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *RulesResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -313,33 +329,42 @@ func (m *RulesResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *RulesResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RulesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Groups) > 0 {
-		for _, msg := range m.Groups {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintRuler(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Groups) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Groups[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintRuler(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintRuler(dAtA []byte, offset int, v uint64) int {
+	offset -= sovRuler(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *RulesRequest) Size() (n int) {
 	if m == nil {
@@ -366,14 +391,7 @@ func (m *RulesResponse) Size() (n int) {
 }
 
 func sovRuler(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozRuler(x uint64) (n int) {
 	return sovRuler(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -391,8 +409,13 @@ func (this *RulesResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForGroups := "[]*RuleGroupDesc{"
+	for _, f := range this.Groups {
+		repeatedStringForGroups += strings.Replace(fmt.Sprintf("%v", f), "RuleGroupDesc", "rules.RuleGroupDesc", 1) + ","
+	}
+	repeatedStringForGroups += "}"
 	s := strings.Join([]string{`&RulesResponse{`,
-		`Groups:` + strings.Replace(fmt.Sprintf("%v", this.Groups), "RuleGroupDesc", "rules.RuleGroupDesc", 1) + `,`,
+		`Groups:` + repeatedStringForGroups + `,`,
 		`}`,
 	}, "")
 	return s

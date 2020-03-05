@@ -17,19 +17,26 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		"should pass on S3 backend": {
 			config: Config{
-				Backend: "s3",
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                2,
 			},
 			expectedErr: nil,
 		},
 		"should pass on GCS backend": {
 			config: Config{
-				Backend: "gcs",
+				Backend:                   "gcs",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                2,
 			},
 			expectedErr: nil,
 		},
 		"should fail on unknown backend": {
 			config: Config{
-				Backend: "unknown",
+				Backend:    "unknown",
+				StripeSize: 2,
 			},
 			expectedErr: errUnsupportedBackend,
 		},
@@ -38,14 +45,88 @@ func TestConfig_Validate(t *testing.T) {
 				Backend:         "s3",
 				ShipInterval:    time.Minute,
 				ShipConcurrency: 0,
+				StripeSize:      2,
 			},
 			expectedErr: errInvalidShipConcurrency,
 		},
 		"should pass on invalid ship concurrency but shipping is disabled": {
 			config: Config{
-				Backend:         "s3",
-				ShipInterval:    0,
-				ShipConcurrency: 0,
+				Backend:                   "s3",
+				ShipInterval:              0,
+				ShipConcurrency:           0,
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                2,
+			},
+			expectedErr: nil,
+		},
+		"should fail on invalid compaction interval": {
+			config: Config{
+				Backend:                "s3",
+				HeadCompactionInterval: 0 * time.Minute,
+				StripeSize:             2,
+			},
+			expectedErr: errInvalidCompactionInterval,
+		},
+		"should fail on too high compaction interval": {
+			config: Config{
+				Backend:                "s3",
+				HeadCompactionInterval: 10 * time.Minute,
+				StripeSize:             2,
+			},
+			expectedErr: errInvalidCompactionInterval,
+		},
+		"should fail on invalid compaction concurrency": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    time.Minute,
+				HeadCompactionConcurrency: 0,
+				StripeSize:                2,
+			},
+			expectedErr: errInvalidCompactionConcurrency,
+		},
+		"should pass on on valid compaction config": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    time.Minute,
+				HeadCompactionConcurrency: 10,
+				StripeSize:                2,
+			},
+			expectedErr: nil,
+		},
+		"should fail on negative stripe size": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                -2,
+			},
+			expectedErr: errInvalidStripeSize,
+		},
+		"should fail on stripe size 0": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                0,
+			},
+			expectedErr: errInvalidStripeSize,
+		},
+		"should fail on stripe size 1": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                1,
+			},
+			expectedErr: errInvalidStripeSize,
+		},
+		"should pass on stripe size": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                1 << 14,
 			},
 			expectedErr: nil,
 		},

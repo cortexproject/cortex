@@ -20,7 +20,6 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20181012123002-c6f51f82210d // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
-	github.com/fluent/fluent-logger-golang v1.2.1 // indirect
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
@@ -37,7 +36,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.1.5
-	github.com/json-iterator/go v1.1.8
+	github.com/json-iterator/go v1.1.9
 	github.com/kylelemons/godebug v0.0.0-20170820004349-d65d576e9348 // indirect
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
@@ -47,31 +46,29 @@ require (
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
-	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/alertmanager v0.19.0
-	github.com/prometheus/client_golang v1.2.1
-	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
-	github.com/prometheus/common v0.7.0
-	github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
+	github.com/prometheus/client_golang v1.5.0
+	github.com/prometheus/client_model v0.2.0
+	github.com/prometheus/common v0.9.1
+	github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
 	github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d
-	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
-	github.com/uber-go/atomic v1.4.0
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
-	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-	github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
+	github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
+	go.uber.org/atomic v1.5.0
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
-	gopkg.in/yaml.v2 v2.2.5
+	gopkg.in/yaml.v2 v2.2.7
+	sigs.k8s.io/yaml v1.1.0
 )
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible

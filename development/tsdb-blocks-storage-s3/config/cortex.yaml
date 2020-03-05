@@ -66,3 +66,6 @@ compactor:
       store: consul
       consul:
         host: consul:8500
+
+frontend_worker:
+  address: "query-frontend:9007"

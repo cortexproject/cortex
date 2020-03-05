@@ -1,0 +1,18 @@
+{
+    "settings": {
+        "go.formatTool": "goimports",
+        "go.formatFlags": [
+            "-local",
+            "github.com/cortexproject/cortex"
+        ],
+        "go.languageServerExperimentalFeatures": {
+            "format": false
+        },
+        "[go]": {
+            "editor.codeActionsOnSave": {
+                "source.organizeImports": false
+            }
+        },
+        "editor.formatOnSave": true
+    }
+}

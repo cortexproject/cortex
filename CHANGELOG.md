@@ -2,26 +2,70 @@
 
 ## master / unreleased
 
+* [FEATURE] Fan out parallelizable queries to backend queriers concurrently. #1878
+  * `querier.parallelise-shardable-queries` (bool)
+  * Requires a shard-compatible schema (v10+)
+  * This causes the number of traces to increase accordingly.
+  * The query-frontend now requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume. The schema is only required to use this option.
+  * It's also advised to increase downstream concurrency controls as well:
+    * `querier.max-outstanding-requests-per-tenant`
+    * `querier.max-query-parallelism`
+    * `querier.max-concurrent`
+    * `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
+* [CHANGE] The frontend http server will now send 502 in case of deadline exceeded and 499 if the user requested cancellation. #2156
+* [CHANGE] Config file changed to remove top level `config_store` field in favor of a nested `configdb` field. #2125
+* [CHANGE] We now enforce queries to be up to `-querier.max-query-into-future` into the future (defaults to 10m). #1929 
 * [CHANGE] Removed unnecessary `frontend.cache-split-interval` in favor of `querier.split-queries-by-interval` both to reduce configuration complexity and guarantee alignment of these two configs. Starting from now, `-querier.cache-results` may only be enabled in conjunction with `-querier.split-queries-by-interval` (previously the cache interval default was `24h` so if you want to preserve the same behaviour you should set `-querier.split-queries-by-interval=24h`). #2040
 * [CHANGE] Removed remaining support for using denormalised tokens in the ring. If you're still running ingesters with denormalised tokens (Cortex 0.4 or earlier, with `-ingester.normalise-tokens=false`), such ingesters will now be completely invisible to distributors and need to be either switched to Cortex 0.6.0 or later, or be configured to use normalised tokens. #2034
 * [CHANGE] Moved `--store.min-chunk-age` to the Querier config as `--querier.query-store-after`, allowing the store to be skipped during query time if the metrics wouldn't be found. The YAML config option `ingestermaxquerylookback` has been renamed to `query_ingesters_within` to match its CLI flag. #1893
   * `--store.min-chunk-age` has been removed
   * `--querier.query-store-after` has been added in it's place.
 * [CHANGE] Experimental Memberlist KV store can now be used in single-binary Cortex. Attempts to use it previously would fail with panic. This change also breaks existing binary protocol used to exchange gossip messages, so this version will not be able to understand gossiped Ring when used in combination with the previous version of Cortex. Easiest way to upgrade is to shutdown old Cortex installation, and restart it with new version. Incremental rollout works too, but with reduced functionality until all components run the same version. #2016
+* [CHANGE] Renamed the cache configuration setting `defaul_validity` to `default_validity`. #2140
+* [CHANGE] Removed unused /validate_expr endpoint. #2152
+* [CHANGE] Updated Prometheus dependency to v2.16.0. This Prometheus version uses Active Query Tracker to limit concurrent queries. In order to keep `-querier.max-concurrent` working, Active Query Tracker is enabled by default, and is configured to store its data to `active-query-tracker` directory (relative to current directory when Cortex started). This can be changed by using `-querier.active-query-tracker-dir` option. Purpose of Active Query Tracker is to log queries that were running when Cortex crashes. This logging happens on next Cortex start. #2088
+* [CHANGE] Experimental TSDB: TSDB head compaction interval and concurrency is now configurable (defaults to 1 min interval and 5 concurrent head compactions). New options: `-experimental.tsdb.head-compaction-interval` and `-experimental.tsdb.head-compaction-concurrency`. #2172
+* [CHANGE] Remove fluentd-based billing infrastructure and flags such as `-distributor.enable-billing`. #1491
+* [CHANGE] Renamed Configs configuration options. #2187
+  * configuration options
+    * `-database.*` -> `-configs.database.*`
+    * `-database.migrations` -> `-configs.database.migrations-dir`
+  * config file
+    * `configdb.uri:` -> `configs.database.uri:`
+    * `configdb.migrationsdir:` -> `configs.database.migrations_dir:`
+    * `configdb.passwordfile:` -> `configs.database.password_file:`
+* [CHANGE] Experimental TSDB: the querier in-memory index cache used by the experimental blocks storage shifted from per-tenant to per-querier. The `-experimental.tsdb.bucket-store.index-cache-size-bytes` now configures the per-querier index cache max size instead of a per-tenant cache and its default has been increased to 1GB. #2189
+* [CHANGE] If you are vendoring Cortex and use its components in your project, be aware that many Cortex components no longer start automatically when they are created. You may want to review PR and attached document. #2166
+* [CHANGE] Cortex now has /ready probe for all services, not just ingester and querier as before. In single-binary mode, /ready reports 204 only if all components are running properly. #2166
+* [FEATURE] Added a read-only local alertmanager config store using files named corresponding to their tenant id. #2125
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
+  * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
+* [FEATURE] Added ability to override YAML config file settings using environment variables. #2147
+  * `-config.expand-env`
+* [FEATURE] Added flags to disable Alertmanager notifications methods. #2187
+  * `-configs.notifications.disable-email`
+  * `-configs.notifications.disable-webhook`
+* [FEATURE] Add /config HTTP endpoint which exposes the current Cortex configuration as YAML. #2165
+* [FEATURE] Allow Prometheus remote write directly to ingesters. #1491
+* [FEATURE] Add flag `-experimental.tsdb.stripe-size` to expose TSDB stripe size option. #2185
+* [FEATURE] Experimental Delete Series: Added support for Deleting Series with Prometheus style API. Needs to be enabled first by setting `--purger.enable` to `true`. Deletion only supported when using `boltdb` and `filesystem` as index and object store respectively. Support for other stores to follow in separate PRs #2103
+* [FEATURE] Introduced new standalone service `query-tee` that can be used for testing purposes to send the same Prometheus query to multiple backends (ie. two Cortex clusters ingesting the same metrics) and compare the performances. #2203
 * [FEATURE] Flusher target to flush the WAL.
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
+* [ENHANCEMENT] Alertmanager: Expose Per-tenant alertmanager metrics #2124
+* [ENHANCEMENT] Add `status` label to `cortex_alertmanager_configs` metric to gauge the number of valid and invalid configs. #2125
+* [ENHANCEMENT] Cassandra Authentication: added the `custom_authenticators` config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in [gocql](https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27) #2093
 * [ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with `cortex_compactor_`. #2023
 * [ENHANCEMENT] Experimental TSDB: Added dedicated flag `-experimental.tsdb.bucket-store.tenant-sync-concurrency` to configure the maximum number of concurrent tenants for which blocks are synched. #2026
 * [ENHANCEMENT] Experimental TSDB: Expose metrics for objstore operations (prefixed with `cortex_<component>_thanos_objstore_`, component being one of `ingester`, `querier` and `compactor`). #2027
-* [ENHANCEMENT] Experiemental TSDB: Added support for Azure Storage to be used for block storage, in addition to S3 and GCS. #2083
+* [ENHANCEMENT] Experimental TSDB: Added support for Azure Storage to be used for block storage, in addition to S3 and GCS. #2083
 * [ENHANCEMENT] Experimental TSDB: Reduced memory allocations in the ingesters when using the experimental blocks storage. #2057
-* [ENHANCEMENT] Cassanda Storage: added `max_retries`, `retry_min_backoff` and `retry_max_backoff` configuration options to enable retrying recoverable errors. #2054
+* [ENHANCEMENT] Cassandra Storage: added `max_retries`, `retry_min_backoff` and `retry_max_backoff` configuration options to enable retrying recoverable errors. #2054
 * [ENHANCEMENT] Allow to configure HTTP and gRPC server listen address, maximum number of simultaneous connections and connection keepalive settings.
   * `-server.http-listen-address`
   * `-server.http-conn-limit`
@@ -33,13 +77,19 @@
   * `-server.grpc.keepalive.time`
   * `-server.grpc.keepalive.timeout`
 * [ENHANCEMENT] PostgreSQL: Bump up `github.com/lib/pq` from `v1.0.0` to `v1.3.0` to support PostgreSQL SCRAM-SHA-256 authentication. #2097
-* [ENHANCEMENT] Casandra: User no longer need `CREATE` privilege on `<all keyspaces>` if given keyspace exists. #2032
+* [ENHANCEMENT] Cassandra Storage: User no longer need `CREATE` privilege on `<all keyspaces>` if given keyspace exists. #2032
+* [ENHANCEMENT] Cassandra Storage: added `password_file` configuration options to enable reading Cassandra password from file. #2096
+* [ENHANCEMENT] Experimental Memberlist KV: expose `-memberlist.gossip-to-dead-nodes-time` and `-memberlist.dead-node-reclaim-time` options to control how memberlist library handles dead nodes and name reuse. #2131
+* [ENHANCEMENT] Configs API: Allow GET/POST configs in YAML format. #2181
+* [ENHANCEMENT] Background cache writes are batched to improve parallelism and observability. #2135
 * [BUGFIX] Alertmanager: fixed panic upon applying a new config, caused by duplicate metrics registration in the `NewPipelineBuilder` function. #211
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101
 * [BUGFIX] Azure Blob ChunkStore: Fixed issue causing `invalid chunk checksum` errors. #2074
 * [BUGFIX] The gauge `cortex_overrides_last_reload_successful` is now only exported by components that use a `RuntimeConfigManager`. Previously, for components that do not initialize a `RuntimeConfigManager` (such as the compactor) the gauge was initialized with 0 (indicating error state) and then never updated, resulting in a false-negative permanent error state. #2092
 * [BUGFIX] Fixed WAL metric names, added the `cortex_` prefix.
+* [BUGFIX] Restored histogram `cortex_configs_request_duration_seconds` #2138
+* [BUGFIX] Fix wrong syntax for `url` in config-file-reference. #2148
 
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
 

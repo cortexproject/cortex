@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/cortexproject/cortex/pkg/configs/client"
 
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 var (
@@ -29,11 +30,11 @@ type RuleGroupList []*RuleGroupDesc
 
 // Formatted returns the rule group list as a set of formatted rule groups mapped
 // by namespace
-func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
-	ruleMap := map[string][]rulefmt.RuleGroup{}
+func (l RuleGroupList) Formatted() map[string][]legacy_rulefmt.RuleGroup {
+	ruleMap := map[string][]legacy_rulefmt.RuleGroup{}
 	for _, g := range l {
 		if _, exists := ruleMap[g.Namespace]; !exists {
-			ruleMap[g.Namespace] = []rulefmt.RuleGroup{FromProto(g)}
+			ruleMap[g.Namespace] = []legacy_rulefmt.RuleGroup{FromProto(g)}
 			continue
 		}
 		ruleMap[g.Namespace] = append(ruleMap[g.Namespace], FromProto(g))
@@ -45,7 +46,7 @@ func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
 // ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
 type ConfigRuleStore struct {
 	configClient  client.Client
-	since         configs.ID
+	since         userconfig.ID
 	ruleGroupList map[string]RuleGroupList
 }
 
@@ -96,7 +97,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 
 // getLatestConfigID gets the latest configs ID.
 // max [latest, max (map getID cfgs)]
-func getLatestConfigID(cfgs map[string]configs.VersionedRulesConfig, latest configs.ID) configs.ID {
+func getLatestConfigID(cfgs map[string]userconfig.VersionedRulesConfig, latest userconfig.ID) userconfig.ID {
 	ret := latest
 	for _, config := range cfgs {
 		if config.ID > ret {

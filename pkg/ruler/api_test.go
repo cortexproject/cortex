@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -9,14 +10,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestRuler_rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r := newTestRuler(t, cfg)
-	defer r.Stop()
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/rules", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")
@@ -70,8 +74,9 @@ func TestRuler_alerts(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r := newTestRuler(t, cfg)
-	defer r.Stop()
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
+	defer r.StopAsync()
 
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/alerts", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")

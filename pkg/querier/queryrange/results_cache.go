@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -76,7 +78,7 @@ func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
 var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
 	promRes := from.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),
@@ -133,7 +135,7 @@ func NewResultsCacheMiddleware(
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	var (

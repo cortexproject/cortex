@@ -7,11 +7,14 @@ slug: configuration-file
 
 Cortex can be configured using a YAML file - specified using the `-config.file` flag - or CLI flags. In case you combine both, CLI flags take precedence over the YAML config file.
 
+The current configuration of any Cortex component can be seen by visiting the `/config` HTTP path.
+Passwords are filtered out of this endpoint.
+
 ## Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below. Brackets indicate that a parameter is optional.
 
-Generic placeholders are defined as follows:
+### Generic placeholders
 
 * `<boolean>`: a boolean that can take the values `true` or `false`
 * `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -20,7 +23,30 @@ Generic placeholders are defined as follows:
 * `<url>`: an URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
 
-Supported contents and default values of the config file:
+### Use environment variables in the configuration
+
+You can use environment variable references in the config file to set values that need to be configurable during deployment.
+To do this, use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+### Supported contents and default values of the config file
 
 ```yaml
 # The Cortex service to run. Supported values are: all, distributor, ingester,
@@ -79,7 +105,7 @@ flusher:
 [limits: <limits_config>]
 
 # The frontend_worker_config configures the worker - running within the Cortex
-# ingester - picking up and executing queries enqueued by the query-frontend.
+# querier - picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker_config>]
 
 # The query_frontend_config configures the Cortex query-frontend.
@@ -92,17 +118,21 @@ flusher:
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
 
+# The tsdb_config configures the experimental blocks storage.
+[tsdb: <tsdb_config>]
+
+# The compactor_config configures the compactor for the experimental blocks
+# storage.
+[compactor: <compactor_config>]
+
+# The purger_config configures the purger which takes care of delete requests
+[purger: <purger_config>]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
-# The configdb_config configures the config database storing rules and alerts,
-# and used by the 'configs' service to expose APIs to manage them.
-[configdb: <configdb_config>]
-
-# The configstore_config configures the config database storing rules and
-# alerts, and is used by the Cortex alertmanager.
-# The CLI flags prefix for this block config is: alertmanager
-[config_store: <configstore_config>]
+# The configs_config configures the Cortex Configs DB and API.
+[configs: <configs_config>]
 
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
@@ -120,7 +150,7 @@ runtime_config:
 [memberlist: <memberlist_config>]
 ```
 
-## `server_config`
+### `server_config`
 
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
@@ -216,28 +246,11 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 [http_path_prefix: <string> | default = ""]
 ```
 
-## `distributor_config`
+### `distributor_config`
 
 The `distributor_config` configures the Cortex distributor.
 
 ```yaml
-# Report number of ingested samples to billing system.
-# CLI flag: -distributor.enable-billing
-[enable_billing: <boolean> | default = false]
-
-billing:
-  # Maximum number of billing events to buffer in memory
-  # CLI flag: -billing.max-buffered-events
-  [maxbufferedevents: <int> | default = 1024]
-
-  # How often to retry sending events to the billing ingester.
-  # CLI flag: -billing.retry-delay
-  [retrydelay: <duration> | default = 500ms]
-
-  # points to the billing ingester sidecar (should be on localhost)
-  # CLI flag: -billing.ingester
-  [ingesterhostport: <string> | default = "localhost:24225"]
-
 pool:
   # How frequently to clean up clients for ingesters that have gone away.
   # CLI flag: -distributor.client-cleanup-period
@@ -367,7 +380,7 @@ ring:
   [heartbeat_timeout: <duration> | default = 1m0s]
 ```
 
-## `ingester_config`
+### `ingester_config`
 
 The `ingester_config` configures the Cortex ingester.
 
@@ -520,7 +533,7 @@ lifecycler:
 [rateupdateperiod: <duration> | default = 15s]
 ```
 
-## `querier_config`
+### `querier_config`
 
 The `querier_config` configures the Cortex querier.
 
@@ -561,12 +574,23 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.query-store-after
 [query_store_after: <duration> | default = 0s]
 
+# Maximum duration into the future you can query. 0 to disable.
+# CLI flag: -querier.max-query-into-future
+[max_query_into_future: <duration> | default = 10m0s]
+
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
 [defaultevaluationinterval: <duration> | default = 1m0s]
+
+# Active query tracker monitors active queries, and writes them to the file in
+# given directory. If Cortex discovers any queries in this log during startup,
+# it will log them to the log file. Setting to empty value disables active query
+# tracker, which also disables -querier.max-concurrent option.
+# CLI flag: -querier.active-query-tracker-dir
+[active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 ```
 
-## `query_frontend_config`
+### `query_frontend_config`
 
 The `query_frontend_config` configures the Cortex query-frontend.
 
@@ -589,7 +613,7 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [log_queries_longer_than: <duration> | default = 0s]
 ```
 
-## `queryrange_config`
+### `queryrange_config`
 
 The `queryrange_config` configures the query splitting and caching in the Cortex query-frontend.
 
@@ -617,14 +641,14 @@ results_cache:
 
     # The default validity of entries for caches unless overridden.
     # CLI flag: -frontend.default-validity
-    [defaul_validity: <duration> | default = 0s]
+    [default_validity: <duration> | default = 0s]
 
     background:
       # How many goroutines to use to write back to memcache.
       # CLI flag: -frontend.memcache.write-back-goroutines
       [writeback_goroutines: <int> | default = 10]
 
-      # How many chunks to buffer for background write back.
+      # How many key batches to buffer for background write-back.
       # CLI flag: -frontend.memcache.write-back-buffer
       [writeback_buffer: <int> | default = 10000]
 
@@ -659,17 +683,21 @@ results_cache:
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
+
+# Perform query parallelisations based on storage sharding configuration and
+# query ASTs. This feature is supported only by the chunks storage engine.
+# CLI flag: -querier.parallelise-shardable-queries
+[parallelise_shardable_queries: <boolean> | default = false]
 ```
 
-## `ruler_config`
+### `ruler_config`
 
 The `ruler_config` configures the Cortex ruler.
 
 ```yaml
-externalurl:
-  # URL of alerts return path.
-  # CLI flag: -ruler.external.url
-  [url: <url> | default = ]
+# URL of alerts return path.
+# CLI flag: -ruler.external.url
+[externalurl: <url> | default = ]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -693,10 +721,9 @@ storeconfig:
 # CLI flag: -ruler.rule-path
 [rulepath: <string> | default = "/rules"]
 
-alertmanagerurl:
-  # URL of the Alertmanager to send notifications to.
-  # CLI flag: -ruler.alertmanager-url
-  [url: <url> | default = ]
+# URL of the Alertmanager to send notifications to.
+# CLI flag: -ruler.alertmanager-url
+[alertmanagerurl: <url> | default = ]
 
 # Use DNS SRV records to discover alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -784,7 +811,7 @@ ring:
 [enable_api: <boolean> | default = false]
 ```
 
-## `alertmanager_config`
+### `alertmanager_config`
 
 The `alertmanager_config` configures the Cortex alertmanager.
 
@@ -797,15 +824,13 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.storage.retention
 [retention: <duration> | default = 120h0m0s]
 
-externalurl:
-  # The URL under which Alertmanager is externally reachable (for example, if
-  # Alertmanager is served via a reverse proxy). Used for generating relative
-  # and absolute links back to Alertmanager itself. If the URL has a path
-  # portion, it will be used to prefix all HTTP endpoints served by
-  # Alertmanager. If omitted, relevant URL components will be derived
-  # automatically.
-  # CLI flag: -alertmanager.web.external-url
-  [url: <url> | default = ]
+# The URL under which Alertmanager is externally reachable (for example, if
+# Alertmanager is served via a reverse proxy). Used for generating relative and
+# absolute links back to Alertmanager itself. If the URL has a path portion, it
+# will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
+# relevant URL components will be derived automatically.
+# CLI flag: -alertmanager.web.external-url
+[externalurl: <url> | default = ]
 
 # How frequently to poll Cortex configs
 # CLI flag: -alertmanager.configs.poll-interval
@@ -834,9 +859,25 @@ externalurl:
 # Root of URL to generate if config is http://internal.monitor
 # CLI flag: -alertmanager.configs.auto-webhook-root
 [autowebhookroot: <string> | default = ""]
+
+store:
+  # Type of backend to use to store alertmanager configs. Supported values are:
+  # "configdb", "local".
+  # CLI flag: -alertmanager.storage.type
+  [type: <string> | default = "configdb"]
+
+  # The configstore_config configures the config database storing rules and
+  # alerts, and is used by the Cortex alertmanager.
+  # The CLI flags prefix for this block config is: alertmanager
+  [configdb: <configstore_config>]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager.storage.local.path
+    [path: <string> | default = ""]
 ```
 
-## `table_manager_config`
+### `table_manager_config`
 
 The `table_manager_config` configures the Cortex table-manager.
 
@@ -1166,7 +1207,7 @@ chunk_tables_provisioning:
   [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
-## `storage_config`
+### `storage_config`
 
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
 
@@ -1178,12 +1219,11 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 
 aws:
   dynamodbconfig:
-    dynamodb:
-      # DynamoDB endpoint URL with escaped Key and Secret encoded. If only
-      # region is specified as a host, proper endpoint will be deduced. Use
-      # inmemory:///<table-name> to use a mock in-memory implementation.
-      # CLI flag: -dynamodb.url
-      [url: <url> | default = ]
+    # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
+    # is specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<table-name> to use a mock in-memory implementation.
+    # CLI flag: -dynamodb.url
+    [dynamodb: <url> | default = ]
 
     # DynamoDB table management requests per second limit.
     # CLI flag: -dynamodb.api-limit
@@ -1193,10 +1233,9 @@ aws:
     # CLI flag: -dynamodb.throttle-limit
     [throttlelimit: <float> | default = 10]
 
-    applicationautoscaling:
-      # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
-      # CLI flag: -applicationautoscaling.url
-      [url: <url> | default = ]
+    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
+    # CLI flag: -applicationautoscaling.url
+    [applicationautoscaling: <url> | default = ]
 
     metrics:
       # Use metrics-based autoscaling, via this query URL
@@ -1244,12 +1283,11 @@ aws:
     # CLI flag: -dynamodb.chunk.get.max.parallelism
     [chunkgetmaxparallelism: <int> | default = 32]
 
-  s3:
-    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-    # specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<bucket-name> to use a mock in-memory implementation.
-    # CLI flag: -s3.url
-    [url: <url> | default = ]
+  # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+  # specified as a host, proper endpoint will be deduced. Use
+  # inmemory:///<bucket-name> to use a mock in-memory implementation.
+  # CLI flag: -s3.url
+  [s3: <url> | default = ]
 
   # Comma separated list of bucket names to evenly distribute chunks over.
   # Overrides any buckets specified in s3.url flag
@@ -1422,6 +1460,15 @@ cassandra:
   # CLI flag: -cassandra.password
   [password: <string> | default = ""]
 
+  # File containing password to use when connecting to cassandra.
+  # CLI flag: -cassandra.password-file
+  [password_file: <string> | default = ""]
+
+  # If set, when authenticating with cassandra a custom authenticator will be
+  # expected during the handshake. This flag can be set multiple times.
+  # CLI flag: -cassandra.custom-authenticator
+  [custom_authenticators: <list of string> | default = ]
+
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
   [timeout: <duration> | default = 2s]
@@ -1465,7 +1512,7 @@ index_queries_cache_config:
   # Cache config for index entry reading. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-read.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry reading. How many goroutines to use to write
@@ -1473,8 +1520,8 @@ index_queries_cache_config:
     # CLI flag: -store.index-cache-read.memcache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
-    # Cache config for index entry reading. How many chunks to buffer for
-    # background write back.
+    # Cache config for index entry reading. How many key batches to buffer for
+    # background write-back.
     # CLI flag: -store.index-cache-read.memcache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
@@ -1495,9 +1542,18 @@ index_queries_cache_config:
   # The fifo_cache_config configures the local in-memory cache.
   # The CLI flags prefix for this block config is: store.index-cache-read
   [fifocache: <fifo_cache_config>]
+
+delete_store:
+  # Store for keeping delete request
+  # CLI flag: -deletes.store
+  [store: <string> | default = ""]
+
+  # Name of the table which stores delete requests
+  # CLI flag: -deletes.requests-table-name
+  [requests_table_name: <string> | default = "delete_requests"]
 ```
 
-## `chunk_store_config`
+### `chunk_store_config`
 
 The `chunk_store_config` configures how Cortex stores the data (chunks storage engine).
 
@@ -1510,7 +1566,7 @@ chunk_cache_config:
   # Cache config for chunks. The default validity of entries for caches unless
   # overridden.
   # CLI flag: -default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for chunks. How many goroutines to use to write back to
@@ -1518,8 +1574,8 @@ chunk_cache_config:
     # CLI flag: -memcache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
-    # Cache config for chunks. How many chunks to buffer for background write
-    # back.
+    # Cache config for chunks. How many key batches to buffer for background
+    # write-back.
     # CLI flag: -memcache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
@@ -1545,7 +1601,7 @@ write_dedupe_cache_config:
   # Cache config for index entry writing. The default validity of entries for
   # caches unless overridden.
   # CLI flag: -store.index-cache-write.default-validity
-  [defaul_validity: <duration> | default = 0s]
+  [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for index entry writing. How many goroutines to use to write
@@ -1553,8 +1609,8 @@ write_dedupe_cache_config:
     # CLI flag: -store.index-cache-write.memcache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
-    # Cache config for index entry writing. How many chunks to buffer for
-    # background write back.
+    # Cache config for index entry writing. How many key batches to buffer for
+    # background write-back.
     # CLI flag: -store.index-cache-write.memcache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
@@ -1585,7 +1641,7 @@ write_dedupe_cache_config:
 [max_look_back_period: <duration> | default = 0s]
 ```
 
-## `ingester_client_config`
+### `ingester_client_config`
 
 The `ingester_client_config` configures how the Cortex distributors connect to the ingesters.
 
@@ -1629,9 +1685,9 @@ grpc_client_config:
     [maxretries: <int> | default = 10]
 ```
 
-## `frontend_worker_config`
+### `frontend_worker_config`
 
-The `frontend_worker_config` configures the worker - running within the Cortex ingester - picking up and executing queries enqueued by the query-frontend.
+The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
 
 ```yaml
 # Address of query frontend service.
@@ -1685,7 +1741,7 @@ grpc_client_config:
     [maxretries: <int> | default = 10]
 ```
 
-## `etcd_config`
+### `etcd_config`
 
 The `etcd_config` configures the etcd client.
 
@@ -1703,7 +1759,7 @@ The `etcd_config` configures the etcd client.
 [max_retries: <int> | default = 10]
 ```
 
-## `consul_config`
+### `consul_config`
 
 The `consul_config` configures the consul client.
 
@@ -1734,7 +1790,7 @@ The `consul_config` configures the consul client.
 [watchkeyburstsize: <int> | default = 1]
 ```
 
-## `memberlist_config`
+### `memberlist_config`
 
 The `memberlist_config` configures the Gossip memberlist.
 
@@ -1763,6 +1819,16 @@ The `memberlist_config` configures the Gossip memberlist.
 # How many nodes to gossip to. Uses memberlist LAN defaults if 0.
 # CLI flag: -memberlist.gossip-nodes
 [gossip_nodes: <int> | default = 0]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 0s]
+
+# How soon can dead node's name be reclaimed with new address. Defaults to 0,
+# which is disabled.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
 
 # Other cluster members to join. Can be specified multiple times. Memberlist
 # store is EXPERIMENTAL.
@@ -1799,7 +1865,7 @@ The `memberlist_config` configures the Gossip memberlist.
 [packet_write_timeout: <duration> | default = 5s]
 ```
 
-## `limits_config`
+### `limits_config`
 
 The `limits_config` configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).
 
@@ -1929,7 +1995,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [per_tenant_override_period: <duration> | default = 10s]
 ```
 
-## `redis_config`
+### `redis_config`
 
 The `redis_config` configures the Redis backend cache.
 
@@ -1964,7 +2030,7 @@ The `redis_config` configures the Redis backend cache.
 [enable_tls: <boolean> | default = false]
 ```
 
-## `memcached_config`
+### `memcached_config`
 
 The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
 
@@ -1982,7 +2048,7 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 [parallelism: <int> | default = 100]
 ```
 
-## `memcached_client_config`
+### `memcached_client_config`
 
 The `memcached_client_config` configures the client used to connect to Memcached.
 
@@ -2013,7 +2079,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 [consistent_hash: <boolean> | default = false]
 ```
 
-## `fifo_cache_config`
+### `fifo_cache_config`
 
 The `fifo_cache_config` configures the local in-memory cache.
 
@@ -2027,35 +2093,305 @@ The `fifo_cache_config` configures the local in-memory cache.
 [validity: <duration> | default = 0s]
 ```
 
-## `configdb_config`
+### `configs_config`
 
-The `configdb_config` configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.
+The `configs_config` configures the Cortex Configs DB and API.
 
 ```yaml
-# URI where the database can be found (for dev you can use memory://)
-# CLI flag: -database.uri
-[uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
+database:
+  # URI where the database can be found (for dev you can use memory://)
+  # CLI flag: -configs.database.uri
+  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
 
-# Path where the database migration files can be found
-# CLI flag: -database.migrations
-[migrationsdir: <string> | default = ""]
+  # Path where the database migration files can be found
+  # CLI flag: -configs.database.migrations-dir
+  [migrations_dir: <string> | default = ""]
 
-# File containing password (username goes in URI)
-# CLI flag: -database.password-file
-[passwordfile: <string> | default = ""]
+  # File containing password (username goes in URI)
+  # CLI flag: -configs.database.password-file
+  [password_file: <string> | default = ""]
+
+api:
+  notifications:
+    # Disable Email notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-email
+    [disable_email: <boolean> | default = false]
+
+    # Disable WebHook notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-webhook
+    [disable_webhook: <boolean> | default = false]
 ```
 
-## `configstore_config`
+### `configstore_config`
 
 The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager.
 
 ```yaml
-configsapiurl:
-  # URL of configs API server.
-  # CLI flag: -<prefix>.configs.url
-  [url: <url> | default = ]
+# URL of configs API server.
+# CLI flag: -<prefix>.configs.url
+[configsapiurl: <url> | default = ]
 
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout
 [clienttimeout: <duration> | default = 5s]
+```
+
+### `tsdb_config`
+
+The `tsdb_config` configures the experimental blocks storage.
+
+```yaml
+# Local directory to store TSDBs in the ingesters.
+# CLI flag: -experimental.tsdb.dir
+[dir: <string> | default = "tsdb"]
+
+# TSDB blocks range period.
+# CLI flag: -experimental.tsdb.block-ranges-period
+[block_ranges_period: <list of duration> | default = 2h0m0s]
+
+# TSDB blocks retention in the ingester before a block is removed. This should
+# be larger than the block_ranges_period and large enough to give ingesters
+# enough time to discover newly uploaded blocks.
+# CLI flag: -experimental.tsdb.retention-period
+[retention_period: <duration> | default = 6h0m0s]
+
+# How frequently the TSDB blocks are scanned and new ones are shipped to the
+# storage. 0 means shipping is disabled.
+# CLI flag: -experimental.tsdb.ship-interval
+[ship_interval: <duration> | default = 1m0s]
+
+# Maximum number of tenants concurrently shipping blocks to the storage.
+# CLI flag: -experimental.tsdb.ship-concurrency
+[ship_concurrency: <int> | default = 10]
+
+# Backend storage to use. Either "s3" or "gcs".
+# CLI flag: -experimental.tsdb.backend
+[backend: <string> | default = "s3"]
+
+bucket_store:
+  # Directory to store synchronized TSDB index headers.
+  # CLI flag: -experimental.tsdb.bucket-store.sync-dir
+  [sync_dir: <string> | default = "tsdb-sync"]
+
+  # How frequently scan the bucket to look for changes (new blocks shipped by
+  # ingesters and blocks removed by retention or compaction). 0 disables it.
+  # CLI flag: -experimental.tsdb.bucket-store.sync-interval
+  [sync_interval: <duration> | default = 5m0s]
+
+  # Size in bytes of in-memory index cache used to speed up blocks index lookups
+  # (shared between all tenants).
+  # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
+  [index_cache_size_bytes: <int> | default = 1073741824]
+
+  # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
+  # allocations.
+  # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
+
+  # Max number of samples per query when loading series from the long-term
+  # storage. 0 disables the limit.
+  # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
+  [max_sample_count: <int> | default = 0]
+
+  # Max number of concurrent queries to execute against the long-term storage on
+  # a per-tenant basis.
+  # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
+  [max_concurrent: <int> | default = 20]
+
+  # Maximum number of concurrent tenants synching blocks.
+  # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency
+  [tenant_sync_concurrency: <int> | default = 10]
+
+  # Maximum number of concurrent blocks synching per tenant.
+  # CLI flag: -experimental.tsdb.bucket-store.block-sync-concurrency
+  [block_sync_concurrency: <int> | default = 20]
+
+  # Number of Go routines to use when syncing block meta files from object
+  # storage per tenant.
+  # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
+  [meta_sync_concurrency: <int> | default = 20]
+
+# How frequently does Cortex try to compact TSDB head. Block is only created if
+# data covers smallest block range. Must be greater than 0 and max 5 minutes.
+# CLI flag: -experimental.tsdb.head-compaction-interval
+[head_compaction_interval: <duration> | default = 1m0s]
+
+# Maximum number of tenants concurrently compacting TSDB head into a new block
+# CLI flag: -experimental.tsdb.head-compaction-concurrency
+[head_compaction_concurrency: <int> | default = 5]
+
+# The number of shards of series to use in TSDB (must be a power of 2). Reducing
+# this will decrease memory footprint, but can negatively impact performance.
+# CLI flag: -experimental.tsdb.stripe-size
+[stripe_size: <int> | default = 16384]
+
+# limit the number of concurrently opening TSDB's on startup
+# CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
+[max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+s3:
+  # S3 endpoint without schema
+  # CLI flag: -experimental.tsdb.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -experimental.tsdb.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -experimental.tsdb.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -experimental.tsdb.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -experimental.tsdb.s3.insecure
+  [insecure: <boolean> | default = false]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -experimental.tsdb.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON representing either a Google Developers Console client_credentials.json
+  # file or a Google Developers service account key file. If empty, fallback to
+  # Google default logic.
+  # CLI flag: -experimental.tsdb.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -experimental.tsdb.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -experimental.tsdb.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -experimental.tsdb.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN
+  # CLI flag: -experimental.tsdb.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -experimental.tsdb.azure.max-retries
+  [max_retries: <int> | default = 20]
+```
+
+### `compactor_config`
+
+The `compactor_config` configures the compactor for the experimental blocks storage.
+
+```yaml
+# List of compaction time ranges.
+# CLI flag: -compactor.block-ranges
+[block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
+
+# Number of Go routines to use when syncing block index and chunks files from
+# the long term storage.
+# CLI flag: -compactor.block-sync-concurrency
+[block_sync_concurrency: <int> | default = 20]
+
+# Number of Go routines to use when syncing block meta files from the long term
+# storage.
+# CLI flag: -compactor.meta-sync-concurrency
+[meta_sync_concurrency: <int> | default = 20]
+
+# Minimum age of fresh (non-compacted) blocks before they are being processed.
+# Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
+# be removed.
+# CLI flag: -compactor.consistency-delay
+[consistency_delay: <duration> | default = 30m0s]
+
+# Data directory in which to cache blocks and process compactions
+# CLI flag: -compactor.data-dir
+[data_dir: <string> | default = "./data"]
+
+# The frequency at which the compaction runs
+# CLI flag: -compactor.compaction-interval
+[compaction_interval: <duration> | default = 1h0m0s]
+
+# How many times to retry a failed compaction during a single compaction
+# interval
+# CLI flag: -compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Shard tenants across multiple compactor instances. Sharding is required if you
+# run multiple compactor instances, in order to coordinate compactions and avoid
+# race conditions leading to the same tenant blocks simultaneously compacted by
+# different instances.
+# CLI flag: -compactor.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+sharding_ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, multi, memberlist (experimental).
+    # CLI flag: -compactor.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -compactor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 5s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring.
+  # CLI flag: -compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m0s]
+```
+
+### `purger_config`
+
+The `purger_config` configures the purger which takes care of delete requests
+
+```yaml
+# Enable purger to allow deletion of series. Be aware that Delete series feature
+# is still experimental
+# CLI flag: -purger.enable
+[enable: <boolean> | default = false]
+
+# Number of workers executing delete plans in parallel
+# CLI flag: -purger.num-workers
+[num_workers: <int> | default = 2]
+
+# Name of the object store to use for storing delete plans
+# CLI flag: -purger.object-store-type
+[object_store_type: <string> | default = ""]
 ```

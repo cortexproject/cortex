@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -19,22 +20,22 @@ func (t traced) trace(name string, args ...interface{}) {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("%s: %#v", name, args))
 }
 
-func (t traced) GetConfig(ctx context.Context, userID string) (cfg configs.View, err error) {
+func (t traced) GetConfig(ctx context.Context, userID string) (cfg userconfig.View, err error) {
 	defer func() { t.trace("GetConfig", userID, cfg, err) }()
 	return t.d.GetConfig(ctx, userID)
 }
 
-func (t traced) SetConfig(ctx context.Context, userID string, cfg configs.Config) (err error) {
+func (t traced) SetConfig(ctx context.Context, userID string, cfg userconfig.Config) (err error) {
 	defer func() { t.trace("SetConfig", userID, cfg, err) }()
 	return t.d.SetConfig(ctx, userID, cfg)
 }
 
-func (t traced) GetAllConfigs(ctx context.Context) (cfgs map[string]configs.View, err error) {
+func (t traced) GetAllConfigs(ctx context.Context) (cfgs map[string]userconfig.View, err error) {
 	defer func() { t.trace("GetAllConfigs", cfgs, err) }()
 	return t.d.GetAllConfigs(ctx)
 }
 
-func (t traced) GetConfigs(ctx context.Context, since configs.ID) (cfgs map[string]configs.View, err error) {
+func (t traced) GetConfigs(ctx context.Context, since userconfig.ID) (cfgs map[string]userconfig.View, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetConfigs(ctx, since)
 }
@@ -54,22 +55,22 @@ func (t traced) Close() (err error) {
 	return t.d.Close()
 }
 
-func (t traced) GetRulesConfig(ctx context.Context, userID string) (cfg configs.VersionedRulesConfig, err error) {
+func (t traced) GetRulesConfig(ctx context.Context, userID string) (cfg userconfig.VersionedRulesConfig, err error) {
 	defer func() { t.trace("GetRulesConfig", userID, cfg, err) }()
 	return t.d.GetRulesConfig(ctx, userID)
 }
 
-func (t traced) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg configs.RulesConfig) (updated bool, err error) {
+func (t traced) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg userconfig.RulesConfig) (updated bool, err error) {
 	defer func() { t.trace("SetRulesConfig", userID, oldCfg, newCfg, updated, err) }()
 	return t.d.SetRulesConfig(ctx, userID, oldCfg, newCfg)
 }
 
-func (t traced) GetAllRulesConfigs(ctx context.Context) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+func (t traced) GetAllRulesConfigs(ctx context.Context) (cfgs map[string]userconfig.VersionedRulesConfig, err error) {
 	defer func() { t.trace("GetAllRulesConfigs", cfgs, err) }()
 	return t.d.GetAllRulesConfigs(ctx)
 }
 
-func (t traced) GetRulesConfigs(ctx context.Context, since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+func (t traced) GetRulesConfigs(ctx context.Context, since userconfig.ID) (cfgs map[string]userconfig.VersionedRulesConfig, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetRulesConfigs(ctx, since)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -58,7 +59,8 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// Add the first ingester to the ring
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
@@ -69,7 +71,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
-	lifecycler1.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler1))
 
 	// Assert the first ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -85,7 +87,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
-	lifecycler2.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler2))
 
 	// Assert the second ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -107,14 +109,15 @@ func TestLifecycler_NilFlushTransferer(t *testing.T) {
 	// Create a lifecycler with nil FlushTransferer to make sure it operates correctly
 	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	lifecycler.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler))
 
 	// Ensure the lifecycler joined the ring
 	test.Poll(t, time.Second, 1, func() interface{} {
 		return lifecycler.HealthyInstancesCount()
 	})
 
-	lifecycler.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lifecycler))
+
 	assert.Equal(t, 0, lifecycler.HealthyInstancesCount())
 }
 
@@ -130,13 +133,13 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 
 	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1", true)
 	require.NoError(t, err)
-	lifecycler1.Start()
-	defer lifecycler1.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler1))
+	defer services.StopAndAwaitTerminated(context.Background(), lifecycler1) //nolint:errcheck
 
 	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2", true)
 	require.NoError(t, err)
-	lifecycler2.Start()
-	defer lifecycler2.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler2))
+	defer services.StopAndAwaitTerminated(context.Background(), lifecycler2) //nolint:errcheck
 
 	// Ensure each lifecycler reports 1 healthy instance, because they're
 	// in a different ring
@@ -165,13 +168,14 @@ func TestRingRestart(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	l1.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -185,7 +189,7 @@ func TestRingRestart(t *testing.T) {
 	// Add a second ingester with the same settings, so it will think it has restarted
 	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	l2.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
 
 	// Check the new ingester picked up the same token
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -241,12 +245,17 @@ func TestCheckReady(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, r.StartAsync(context.Background()))
+	// This is very atypical, but if we used AwaitRunning, that would fail, because of how quickly service terminates ...
+	// by the time we check for Running state, it is already terminated, because mock ring has no WatchFunc, so it
+	// will just exit.
+	require.NoError(t, r.AwaitTerminated(context.Background()))
+
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
-	l1.Start()
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
 	l1.setTokens(Tokens([]uint32{1}))
 
@@ -269,7 +278,8 @@ func TestTokensOnDisk(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	tokenDir, err := ioutil.TempDir(os.TempDir(), "tokens_on_disk")
 	require.NoError(t, err)
@@ -284,7 +294,8 @@ func TestTokensOnDisk(t *testing.T) {
 	// Start first ingester.
 	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	l1.Start()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
 	// Check this ingester joined, is active, and has 512 token.
 	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -300,14 +311,14 @@ func TestTokensOnDisk(t *testing.T) {
 			len(desc.Ingesters["ing1"].Tokens) == 512
 	})
 
-	l1.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l1))
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"
 	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
-	l2.Start()
-	defer l2.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
+	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
 
 	// Check this ingester joined, is active, and has 512 token.
 	var actTokens []uint32
@@ -341,7 +352,8 @@ func TestJoinInLeavingState(t *testing.T) {
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
-	defer r.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
 	cfg.NumTokens = 2
@@ -366,8 +378,8 @@ func TestJoinInLeavingState(t *testing.T) {
 	require.NoError(t, err)
 
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
-	l1.Start()
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
 	// Check that the lifecycler was able to join after coming up in LEAVING
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {

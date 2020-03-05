@@ -154,12 +154,12 @@ func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (c
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// NewDynamoDBObjectClient makes a new DynamoDB-backed ObjectClient.
-func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+// NewDynamoDBChunkClient makes a new DynamoDB-backed chunk.Client.
+func NewDynamoDBChunkClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and ObjectClient.
+// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and chunk.Client.
 func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (*dynamoDBStorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
@@ -245,7 +245,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				logWriteRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
-				a.writeThrottle.WaitN(ctx, len(requests))
+				_ = a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
 				continue
 			} else if ok && awsErr.Code() == validationException {
@@ -269,7 +269,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		unprocessedItems := dynamoDBWriteBatch(resp.UnprocessedItems)
 		if len(unprocessedItems) > 0 {
 			logWriteRetry(ctx, unprocessedItems)
-			a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
+			_ = a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
 
@@ -461,7 +461,7 @@ type chunksPlusError struct {
 	err    error
 }
 
-// GetChunks implements chunk.ObjectClient.
+// GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer log.Span.Finish()
@@ -598,6 +598,11 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	return result, nil
 }
 
+func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from DynamoDB
+	return chunk.ErrMethodNotImplemented
+}
+
 func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]chunk.Chunk) ([]chunk.Chunk, error) {
 	result := []chunk.Chunk{}
 	decodeContext := chunk.NewDecodeContext()
@@ -639,7 +644,7 @@ func (a dynamoDBStorageClient) PutChunkAndIndex(ctx context.Context, c chunk.Chu
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-// PutChunks implements chunk.ObjectClient.
+// PutChunks implements chunk.Client.
 func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {
@@ -747,6 +752,11 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 			Item: item,
 		},
 	})
+}
+
+func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	// ToDo: implement this to support deleting index entries from DynamoDB
+	panic("DynamoDB does not support Deleting index entries yet")
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.

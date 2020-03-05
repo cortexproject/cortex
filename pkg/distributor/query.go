@@ -136,7 +136,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
 		}
-		defer stream.CloseSend()
+		defer stream.CloseSend() //nolint:errcheck
 
 		var result []*ingester_client.QueryStreamResponse
 		for {

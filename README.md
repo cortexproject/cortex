@@ -29,12 +29,16 @@ should read:
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
 1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/cassandra/)
 
-For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
+For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
 ## Further reading
 
 To learn more about Cortex, consult the following documents & talks:
 
+- Jan 2020 Blog Post "[The Future of Cortex: Into the Next Decade][future-of-cortex-blog]"
+- Nov 2019 KubeCon talks "[Cortex 101: Horizontally Scalable Long Term Storage for Prometheus][kubecon-cortex-101]" ([video][kubecon-cortex-101-video], [slides][kubecon-cortex-101-slides]), "[Configuring Cortex for Max
+Performance][kubecon-cortex-201]" ([video][kubecon-cortex-201-video], [slides][kubecon-cortex-201-slides], [write up][kubecon-cortex-201-writeup]) and "[Blazin’ Fast PromQL][kubecon-blazin]" ([slides][kubecon-blazin-slides], [video][kubecon-blazin-video], [write up][kubecon-blazin-writeup])
+- Nov 2019 PromCon talk "[Two Households, Both Alike in Dignity: Cortex and Thanos][promcon-two-households]" ([video][promcon-two-households-video], [slides][promcon-two-households-slides], [write up][promcon-two-households-writeup])
 - May 2019 KubeCon talks; "[Cortex: Intro][kubecon-cortex-intro]" ([video][kubecon-cortex-intro-video], [slides][kubecon-cortex-intro-slides], [blog post][kubecon-cortex-intro-blog]) and "[Cortex: Deep Dive][kubecon-cortex-deepdive]" ([video][kubecon-cortex-deepdive-video], [slides][kubecon-cortex-deepdive-slides])
 - Feb 2019 blog post & podcast; "[Prometheus Scalability with Bryan Boreham][prometheus-scalability]" ([podcast][prometheus-scalability-podcast])
 - Feb 2019 blog post; "[How Aspen Mesh Runs Cortex in Production][aspen-mesh-2019]"
@@ -51,6 +55,22 @@ To learn more about Cortex, consult the following documents & talks:
 - Aug 2016 PromCon talk; "Project Frankenstein: Multitenant, Scale-Out Prometheus": ([video][promcon-2016-video], [slides][promcon-2016-slides])
 - Jun 2016 design document; "[Project Frankenstein: A Multi Tenant, Scale Out Prometheus](http://goo.gl/prdUYV)"
 
+[future-of-cortex-blog]: https://grafana.com/blog/2020/01/21/the-future-of-cortex-into-the-next-decade/
+[kubecon-cortex-101]: https://kccncna19.sched.com/event/UaiH/cortex-101-horizontally-scalable-long-term-storage-for-prometheus-chris-marchbanks-splunk
+[kubecon-cortex-101-video]: https://www.youtube.com/watch?v=f8GmbH0U_kI
+[kubecon-cortex-101-slides]: https://static.sched.com/hosted_files/kccncna19/92/cortex_101.pdf
+[kubecon-cortex-201]: https://kccncna19.sched.com/event/UagC/performance-tuning-and-day-2-operations-goutham-veeramachaneni-grafana-labs
+[kubecon-cortex-201-slides]: https://static.sched.com/hosted_files/kccncna19/87/Taming%20Cortex_%20Configuring%20for%20maximum%20performance%281%29.pdf
+[kubecon-cortex-201-video]: https://www.youtube.com/watch?v=VuE5aDHDexU
+[kubecon-cortex-201-writeup]: https://grafana.com/blog/2019/12/02/kubecon-recap-configuring-cortex-for-maximum-performance-at-scale/
+[kubecon-blazin]: https://kccncna19.sched.com/event/UaWT/blazin-fast-promql-tom-wilkie-grafana-labs
+[kubecon-blazin-slides]: https://static.sched.com/hosted_files/kccncna19/0b/2019-11%20Blazin%27%20Fast%20PromQL.pdf
+[kubecon-blazin-video]: https://www.youtube.com/watch?v=yYgdZyeBOck
+[kubecon-blazin-writeup]: https://grafana.com/blog/2019/09/19/how-to-get-blazin-fast-promql/
+[promcon-two-households]: https://promcon.io/2019-munich/talks/two-households-both-alike-in-dignity-cortex-and-thanos/
+[promcon-two-households-video]: https://www.youtube.com/watch?v=KmJnmd3K3Ws&feature=youtu.be
+[promcon-two-households-slides]: https://promcon.io/2019-munich/slides/two-households-both-alike-in-dignity-cortex-and-thanos.pdf
+[promcon-two-households-writeup]: https://grafana.com/blog/2019/11/21/promcon-recap-two-households-both-alike-in-dignity-cortex-and-thanos/
 [kubecon-cortex-intro]: https://kccnceu19.sched.com/event/MPhX/intro-cortex-tom-wilkie-grafana-labs-bryan-boreham-weaveworks
 [kubecon-cortex-intro-video]: https://www.youtube.com/watch?v=_7Wnta-3-W0
 [kubecon-cortex-intro-slides]: https://static.sched.com/hosted_files/kccnceu19/af/Cortex%20Intro%20KubeCon%20EU%202019.pdf

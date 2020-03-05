@@ -1,12 +1,10 @@
 package azure
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"strings"
 	"time"
@@ -15,7 +13,7 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
@@ -23,23 +21,23 @@ const containerURLFmt = "https://%s.blob.core.windows.net/%s"
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	ContainerName      string        `yaml:"container_name"`
-	AccountName        string        `yaml:"account_name"`
-	AccountKey         string        `yaml:"account_key"`
-	DownloadBufferSize int           `yaml:"download_buffer_size"`
-	UploadBufferSize   int           `yaml:"upload_buffer_size"`
-	UploadBufferCount  int           `yaml:"upload_buffer_count"`
-	RequestTimeout     time.Duration `yaml:"request_timeout"`
-	MaxRetries         int           `yaml:"max_retries"`
-	MinRetryDelay      time.Duration `yaml:"min_retry_delay"`
-	MaxRetryDelay      time.Duration `yaml:"max_retry_delay"`
+	ContainerName      string         `yaml:"container_name"`
+	AccountName        string         `yaml:"account_name"`
+	AccountKey         flagext.Secret `yaml:"account_key"`
+	DownloadBufferSize int            `yaml:"download_buffer_size"`
+	UploadBufferSize   int            `yaml:"upload_buffer_size"`
+	UploadBufferCount  int            `yaml:"upload_buffer_count"`
+	RequestTimeout     time.Duration  `yaml:"request_timeout"`
+	MaxRetries         int            `yaml:"max_retries"`
+	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
+	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.ContainerName, "azure.container-name", "cortex", "Name of the blob container used to store chunks. Defaults to `cortex`. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, "azure.account-name", "", "The Microsoft Azure account name to be used")
-	f.StringVar(&c.AccountKey, "azure.account-key", "", "The Microsoft Azure account key to use.")
+	f.Var(&c.AccountKey, "azure.account-key", "The Microsoft Azure account key to use.")
 	f.DurationVar(&c.RequestTimeout, "azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage. Defaults to 30 seconds.")
 	f.IntVar(&c.DownloadBufferSize, "azure.download-buffer-size", 512000, "Preallocated buffer size for downloads (default is 512KB)")
 	f.IntVar(&c.UploadBufferSize, "azure.upload-buffer-size", 256000, "Preallocated buffer size for up;oads (default is 256KB)")
@@ -73,12 +71,7 @@ func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
-// GetChunks retrieves the requested data chunks from blob storage.
-func (b *BlobStorage) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, chunks, b.getChunk)
-}
-
-func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if b.cfg.RequestTimeout > 0 {
 		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
 		var cancel context.CancelFunc
@@ -86,43 +79,6 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		defer cancel()
 	}
 
-	readCloser, err := b.GetObject(ctx, input.ExternalKey())
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	if err := input.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	return input, nil
-}
-
-// PutChunks writes a set of chunks to azure blob storage using block blobs.
-func (b *BlobStorage) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-
-	for _, chunk := range chunks {
-		buf, err := chunk.Encoded()
-		if err != nil {
-			return err
-		}
-
-		err = b.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	blockBlobURL, err := b.getBlobURL(objectKey)
 	if err != nil {
 		return nil, err
@@ -184,7 +140,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 }
 
 func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey)
+	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -226,4 +182,9 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 	}
 
 	return storageObjects, nil
+}
+
+func (b *BlobStorage) DeleteObject(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Azure BlobStorage
+	return chunk.ErrMethodNotImplemented
 }

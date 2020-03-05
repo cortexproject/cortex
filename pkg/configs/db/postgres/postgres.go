@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+
 	"github.com/Masterminds/squirrel"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang-migrate/migrate/v4"
@@ -17,7 +19,6 @@ import (
 	_ "github.com/lib/pq" // Import the postgres sql driver
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -105,7 +106,7 @@ func New(uri, migrationsDir string) (DB, error) {
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error) {
+func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]userconfig.View, error) {
 	rows, err := d.Select("id", "owner_id", "config", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -116,9 +117,9 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error
 		return nil, err
 	}
 	defer rows.Close()
-	cfgs := map[string]configs.View{}
+	cfgs := map[string]userconfig.View{}
 	for rows.Next() {
-		var cfg configs.View
+		var cfg userconfig.View
 		var cfgBytes []byte
 		var userID string
 		var deletedAt pq.NullTime
@@ -137,8 +138,8 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error
 }
 
 // GetConfig gets a configuration.
-func (d DB) GetConfig(ctx context.Context, userID string) (configs.View, error) {
-	var cfgView configs.View
+func (d DB) GetConfig(ctx context.Context, userID string) (userconfig.View, error) {
+	var cfgView userconfig.View
 	var cfgBytes []byte
 	var deletedAt pq.NullTime
 	err := d.Select("id", "config", "deleted_at").
@@ -156,7 +157,7 @@ func (d DB) GetConfig(ctx context.Context, userID string) (configs.View, error) 
 }
 
 // SetConfig sets a configuration.
-func (d DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
+func (d DB) SetConfig(ctx context.Context, userID string, cfg userconfig.Config) error {
 	if !cfg.RulesConfig.FormatVersion.IsValid() {
 		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
 	}
@@ -172,13 +173,13 @@ func (d DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) er
 	return err
 }
 
-// GetAllConfigs gets all of the configs.
-func (d DB) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
+// GetAllConfigs gets all of the userconfig.
+func (d DB) GetAllConfigs(ctx context.Context) (map[string]userconfig.View, error) {
 	return d.findConfigs(allConfigs)
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
+func (d DB) GetConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.View, error) {
 	return d.findConfigs(squirrel.And{
 		allConfigs,
 		squirrel.Gt{"id": since},
@@ -186,20 +187,20 @@ func (d DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]config
 }
 
 // GetRulesConfig gets the latest alertmanager config for a user.
-func (d DB) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
+func (d DB) GetRulesConfig(ctx context.Context, userID string) (userconfig.VersionedRulesConfig, error) {
 	current, err := d.GetConfig(ctx, userID)
 	if err != nil {
-		return configs.VersionedRulesConfig{}, err
+		return userconfig.VersionedRulesConfig{}, err
 	}
 	cfg := current.GetVersionedRulesConfig()
 	if cfg == nil {
-		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+		return userconfig.VersionedRulesConfig{}, sql.ErrNoRows
 	}
 	return *cfg, nil
 }
 
 // SetRulesConfig sets the current alertmanager config for a user.
-func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig userconfig.RulesConfig) (bool, error) {
 	updated := false
 	err := d.Transaction(func(tx DB) error {
 		current, err := d.GetConfig(ctx, userID)
@@ -212,7 +213,7 @@ func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newCon
 		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) {
 			return nil
 		}
-		new := configs.Config{
+		new := userconfig.Config{
 			AlertmanagerConfig: current.Config.AlertmanagerConfig,
 			RulesConfig:        newConfig,
 		}
@@ -224,7 +225,7 @@ func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newCon
 
 // findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
 // set of all active rules configurations across all our users.
-func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]userconfig.VersionedRulesConfig, error) {
 	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'", "config ->> 'rule_format_version'", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -245,9 +246,9 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		return nil, err
 	}
 	defer rows.Close()
-	cfgs := map[string]configs.VersionedRulesConfig{}
+	cfgs := map[string]userconfig.VersionedRulesConfig{}
 	for rows.Next() {
-		var cfg configs.VersionedRulesConfig
+		var cfg userconfig.VersionedRulesConfig
 		var userID string
 		var cfgBytes []byte
 		var rfvBytes []byte
@@ -275,12 +276,12 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 }
 
 // GetAllRulesConfigs gets all alertmanager configs for all users.
-func (d DB) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) GetAllRulesConfigs(ctx context.Context) (map[string]userconfig.VersionedRulesConfig, error) {
 	return d.findRulesConfigs(allConfigs)
 }
 
 // GetRulesConfigs gets all the alertmanager configs that have changed since a given config.
-func (d DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) GetRulesConfigs(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
 	return d.findRulesConfigs(squirrel.And{
 		allConfigs,
 		squirrel.Gt{"id": since},
@@ -290,7 +291,7 @@ func (d DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]c
 // SetDeletedAtConfig sets a deletedAt for configuration
 // by adding a single new row with deleted_at set
 // the same as SetConfig is actually insert
-func (d DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq.NullTime, cfg configs.Config) error {
+func (d DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq.NullTime, cfg userconfig.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err

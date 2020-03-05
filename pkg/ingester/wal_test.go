@@ -92,7 +92,7 @@ func TestCheckpointRepair(t *testing.T) {
 			userIDs, _ = pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, (i+1)*numSamplesPerSeriesPerPush)
 			if i == numCheckpoints-1 {
 				// Shutdown creates a checkpoint. This is only for the last checkpoint.
-				ing.Shutdown()
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 			} else {
 				require.NoError(t, w.performCheckpoint())
 			}
@@ -136,7 +136,9 @@ func TestCheckpointRepair(t *testing.T) {
 		w, ok = ing.wal.(*walWrapper)
 		require.True(t, ok)
 		// defer in case we hit an error though we explicitly close it later.
-		defer ing.Shutdown()
+		defer func() {
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+		}()
 
 		if numCheckpoints > 0 {
 			require.Equal(t, 1.0, prom_testutil.ToFloat64(ing.metrics.walCorruptionsTotal))
@@ -169,7 +171,7 @@ func TestCheckpointRepair(t *testing.T) {
 		}
 		retrieveTestSamples(t, ing, userIDs, testData)
 
-		ing.Shutdown()
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	}
 
 }

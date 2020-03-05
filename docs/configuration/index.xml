@@ -14,7 +14,7 @@ Passwords are filtered out of this endpoint.&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;&amp;lt;prefix&amp;gt;&lt;/code&gt;: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;use-environment-variables-in-the-configuration&#34;&gt;Use environment variables in the configuration&lt;/h3&gt;
-&lt;p&gt;You can use environment variable references in the config file to set values that need to be configurable during deployment.
+&lt;p&gt;You can use environment variable references in the config file to set values that need to be configurable during deployment by using the &lt;code&gt;-config.expand-env&lt;/code&gt; flag.
 To do this, use:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;${VAR}
 &lt;/code&gt;&lt;/pre&gt;

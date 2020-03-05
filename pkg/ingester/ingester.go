@@ -242,6 +242,9 @@ func (i *Ingester) loop(ctx context.Context) error {
 func (i *Ingester) stopping() error {
 	i.wal.Stop()
 
+	// This will prevent us accepting any more samples
+	i.stopIncomingRequests()
+
 	// Next initiate our graceful exit from the ring.
 	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 }
@@ -258,8 +261,8 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// StopIncomingRequests is called during the shutdown process.
-func (i *Ingester) StopIncomingRequests() {
+// stopIncomingRequests is called during the shutdown process.
+func (i *Ingester) stopIncomingRequests() {
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 	i.stopped = true

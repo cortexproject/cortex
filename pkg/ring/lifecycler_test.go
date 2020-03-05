@@ -21,8 +21,7 @@ type flushTransferer struct {
 	lifecycler *Lifecycler
 }
 
-func (f *flushTransferer) StopIncomingRequests() {}
-func (f *flushTransferer) Flush()                {}
+func (f *flushTransferer) Flush() {}
 func (f *flushTransferer) TransferOut(ctx context.Context) error {
 	if err := f.lifecycler.ClaimTokensFor(ctx, "ing1"); err != nil {
 		return err
@@ -154,8 +153,7 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 
 type nopFlushTransferer struct{}
 
-func (f *nopFlushTransferer) StopIncomingRequests() {}
-func (f *nopFlushTransferer) Flush()                {}
+func (f *nopFlushTransferer) Flush() {}
 func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 	panic("should not be called")
 }
@@ -267,7 +265,6 @@ func TestCheckReady(t *testing.T) {
 type noopFlushTransferer struct {
 }
 
-func (f *noopFlushTransferer) StopIncomingRequests()                 {}
 func (f *noopFlushTransferer) Flush()                                {}
 func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
 

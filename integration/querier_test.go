@@ -137,3 +137,90 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 		})
 	}
 }
+
+func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags, map[string]string{
+		"-experimental.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-experimental.tsdb.ship-interval":       "1s",
+		"-experimental.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+	})
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-experimental.tsdb.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	// Wait until the distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Push some series to Cortex.
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
+	series2, _ := generateSeries("series_2", series2Timestamp)
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Wait until the TSDB head is compacted and shipped to the storage.
+	// The shipped block contains the 1st series, while the 2ns series in in the head.
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_created_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
+
+	// Start the querier and configure it to not frequently sync blocks.
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-experimental.tsdb.bucket-store.sync-interval": "1m",
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// Wait until the querier has updated the ring.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Query back the series.
+	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
+	require.NoError(t, err)
+
+	// TODO: apparently Thanos has a bug which cause a block to not be considered if the
+	//       query timetamp matches the block max timestamp
+	series1Timestamp = series1Timestamp.Add(time.Duration(time.Millisecond))
+	expectedVector1[0].Timestamp = model.Time(e2e.TimeToMilliseconds(series1Timestamp))
+
+	result, err := c.Query("series_1", series1Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	assert.Equal(t, expectedVector1, result.(model.Vector))
+
+	// Delete all blocks from the storage.
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-experimental.tsdb.s3.bucket-name"])
+	require.NoError(t, err)
+	require.NoError(t, storage.DeleteBlocks("user-1"))
+
+	// Query back again the series. Now we do expect a 500 error because the blocks are
+	// missing from the storage.
+	_, err = c.Query("series_1", series1Timestamp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}

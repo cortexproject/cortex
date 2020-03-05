@@ -25,6 +25,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -42,7 +43,7 @@ var (
 		return next
 	})
 
-	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when querier.sum-shards is enabled")
+	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
 )
 
 // Config for query_range middleware chain.
@@ -127,13 +128,17 @@ func NewTripperware(
 	schema chunk.SchemaConfig,
 	engineOpts promql.EngineOpts,
 	minShardingLookback time.Duration,
+	registerer prometheus.Registerer,
 ) (frontend.Tripperware, cache.Cache, error) {
+	// Metric used to keep track of each middleware execution duration.
+	metrics := NewInstrumentMiddlewareMetrics(registerer)
+
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec, registerer))
 	}
 
 	var c cache.Cache
@@ -143,7 +148,7 @@ func NewTripperware(
 			return nil, nil, err
 		}
 		c = cache
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache", metrics), queryCacheMiddleware)
 	}
 
 	if cfg.ShardedQueries {
@@ -157,6 +162,8 @@ func NewTripperware(
 			schema.Configs,
 			codec,
 			minShardingLookback,
+			metrics,
+			registerer,
 		)
 
 		queryRangeMiddleware = append(
@@ -166,7 +173,7 @@ func NewTripperware(
 	}
 
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry"), NewRetryMiddleware(log, cfg.MaxRetries))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, registerer))
 	}
 
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -29,10 +31,13 @@ type shardSummer struct {
 	shards       int
 	currentShard *int
 	squash       squasher
+
+	// Metrics.
+	shardedQueries prometheus.Counter
 }
 
 // NewShardSummer instantiates an ASTMapper which will fan out sum queries by shard
-func NewShardSummer(shards int, squasher squasher) (ASTMapper, error) {
+func NewShardSummer(shards int, squasher squasher, registerer prometheus.Registerer) (ASTMapper, error) {
 	if squasher == nil {
 		return nil, errors.Errorf("squasher required and not passed")
 	}
@@ -41,6 +46,11 @@ func NewShardSummer(shards int, squasher squasher) (ASTMapper, error) {
 		shards:       shards,
 		squash:       squasher,
 		currentShard: nil,
+		shardedQueries: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "frontend_sharded_queries_total",
+			Help:      "Total number of sharded queries",
+		}),
 	}), nil
 }
 
@@ -195,7 +205,7 @@ func (summer *shardSummer) splitSum(
 		)
 	}
 
-	shardCounter.Add(float64(summer.shards))
+	summer.shardedQueries.Add(float64(summer.shards))
 
 	return parent, children, nil
 }

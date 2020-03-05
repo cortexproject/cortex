@@ -392,7 +392,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		return
 	}
 
-	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
+	t.frontend, err = frontend.New(cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -410,6 +410,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 			Timeout:    cfg.Querier.Timeout,
 		},
 		cfg.Querier.QueryIngestersWithin,
+		prometheus.DefaultRegisterer,
 	)
 
 	if err != nil {

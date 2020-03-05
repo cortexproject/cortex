@@ -14,7 +14,7 @@ import (
 func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, logger)
+	frontend, err := New(config, logger, nil)
 	require.NoError(t, err)
 	defer frontend.Close()
 	return frontend

@@ -59,6 +59,7 @@ func TestRoundTrip(t *testing.T) {
 			Timeout:    time.Minute,
 		},
 		0,
+		nil,
 	)
 
 	if err != nil {
@@ -115,6 +116,7 @@ func Test_ShardingConfigError(t *testing.T) {
 		chunk.SchemaConfig{},
 		promql.EngineOpts{},
 		0,
+		nil,
 	)
 
 	require.EqualError(t, err, errInvalidMinShardingLookback.Error())

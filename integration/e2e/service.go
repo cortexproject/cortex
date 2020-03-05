@@ -408,7 +408,7 @@ func NewHTTPService(
 	}
 }
 
-func (s *HTTPService) metrics() (_ string, err error) {
+func (s *HTTPService) Metrics() (_ string, err error) {
 	// Map the container port to the local port
 	localPort := s.networkPortsContainerToLocal[s.httpPort]
 
@@ -522,7 +522,7 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 	sums := make([]float64, len(metricNames))
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		metrics, err := s.metrics()
+		metrics, err := s.Metrics()
 		if err != nil {
 			return err
 		}

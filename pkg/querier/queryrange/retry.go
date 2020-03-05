@@ -10,36 +10,36 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-var (
-	retries = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "query_frontend_retries",
-		Help:      "Number of times a request is retried.",
-		Buckets:   []float64{0, 1, 2, 3, 4, 5},
-	})
-)
-
 type retry struct {
 	log        log.Logger
 	next       Handler
 	maxRetries int
+
+	// Metrics.
+	retriesCount prometheus.Histogram
 }
 
 // NewRetryMiddleware returns a middleware that retries requests if they
 // fail with 500 or a non-HTTP error.
-func NewRetryMiddleware(log log.Logger, maxRetries int) Middleware {
+func NewRetryMiddleware(log log.Logger, maxRetries int, registerer prometheus.Registerer) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return retry{
 			log:        log,
 			next:       next,
 			maxRetries: maxRetries,
+			retriesCount: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Namespace: "cortex",
+				Name:      "query_frontend_retries",
+				Help:      "Number of times a request is retried.",
+				Buckets:   []float64{0, 1, 2, 3, 4, 5},
+			}),
 		}
 	})
 }
 
 func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	tries := 0
-	defer func() { retries.Observe(float64(tries)) }()
+	defer func() { r.retriesCount.Observe(float64(tries)) }()
 
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {

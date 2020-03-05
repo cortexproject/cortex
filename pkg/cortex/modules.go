@@ -469,7 +469,7 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
+	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	return t.tableManager, err
 }
 

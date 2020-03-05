@@ -92,8 +92,14 @@ func (p *Proxy) Start() error {
 		return err
 	}
 
-	// Read endpoints.
 	router := mux.NewRouter()
+
+	// Health check endpoint.
+	router.Path("/").Methods("GET").Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Read endpoints.
 	router.Path("/api/v1/query").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_query", p.metrics, p.logger))
 	router.Path("/api/v1/query_range").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_query_range", p.metrics, p.logger))
 	router.Path("/api/v1/labels").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_labels", p.metrics, p.logger))

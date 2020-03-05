@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -201,7 +200,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
@@ -217,7 +216,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)

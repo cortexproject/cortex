@@ -113,7 +113,7 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	)
 	flagext.DefaultValues(&tbmConfig)
 	storage := chunk.NewMockStorage()
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil, nil)
 	if err != nil {
 		return nil, err
 	}

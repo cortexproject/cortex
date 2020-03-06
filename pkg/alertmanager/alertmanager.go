@@ -75,9 +75,11 @@ type Alertmanager struct {
 var (
 	webReload = make(chan chan error)
 
-	// Workaround a bug in the alertmanager which doesn't register the
-	// metrics in the input registry but to the global default one.
-	// TODO change once the vendored alertmanager will have this PR merged into:
+	// In order to workaround a bug in the alertmanager, which doesn't register the
+	// metrics in the input registry but to the global default one, we do define a
+	// singleton dispatcher metrics instance that is going to be shared across all
+	// tenants alertmanagers.
+	// TODO change this once the vendored alertmanager will have this PR merged into:
 	//      https://github.com/prometheus/alertmanager/pull/2200
 	dispatcherMetrics = dispatch.NewDispatcherMetrics(prometheus.NewRegistry())
 )

@@ -426,9 +426,6 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 // - otherwise, flush chunks to the chunk store.
 // - remove config from Consul.
 func (i *Lifecycler) stopping() error {
-	// This will prevent us accepting any more samples
-	i.flushTransferer.StopIncomingRequests()
-
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
 

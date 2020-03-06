@@ -20,7 +20,6 @@ spec:
         args:
         - -target=table-manager
         - -server.http-listen-port=80
-        - -dynamodb.original-table-name=cortex
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000
         - -schema-config-file=/etc/cortex/schema.yaml
         ports:
@@ -28,7 +27,6 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /etc/cortex
-          timeoutSeconds: 1
       volumes:
         - name: config-volume
           configMap:

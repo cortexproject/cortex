@@ -36,7 +36,6 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /etc/cortex
-          timeoutSeconds: 1
       volumes:
         - name: config-volume
           configMap:

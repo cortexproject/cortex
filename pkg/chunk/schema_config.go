@@ -76,7 +76,7 @@ type SchemaConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
-	// TODO(gouthamve): Add a metric and log line for this.
+	// TODO(gouthamve): Add a metric for this.
 	flag.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
 }
 
@@ -84,6 +84,10 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *SchemaConfig) loadFromFile() error {
 	if cfg.fileName == "" {
 		cfg.fileName = cfg.legacyFileName
+
+		if cfg.legacyFileName != "" {
+			level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag -config-yaml, use -schema-config-file instead")
+		}
 	}
 
 	if cfg.fileName == "" {

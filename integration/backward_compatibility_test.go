@@ -31,13 +31,18 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
+	flagsForOldImage := mergeFlags(ChunksStorageFlags, map[string]string{
+		"-schema-config-file": "",
+		"-config-yaml":        ChunksStorageFlags["-schema-config-file"],
+	})
+
 	// Start Cortex components (ingester running on previous version).
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, previousVersionImage)
+	tableManager := e2ecortex.NewTableManager("table-manager", flagsForOldImage, previousVersionImage)
 	// Old table-manager doesn't expose a readiness probe, so we just check if the / returns 404
 	tableManager.SetReadinessProbe(e2e.NewReadinessProbe(tableManager.HTTPPort(), "/", 404))
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	// Old ring didn't have /ready probe, use /ring instead.
 	distributor.SetReadinessProbe(e2e.NewReadinessProbe(distributor.HTTPPort(), "/ring", 200))
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, tableManager))
@@ -72,7 +77,11 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 
 	// Query the new ingester both with the old and the new querier.
 	for _, image := range []string{previousVersionImage, ""} {
-		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, image)
+		flags := ChunksStorageFlags
+		if image == previousVersionImage {
+			flags = flagsForOldImage
+		}
+		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image)
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.

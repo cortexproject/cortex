@@ -2199,7 +2199,7 @@ bucket_store:
   [meta_sync_concurrency: <int> | default = 20]
 
   # Whether the bucket store should use the binary index header. If false, it
-  # uses the legacy JSON index header.
+  # uses the JSON index header.
   # CLI flag: -experimental.tsdb.bucket-store.binary-index-header-enabled
   [binary_index_header_enabled: <boolean> | default = true]
 

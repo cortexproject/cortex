@@ -31,6 +31,16 @@
 * [CHANGE] Experimental TSDB: switched the blocks storage index header to the binary format. This change is expected to have no visible impact, except lower startup times and memory usage in the queriers. It's possible to switch back to the old JSON format via the flag `-experimental.tsdb.bucket-store.binary-index-header-enabled=false`. #2223
 * [CHANGE] WAL replays are now done while the rest of Cortex is starting, and more specifically, when HTTP server is running. This makes it possible to scrape metrics during WAL replays. Applies to both chunks and experimental blocks storage. #2222
 * [CHANGE] Default to BigChunk encoding; may result in slightly higher disk usage if many timeseries have a constant value, but should generally result in fewer, bigger chunks. #2207
+* [FEATURE] Fan out parallelizable queries to backend queriers concurrently. #1878
+  * `querier.parallelise-shardable-queries` (bool)
+  * Requires a shard-compatible schema (v10+)
+  * This causes the number of traces to increase accordingly.
+  * The query-frontend now requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `-schema-config-file` CLI flag). This is the same schema config the queriers consume. The schema is only required to use this option.
+  * It's also advised to increase downstream concurrency controls as well:
+    * `querier.max-outstanding-requests-per-tenant`
+    * `querier.max-query-parallelism`
+    * `querier.max-concurrent`
+    * `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
 * [FEATURE] Added a read-only local alertmanager config store using files named corresponding to their tenant id. #2125
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`

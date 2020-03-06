@@ -147,7 +147,7 @@ func TestRuler_Rules(t *testing.T) {
 	require.Len(t, rls.Groups, 1)
 	rg := rls.Groups[0]
 	expectedRg := mockRules["user1"][0]
-	compareRuleGroupDescs(t, rg, expectedRg)
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 
 	// test user2
 	ctx = user.InjectOrgID(context.Background(), "user2")
@@ -156,15 +156,15 @@ func TestRuler_Rules(t *testing.T) {
 	require.Len(t, rls.Groups, 1)
 	rg = rls.Groups[0]
 	expectedRg = mockRules["user2"][0]
-	compareRuleGroupDescs(t, rg, expectedRg)
+	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 }
 
-func compareRuleGroupDescs(t *testing.T, expected, got *rules.RuleGroupDesc) {
-	require.Equal(t, expected.Name, got.Name)
-	require.Equal(t, expected.Namespace, got.Namespace)
-	require.Len(t, got.Rules, len(expected.Rules))
-	for i := range got.Rules {
-		require.Equal(t, expected.Rules[i].Record, got.Rules[i].Record)
-		require.Equal(t, expected.Rules[i].Alert, got.Rules[i].Alert)
+func compareRuleGroupDescToStateDesc(t *testing.T, expected *rules.RuleGroupDesc, got *GroupStateDesc) {
+	require.Equal(t, got.Group.Name, expected.Name)
+	require.Equal(t, got.Group.Namespace, expected.Namespace)
+	require.Len(t, expected.Rules, len(got.ActiveRules))
+	for i := range got.ActiveRules {
+		require.Equal(t, expected.Rules[i].Record, got.ActiveRules[i].Rule.Record)
+		require.Equal(t, expected.Rules[i].Alert, got.ActiveRules[i].Rule.Alert)
 	}
 }

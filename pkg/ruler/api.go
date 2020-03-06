@@ -147,16 +147,16 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 
 	for _, g := range rgs {
 		grp := RuleGroup{
-			Name:           g.Name,
-			File:           g.Namespace,
-			Rules:          make([]rule, len(g.Rules)),
-			Interval:       g.Interval.Seconds(),
+			Name:           g.Group.Name,
+			File:           g.Group.Namespace,
+			Rules:          make([]rule, len(g.ActiveRules)),
+			Interval:       g.Group.Interval.Seconds(),
 			LastEvaluation: g.GetEvaluationTimestamp(),
 			EvaluationTime: g.GetEvaluationDuration().Seconds(),
 		}
 
-		for i, rl := range g.Rules {
-			if g.Rules[i].Alert != "" {
+		for i, rl := range g.ActiveRules {
+			if g.ActiveRules[i].Rule.Alert != "" {
 				alerts := make([]*Alert, 0, len(rl.Alerts))
 				for _, a := range rl.Alerts {
 					alerts = append(alerts, &Alert{
@@ -169,11 +169,11 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 				}
 				grp.Rules[i] = alertingRule{
 					State:          rl.GetState(),
-					Name:           rl.GetAlert(),
-					Query:          rl.GetExpr(),
-					Duration:       rl.For.Seconds(),
-					Labels:         client.FromLabelAdaptersToLabels(rl.Labels),
-					Annotations:    client.FromLabelAdaptersToLabels(rl.Annotations),
+					Name:           rl.Rule.GetAlert(),
+					Query:          rl.Rule.GetExpr(),
+					Duration:       rl.Rule.For.Seconds(),
+					Labels:         client.FromLabelAdaptersToLabels(rl.Rule.Labels),
+					Annotations:    client.FromLabelAdaptersToLabels(rl.Rule.Annotations),
 					Alerts:         alerts,
 					Health:         rl.GetHealth(),
 					LastError:      rl.GetLastError(),
@@ -183,9 +183,9 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 				}
 			} else {
 				grp.Rules[i] = recordingRule{
-					Name:           rl.GetRecord(),
-					Query:          rl.GetExpr(),
-					Labels:         client.FromLabelAdaptersToLabels(rl.Labels),
+					Name:           rl.Rule.GetRecord(),
+					Query:          rl.Rule.GetExpr(),
+					Labels:         client.FromLabelAdaptersToLabels(rl.Rule.Labels),
 					Health:         rl.GetHealth(),
 					LastError:      rl.GetLastError(),
 					LastEvaluation: rl.GetEvaluationTimestamp(),
@@ -238,8 +238,8 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	alerts := []*Alert{}
 
 	for _, g := range rgs {
-		for _, rl := range g.Rules {
-			if rl.Alert != "" {
+		for _, rl := range g.ActiveRules {
+			if rl.Rule.Alert != "" {
 				for _, a := range rl.Alerts {
 					alerts = append(alerts, &Alert{
 						Labels:      client.FromLabelAdaptersToLabels(a.Labels),

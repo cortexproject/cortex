@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store"
@@ -43,9 +42,6 @@ type UserStore struct {
 	logLevel           logging.Level
 	bucketStoreMetrics *tsdbBucketStoreMetrics
 	indexCacheMetrics  *tsdbIndexCacheMetrics
-
-	syncMint model.TimeOrDurationValue
-	syncMaxt model.TimeOrDurationValue
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
@@ -79,16 +75,8 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		}),
 	}
 
-	// Configure the time range to sync all blocks.
-	var err error
-	if err = u.syncMint.Set("0000-01-01T00:00:00Z"); err != nil {
-		return nil, err
-	}
-	if err = u.syncMaxt.Set("9999-12-31T23:59:59Z"); err != nil {
-		return nil, err
-	}
-
 	// Init the index cache.
+	var err error
 	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore, logger, indexCacheRegistry); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}
@@ -382,7 +370,11 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		userBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 		reg,
-		// No filters
+		// List of filters to apply (order matters).
+		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, reg).Filter,
+		// Filters out duplicate blocks that can be formed from two or more overlapping
+		// blocks that fully submatches the source blocks of the older blocks.
+		block.NewDeduplicateFilter().Filter,
 	)
 	if err != nil {
 		return nil, err
@@ -400,11 +392,9 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		u.cfg.BucketStore.MaxConcurrent,
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		&store.FilterConfig{
-			MinTime: u.syncMint,
-			MaxTime: u.syncMaxt,
-		},
+		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
+		u.cfg.BucketStore.BinaryIndexHeader,
 	)
 	if err != nil {
 		return nil, err

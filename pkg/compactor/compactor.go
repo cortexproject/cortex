@@ -301,6 +301,10 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	ulogger := util.WithUserID(userID, c.logger)
 
+	// Filters out duplicate blocks that can be formed from two or more overlapping
+	// blocks that fully submatches the source blocks of the older blocks.
+	deduplicateBlocksFilter := block.NewDeduplicateFilter()
+
 	fetcher, err := block.NewMetaFetcher(
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
@@ -310,7 +314,9 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		// the directory used by the Thanos Syncer, whatever is the user ID.
 		path.Join(c.compactorCfg.DataDir, "meta-"+userID),
 		reg,
-		// No filters
+		// List of filters to apply (order matters).
+		block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg).Filter,
+		deduplicateBlocksFilter.Filter,
 	)
 	if err != nil {
 		return err
@@ -321,6 +327,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		reg,
 		bucket,
 		fetcher,
+		deduplicateBlocksFilter,
 		c.compactorCfg.BlockSyncConcurrency,
 		false, // Do not accept malformed indexes
 		true,  // Enable vertical compaction

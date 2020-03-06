@@ -72,7 +72,15 @@ type Alertmanager struct {
 	active    bool
 }
 
-var webReload = make(chan chan error)
+var (
+	webReload = make(chan chan error)
+
+	// Workaround a bug in the alertmanager which doesn't register the
+	// metrics in the input registry but to the global default one.
+	// TODO change once the vendored alertmanager will have this PR merged into:
+	//      https://github.com/prometheus/alertmanager/pull/2200
+	dispatcherMetrics = dispatch.NewDispatcherMetrics(prometheus.NewRegistry())
+)
 
 func init() {
 	go func() {
@@ -231,6 +239,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.marker,
 		timeoutFunc,
 		log.With(am.logger, "component", "dispatcher"),
+		dispatcherMetrics,
 	)
 
 	go am.dispatcher.Run()

@@ -128,6 +128,10 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
 
+		# HELP cortex_compactor_meta_sync_consistency_delay_seconds TSDB Syncer: Configured consistency delay in seconds.
+		# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
+		cortex_compactor_meta_sync_consistency_delay_seconds 0
+
 		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
 		# TYPE cortex_compactor_meta_sync_duration_seconds histogram
 		cortex_compactor_meta_sync_duration_seconds_bucket{le="+Inf"} 0
@@ -224,6 +228,10 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# HELP cortex_compactor_garbage_collection_total TSDB Syncer: Total number of garbage collection operations.
 		# TYPE cortex_compactor_garbage_collection_total counter
 		cortex_compactor_garbage_collection_total 0
+
+		# HELP cortex_compactor_meta_sync_consistency_delay_seconds TSDB Syncer: Configured consistency delay in seconds.
+		# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
+		cortex_compactor_meta_sync_consistency_delay_seconds 0
 
 		# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
 		# TYPE cortex_compactor_meta_sync_duration_seconds histogram

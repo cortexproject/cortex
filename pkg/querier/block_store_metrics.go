@@ -16,22 +16,24 @@ type tsdbBucketStoreMetrics struct {
 	regs   map[string]*prometheus.Registry
 
 	// exported metrics, gathered from Thanos BucketStore
-	blockLoads            *prometheus.Desc
-	blockLoadFailures     *prometheus.Desc
-	blockDrops            *prometheus.Desc
-	blockDropFailures     *prometheus.Desc
-	blocksLoaded          *prometheus.Desc
-	seriesDataTouched     *prometheus.Desc
-	seriesDataFetched     *prometheus.Desc
-	seriesDataSizeTouched *prometheus.Desc
-	seriesDataSizeFetched *prometheus.Desc
-	seriesBlocksQueried   *prometheus.Desc
-	seriesGetAllDuration  *prometheus.Desc
-	seriesMergeDuration   *prometheus.Desc
-	resultSeriesCount     *prometheus.Desc
-	metaSyncs             *prometheus.Desc
-	metaSyncFailures      *prometheus.Desc
-	metaSyncDuration      *prometheus.Desc
+	blockLoads               *prometheus.Desc
+	blockLoadFailures        *prometheus.Desc
+	blockDrops               *prometheus.Desc
+	blockDropFailures        *prometheus.Desc
+	blocksLoaded             *prometheus.Desc
+	seriesDataTouched        *prometheus.Desc
+	seriesDataFetched        *prometheus.Desc
+	seriesDataSizeTouched    *prometheus.Desc
+	seriesDataSizeFetched    *prometheus.Desc
+	seriesBlocksQueried      *prometheus.Desc
+	seriesGetAllDuration     *prometheus.Desc
+	seriesMergeDuration      *prometheus.Desc
+	seriesRefetches          *prometheus.Desc
+	resultSeriesCount        *prometheus.Desc
+	metaSyncs                *prometheus.Desc
+	metaSyncFailures         *prometheus.Desc
+	metaSyncDuration         *prometheus.Desc
+	metaSyncConsistencyDelay *prometheus.Desc
 
 	// Ignored:
 	// blocks_meta_synced
@@ -90,6 +92,10 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			"cortex_querier_bucket_store_series_merge_duration_seconds",
 			"TSDB: Time it takes to merge sub-results from all queried blocks into a single result.",
 			nil, nil),
+		seriesRefetches: prometheus.NewDesc(
+			"cortex_querier_bucket_store_series_refetches_total",
+			"TSDB: Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
+			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_result_series",
 			"TSDB: Number of series observed in the final result of a query.",
@@ -105,6 +111,10 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 		metaSyncDuration: prometheus.NewDesc(
 			"cortex_querier_bucket_store_blocks_meta_sync_duration_seconds",
 			"TSDB: Duration of the blocks metadata synchronization in seconds",
+			nil, nil),
+		metaSyncConsistencyDelay: prometheus.NewDesc(
+			"cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds",
+			"TSDB: Configured consistency delay in seconds.",
 			nil, nil),
 	}
 }
@@ -140,11 +150,13 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesBlocksQueried
 	out <- m.seriesGetAllDuration
 	out <- m.seriesMergeDuration
+	out <- m.seriesRefetches
 	out <- m.resultSeriesCount
 
 	out <- m.metaSyncs
 	out <- m.metaSyncFailures
 	out <- m.metaSyncDuration
+	out <- m.metaSyncConsistencyDelay
 }
 
 func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -165,11 +177,13 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfHistograms(out, m.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
+	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
 
 	data.SendSumOfCounters(out, m.metaSyncs, "blocks_meta_syncs_total")
 	data.SendSumOfCounters(out, m.metaSyncFailures, "blocks_meta_sync_failures_total")
 	data.SendSumOfHistograms(out, m.metaSyncDuration, "blocks_meta_sync_duration_seconds")
+	data.SendMaxOfGauges(out, m.metaSyncConsistencyDelay, "consistency_delay_seconds")
 }
 
 // This struct aggregates metrics exported by Thanos Index Cache

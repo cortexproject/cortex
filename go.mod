@@ -22,6 +22,7 @@ require (
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.9.0
+	github.com/go-openapi/analysis v0.19.4 // indirect
 	github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
@@ -41,13 +42,14 @@ require (
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.3.0
+	github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e // indirect
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.19.0
+	github.com/prometheus/alertmanager v0.20.0
 	github.com/prometheus/client_golang v1.5.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.9.1
@@ -56,7 +58,7 @@ require (
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
-	github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d
+	github.com/thanos-io/thanos v0.11.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
@@ -68,6 +70,7 @@ require (
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.7
+	k8s.io/client-go v12.0.0+incompatible // indirect
 	sigs.k8s.io/yaml v1.1.0
 )
 

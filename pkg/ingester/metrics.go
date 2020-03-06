@@ -143,7 +143,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 
 		dirSyncs: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_syncs_total",
-			"TSDB: Total dir sync attempts",
+			"TSDB: Total number of dir syncs",
 			nil, nil),
 		dirSyncFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_sync_failures_total",
@@ -151,11 +151,11 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			nil, nil),
 		uploads: prometheus.NewDesc(
 			"cortex_ingester_shipper_uploads_total",
-			"TSDB: Total object upload attempts",
+			"TSDB: Total number of uploaded blocks",
 			nil, nil),
 		uploadFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_upload_failures_total",
-			"TSDB: Total number of failed object uploads",
+			"TSDB: Total number of block upload failures",
 			nil, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),

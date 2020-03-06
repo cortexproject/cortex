@@ -3,7 +3,7 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: quay.io/cortexproject/build-image:update-gogoproto-9a1b26ac6
+    - image: quay.io/cortexproject/build-image:dockerfile-c8ab1c287-WIP
   working_directory: /go/src/github.com/cortexproject/cortex
 
 filters: &filters
@@ -124,8 +124,8 @@ jobs:
         name: Upgrade golang
         command: |
           cd /tmp && \
-          wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
-          tar -zxvf go1.13.3.linux-amd64.tar.gz && \
+          wget https://dl.google.com/go/go1.13.7.linux-amd64.tar.gz && \
+          tar -zxvf go1.13.7.linux-amd64.tar.gz && \
           sudo rm -fr /usr/local/go && \
           sudo mv /tmp/go /usr/local/go && \
           cd -

@@ -57,6 +57,7 @@ spec:
             path: /ready
             port: 80
           initialDelaySeconds: 15
+          timeoutSeconds: 1
         volumeMounts:
         - name: config-volume
           mountPath: /etc/cortex

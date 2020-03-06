@@ -3358,7 +3358,25 @@ and verify the same data appears in both Prometheus and Cortex.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;To clean up:&lt;/strong&gt; CTRL-C the Prometheus process and run:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;$ docker rm -f cortex1 cortex2 cortex3 consul grafana
 $ docker network remove cortex
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
+&lt;p&gt;To upgrade the Golang version:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade build image version
+&lt;ul&gt;
+&lt;li&gt;Upgrade Golang version in &lt;code&gt;build-image/Dockerfile&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Build new image &lt;code&gt;make build-image/.uptodate&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Publish the new image to &lt;code&gt;quay.io&lt;/code&gt; (requires a maintainer)&lt;/li&gt;
+&lt;li&gt;Update the Docker image tag in &lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Upgrade integration tests version
+&lt;ul&gt;
+&lt;li&gt;Update the Golang version installed in the &lt;code&gt;integration&lt;/code&gt; job in &lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If the minimum support Golang version should be upgraded as well:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
 &lt;p&gt;You can use the Cortex query frontend with any Prometheus-API compatible
 service, including Prometheus and Thanos. Use this config file to get
 the benefits of query parallelisation and caching.&lt;/p&gt;

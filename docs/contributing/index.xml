@@ -17,4 +17,22 @@ make web-serve&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Whenever you change the content of &lt;code&gt;docs/&lt;/code&gt; or markdown files in the repository root &lt;code&gt;/&lt;/code&gt; you should run:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make &lt;span style=&#34;color:#000&#34;&gt;BUILD_IN_CONTAINER&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;false&lt;/span&gt; web-pre&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make &lt;span style=&#34;color:#000&#34;&gt;BUILD_IN_CONTAINER&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;false&lt;/span&gt; doc web-pre&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item></channel></rss>
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;make &lt;span style=&#34;color:#000&#34;&gt;BUILD_IN_CONTAINER&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;false&lt;/span&gt; doc web-pre&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
+&lt;p&gt;To upgrade the Golang version:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade build image version
+&lt;ul&gt;
+&lt;li&gt;Upgrade Golang version in &lt;code&gt;build-image/Dockerfile&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Build new image &lt;code&gt;make build-image/.uptodate&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Publish the new image to &lt;code&gt;quay.io&lt;/code&gt; (requires a maintainer)&lt;/li&gt;
+&lt;li&gt;Update the Docker image tag in &lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Upgrade integration tests version
+&lt;ul&gt;
+&lt;li&gt;Update the Golang version installed in the &lt;code&gt;integration&lt;/code&gt; job in &lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If the minimum support Golang version should be upgraded as well:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;</description></item></channel></rss>

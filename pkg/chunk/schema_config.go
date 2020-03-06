@@ -26,6 +26,7 @@ const (
 var (
 	errInvalidSchemaVersion = errors.New("invalid schema version")
 	errInvalidTablePeriod   = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errConfigFileNotSet     = errors.New("schema config file needs to be set")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -68,16 +69,27 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
 
-	fileName string
+	fileName       string
+	legacyFileName string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
+	// TODO(gouthamve): Add a metric and log line for this.
+	flag.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
 }
 
 // loadFromFile loads the schema config from a yaml file
 func (cfg *SchemaConfig) loadFromFile() error {
+	if cfg.fileName == "" {
+		cfg.fileName = cfg.legacyFileName
+	}
+
+	if cfg.fileName == "" {
+		return errConfigFileNotSet
+	}
+
 	f, err := os.Open(cfg.fileName)
 	if err != nil {
 		return err

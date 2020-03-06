@@ -14,7 +14,6 @@ var ErrTransferDisabled = errors.New("transfers disabled")
 // Ring entry is in LEAVING state.
 // After calling TransferOut and then Flush, lifecycler stops.
 type FlushTransferer interface {
-	// StopIncomingRequests()
 	Flush()
 	TransferOut(ctx context.Context) error
 }

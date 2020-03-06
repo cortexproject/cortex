@@ -58,7 +58,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 }
 
 func TestTimeSeriesIterator(t *testing.T) {
-	ts := Timeseries{
+	ts := timeseries{
 		series: client.TimeSeries{
 			Labels: []client.LabelAdapter{
 				{

@@ -31,20 +31,20 @@ func (t *timeSeriesSeriesSet) At() storage.Series {
 	if t.i < 0 {
 		return nil
 	}
-	return &Timeseries{series: t.ts[t.i]}
+	return &timeseries{series: t.ts[t.i]}
 }
 
 // Err implements SeriesSet interface
 func (t *timeSeriesSeriesSet) Err() error { return nil }
 
-// Timeseries is a type wrapper that implements the storage.Series interface
-type Timeseries struct {
+// timeseries is a type wrapper that implements the storage.Series interface
+type timeseries struct {
 	series client.TimeSeries
 }
 
-// TimeSeriesSeriesIterator is a wrapper around a client.TimeSeries to implement the SeriesIterator interface
-type TimeSeriesSeriesIterator struct {
-	ts *Timeseries
+// timeSeriesSeriesIterator is a wrapper around a client.TimeSeries to implement the SeriesIterator interface
+type timeSeriesSeriesIterator struct {
+	ts *timeseries
 	i  int
 }
 
@@ -58,20 +58,20 @@ func (b byTimeSeriesLabels) Less(i, j int) bool {
 
 // Labels implements the storage.Series interface.
 // Conversion is safe because ingester sets these by calling client.FromLabelsToLabelAdapters which guarantees labels are sorted.
-func (t *Timeseries) Labels() labels.Labels {
+func (t *timeseries) Labels() labels.Labels {
 	return client.FromLabelAdaptersToLabels(t.series.Labels)
 }
 
 // Iterator implements the storage.Series interface
-func (t *Timeseries) Iterator() storage.SeriesIterator {
-	return &TimeSeriesSeriesIterator{
+func (t *timeseries) Iterator() storage.SeriesIterator {
+	return &timeSeriesSeriesIterator{
 		ts: t,
 		i:  -1,
 	}
 }
 
 // Seek implements SeriesIterator interface
-func (t *TimeSeriesSeriesIterator) Seek(s int64) bool {
+func (t *timeSeriesSeriesIterator) Seek(s int64) bool {
 	offset := 0
 	if t.i > 0 {
 		offset = t.i // only advance via Seek
@@ -85,7 +85,7 @@ func (t *TimeSeriesSeriesIterator) Seek(s int64) bool {
 }
 
 // At implements the SeriesIterator interface
-func (t *TimeSeriesSeriesIterator) At() (int64, float64) {
+func (t *timeSeriesSeriesIterator) At() (int64, float64) {
 	if t.i < 0 || t.i >= len(t.ts.series.Samples) {
 		return 0, 0
 	}
@@ -93,7 +93,7 @@ func (t *TimeSeriesSeriesIterator) At() (int64, float64) {
 }
 
 // Next implements the SeriesIterator interface
-func (t *TimeSeriesSeriesIterator) Next() bool { t.i++; return t.i < len(t.ts.series.Samples) }
+func (t *timeSeriesSeriesIterator) Next() bool { t.i++; return t.i < len(t.ts.series.Samples) }
 
 // Err implements the SeriesIterator interface
-func (t *TimeSeriesSeriesIterator) Err() error { return nil }
+func (t *timeSeriesSeriesIterator) Err() error { return nil }

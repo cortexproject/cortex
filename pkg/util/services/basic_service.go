@@ -56,7 +56,6 @@ type BasicService struct {
 	stateMu     sync.RWMutex
 	state       State
 	failureCase error
-	listeners   []chan func(l Listener)
 
 	// closed when state reaches Running, Terminated or Failed state
 	runningWaitersCh chan struct{}
@@ -65,6 +64,8 @@ type BasicService struct {
 
 	serviceContext context.Context
 	serviceCancel  context.CancelFunc
+
+	listeners *serviceListeners
 }
 
 func invalidServiceStateError(state, expected State) error {
@@ -84,6 +85,7 @@ func NewBasicService(start StartingFn, run RunningFn, stop StoppingFn) *BasicSer
 		state:               New,
 		runningWaitersCh:    make(chan struct{}),
 		terminatedWaitersCh: make(chan struct{}),
+		listeners:           newServiceListeners(),
 	}
 }
 
@@ -91,7 +93,7 @@ func NewBasicService(start StartingFn, run RunningFn, stop StoppingFn) *BasicSer
 func (b *BasicService) StartAsync(parentContext context.Context) error {
 	switched, oldState := b.switchState(New, Starting, func() {
 		b.serviceContext, b.serviceCancel = context.WithCancel(parentContext)
-		b.notifyListeners(func(l Listener) { l.Starting() }, false)
+		b.listeners.notify(func(l Listener) { l.Starting() }, false)
 		go b.main()
 	})
 
@@ -140,7 +142,7 @@ func (b *BasicService) main() {
 			// we will not reach Running or Terminated, notify waiters
 			close(b.runningWaitersCh)
 			close(b.terminatedWaitersCh)
-			b.notifyListeners(func(l Listener) { l.Failed(Starting, err) }, true)
+			b.listeners.notify(func(l Listener) { l.Failed(Starting, err) }, true)
 		})
 		return
 	}
@@ -158,7 +160,7 @@ func (b *BasicService) main() {
 	b.mustSwitchState(Starting, Running, func() {
 		// unblock waiters waiting for Running state
 		close(b.runningWaitersCh)
-		b.notifyListeners(func(l Listener) { l.Running() }, false)
+		b.listeners.notify(func(l Listener) { l.Running() }, false)
 	})
 
 	stoppingFrom = Running
@@ -173,7 +175,7 @@ stop:
 			// we will not reach Running state
 			close(b.runningWaitersCh)
 		}
-		b.notifyListeners(func(l Listener) { l.Stopping(stoppingFrom) }, false)
+		b.listeners.notify(func(l Listener) { l.Stopping(stoppingFrom) }, false)
 	})
 
 	// Make sure we cancel the context before running stoppingFn
@@ -190,12 +192,12 @@ stop:
 		b.mustSwitchState(Stopping, Failed, func() {
 			b.failureCase = failure
 			close(b.terminatedWaitersCh)
-			b.notifyListeners(func(l Listener) { l.Failed(Stopping, failure) }, true)
+			b.listeners.notify(func(l Listener) { l.Failed(Stopping, failure) }, true)
 		})
 	} else {
 		b.mustSwitchState(Stopping, Terminated, func() {
 			close(b.terminatedWaitersCh)
-			b.notifyListeners(func(l Listener) { l.Terminated(Stopping) }, true)
+			b.listeners.notify(func(l Listener) { l.Terminated(Stopping) }, true)
 		})
 	}
 }
@@ -212,7 +214,7 @@ func (b *BasicService) StopAsync() {
 		// Notify waiters and listeners.
 		close(b.runningWaitersCh)
 		close(b.terminatedWaitersCh)
-		b.notifyListeners(func(l Listener) { l.Terminated(New) }, true)
+		b.listeners.notify(func(l Listener) { l.Terminated(New) }, true)
 	})
 
 	if !terminated {
@@ -302,34 +304,14 @@ func (b *BasicService) State() State {
 
 // AddListener is part of Service interface.
 func (b *BasicService) AddListener(listener Listener) {
-	b.stateMu.Lock()
-	defer b.stateMu.Unlock()
+	// we want to avoid state transitions while adding listener
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
 
 	if b.state == Terminated || b.state == Failed {
-		// no more state transitions will be done, and channel wouldn't get closed
+		// no more state transitions will be done, listener won't be called anyway
 		return
 	}
 
-	// There are max 4 state transitions. We use buffer to avoid blocking the sender,
-	// which holds service lock.
-	ch := make(chan func(l Listener), 4)
-	b.listeners = append(b.listeners, ch)
-
-	// each listener has its own goroutine, processing events.
-	go func() {
-		for lfn := range ch {
-			lfn(listener)
-		}
-	}()
-}
-
-// lock must be held here. Read lock would be good enough, but since
-// this is called from state transitions, full lock is used.
-func (b *BasicService) notifyListeners(lfn func(l Listener), closeChan bool) {
-	for _, ch := range b.listeners {
-		ch <- lfn
-		if closeChan {
-			close(ch)
-		}
-	}
+	b.listeners.add(listener)
 }

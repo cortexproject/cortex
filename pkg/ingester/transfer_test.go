@@ -8,10 +8,14 @@ import (
 	rnd "math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"google.golang.org/grpc"
@@ -28,26 +32,27 @@ type testUserTSDB struct {
 }
 
 func createTSDB(t *testing.T, dir string, users []*testUserTSDB) {
-	for _, user := range users {
+	createAndWrite := func(t *testing.T, path string) {
+		f, err := os.Create(path)
+		require.NoError(t, err)
+		defer f.Close()
+		_, err = f.Write([]byte("a man a plan a canal panama"))
+		require.NoError(t, err)
+	}
 
-		err := os.MkdirAll(filepath.Join(dir, user.userID), 0777)
+	for _, user := range users {
+		userDir := filepath.Join(dir, user.userID)
+
+		err := os.MkdirAll(userDir, 0777)
 		require.NoError(t, err)
 
+		// Generate blocks.
 		for i := 0; i < user.numBlocks; i++ {
 			u, err := ulid.New(uint64(time.Now().Unix()*1000), rand.Reader)
 			require.NoError(t, err)
 
-			userdir := filepath.Join(dir, user.userID)
-			blockDir := filepath.Join(userdir, u.String())
+			blockDir := filepath.Join(userDir, u.String())
 			require.NoError(t, os.MkdirAll(filepath.Join(blockDir, "chunks"), 0777))
-
-			createAndWrite := func(t *testing.T, path string) {
-				f, err := os.Create(path)
-				require.NoError(t, err)
-				defer f.Close()
-				_, err = f.Write([]byte("a man a plan a canal panama"))
-				require.NoError(t, err)
-			}
 
 			for i := 0; i < 2; i++ {
 				createAndWrite(t, filepath.Join(blockDir, "chunks", fmt.Sprintf("00000%v", i)))
@@ -58,10 +63,6 @@ func createTSDB(t *testing.T, dir string, users []*testUserTSDB) {
 				createAndWrite(t, filepath.Join(blockDir, name))
 			}
 
-			require.NoError(t, os.MkdirAll(filepath.Join(userdir, "wal", "checkpoint.000419"), 0777))
-			createAndWrite(t, filepath.Join(userdir, "wal", "000001"))
-			createAndWrite(t, filepath.Join(userdir, "wal", "checkpoint.000419", "000000"))
-
 			// Record if this block is to be "shipped"
 			if rnd.Intn(100) < user.shipPercent {
 				user.meta.Uploaded = append(user.meta.Uploaded, u)
@@ -69,6 +70,11 @@ func createTSDB(t *testing.T, dir string, users []*testUserTSDB) {
 				user.unshipped = append(user.unshipped, u.String())
 			}
 		}
+
+		// Generate WAL.
+		require.NoError(t, os.MkdirAll(filepath.Join(userDir, "wal", "checkpoint.000419"), 0777))
+		createAndWrite(t, filepath.Join(userDir, "wal", "000001"))
+		createAndWrite(t, filepath.Join(userDir, "wal", "checkpoint.000419", "000000"))
 
 		require.NoError(t, shipper.WriteMetaFile(nil, filepath.Join(dir, user.userID), user.meta))
 	}
@@ -160,6 +166,14 @@ func (m *MockTransferTSDBClient) Context() context.Context {
 }
 
 func TestTransferUser(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+
+	// Create an ingester without starting it (not needed).
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), reg)
+	require.NoError(t, err)
+	defer cleanup()
+
+	// Create a fake TSDB on disk.
 	dir, err := ioutil.TempDir("", "tsdb")
 	require.NoError(t, err)
 
@@ -182,7 +196,7 @@ func TestTransferUser(t *testing.T) {
 	m := &MockTransferTSDBClient{
 		Dir: xfer,
 	}
-	transferUser(context.Background(), m, dir, "test", "0", blks["0"])
+	i.transferUser(context.Background(), m, dir, "test", "0", blks["0"])
 
 	var original []string
 	var xferfiles []string
@@ -204,4 +218,27 @@ func TestTransferUser(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, original, xferfiles)
+
+	// Assert exported metrics (3 blocks, 5 files per block, 2 files WAL).
+	metricNames := []string{
+		"cortex_ingester_sent_files",
+		"cortex_ingester_received_files",
+		"cortex_ingester_received_bytes_total",
+		"cortex_ingester_sent_bytes_total",
+	}
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_sent_files The total number of files sent by this ingester whilst leaving.
+		# TYPE cortex_ingester_sent_files counter
+		cortex_ingester_sent_files 17
+		# HELP cortex_ingester_received_files The total number of files received by this ingester whilst joining
+		# TYPE cortex_ingester_received_files counter
+		cortex_ingester_received_files 0
+		# HELP cortex_ingester_received_bytes_total The total number of bytes received by this ingester whilst joining
+		# TYPE cortex_ingester_received_bytes_total counter
+		cortex_ingester_received_bytes_total 0
+		# HELP cortex_ingester_sent_bytes_total The total number of bytes sent by this ingester whilst leaving
+		# TYPE cortex_ingester_sent_bytes_total counter
+		cortex_ingester_sent_bytes_total 459
+	`), metricNames...))
 }

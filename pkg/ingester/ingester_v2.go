@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -98,12 +99,12 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			bucket:      bucketClient,
 			tsdbMetrics: newTSDBMetrics(registerer),
 
-			compactionsTriggered: prometheus.NewCounter(prometheus.CounterOpts{
+			compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_triggered_total",
 				Help: "Total number of triggered compactions.",
 			}),
 
-			compactionsFailed: prometheus.NewCounter(prometheus.CounterOpts{
+			compactionsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_failed_total",
 				Help: "Total number of compactions that failed.",
 			}),
@@ -114,12 +115,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// them from the underlying system (ie. TSDB).
 	if registerer != nil {
 		registerer.Unregister(i.metrics.memSeries)
-		registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_series",
 			Help: "The current number of series in memory.",
-		}, i.numSeriesInTSDB))
-		registerer.MustRegister(i.TSDBState.compactionsTriggered)
-		registerer.MustRegister(i.TSDBState.compactionsFailed)
+		}, i.numSeriesInTSDB)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)

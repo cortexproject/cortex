@@ -472,7 +472,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		})
 	}
 
-	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+	i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	i.metrics.ingestedSamples.Inc()
 	switch source {
 	case client.RULE:

@@ -133,6 +133,7 @@ Further, if you're using the configs service, we've upgraded the migration libra
 * [FEATURE] Added support to store ring tokens to a file and read it back on startup, instead of generating/fetching the tokens to/from the ring. This feature can be enabled with the flag `-ingester.tokens-file-path`. #1750
 * [FEATURE] Experimental TSDB: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Experimental TSDB: Added TSDB blocks `compactor` component, which iterates over users blocks stored in the bucket and compact them according to the configured block ranges. #1942
+* [FEATURE] Experimental: Implements gRPC streaming for ingesters when using the experimental TSDB blocks storage. #1845
 * [ENHANCEMENT] metric `cortex_ingester_flush_reasons` gets a new `reason` value: `Spread`, when `-ingester.spread-flushes` option is enabled. #1978
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service. #1923
 * [ENHANCEMENT] Upgraded Kubernetes API version for deployments from `extensions/v1beta1` to `apps/v1`. #1941

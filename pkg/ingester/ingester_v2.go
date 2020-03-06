@@ -27,6 +27,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -564,6 +565,93 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 	}
+}
+
+// v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
+func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	_, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+
+	i.metrics.queries.Inc()
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return nil
+	}
+
+	q, err := db.Querier(int64(from), int64(through))
+	if err != nil {
+		return err
+	}
+	defer q.Close()
+
+	ss, err := q.Select(matchers...)
+	if err != nil {
+		return err
+	}
+
+	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
+	batchSize := 0
+	numSamples := 0
+	numSeries := 0
+	for ss.Next() {
+		series := ss.At()
+
+		// convert labels to LabelAdapter
+		ts := client.TimeSeries{
+			Labels: client.FromLabelsToLabelAdapters(series.Labels()),
+		}
+
+		it := series.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
+		}
+		numSamples += len(ts.Samples)
+
+		timeseries = append(timeseries, ts)
+		numSeries++
+		batchSize++
+		if batchSize >= queryStreamBatchSize {
+			err = stream.Send(&client.QueryStreamResponse{
+				Timeseries: timeseries,
+			})
+			if err != nil {
+				return err
+			}
+
+			batchSize = 0
+			timeseries = timeseries[:0]
+		}
+	}
+
+	// Ensure no error occurred while iterating the series set.
+	if err := ss.Err(); err != nil {
+		return err
+	}
+
+	// Final flush any existing metrics
+	if batchSize != 0 {
+		err = stream.Send(&client.QueryStreamResponse{
+			Timeseries: timeseries,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
+	return nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {

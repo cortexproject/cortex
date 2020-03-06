@@ -342,7 +342,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 	result := &mockDistributor{
 		m: matrix,
-		r: []client.TimeSeriesChunk{tsc},
+		r: &client.QueryStreamResponse{Chunkseries: []client.TimeSeriesChunk{tsc}},
 	}
 	return result
 }
@@ -393,15 +393,14 @@ func (m *errChunkStore) Querier(ctx context.Context, mint, maxt int64) (storage.
 	return storage.NoopQuerier(), errDistributorError
 }
 
-type errDistributor struct {
-}
+type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 
 func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
+func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {

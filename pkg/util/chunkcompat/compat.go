@@ -16,7 +16,7 @@ import (
 func StreamsToMatrix(from, through model.Time, responses []*client.QueryStreamResponse) (model.Matrix, error) {
 	result := model.Matrix{}
 	for _, response := range responses {
-		series, err := SeriesChunksToMatrix(from, through, response.Timeseries)
+		series, err := SeriesChunksToMatrix(from, through, response.Chunkseries)
 		if err != nil {
 			return nil, err
 		}

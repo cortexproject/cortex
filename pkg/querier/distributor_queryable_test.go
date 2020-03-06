@@ -68,18 +68,20 @@ func TestIngesterStreaming(t *testing.T) {
 	require.NoError(t, err)
 
 	d := &mockDistributor{
-		r: []client.TimeSeriesChunk{
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "bar", Value: "baz"},
+		r: &client.QueryStreamResponse{
+			Chunkseries: []client.TimeSeriesChunk{
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "bar", Value: "baz"},
+					},
+					Chunks: clientChunks,
 				},
-				Chunks: clientChunks,
-			},
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "foo", Value: "bar"},
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
+					},
+					Chunks: clientChunks,
 				},
-				Chunks: clientChunks,
 			},
 		},
 	}
@@ -105,13 +107,13 @@ func TestIngesterStreaming(t *testing.T) {
 
 type mockDistributor struct {
 	m model.Matrix
-	r []client.TimeSeriesChunk
+	r *client.QueryStreamResponse
 }
 
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	return m.m, nil
 }
-func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
+func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return m.r, nil
 }
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {

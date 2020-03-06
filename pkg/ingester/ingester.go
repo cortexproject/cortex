@@ -475,7 +475,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
 	if i.cfg.TSDBEnabled {
-		return fmt.Errorf("Unimplemented for V2")
+		return i.v2QueryStream(req, stream)
 	}
 
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
@@ -532,7 +532,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			return nil
 		}
 		err = stream.Send(&client.QueryStreamResponse{
-			Timeseries: batch,
+			Chunkseries: batch,
 		})
 		batch = batch[:0]
 		return err

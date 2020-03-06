@@ -24,6 +24,11 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 				"-querier.ingester-streaming": "false",
 			}),
 		},
+		"querier running with ingester gRPC streaming enabled": {
+			flags: mergeFlags(BlocksStorageFlags, map[string]string{
+				"-querier.ingester-streaming": "true",
+			}),
+		},
 	}
 
 	for testName, testCfg := range tests {

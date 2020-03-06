@@ -114,7 +114,7 @@ func TestIngesterTransfer(t *testing.T) {
 	})
 
 	// Now write a sample to this ingester
-	req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = ing1.Push(ctx, req)
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 
 	// Check we can send the same sample again to the new ingester and get the same result
-	req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	req, _, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	_, err = ing2.Push(ctx, req)
 	require.NoError(t, err)
 	response, err = ing2.Query(ctx, request)
@@ -453,7 +453,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			})
 
 			// Now write a sample to this ingester
-			req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+			req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 			ctx := user.InjectOrgID(context.Background(), userID)
 			_, err = ing1.Push(ctx, req)
 			require.NoError(t, err)
@@ -507,7 +507,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			assert.Equal(t, expectedResponse, response)
 
 			// Check we can send the same sample again to the new ingester and get the same result
-			req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+			req, _, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 			_, err = ing2.Push(ctx, req)
 			require.NoError(t, err)
 			response, err = ing2.Query(ctx, request)

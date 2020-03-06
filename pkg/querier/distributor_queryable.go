@@ -20,7 +20,7 @@ import (
 // to reduce package coupling.
 type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
-	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error)
+	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error)
 	LabelNames(context.Context) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
@@ -90,8 +90,12 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers [
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	serieses := make([]storage.Series, 0, len(results))
-	for _, result := range results {
+	if len(results.Timeseries) != 0 {
+		return newTimeSeriesSeriesSet(results.Timeseries), nil, nil
+	}
+
+	serieses := make([]storage.Series, 0, len(results.Chunkseries))
+	for _, result := range results.Chunkseries {
 		// Sometimes the ingester can send series that have no data.
 		if len(result.Chunks) == 0 {
 			continue

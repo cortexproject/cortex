@@ -171,7 +171,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
-	// TODO: lot more stuff can be put into startingFn (esp. WAL replay), but for now keep it in New
 	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
 	return i, nil
 }

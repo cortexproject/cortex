@@ -618,7 +618,7 @@ addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command bellow. At the time of writing it was v0.6.1.&lt;/p&gt;
+to find the latest stable version tag and use it in the command bellow (currently it is &lt;code&gt;v0.6.1&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;Run Cortex using the latest stable version:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v0.6.1 -config.file=/etc/single-process-config.yaml
 &lt;/code&gt;&lt;/pre&gt;

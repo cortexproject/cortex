@@ -45,10 +45,9 @@ Maintaining the release branches for older minor releases happens on a best effo
 
 For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
 
-1. Update version number in the following locations:
-   - The `VERSION` file
-   - Kubernetes manifests located at `k8s/`
-   - Documentation located at `docs/`
+0. Make you've a GPG key associated to your GitHub account (`git tag` will be signed with the GPG key)
+   - You can add a GPG key to your GitHub account using the following [procedure](https://help.github.com/articles/generating-a-gpg-key/)
+1. Update the version number in the `VERSION` file
 2. Update `CHANGELOG.md`
    - Add a new section for the new release with all the changelog entries
    - Ensure changelog entries are in this order:
@@ -58,9 +57,34 @@ For a new major or minor release, create the corresponding release branch based 
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
 
-### Draft the new release
+### Publish a release candidate
 
-Tag the new release with a tag named `v<major>.<minor>.<patch>`, e.g. `v0.1.3`. Note the `v` prefix.
+To publish a release candidate:
+
+1. Ensure the `VERSION` number has the `-rc.X` suffix (`X` starting from `0`)
+2. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+3. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+3. Create a pre-release in GitHub
+   - Write the release notes (including a copy-paste of the changelog)
+   - Build binaries with `make disk` and attach them to the release
+
+### Publish a stable release
+
+To publish a stable release:
+
+1. Ensure the `VERSION` number has **no** `-rc.X` suffix
+2. Update the Cortex version in the following locations:
+   - Kubernetes manifests located at `k8s/`
+   - Documentation located at `docs/`
+3. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+4. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+5. Create a release in GitHub
+   - Write the release notes (including a copy-paste of the changelog)
+   - Build binaries with `make disk` and attach them to the release
+
+### How to tag a release
+
+Every release is tagged with `v<major>.<minor>.<patch>`, e.g. `v0.1.3`. Note the `v` prefix.
 
 You can do the tagging on the commandline:
 
@@ -69,9 +93,3 @@ $ tag=$(< VERSION)
 $ git tag -s "v${tag}" -m "v${tag}"
 $ git push origin "v${tag}"
 ```
-
-Signing a tag with a GPG key is appreciated, but in case you can't add a GPG key to your Github account using the following [procedure](https://help.github.com/articles/generating-a-gpg-key/), you can replace the `-s` flag by `-a` flag of the `git tag` command to only annotate the tag without signing.
-
-Once a tag is created, the release process through CircleCI will be triggered for this tag. If everything goes smoothly, create a release in the GitHub UI with the changelog for this release.
-
-Finally run `make dist` to build binaries into `./dist` and attach them to the release on GitHub.

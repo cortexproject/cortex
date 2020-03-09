@@ -36,6 +36,11 @@ import (
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 )
 
+func trimEtag(etag string) string {
+	etag = strings.TrimPrefix(etag, "\"")
+	return strings.TrimSuffix(etag, "\"")
+}
+
 // xmlDecoder provide decoded value in xml.
 func xmlDecoder(body io.Reader, v interface{}) error {
 	d := xml.NewDecoder(body)

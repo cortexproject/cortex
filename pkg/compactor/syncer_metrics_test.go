@@ -19,6 +19,10 @@ func TestSyncerMetrics(t *testing.T) {
 	// total base = 111110
 
 	err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_compactor_meta_sync_consistency_delay_seconds TSDB Syncer: Configured consistency delay in seconds.
+			# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
+			cortex_compactor_meta_sync_consistency_delay_seconds 300
+
 			# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
 			# TYPE cortex_compactor_meta_syncs_total counter
 			cortex_compactor_meta_syncs_total 111110
@@ -118,6 +122,7 @@ func generateTestData(base float64) *prometheus.Registry {
 	m.metaSync.Add(1 * base)
 	m.metaSyncFailures.Add(2 * base)
 	m.metaSyncDuration.Observe(3 * base / 10000)
+	m.metaSyncConsistencyDelay.Set(300)
 	m.garbageCollectedBlocks.Add(4 * base)
 	m.garbageCollections.Add(5 * base)
 	m.garbageCollectionFailures.Add(6 * base)
@@ -145,6 +150,7 @@ type testSyncerMetrics struct {
 	metaSync                  prometheus.Counter
 	metaSyncFailures          prometheus.Counter
 	metaSyncDuration          prometheus.Histogram
+	metaSyncConsistencyDelay  prometheus.Gauge
 	garbageCollectedBlocks    prometheus.Counter
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
@@ -171,6 +177,10 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 		Name:    "blocks_meta_sync_duration_seconds",
 		Help:    "Duration of the blocks metadata synchronization in seconds.",
 		Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720},
+	})
+	m.metaSyncConsistencyDelay = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consistency_delay_seconds",
+		Help: "Configured consistency delay in seconds.",
 	})
 
 	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
@@ -217,6 +227,7 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 			m.metaSync,
 			m.metaSyncFailures,
 			m.metaSyncDuration,
+			m.metaSyncConsistencyDelay,
 			m.garbageCollectedBlocks,
 			m.garbageCollections,
 			m.garbageCollectionFailures,

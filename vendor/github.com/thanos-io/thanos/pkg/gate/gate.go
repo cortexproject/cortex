@@ -1,3 +1,6 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
 package gate
 
 import (
@@ -7,6 +10,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/gate"
 )
+
+type Gater interface {
+	IsMyTurn(ctx context.Context) error
+	Done()
+}
 
 // Gate wraps the Prometheus gate with extra metrics.
 type Gate struct {

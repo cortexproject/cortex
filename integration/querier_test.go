@@ -105,11 +105,6 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_querier_bucket_store_blocks_loaded"))
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
-			// TODO: apparently Thanos has a bug which cause a block to not be considered if the
-			//       query timetamp matches the block max timestamp
-			series1Timestamp = series1Timestamp.Add(time.Duration(time.Millisecond))
-			expectedVector1[0].Timestamp = model.Time(e2e.TimeToMilliseconds(series1Timestamp))
-
 			result, err := c.Query("series_1", series1Timestamp)
 			require.NoError(t, err)
 			require.Equal(t, model.ValVector, result.Type())
@@ -207,11 +202,6 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
-
-	// TODO: apparently Thanos has a bug which cause a block to not be considered if the
-	//       query timetamp matches the block max timestamp
-	series1Timestamp = series1Timestamp.Add(time.Duration(time.Millisecond))
-	expectedVector1[0].Timestamp = model.Time(e2e.TimeToMilliseconds(series1Timestamp))
 
 	result, err := c.Query("series_1", series1Timestamp)
 	require.NoError(t, err)

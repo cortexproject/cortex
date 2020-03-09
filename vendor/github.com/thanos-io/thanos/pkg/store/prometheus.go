@@ -1,3 +1,6 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
 package store
 
 import (
@@ -12,8 +15,10 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -23,6 +28,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -426,6 +432,11 @@ func (p *PrometheusStore) startPromSeries(ctx context.Context, q *prompb.Query) 
 		return nil, errors.Wrap(err, "marshal read request")
 	}
 
+	qjson, err := json.Marshal(q)
+	if err != nil {
+		return nil, errors.Wrap(err, "json encode query for tracing")
+	}
+
 	u := *p.base
 	u.Path = path.Join(u.Path, "api/v1/read")
 
@@ -436,13 +447,13 @@ func (p *PrometheusStore) startPromSeries(ctx context.Context, q *prompb.Query) 
 	preq.Header.Add("Content-Encoding", "snappy")
 	preq.Header.Set("Content-Type", "application/x-stream-protobuf")
 	preq.Header.Set("User-Agent", userAgent)
-	spanReqDo, ctx := tracing.StartSpan(ctx, "query_prometheus_request")
+	spanReqDo, ctx := tracing.StartSpan(ctx, "query_prometheus_request", opentracing.Tag{Key: "prometheus.query", Value: string(qjson)})
 	preq = preq.WithContext(ctx)
 	presp, err := p.client.Do(preq)
+	spanReqDo.Finish()
 	if err != nil {
 		return nil, errors.Wrap(err, "send request")
 	}
-	spanReqDo.Finish()
 	if presp.StatusCode/100 != 2 {
 		// Best effort read.
 		b, err := ioutil.ReadAll(presp.Body)
@@ -663,9 +674,9 @@ func (p *PrometheusStore) seriesLabels(ctx context.Context, matchers []storepb.L
 	}
 
 	q.Add("match[]", metric)
+	q.Add("start", formatTime(timestamp.Time(startTime)))
+	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
-	q.Add("start", string(startTime))
-	q.Add("end", string(endTime))
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
@@ -714,4 +725,8 @@ func (p *PrometheusStore) seriesLabels(ctx context.Context, matchers []storepb.L
 	}
 
 	return m.Data, nil
+}
+
+func formatTime(t time.Time) string {
+	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }

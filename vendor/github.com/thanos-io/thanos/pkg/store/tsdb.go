@@ -1,3 +1,6 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
 package store
 
 import (
@@ -26,6 +29,12 @@ type TSDBStore struct {
 	db             *tsdb.DB
 	component      component.SourceStoreAPI
 	externalLabels labels.Labels
+}
+
+// ReadWriteTSDBStore is a TSDBStore that can also be written to.
+type ReadWriteTSDBStore struct {
+	storepb.StoreServer
+	storepb.WriteableStoreServer
 }
 
 // NewTSDBStore creates a new TSDBStore.

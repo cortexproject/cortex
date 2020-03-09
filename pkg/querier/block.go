@@ -58,7 +58,7 @@ func (b *BlockQueryable) starting(ctx context.Context) error {
 	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start UserStore")
 }
 
-func (b *BlockQueryable) stopping() error {
+func (b *BlockQueryable) stopping(_ error) error {
 	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping UserStore")
 }
 

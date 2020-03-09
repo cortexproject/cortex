@@ -45,8 +45,8 @@ Maintaining the release branches for older minor releases happens on a best effo
 
 For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
 
-0. Make you've a GPG key associated to your GitHub account (`git tag` will be signed with the GPG key)
-   - You can add a GPG key to your GitHub account using the following [procedure](https://help.github.com/articles/generating-a-gpg-key/)
+0. Make sure you've a GPG key associated to your GitHub account (`git tag` will be signed with that GPG key)
+   - You can add a GPG key to your GitHub account following [this procedure](https://help.github.com/articles/generating-a-gpg-key/)
 1. Update the version number in the `VERSION` file
 2. Update `CHANGELOG.md`
    - Add a new section for the new release with all the changelog entries

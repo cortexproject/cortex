@@ -76,3 +76,15 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 
 	return configs, nil
 }
+
+func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (c *Store) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
+	panic("not implemented") // TODO: Implement
+}

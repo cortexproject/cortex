@@ -52,7 +52,7 @@ example set of command-line parameters from a fairly modest install:
    -metrics.target-queue-length=100000
    -dynamodb.url=dynamodb://us-east-1/
    -schema-config-file=/etc/schema.yaml
-   
+
    -dynamodb.periodic-table.write-throughput=1000
    -dynamodb.periodic-table.write-throughput.scale.enabled=true
    -dynamodb.periodic-table.write-throughput.scale.min-capacity=200

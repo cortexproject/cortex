@@ -18,11 +18,11 @@ configs: []<period_config>
 Where `period_config` is
 ```
 # In YYYY-MM-DD format, for example: 2020-03-01.
-from: <string>  
+from: <string>
 # The index client to use, valid options: aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.
 store: <string>
 # The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
-object_store: <string> 
+object_store: <string>
 # The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9.
 schema: <string>
 index: <periodic_table_config>
@@ -51,7 +51,7 @@ configs:
     # separate object store.
     chunks:
       period: 168h
-      prefix: cortex_chunks  
+      prefix: cortex_chunks
     store: aws-dynamo/bigtable-hashed/cassandra/boltdb
     object_store: <above options>/s3/gcs/azure/filesystem
 ```

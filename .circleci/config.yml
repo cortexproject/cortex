@@ -3,6 +3,8 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
+    # IMPORTANT: whenever you change the build-image version tag, remember to replace it
+    #            across the entire file (there are multiple references).
     - image: quay.io/cortexproject/build-image:update-gogoproto-9a1b26ac6
   working_directory: /go/src/github.com/cortexproject/cortex
 
@@ -86,7 +88,7 @@ jobs:
 
   test:
     docker:
-      - image: quay.io/cortexproject/build-image:validate-k8s-specs-7c217ee7
+      - image: quay.io/cortexproject/build-image:update-gogoproto-9a1b26ac6
       - image: cassandra:3.11
         environment:
           JVM_OPTS: "-Xms1024M -Xmx1024M"
@@ -110,7 +112,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-d74af5958 configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-gogoproto-9a1b26ac6 configs-integration-test
 
   integration:
     machine:

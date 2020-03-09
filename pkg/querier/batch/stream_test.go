@@ -4,8 +4,9 @@ import (
 	"strconv"
 	"testing"
 
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/stretchr/testify/require"
+
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 func TestStream(t *testing.T) {

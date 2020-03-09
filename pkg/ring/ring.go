@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -31,6 +31,9 @@ const (
 
 	// DistributorRingKey is the key under which we store the distributors ring in the KVStore.
 	DistributorRingKey = "distributor"
+
+	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
+	CompactorRingKey = "compactor"
 )
 
 // ReadRing represents the read interface to the ring.
@@ -57,12 +60,6 @@ const (
 	Reporting // Special value for inquiring about health
 )
 
-type uint32s []uint32
-
-func (x uint32s) Len() int           { return len(x) }
-func (x uint32s) Less(i, j int) bool { return x[i] < x[j] }
-func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
-
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty ring")
 
@@ -88,12 +85,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
+	services.Service
+
 	name     string
 	key      string
 	cfg      Config
 	KVClient kv.Client
-	done     chan struct{}
-	quit     context.CancelFunc
 
 	mtx        sync.RWMutex
 	ringDesc   *Desc
@@ -106,12 +103,12 @@ type Ring struct {
 	oldestTimestampDesc *prometheus.Desc
 }
 
-// New creates a new Ring
+// New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-	codec := codec.Proto{Factory: ProtoDescFactory}
+	codec := GetCodec()
 	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
@@ -122,7 +119,6 @@ func New(cfg Config, name, key string) (*Ring, error) {
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
-		done:     make(chan struct{}),
 		ringDesc: &Desc{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
@@ -150,20 +146,12 @@ func New(cfg Config, name, key string) (*Ring, error) {
 			[]string{"state", "name"}, nil,
 		),
 	}
-	var ctx context.Context
-	ctx, r.quit = context.WithCancel(context.Background())
-	go r.loop(ctx)
+
+	r.Service = services.NewBasicService(nil, r.loop, nil)
 	return r, nil
 }
 
-// Stop the distributor.
-func (r *Ring) Stop() {
-	r.quit()
-	<-r.done
-}
-
-func (r *Ring) loop(ctx context.Context) {
-	defer close(r.done)
+func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
 			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
@@ -179,8 +167,7 @@ func (r *Ring) loop(ctx context.Context) {
 		r.ringTokens = ringTokens
 		return true
 	})
-
-	r.KVClient.Stop()
+	return nil
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.

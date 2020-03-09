@@ -35,8 +35,11 @@ func TestDeriv(t *testing.T) {
 	testutil.Ok(t, err)
 
 	metric := labels.FromStrings("__name__", "foo")
-	a.Add(metric, 1493712816939, 1.0)
-	a.Add(metric, 1493712846939, 1.0)
+	_, err = a.Add(metric, 1493712816939, 1.0)
+	testutil.Ok(t, err)
+
+	_, err = a.Add(metric, 1493712846939, 1.0)
+	testutil.Ok(t, err)
 
 	err = a.Commit()
 	testutil.Ok(t, err)

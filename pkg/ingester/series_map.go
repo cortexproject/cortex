@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const seriesMapShards = 128
@@ -22,7 +23,7 @@ type seriesMap struct {
 type shard struct {
 	mtx sync.Mutex
 	m   map[model.Fingerprint]*memorySeries
-	// Align this struct.
+	//nolint:structcheck,unused // Align this struct.
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*memorySeries{})]byte
 }
 

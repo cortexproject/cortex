@@ -7,33 +7,30 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
-func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc {
-	dur := time.Duration(rl.Interval)
+func ToProto(user string, namespace string, rl legacy_rulefmt.RuleGroup) *RuleGroupDesc {
 	rg := RuleGroupDesc{
 		Name:      rl.Name,
 		Namespace: namespace,
-		Interval:  &dur,
+		Interval:  time.Duration(rl.Interval),
 		Rules:     formattedRuleToProto(rl.Rules),
 		User:      user,
 	}
 	return &rg
 }
 
-func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
+func formattedRuleToProto(rls []legacy_rulefmt.Rule) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
-		f := time.Duration(rls[i].For)
-
 		rules[i] = &RuleDesc{
-			Expr:   rls[i].Expr,
-			Record: rls[i].Record,
-			Alert:  rls[i].Alert,
-
-			For:         &f,
+			Expr:        rls[i].Expr,
+			Record:      rls[i].Record,
+			Alert:       rls[i].Alert,
+			For:         time.Duration(rls[i].For),
 			Labels:      client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
 			Annotations: client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
@@ -43,22 +40,24 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 }
 
 // FromProto generates a rulefmt RuleGroup
-func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
-	formattedRuleGroup := rulefmt.RuleGroup{
+func FromProto(rg *RuleGroupDesc) legacy_rulefmt.RuleGroup {
+	formattedRuleGroup := legacy_rulefmt.RuleGroup{
 		Name:     rg.GetName(),
-		Interval: model.Duration(*rg.Interval),
-		Rules:    make([]rulefmt.Rule, len(rg.GetRules())),
+		Interval: model.Duration(rg.Interval),
+		Rules:    make([]legacy_rulefmt.Rule, len(rg.GetRules())),
 	}
 
 	for i, rl := range rg.GetRules() {
-		formattedRuleGroup.Rules[i] = rulefmt.Rule{
+		newRule := legacy_rulefmt.Rule{
 			Record:      rl.GetRecord(),
 			Alert:       rl.GetAlert(),
 			Expr:        rl.GetExpr(),
-			For:         model.Duration(*rl.GetFor()),
 			Labels:      client.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: client.FromLabelAdaptersToLabels(rl.Annotations).Map(),
+			For:         model.Duration(rl.GetFor()),
 		}
+
+		formattedRuleGroup.Rules[i] = newRule
 	}
 
 	return formattedRuleGroup

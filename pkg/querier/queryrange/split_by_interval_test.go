@@ -266,7 +266,7 @@ func TestSplitByDay(t *testing.T) {
 				middleware.AuthenticateUser.Wrap(
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						atomic.AddInt32(&actualCount, 1)
-						w.Write([]byte(responseBody))
+						_, _ = w.Write([]byte(responseBody))
 					}),
 				),
 			)
@@ -278,7 +278,7 @@ func TestSplitByDay(t *testing.T) {
 			roundtripper := NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
-			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(24*time.Hour, fakeLimits{}, PrometheusCodec))
+			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(24*time.Hour, fakeLimits{}, PrometheusCodec, nil))
 
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)

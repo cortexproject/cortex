@@ -156,10 +156,7 @@ func TestWatchKeyWithNoStartValue(t *testing.T) {
 	reported := 0
 	c.WatchKey(ctx, key, func(i interface{}) bool {
 		reported++
-		if reported == 2 {
-			return false
-		}
-		return true
+		return reported != 2
 	})
 
 	// we should see both start and end values.

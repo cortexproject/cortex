@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
+
+// Make sure that chunkSeries implements SeriesWithChunks
+var _ SeriesWithChunks = &chunkSeries{}
 
 func TestChunkQueryable(t *testing.T) {
 	for _, testcase := range testcases {
@@ -65,3 +69,34 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 	}
 	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }
+
+func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
+	var allChunks []chunk.Chunk
+
+	const count = 10
+	// go down, to add series in reversed order
+	for i := count; i > 0; i-- {
+		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.Bigchunk)
+		// mkChunk uses `foo` as metric name, so we rename metric to be unique
+		ch.Metric[0].Value = fmt.Sprintf("%02d", i)
+
+		allChunks = append(allChunks, ch)
+	}
+
+	res := partitionChunks(allChunks, 0, 1000, mergeChunks)
+
+	// collect labels from each series
+	var seriesLabels []labels.Labels
+	for res.Next() {
+		seriesLabels = append(seriesLabels, res.At().Labels())
+	}
+
+	require.Len(t, seriesLabels, count)
+	require.True(t, sort.IsSorted(sortedByLabels(seriesLabels)))
+}
+
+type sortedByLabels []labels.Labels
+
+func (b sortedByLabels) Len() int           { return len(b) }
+func (b sortedByLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b sortedByLabels) Less(i, j int) bool { return labels.Compare(b[i], b[j]) < 0 }

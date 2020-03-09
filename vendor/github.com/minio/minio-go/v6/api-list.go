@@ -19,11 +19,9 @@ package minio
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 )
@@ -103,6 +101,12 @@ func (c Client) ListBucketsWithContext(ctx context.Context) ([]BucketInfo, error
 //
 func (c Client) ListObjectsV2WithMetadata(bucketName, objectPrefix string, recursive bool,
 	doneCh <-chan struct{}) <-chan ObjectInfo {
+	// Check whether this is snowball region, if yes ListObjectsV2 doesn't work, fallback to listObjectsV1.
+	if location, ok := c.bucketLocCache.Get(bucketName); ok {
+		if location == "snowball" {
+			return c.ListObjects(bucketName, objectPrefix, recursive, doneCh)
+		}
+	}
 	return c.listObjectsV2(bucketName, objectPrefix, recursive, true, doneCh)
 }
 
@@ -155,6 +159,7 @@ func (c Client) listObjectsV2(bucketName, objectPrefix string, recursive, metada
 
 			// If contents are available loop through and send over channel.
 			for _, object := range result.Contents {
+				object.ETag = trimEtag(object.ETag)
 				select {
 				// Send object content.
 				case objectStatCh <- object:
@@ -211,6 +216,12 @@ func (c Client) listObjectsV2(bucketName, objectPrefix string, recursive, metada
 //   }
 //
 func (c Client) ListObjectsV2(bucketName, objectPrefix string, recursive bool, doneCh <-chan struct{}) <-chan ObjectInfo {
+	// Check whether this is snowball region, if yes ListObjectsV2 doesn't work, fallback to listObjectsV1.
+	if location, ok := c.bucketLocCache.Get(bucketName); ok {
+		if location == "snowball" {
+			return c.ListObjects(bucketName, objectPrefix, recursive, doneCh)
+		}
+	}
 	return c.listObjectsV2(bucketName, objectPrefix, recursive, false, doneCh)
 }
 
@@ -299,7 +310,10 @@ func (c Client) listObjectsV2Query(bucketName, objectPrefix, continuationToken s
 	// This is an additional verification check to make
 	// sure proper responses are received.
 	if listBucketResult.IsTruncated && listBucketResult.NextContinuationToken == "" {
-		return listBucketResult, errors.New("Truncated response should have continuation token set")
+		return listBucketResult, ErrorResponse{
+			Code:    "NotImplemented",
+			Message: "Truncated response should have continuation token set",
+		}
 	}
 
 	for i, obj := range listBucketResult.Contents {
@@ -724,8 +738,7 @@ func (c Client) listObjectParts(bucketName, objectName, uploadID string) (partsI
 		// Append to parts info.
 		for _, part := range listObjPartsResult.ObjectParts {
 			// Trim off the odd double quotes from ETag in the beginning and end.
-			part.ETag = strings.TrimPrefix(part.ETag, "\"")
-			part.ETag = strings.TrimSuffix(part.ETag, "\"")
+			part.ETag = trimEtag(part.ETag)
 			partsInfo[part.PartNumber] = part
 		}
 		// Keep part number marker, for the next iteration.

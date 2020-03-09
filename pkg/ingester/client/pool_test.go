@@ -1,17 +1,20 @@
 package client
 
 import (
+	"context"
 	fmt "fmt"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/go-kit/kit/log"
 	"github.com/gogo/status"
-	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type mockIngester struct {
@@ -78,19 +81,23 @@ func TestIngesterCache(t *testing.T) {
 		RemoteTimeout:       50 * time.Millisecond,
 		ClientCleanupPeriod: 10 * time.Second,
 	}, mockReadRing{}, factory, log.NewNopLogger())
-	defer pool.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
+	defer services.StopAndAwaitTerminated(context.Background(), pool) //nolint:errcheck
 
-	pool.GetClientFor("1")
+	_, err := pool.GetClientFor("1")
+	require.NoError(t, err)
 	if buildCount != 1 {
 		t.Errorf("Did not create client")
 	}
 
-	pool.GetClientFor("1")
+	_, err = pool.GetClientFor("1")
+	require.NoError(t, err)
 	if buildCount != 1 {
 		t.Errorf("Created client that should have been cached")
 	}
 
-	pool.GetClientFor("2")
+	_, err = pool.GetClientFor("2")
+	require.NoError(t, err)
 	if pool.Count() != 2 {
 		t.Errorf("Expected Count() = 2, got %d", pool.Count())
 	}
@@ -100,12 +107,13 @@ func TestIngesterCache(t *testing.T) {
 		t.Errorf("Expected Count() = 1, got %d", pool.Count())
 	}
 
-	pool.GetClientFor("1")
+	_, err = pool.GetClientFor("1")
+	require.NoError(t, err)
 	if buildCount != 3 || pool.Count() != 2 {
 		t.Errorf("Did not re-create client correctly")
 	}
 
-	_, err := pool.GetClientFor("bad")
+	_, err = pool.GetClientFor("bad")
 	if err == nil {
 		t.Errorf("Bad create should have thrown an error")
 	}

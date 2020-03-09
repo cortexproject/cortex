@@ -15,9 +15,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -127,7 +127,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 	start := mtime.Now()
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -136,7 +136,9 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	mtime.NowForce(start)
@@ -164,7 +166,9 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "test", replica1)
@@ -197,6 +201,9 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -229,7 +236,9 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	err = c.checkReplica(context.Background(), "user", "c1", replica1)
@@ -269,7 +278,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -278,7 +287,9 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
 	mtime.NowForce(startTime)
@@ -328,7 +339,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -337,7 +348,9 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time for user 1.
 	mtime.NowForce(start)
@@ -409,7 +422,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Init HA tracker
-			codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+			codec := GetReplicaDescCodec()
 			mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 			c, err := newClusterTracker(HATrackerConfig{
 				EnableHATracker:        true,
@@ -418,7 +431,9 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 			// Init context used by the test
 			ctx, cancel := context.WithTimeout(ctxUser1, time.Second)

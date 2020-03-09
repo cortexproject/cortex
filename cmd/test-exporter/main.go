@@ -9,7 +9,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
 
-	"github.com/cortexproject/cortex/pkg/querier/correctness"
+	"github.com/cortexproject/cortex/pkg/testexporter/correctness"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -52,5 +52,6 @@ func main() {
 	}))
 
 	prometheus.MustRegister(runner)
-	server.Run()
+	err = server.Run()
+	util.CheckFatal("running server", err)
 }

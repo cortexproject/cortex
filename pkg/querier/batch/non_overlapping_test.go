@@ -3,9 +3,10 @@ package batch
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/prometheus/common/model"
 )
 
 func TestNonOverlappingIter(t *testing.T) {

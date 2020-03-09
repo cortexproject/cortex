@@ -3,13 +3,14 @@ package storage
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 	tableName = "test"
 )
 
-type storageClientTest func(*testing.T, chunk.IndexClient, chunk.ObjectClient)
+type storageClientTest func(*testing.T, chunk.IndexClient, chunk.Client)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	var fixtures []testutils.Fixture
@@ -34,7 +35,7 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 		t.Run(fixture.Name(), func(t *testing.T) {
 			indexClient, objectClient, err := testutils.Setup(fixture, tableName)
 			require.NoError(t, err)
-			defer fixture.Teardown()
+			defer testutils.TeardownFixture(t, fixture)
 
 			storageClientTest(t, indexClient, objectClient)
 		})

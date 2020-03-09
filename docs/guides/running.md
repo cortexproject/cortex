@@ -55,22 +55,7 @@ redundancy or less, depending on your risk appetite.
 
 ### Schema
 
-#### Schema periodic table
-
-The periodic table from argument (`-dynamodb.periodic-table.from=<date>` if
-using command line flags, the `from` field for the first schema entry if using
-YAML) should be set to the date the oldest metrics you will be sending to
-Cortex. Generally that means set it to the date you are first deploying this
-instance. If you use an example date from years ago table-manager will create
-hundreds of tables. You can also avoid creating too many tables by setting a
-reasonable retention in the table-manager
-(`-table-manager.retention-period=<duration>`).
-
-#### Schema version
-
-Choose schema version 9 in most cases; version 10 if you expect
-hundreds of thousands of timeseries under a single name.  Anything
-older than v9 is much less efficient.
+See [schema config file docs](../configuration/schema-config-reference.md).
 
 ### Chunk encoding
 
@@ -131,20 +116,9 @@ for ingester).
 
 ### Caching
 
-Cortex can retain data in-process or in Memcached to speed up various
-queries by caching:
+Correctly configured caching is important for a production-ready Cortex cluster.
 
- * individual chunks
- * index lookups for one label on one day
- * the results of a whole query
-
-You should always include Memcached in your Cortex install so results
-from one process can be re-used by another. In-process caching can cut
-fetch times slightly and reduce the load on Memcached.
-
-Ingesters can also be configured to use Memcached to avoid re-writing
-index and chunk data which has already been stored in the back-end
-database. Again, highly recommended.
+See [Caching In Cortex](caching.md) for more information.
 
 ### Orchestration
 
@@ -235,7 +209,7 @@ killing them is a last resort and should not be left to a machine.
 ### Remote writing Prometheus
 
 To configure your Prometheus instances for remote writes take a look at
-the [Prometheus Remote Write Config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write). We recommend to tune the following 
+the [Prometheus Remote Write Config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write). We recommend to tune the following
 parameters of the `queue_config`:
 
 ```yaml

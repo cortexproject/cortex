@@ -8,9 +8,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -300,6 +301,38 @@ func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map
 
 func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
 	if field.Type == reflect.TypeOf(logging.Level{}) {
+		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "string",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeOf(flagext.URLValue{}) {
+		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "url",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeOf(flagext.Secret{}) {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil {
 			return nil, err

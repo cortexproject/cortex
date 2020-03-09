@@ -19,7 +19,7 @@ func TestTSDBMetrics(t *testing.T) {
 	tsdbMetrics.setRegistryForUser("user3", populateTSDBMetrics(999))
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total dir sync attempts
+			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total number of dir syncs
 			# TYPE cortex_ingester_shipper_dir_syncs_total counter
 			# 12345 + 85787 + 999
 			cortex_ingester_shipper_dir_syncs_total 99131
@@ -29,12 +29,12 @@ func TestTSDBMetrics(t *testing.T) {
 			# 2*(12345 + 85787 + 999)
 			cortex_ingester_shipper_dir_sync_failures_total 198262
 
-			# HELP cortex_ingester_shipper_uploads_total TSDB: Total object upload attempts
+			# HELP cortex_ingester_shipper_uploads_total TSDB: Total number of uploaded blocks
 			# TYPE cortex_ingester_shipper_uploads_total counter
 			# 3*(12345 + 85787 + 999)
 			cortex_ingester_shipper_uploads_total 297393
 
-			# HELP cortex_ingester_shipper_upload_failures_total TSDB: Total number of failed object uploads
+			# HELP cortex_ingester_shipper_upload_failures_total TSDB: Total number of block upload failures
 			# TYPE cortex_ingester_shipper_upload_failures_total counter
 			# 4*(12345 + 85787 + 999)
 			cortex_ingester_shipper_upload_failures_total 396524
@@ -62,7 +62,7 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	// shipper
 	dirSyncs := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_dir_syncs_total",
-		Help: "Total dir sync attempts",
+		Help: "Total number of dir syncs",
 	})
 	dirSyncs.Add(1 * base)
 
@@ -74,13 +74,13 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 
 	uploads := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_uploads_total",
-		Help: "Total object upload attempts",
+		Help: "Total number of uploaded blocks",
 	})
 	uploads.Add(3 * base)
 
 	uploadFailures := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_upload_failures_total",
-		Help: "Total number of failed object uploads",
+		Help: "Total number of block upload failures",
 	})
 	uploadFailures.Add(4 * base)
 

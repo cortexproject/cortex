@@ -4,11 +4,12 @@ import (
 	"crypto/md5"
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v2"
+
+	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 // mapper is designed to enusre the provided rule sets are identical
@@ -16,17 +17,19 @@ import (
 type mapper struct {
 	Path string // Path specifies the directory in which rule files will be mapped.
 
-	FS afero.Fs
+	FS     afero.Fs
+	logger log.Logger
 }
 
-func newMapper(path string) *mapper {
+func newMapper(path string, logger log.Logger) *mapper {
 	return &mapper{
-		Path: path,
-		FS:   afero.NewOsFs(),
+		Path:   path,
+		FS:     afero.NewOsFs(),
+		logger: logger,
 	}
 }
 
-func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGroup) (bool, []string, error) {
+func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.RuleGroup) (bool, []string, error) {
 	anyUpdated := false
 	filenames := []string{}
 
@@ -62,7 +65,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 		if ruleGroups == nil {
 			err = m.FS.Remove(fullFileName)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
+				level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
 			}
 			anyUpdated = true
 		}
@@ -71,12 +74,12 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 	return anyUpdated, filenames, nil
 }
 
-func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename string) (bool, error) {
+func (m *mapper) writeRuleGroupsIfNewer(groups []legacy_rulefmt.RuleGroup, filename string) (bool, error) {
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].Name > groups[j].Name
 	})
 
-	rgs := rulefmt.RuleGroups{Groups: groups}
+	rgs := legacy_rulefmt.RuleGroups{Groups: groups}
 
 	d, err := yaml.Marshal(&rgs)
 	if err != nil {
@@ -98,7 +101,7 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 		}
 	}
 
-	level.Info(util.Logger).Log("msg", "updating rule file", "file", filename)
+	level.Info(m.logger).Log("msg", "updating rule file", "file", filename)
 	err = afero.WriteFile(m.FS, filename, d, 0777)
 	if err != nil {
 		return false, err

@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/gomodule/redigo/redis"
 	"github.com/rafaeljusto/redigomock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestRedisCache(t *testing.T) {
@@ -18,9 +19,9 @@ func TestRedisCache(t *testing.T) {
 
 	conn := redigomock.NewConn()
 	conn.Clear()
-	pool := redis.NewPool(func() (redis.Conn, error) {
+	pool := &redis.Pool{Dial: func() (redis.Conn, error) {
 		return conn, nil
-	}, 10)
+	}, MaxIdle: 10}
 
 	keys := []string{"key1", "key2", "key3"}
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}

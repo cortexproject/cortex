@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"io/ioutil"
@@ -10,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/shipper"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 type testUserTSDB struct {
@@ -29,7 +30,8 @@ type testUserTSDB struct {
 func createTSDB(t *testing.T, dir string, users []*testUserTSDB) {
 	for _, user := range users {
 
-		os.MkdirAll(filepath.Join(dir, user.userID), 0777)
+		err := os.MkdirAll(filepath.Join(dir, user.userID), 0777)
+		require.NoError(t, err)
 
 		for i := 0; i < user.numBlocks; i++ {
 			u, err := ulid.New(uint64(time.Now().Unix()*1000), rand.Reader)
@@ -180,13 +182,14 @@ func TestTransferUser(t *testing.T) {
 
 	var original []string
 	var xferfiles []string
-	filepath.Walk(xfer, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(xfer, func(path string, info os.FileInfo, err error) error {
 		p, _ := filepath.Rel(xfer, path)
 		xferfiles = append(xferfiles, p)
 		return nil
 	})
+	require.NoError(t, err)
 
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if info.Name() == "thanos.shipper.json" {
 			return nil
 		}
@@ -194,6 +197,7 @@ func TestTransferUser(t *testing.T) {
 		original = append(original, p)
 		return nil
 	})
+	require.NoError(t, err)
 
 	require.Equal(t, original, xferfiles)
 }

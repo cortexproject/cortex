@@ -3,10 +3,11 @@ package querier
 import (
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Queries are a set of matchers with time ranges - should not get into megabytes

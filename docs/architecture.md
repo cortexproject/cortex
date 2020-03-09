@@ -33,15 +33,16 @@ The chunks storage stores each single time series into a separate object called 
 For this reason, the chunks storage consists of:
 
 * An index for the Chunks. This index can be backed by:
-    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    * [Google Bigtable](https://cloud.google.com/bigtable)
-    * [Apache Cassandra](https://cassandra.apache.org)
+  * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+  * [Google Bigtable](https://cloud.google.com/bigtable)
+  * [Apache Cassandra](https://cassandra.apache.org)
 * An object store for the Chunk data itself, which can be:
-    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    * [Google Bigtable](https://cloud.google.com/bigtable)
-    * [Apache Cassandra](https://cassandra.apache.org)
-    * [Amazon S3](https://aws.amazon.com/s3)
-    * [Google Cloud Storage](https://cloud.google.com/storage/)
+  * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+  * [Google Bigtable](https://cloud.google.com/bigtable)
+  * [Apache Cassandra](https://cassandra.apache.org)
+  * [Amazon S3](https://aws.amazon.com/s3)
+  * [Google Cloud Storage](https://cloud.google.com/storage/)
+  * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
 Internally, the access to the chunks storage relies on a unified interface called "chunks store". Unlike other Cortex components, the chunk store is not a separate service, but rather a library embedded in the services that need to access the long-term storage: [ingester](#ingester), [querier](#querier) and [ruler](#ruler).
 
@@ -59,6 +60,7 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
+* [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
 For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
 
@@ -76,6 +78,7 @@ The Cortex services are:
 - [Query frontend](#query-frontend) (optional)
 - [Ruler](#ruler) (optional)
 - [Alertmanager](#alertmanager) (optional)
+- [Configs API](#configs-api) (optional)
 
 ### Distributor
 
@@ -142,7 +145,7 @@ We recommend randomly load balancing write requests across distributor instances
 
 ### Ingester
 
-The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path. 
+The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path.
 
 Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 12 hours for the chunks storage and 2 hours for the experimental blocks storage). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 
@@ -154,7 +157,7 @@ Ingesters contain a **lifecycler** which manages the lifecycle of an ingester an
 
 3. `ACTIVE` is an ingester's state when it is fully initialized. It may receive both write and read requests for tokens it owns.
 
-4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `PENDING` ingester to start a hand-over process with, used to transfer the state from `LEAVING` ingester to the `PENDING` one, during a rolling update (`PENDING` ingester moves to `JOINING` state during hand-over process). If there is no new ingester to accept hand-over, ingester in `LEAVING` state will flush data to storage instead. 
+4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `PENDING` ingester to start a hand-over process with, used to transfer the state from `LEAVING` ingester to the `PENDING` one, during a rolling update (`PENDING` ingester moves to `JOINING` state during hand-over process). If there is no new ingester to accept hand-over, ingester in `LEAVING` state will flush data to storage instead.
 
 5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
@@ -219,10 +222,27 @@ The query frontend supports caching query results and reuses them on subsequent 
 
 The **ruler** is an **optional service** executing PromQL queries for recording rules and alerts. The ruler requires a database storing the recording rules and alerts for each tenant.
 
-Ruler can be scaled horizontally.
+Ruler is **semi-stateful** and can be scaled horizontally. 
+Running rules internally have state, as well as the ring the rulers initiate. 
+However, if the rulers all fail and restart, 
+Prometheus alert rules have a feature where an alert is restored and returned to a firing state 
+if it would have been active in its for period. 
+However, there would be gaps in the series generated by the recording rules.
 
 ### Alertmanager
 
 The **alertmanager** is an **optional service** responsible for accepting alert notifications from the [ruler](#ruler), deduplicating and grouping them, and routing them to the correct notification channel, such as email, PagerDuty or OpsGenie.
 
 The Cortex alertmanager is built on top of the [Prometheus Alertmanager](https://prometheus.io/docs/alerting/alertmanager/), adding multi-tenancy support. Like the [ruler](#ruler), the alertmanager requires a database storing the per-tenant configuration.
+
+Alertmanager is **semi-stateful**.
+The Alertmanager persists information about silences and active alerts to its disk.
+If all of the alertmanager nodes failed simultaneously there would be a loss of data.
+
+### Configs API
+
+The **configs API** is an **optional service** managing the configuration of Rulers and Alertmanagers.
+It provides APIs to get/set/update the rules and alertmanager configurations and store them into backend.
+Current supported backend are PostgreSQL and in-memory.
+
+Configs API is **stateless**.

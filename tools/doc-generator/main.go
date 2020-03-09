@@ -1,17 +1,24 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
+	"text/template"
+
+	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/compactor"
+	"github.com/cortexproject/cortex/pkg/configs"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -23,8 +30,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/server"
 )
 
 const (
@@ -99,7 +106,7 @@ var (
 		{
 			name:       "frontend_worker_config",
 			structType: reflect.TypeOf(frontend.WorkerConfig{}),
-			desc:       "The frontend_worker_config configures the worker - running within the Cortex ingester - picking up and executing queries enqueued by the query-frontend.",
+			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.",
 		},
 		{
 			name:       "etcd_config",
@@ -113,7 +120,7 @@ var (
 		},
 		{
 			name:       "memberlist_config",
-			structType: reflect.TypeOf(memberlist.Config{}),
+			structType: reflect.TypeOf(memberlist.KVConfig{}),
 			desc:       "The memberlist_config configures the Gossip memberlist.",
 		},
 		{
@@ -142,14 +149,29 @@ var (
 			desc:       "The fifo_cache_config configures the local in-memory cache.",
 		},
 		{
-			name:       "configdb_config",
-			structType: reflect.TypeOf(db.Config{}),
-			desc:       "The configdb_config configures the config database storing rules and alerts, and used by the 'configs' service to expose APIs to manage them.",
+			name:       "configs_config",
+			structType: reflect.TypeOf(configs.Config{}),
+			desc:       "The configs_config configures the Cortex Configs DB and API.",
 		},
 		{
 			name:       "configstore_config",
 			structType: reflect.TypeOf(config_client.Config{}),
 			desc:       "The configstore_config configures the config database storing rules and alerts, and is used by the Cortex alertmanager.",
+		},
+		{
+			name:       "tsdb_config",
+			structType: reflect.TypeOf(tsdb.Config{}),
+			desc:       "The tsdb_config configures the experimental blocks storage.",
+		},
+		{
+			name:       "compactor_config",
+			structType: reflect.TypeOf(compactor.Config{}),
+			desc:       "The compactor_config configures the compactor for the experimental blocks storage.",
+		},
+		{
+			name:       "purger_config",
+			structType: reflect.TypeOf(purger.Config{}),
+			desc:       "The purger_config configures the purger which takes care of delete requests",
 		},
 	}
 )
@@ -213,12 +235,59 @@ func annotateFlagPrefix(blocks []*configBlock) {
 	}
 }
 
+func generateBlocksMarkdown(blocks []*configBlock) string {
+	md := &markdownWriter{}
+	md.writeConfigDoc(blocks)
+	return md.string()
+}
+
+func generateBlockMarkdown(blocks []*configBlock, blockName, fieldName string) string {
+	// Look for the requested block.
+	for _, block := range blocks {
+		if block.name != blockName {
+			continue
+		}
+
+		md := &markdownWriter{}
+
+		// Wrap the root block with another block, so that we can show the name of the
+		// root field containing the block specs.
+		md.writeConfigBlock(&configBlock{
+			name: blockName,
+			desc: block.desc,
+			entries: []*configEntry{
+				{
+					kind:      "block",
+					name:      fieldName,
+					required:  true,
+					block:     block,
+					blockDesc: "",
+					root:      false,
+				},
+			},
+		})
+
+		return md.string()
+	}
+
+	// If the block has not been found, we return an empty string.
+	return ""
+}
+
 func main() {
-	cfg := &cortex.Config{}
+	// Parse the generator flags.
+	flag.Parse()
+	if flag.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "Usage: doc-generator template-file")
+		os.Exit(1)
+	}
+
+	templatePath := flag.Arg(0)
 
 	// In order to match YAML config fields with CLI flags, we do map
 	// the memory address of the CLI flag variables and match them with
 	// the config struct fields address.
+	cfg := &cortex.Config{}
 	flags := parseFlags(cfg)
 
 	// Parse the config, mapping each config field with the related CLI flag.
@@ -232,8 +301,28 @@ func main() {
 	// prefix wherever encountered in the config blocks.
 	annotateFlagPrefix(blocks)
 
-	// Generate markdown
-	md := &markdownWriter{}
-	md.writeConfigDoc(blocks)
-	fmt.Println(md.string())
+	// Generate documentation markdown.
+	data := struct {
+		ConfigFile           string
+		TSDBConfigBlock      string
+		CompactorConfigBlock string
+	}{
+		ConfigFile:           generateBlocksMarkdown(blocks),
+		TSDBConfigBlock:      generateBlockMarkdown(blocks, "tsdb_config", "tsdb"),
+		CompactorConfigBlock: generateBlockMarkdown(blocks, "compactor_config", "compactor"),
+	}
+
+	// Load the template file.
+	tpl := template.New(filepath.Base(templatePath))
+	tpl, err = tpl.ParseFiles(templatePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "An error occurred while loading the template %s: %s\n", templatePath, err.Error())
+		os.Exit(1)
+	}
+
+	// Execute the template to inject generated doc.
+	if err := tpl.Execute(os.Stdout, data); err != nil {
+		fmt.Fprintf(os.Stderr, "An error occurred while executing the template %s: %s\n", templatePath, err.Error())
+		os.Exit(1)
+	}
 }

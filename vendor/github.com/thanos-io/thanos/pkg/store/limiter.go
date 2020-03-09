@@ -1,9 +1,16 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
 package store
 
 import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+type SampleLimiter interface {
+	Check(num uint64) error
+}
 
 // Limiter is a simple mechanism for checking if something has passed a certain threshold.
 type Limiter struct {

@@ -29,7 +29,7 @@ var remoteReadQueries = prometheus.NewGaugeVec(
 		Name:      "remote_read_queries",
 		Help:      "The number of in-flight remote read queries.",
 	},
-	[]string{"client"},
+	[]string{remoteName, endpoint},
 )
 
 func init() {
@@ -39,7 +39,7 @@ func init() {
 // QueryableClient returns a storage.Queryable which queries the given
 // Client to select series sets.
 func QueryableClient(c *Client) storage.Queryable {
-	remoteReadQueries.WithLabelValues(c.Name())
+	remoteReadQueries.WithLabelValues(c.remoteName, c.url.String())
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		return &querier{
 			ctx:    ctx,
@@ -60,12 +60,18 @@ type querier struct {
 // Select implements storage.Querier and uses the given matchers to read series
 // sets from the Client.
 func (q *querier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(p, matchers...)
+}
+
+// SelectSorted implements storage.Querier and uses the given matchers to read series
+// sets from the Client.
+func (q *querier) SelectSorted(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	query, err := ToQuery(q.mint, q.maxt, matchers, p)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	remoteReadGauge := remoteReadQueries.WithLabelValues(q.client.Name())
+	remoteReadGauge := remoteReadQueries.WithLabelValues(q.client.remoteName, q.client.url.String())
 	remoteReadGauge.Inc()
 	defer remoteReadGauge.Dec()
 
@@ -74,6 +80,7 @@ func (q *querier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (
 		return nil, nil, fmt.Errorf("remote_read: %v", err)
 	}
 
+	// FromQueryResult sorts.
 	return FromQueryResult(res), nil, nil
 }
 

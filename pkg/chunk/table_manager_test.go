@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
 )
@@ -174,7 +173,7 @@ func TestTableManager(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +358,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +446,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			InactiveThroughputOnDemandMode: true,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +529,7 @@ func TestTableManagerTags(t *testing.T) {
 				IndexTables: PeriodicTableConfig{},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -554,7 +553,7 @@ func TestTableManagerTags(t *testing.T) {
 				},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -608,7 +607,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,8 +679,12 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	// Verify that without RetentionDeletesEnabled no tables are removed
 	tableManager.cfg.RetentionDeletesEnabled = false
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
-	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
-	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	err = client.CreateTable(context.Background(), TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
+	require.NoError(t, err)
+
+	err = client.CreateTable(context.Background(), TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	require.NoError(t, err)
+
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods (no deletes)",
 		baseTableStart.Add(tablePeriod*3),
@@ -704,8 +707,12 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	tableManager.cfg.RetentionPeriod = 0
 	tableManager.schemaCfg.Configs[0].From = DayTime{model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())}
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
-	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
-	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	err = client.CreateTable(context.Background(), TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
+	require.NoError(t, err)
+
+	err = client.CreateTable(context.Background(), TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	require.NoError(t, err)
+
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods (no deletes) and move From one table forward",
 		baseTableStart.Add(tablePeriod*3),
@@ -723,6 +730,6 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Test table manager retention not multiple of periodic config
 	tbmConfig.RetentionPeriod++
-	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
 	require.Error(t, err)
 }

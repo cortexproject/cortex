@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -96,6 +93,10 @@ func (d *data) getAllTokens() []uint32 {
 }
 
 type dataCodec struct{}
+
+func (d dataCodec) CodecID() string {
+	return "testDataCodec"
+}
 
 func (d dataCodec) Decode(b []byte) (interface{}, error) {
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
@@ -200,17 +201,19 @@ func TestBasicGetAndCas(t *testing.T) {
 	c := dataCodec{}
 
 	name := "Ing 1"
-	cfg := Config{
+	cfg := KVConfig{
 		TCPTransport: TCPTransportConfig{
 			BindAddrs: []string{"localhost"},
 		},
+		Codecs: []codec.Codec{c},
 	}
 
-	kv, err := NewMemberlistClient(cfg, c)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
-	}
-	defer kv.Stop()
+	mkv, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv.Stop()
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	const key = "test"
 
@@ -256,15 +259,17 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 
 	c := dataCodec{}
 
-	cfg := Config{
+	cfg := KVConfig{
 		TCPTransport: TCPTransportConfig{},
+		Codecs:       []codec.Codec{c},
 	}
 
-	kv, err := NewMemberlistClient(cfg, c)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
-	}
-	defer kv.Stop()
+	mkv, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv.Stop()
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	testFN(t, kv)
 }
@@ -399,14 +404,17 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 func TestMultipleCAS(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := Config{}
-
-	kv, err := NewMemberlistClient(cfg, c)
-	if err != nil {
-		t.Fatal("Failed to setup KV client", err)
+	cfg := KVConfig{
+		Codecs: []codec.Codec{c},
 	}
-	kv.maxCasRetries = 20
-	defer kv.Stop()
+
+	mkv, err := NewKV(cfg)
+	require.NoError(t, err)
+	mkv.maxCasRetries = 20
+	defer mkv.Stop()
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
@@ -474,8 +482,6 @@ func TestMultipleCAS(t *testing.T) {
 
 func TestMultipleClients(t *testing.T) {
 	c := dataCodec{}
-	l := log.NewLogfmtLogger(os.Stdout)
-	l = level.NewFilter(l, level.AllowInfo())
 
 	const members = 10
 	const key = "ring"
@@ -489,7 +495,7 @@ func TestMultipleClients(t *testing.T) {
 
 	for i := 0; i < members; i++ {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := Config{
+		cfg := KVConfig{
 			NodeName: id,
 
 			// some useful parameters when playing with higher number of members
@@ -505,19 +511,22 @@ func TestMultipleClients(t *testing.T) {
 				BindAddrs: []string{"localhost"},
 				BindPort:  0, // randomize ports
 			},
+
+			Codecs: []codec.Codec{c},
 		}
 
-		kv, err := NewMemberlistClient(cfg, c)
-		if err != nil {
-			t.Fatal(id, err)
-		}
+		mkv, err := NewKV(cfg)
+		require.NoError(t, err)
+
+		kv, err := NewClient(mkv, c)
+		require.NoError(t, err)
 
 		clients = append(clients, kv)
 
 		go runClient(t, kv, id, key, port, start, stop)
 
 		// next KV will connect to this one
-		port = kv.GetListeningPort()
+		port = kv.kv.GetListeningPort()
 	}
 
 	println("Waiting before start")
@@ -624,7 +633,7 @@ func getTimestamps(members map[string]member) (min int64, max int64, avg int64) 
 
 func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConnect int, start <-chan struct{}, stop <-chan struct{}) {
 	// stop gossipping about the ring(s)
-	defer kv.Stop()
+	defer kv.kv.Stop()
 
 	for {
 		select {
@@ -633,9 +642,9 @@ func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConn
 
 			// let's join the first member
 			if portToConnect > 0 {
-				_, err := kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
+				_, err := kv.kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
 				if err != nil {
-					t.Fatalf("%s failed to join the cluster: %v", name, err)
+					t.Errorf("%s failed to join the cluster: %v", name, err)
 					return
 				}
 			}
@@ -656,4 +665,145 @@ func generateTokens(numTokens int) []uint32 {
 		i++
 	}
 	return tokens
+}
+
+type distributedCounter map[string]int
+
+func (dc distributedCounter) Merge(mergeable Mergeable, localCAS bool) (Mergeable, error) {
+	if mergeable == nil {
+		return nil, nil
+	}
+
+	odc, ok := mergeable.(distributedCounter)
+	if !ok || odc == nil {
+		return nil, fmt.Errorf("invalid thing to merge: %T", mergeable)
+	}
+
+	updated := distributedCounter{}
+
+	for k, v := range odc {
+		if v > dc[k] {
+			dc[k] = v
+			updated[k] = v
+		}
+	}
+
+	if len(updated) == 0 {
+		return nil, nil
+	}
+	return updated, nil
+}
+
+func (dc distributedCounter) MergeContent() []string {
+	// return list of keys
+	out := []string(nil)
+	for k := range dc {
+		out = append(out, k)
+	}
+	return out
+}
+
+func (dc distributedCounter) RemoveTombstones(limit time.Time) {
+	// nothing to do
+}
+
+type distributedCounterCodec struct{}
+
+func (d distributedCounterCodec) CodecID() string {
+	return "distributedCounter"
+}
+
+func (d distributedCounterCodec) Decode(b []byte) (interface{}, error) {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	out := &distributedCounter{}
+	err := dec.Decode(out)
+	return *out, err
+}
+
+func (d distributedCounterCodec) Encode(val interface{}) ([]byte, error) {
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(val)
+	return buf.Bytes(), err
+}
+
+var _ codec.Codec = &distributedCounterCodec{}
+
+func TestMultipleCodecs(t *testing.T) {
+	cfg := KVConfig{
+		TCPTransport: TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0, // randomize
+		},
+
+		Codecs: []codec.Codec{
+			dataCodec{},
+			distributedCounterCodec{},
+		},
+	}
+
+	mkv1, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv1.Stop()
+
+	kv1, err := NewClient(mkv1, dataCodec{})
+	require.NoError(t, err)
+
+	kv2, err := NewClient(mkv1, distributedCounterCodec{})
+	require.NoError(t, err)
+
+	err = kv1.CAS(context.Background(), "data", func(in interface{}) (out interface{}, retry bool, err error) {
+		var d *data = nil
+		if in != nil {
+			d = in.(*data)
+		}
+		if d == nil {
+			d = &data{}
+		}
+		if d.Members == nil {
+			d.Members = map[string]member{}
+		}
+		d.Members["test"] = member{
+			Timestamp: time.Now().Unix(),
+			State:     ACTIVE,
+		}
+		return d, true, nil
+	})
+	require.NoError(t, err)
+
+	err = kv2.CAS(context.Background(), "counter", func(in interface{}) (out interface{}, retry bool, err error) {
+		var dc distributedCounter = nil
+		if in != nil {
+			dc = in.(distributedCounter)
+		}
+		if dc == nil {
+			dc = distributedCounter{}
+		}
+		dc["test"] = 5
+		return dc, true, err
+	})
+	require.NoError(t, err)
+
+	// We will read values from second KV, which will join the first one
+	mkv2, err := NewKV(cfg)
+	require.NoError(t, err)
+	defer mkv2.Stop()
+
+	// Join second KV to first one. That will also trigger state transfer.
+	_, err = mkv2.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", mkv1.GetListeningPort())})
+	require.NoError(t, err)
+
+	// Now read both values from second KV. It should have both values by now.
+
+	// fetch directly from single KV, to see that both are stored in the same one
+	val, err := mkv2.Get("data", dataCodec{})
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.NotZero(t, val.(*data).Members["test"].Timestamp)
+	require.Equal(t, ACTIVE, val.(*data).Members["test"].State)
+
+	val, err = mkv2.Get("counter", distributedCounterCodec{})
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.Equal(t, 5, val.(distributedCounter)["test"])
 }

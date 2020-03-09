@@ -16,6 +16,15 @@ a piece of work is finished it should:
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
 * If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
+## Formatting
+
+Cortex projects uses `goimports` tool (`go get golang.org/x/tools/cmd/goimports` to install) to format the Go files, and sort imports. We use goimports with `-local github.com/cortexproject/cortex` parameter, to put Cortex internal imports into a separate group. We try to keep imports sorted into three groups: imports from standard library, imports of 3rd party packages and internal Cortex imports. Goimports will fix the order, but will keep existing newlines between imports in the groups. We try to avoid extra newlines like that.
+
+You're using an IDE you may find useful the following settings for the Cortex project:
+
+- [VSCode](https://cortexmetrics.io/docs/contributing/vscode-goimports-settings.json)
+
+
 ## Developer Certificates of Origin (DCOs)
 
 Before submitting your work in a pull request, make sure that *all* commits are signed off with a **Developer Certificate of Origin** (DCO). Here's an example:
@@ -42,32 +51,6 @@ To run the test suite:
 make test
 ```
 
-## Playing in `minikube`
-
-First, start `minikube`.
-
-You may need to load the Docker images into your minikube environment. There is
-a convenient rule in the Makefile to do this:
-
-```
-make prime-minikube
-```
-
-Then run Cortex in minikube:
-```
-kubectl apply -f ./k8s
-```
-
-(these manifests use `latest` tags, i.e. this will work if you have
-just built the images and they are available on the node(s) in your
-Kubernetes cluster)
-
-Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape itself.  Try it:
-
-http://192.168.99.100:30080/api/prom/api/v1/query?query=up
-
-If that doesn't work, your Minikube might be using a different ip address. Check with `minikube status`.
-
 ### Dependency management
 
 We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
@@ -93,3 +76,9 @@ git commit
 ```
 
 You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
+
+### Documentation
+
+The Cortex documentation is compiled into a website published at [cortexmetrics.io](https://cortexmetrics.io/). Please see "[How to run the website locally](./how-to-run-website-locally.md)" for instructions.
+
+Note: if you attempt to view pages on Github, it's likely that you might find broken links or pages. That is expected and should not be addressed unless it is causing issues with the site that occur as part of the build.

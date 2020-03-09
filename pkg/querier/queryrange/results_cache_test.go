@@ -7,15 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -56,26 +57,6 @@ var (
 	}
 )
 
-var dummyResponse = &PrometheusResponse{
-	Status: statusSuccess,
-	Data: PrometheusData{
-		ResultType: matrix,
-		Result: []SampleStream{
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "foo", Value: "bar"},
-				},
-				Samples: []client.Sample{
-					{
-						TimestampMs: 60,
-						Value:       60,
-					},
-				},
-			},
-		},
-	},
-}
-
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	var samples []client.Sample
 	for i := start; i <= end; i += step {
@@ -86,7 +67,7 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	}
 
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: matrix,
 			Result: []SampleStream{
@@ -299,7 +280,7 @@ func TestResultsCache(t *testing.T) {
 
 	// Doing request with new end time should do one more query.
 	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd()+100)
-	resp, err = rc.Do(ctx, req)
+	_, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 }

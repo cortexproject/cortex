@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -29,12 +30,19 @@ type Config struct {
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
-	QueryStoreAfter time.Duration `yaml:"query_store_after"`
+	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
+	MaxQueryIntoFuture time.Duration `yaml:"max_query_into_future"`
 
 	// The default evaluation interval for the promql engine.
 	// Needs to be configured for subqueries to work as it is the default
 	// step if not specified.
 	DefaultEvaluationInterval time.Duration
+
+	// Directory for ActiveQueryTracker. If empty, ActiveQueryTracker will be disabled and MaxConcurrent will not be applied (!).
+	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.
+	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
+	// engine.
+	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer `yaml:"-"`
@@ -56,8 +64,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
+	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -74,73 +84,94 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// ChunkStore is the read-interface to the Chunk Store.  Made an interface here
-// to reduce package coupling.
-type ChunkStore interface {
-	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
+func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
+	if cfg.BatchIterators {
+		return batch.NewChunkMergeIterator
+	} else if cfg.Iterators {
+		return iterators.NewChunkMergeIterator
+	}
+	return mergeChunks
+}
+
+func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
+	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Queryable, *promql.Engine) {
-	iteratorFunc := mergeChunks
-	if cfg.BatchIterators {
-		iteratorFunc = batch.NewChunkMergeIterator
-	} else if cfg.Iterators {
-		iteratorFunc = iterators.NewChunkMergeIterator
-	}
+func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable) (storage.Queryable, *promql.Engine) {
+	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	var queryable storage.Queryable
-	if cfg.IngesterStreaming {
-		dq := newIngesterStreamingQueryable(distributor, iteratorFunc)
-		queryable = newUnifiedChunkQueryable(dq, chunkStore, distributor, iteratorFunc, cfg)
-	} else {
-		cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
-		dq := newDistributorQueryable(distributor)
-		queryable = NewQueryable(dq, cq, distributor, cfg)
-	}
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc)
+	queryable = NewQueryable(distributorQueryable, storeQueryable, iteratorFunc, cfg)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
 		if err != nil {
 			return nil, err
 		}
-		return newLazyQuerier(querier), nil
+		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		Reg:           cfg.metricsRegisterer,
-		MaxConcurrent: cfg.MaxConcurrent,
-		MaxSamples:    cfg.MaxSamples,
-		Timeout:       cfg.Timeout,
+		Logger:             util.Logger,
+		Reg:                cfg.metricsRegisterer,
+		ActiveQueryTracker: createActiveQueryTracker(cfg),
+		MaxSamples:         cfg.MaxSamples,
+		Timeout:            cfg.Timeout,
 	})
 	return lazyQueryable, engine
 }
 
+func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+	dir := cfg.ActiveQueryTrackerDir
+
+	if dir != "" {
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
+	}
+
+	return nil
+}
+
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(dq, cq storage.Queryable, distributor Distributor, cfg Config) storage.Queryable {
+func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		now := time.Now()
+
+		if cfg.MaxQueryIntoFuture > 0 {
+			maxQueryTime := util.TimeMilliseconds(now.Add(cfg.MaxQueryIntoFuture))
+
+			if mint > maxQueryTime {
+				return storage.NoopQuerier(), nil
+			}
+			if maxt > maxQueryTime {
+				maxt = maxQueryTime
+			}
+		}
+
 		q := querier{
-			distributor: distributor,
 			ctx:         ctx,
 			mint:        mint,
 			maxt:        maxt,
+			chunkIterFn: chunkIterFn,
 		}
 
-		// Include ingester only if maxt is within queryIngestersWithin w.r.t. current time.
-		now := model.Now()
-		if cfg.QueryIngestersWithin == 0 || maxt >= int64(now.Add(-cfg.QueryIngestersWithin)) {
-			dqr, err := dq.Querier(ctx, mint, maxt)
-			if err != nil {
-				return nil, err
-			}
+		dqr, err := distributor.Querier(ctx, mint, maxt)
+		if err != nil {
+			return nil, err
+		}
+
+		q.metadataQuerier = dqr
+
+		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
+		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeMilliseconds(now.Add(-cfg.QueryIngestersWithin)) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= int64(now.Add(-cfg.QueryStoreAfter)) {
-			cqr, err := cq.Querier(ctx, mint, maxt)
+		if cfg.QueryStoreAfter == 0 || mint <= util.TimeMilliseconds(now.Add(-cfg.QueryStoreAfter)) {
+			cqr, err := store.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}
@@ -153,19 +184,29 @@ func NewQueryable(dq, cq storage.Queryable, distributor Distributor, cfg Config)
 }
 
 type querier struct {
+	// used for labels and metadata queries
+	metadataQuerier storage.Querier
+
+	// used for selecting series
 	queriers []storage.Querier
 
-	distributor Distributor
+	chunkIterFn chunkIteratorFunc
 	ctx         context.Context
 	mint, maxt  int64
 }
 
-// Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// SelectSorted implements storage.Querier.
+func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
-	// which needs only metadata.
+	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
+	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
+	// querying the long-term storage.
 	if sp == nil {
-		return q.metadataQuery(matchers...)
+		return q.metadataQuerier.Select(nil, matchers...)
+	}
+
+	if len(q.queriers) == 1 {
+		return q.queriers[0].Select(sp, matchers...)
 	}
 
 	sets := make(chan storage.SeriesSet, len(q.queriers))
@@ -181,38 +222,120 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 		}(querier)
 	}
 
-	result := []storage.SeriesSet{}
+	var result []storage.SeriesSet
 	for range q.queriers {
 		select {
 		case err := <-errs:
 			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
+		case <-q.ctx.Done():
+			return nil, nil, q.ctx.Err()
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result, nil), nil, nil
+	// we have all the sets from different sources (chunk from store, chunks from ingesters,
+	// time series from store and time series from ingesters).
+	// mergeSeriesSets will return sorted set.
+	return q.mergeSeriesSets(result), nil, nil
+}
+
+// Select implements storage.Querier.
+func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	return q.SelectSorted(sp, matchers...)
 }
 
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	lv, err := q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
-	return lv, nil, err
+	return q.metadataQuerier.LabelValues(name)
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
-	ln, err := q.distributor.LabelNames(q.ctx)
-	return ln, nil, err
-}
-
-func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	ms, err := q.distributor.MetricsForLabelMatchers(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
-	if err != nil {
-		return nil, nil, err
-	}
-	return metricsToSeriesSet(ms), nil, nil
+	return q.metadataQuerier.LabelNames()
 }
 
 func (querier) Close() error {
 	return nil
+}
+
+func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
+	// Here we deal with sets that are based on chunks and build single set from them.
+	// Remaining sets are merged with chunks-based one using storage.NewMergeSeriesSet
+
+	otherSets := []storage.SeriesSet(nil)
+	chunks := []chunk.Chunk(nil)
+
+	for _, set := range sets {
+		if !set.Next() {
+			// nothing in this set. If it has no error, we can ignore it completely.
+			// If there is error, we better report it.
+			err := set.Err()
+			if err != nil {
+				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
+			}
+			continue
+		}
+
+		s := set.At()
+		if sc, ok := s.(SeriesWithChunks); ok {
+			chunks = append(chunks, sc.Chunks()...)
+
+			// iterate over remaining series in this set, and store chunks
+			// Here we assume that all remaining series in the set are also backed-up by chunks.
+			// If not, there will be panics.
+			for set.Next() {
+				s = set.At()
+				chunks = append(chunks, s.(SeriesWithChunks).Chunks()...)
+			}
+		} else {
+			// We already called set.Next() once, but we want to return same result from At() also
+			// to the query engine.
+			otherSets = append(otherSets, &seriesSetWithFirstSeries{set: set, firstSeries: s})
+		}
+	}
+
+	if len(chunks) == 0 {
+		return storage.NewMergeSeriesSet(otherSets, nil)
+	}
+
+	// partitionChunks returns set with sorted series, so it can be used by NewMergeSeriesSet
+	chunksSet := partitionChunks(chunks, q.mint, q.maxt, q.chunkIterFn)
+
+	if len(otherSets) == 0 {
+		return chunksSet
+	}
+
+	otherSets = append(otherSets, chunksSet)
+	return storage.NewMergeSeriesSet(otherSets, nil)
+}
+
+// This series set ignores first 'Next' call and simply returns cached result
+// to avoid doing the work required to compute it twice.
+type seriesSetWithFirstSeries struct {
+	firstNextCalled bool
+	firstSeries     storage.Series
+	set             storage.SeriesSet
+}
+
+func (pss *seriesSetWithFirstSeries) Next() bool {
+	if pss.firstNextCalled {
+		pss.firstSeries = nil
+		return pss.set.Next()
+	}
+	pss.firstNextCalled = true
+	return true
+}
+
+func (pss *seriesSetWithFirstSeries) At() storage.Series {
+	if pss.firstSeries != nil {
+		return pss.firstSeries
+	}
+	return pss.set.At()
+}
+
+func (pss *seriesSetWithFirstSeries) Err() error {
+	if pss.firstSeries != nil {
+		return nil
+	}
+	return pss.set.Err()
 }

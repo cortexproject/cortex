@@ -1,9 +1,12 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,10 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -25,8 +24,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestIngester_v2Push(t *testing.T) {
@@ -204,7 +210,8 @@ func TestIngester_v2Push(t *testing.T) {
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
-			defer i.Shutdown()
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 			defer cleanup()
 
 			ctx := user.InjectOrgID(context.Background(), userID)
@@ -245,6 +252,62 @@ func TestIngester_v2Push(t *testing.T) {
 	}
 }
 
+func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Set a wrong cached reference for the series we're going to push.
+	db, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+	db.refCache.SetRef(time.Now(), metricLabels, 12345)
+
+	// Push the same series multiple times, each time with an increasing timestamp
+	for j := 1; j <= 3; j++ {
+		req := client.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]client.Sample{{Value: float64(j), TimestampMs: int64(j)}},
+			client.API)
+
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Read back samples to see what has been really ingested
+	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, []client.TimeSeries{
+		{Labels: metricLabelAdapters, Samples: []client.Sample{
+			{Value: 1, TimestampMs: 1},
+			{Value: 2, TimestampMs: 2},
+			{Value: 3, TimestampMs: 3},
+		}},
+	}, res.Timeseries)
+}
+
 func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
@@ -265,7 +328,8 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until the ingester is ACTIVE
@@ -336,7 +400,8 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -348,7 +413,7 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -380,7 +445,8 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -392,7 +458,7 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -499,7 +565,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -511,7 +578,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -534,7 +601,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Mock request
@@ -554,7 +622,8 @@ func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Mock request
@@ -574,7 +643,8 @@ func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T)
 func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Mock request
@@ -592,9 +662,15 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) 
 }
 
 func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
-	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	// Configure the lifecycler to not immediately join the ring, to make sure
+	// the ingester will NOT be in the ACTIVE state when we'll push samples.
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 10 * time.Second
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 	require.Equal(t, ring.PENDING, i.lifecycler.GetState())
 
@@ -642,7 +718,8 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 			require.NoError(t, err)
-			defer i.Shutdown()
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 			defer cleanup()
 
 			// Switch ingester state to the expected one in the test
@@ -787,7 +864,8 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -799,7 +877,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range fixtures {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -822,7 +900,70 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
-func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse) {
+func TestIngester_v2QueryStream(t *testing.T) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+	req, _, expectedResponse := mockWriteRequest(lbls, 123000, 456)
+	_, err = i.v2Push(ctx, req)
+	require.NoError(t, err)
+
+	// Create a GRPC server used to query back the data.
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, i)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	go func() {
+		require.NoError(t, serv.Serve(listener))
+	}()
+
+	// Query back the series using GRPC streaming.
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(t, err)
+	defer c.Close()
+
+	s, err := c.QueryStream(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   200000,
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	})
+	require.NoError(t, err)
+
+	count := 0
+	var lastResp *client.QueryStreamResponse
+	for {
+		resp, err := s.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		count += len(resp.Timeseries)
+		lastResp = resp
+	}
+	require.Equal(t, 1, count)
+	require.Equal(t, expectedResponse, lastResp)
+}
+
+func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {
 	samples := []client.Sample{
 		{
 			TimestampMs: timestampMs,
@@ -833,7 +974,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 	req := client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
 
 	// Generate the expected response
-	expectedResponse := &client.QueryResponse{
+	expectedQueryRes := &client.QueryResponse{
 		Timeseries: []client.TimeSeries{
 			{
 				Labels:  client.FromLabelsToLabelAdapters(lbls),
@@ -842,7 +983,16 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 		},
 	}
 
-	return req, expectedResponse
+	expectedQueryStreamRes := &client.QueryStreamResponse{
+		Timeseries: []client.TimeSeries{
+			{
+				Labels:  client.FromLabelsToLabelAdapters(lbls),
+				Samples: samples,
+			},
+		},
+	}
+
+	return req, expectedQueryRes, expectedQueryStreamRes
 }
 
 func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, func(), error) {
@@ -947,8 +1097,9 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
 
-			defer ingester.Shutdown()
+			defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
 
 			testData.check(t, ingester)
 		})
@@ -963,7 +1114,8 @@ func TestIngester_shipBlocks(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -986,7 +1138,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 	}
 
 	// Ship blocks and assert on the mocked shipper
-	i.shipBlocks()
+	i.shipBlocks(context.Background())
 
 	for _, m := range mocks {
 		m.AssertNumberOfCalls(t, "Sync", 1)
@@ -1017,7 +1169,8 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -1029,7 +1182,7 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1065,7 +1218,8 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
 	// Wait until it's ACTIVE
@@ -1074,7 +1228,7 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	})
 	for _, series := range series {
 		ctx := user.InjectOrgID(context.Background(), series.user)
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}

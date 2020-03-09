@@ -14,6 +14,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 )
 
 type ByHashRangeKey []IndexEntry
@@ -147,32 +149,33 @@ func parseRangeValueType(rangeValue []byte) (int, error) {
 		return ChunkTimeRangeValue, nil
 
 	// chunk time range values
-	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
-		return ChunkTimeRangeValue, nil
+	case len(components[3]) == 1:
+		switch components[3][0] {
+		case chunkTimeRangeKeyV1:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV2:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV3:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV4:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV5:
+			return ChunkTimeRangeValue, nil
 
-	// metric name range values
-	case bytes.Equal(components[3], metricNameRangeKeyV1):
-		return MetricNameRangeValue, nil
+		// metric name range values
+		case metricNameRangeKeyV1:
+			return MetricNameRangeValue, nil
 
-	// series range values
-	case bytes.Equal(components[3], seriesRangeKeyV1):
-		return SeriesRangeValue, nil
-
-	default:
-		return 0, fmt.Errorf("unrecognised range value type. version: %q", string(components[3]))
+		// series range values
+		case seriesRangeKeyV1:
+			return SeriesRangeValue, nil
+		}
 	}
+	return 0, fmt.Errorf("unrecognised range value type. version: %q", string(components[3]))
 }
 
 func TestSchemaRangeKey(t *testing.T) {
@@ -386,5 +389,70 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	}
 	b.Log("data size", len(data))
 	b.Log("decode", decoded)
+}
 
+// Ensure all currently defined entries can inhabit the entries interface
+func TestEnsureEntriesInhabitInterface(t *testing.T) {
+	var _ = []entries{
+		originalEntries{},
+		base64Entries{},
+		labelNameInHashKeyEntries{},
+		v5Entries{},
+		v6Entries{},
+		v9Entries{},
+		v10Entries{},
+		v11Entries{},
+	}
+}
+
+func TestV10IndexQueries(t *testing.T) {
+	fromShards := func(n int) (res []IndexQuery) {
+		for i := 0; i < n; i++ {
+			res = append(res, IndexQuery{
+				TableName:       "tbl",
+				HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, "hash", "metric", "label"),
+				RangeValueStart: []byte(string(i)),
+				ValueEqual:      []byte(string(i)),
+			})
+		}
+		return res
+	}
+
+	var testExprs = []struct {
+		name     string
+		queries  []IndexQuery
+		shard    *astmapper.ShardAnnotation
+		expected []IndexQuery
+	}{
+		{
+			name:     "passthrough when no shard specified",
+			queries:  fromShards(2),
+			shard:    nil,
+			expected: fromShards(2),
+		},
+		{
+			name:    "out of bounds shard returns 0 matches",
+			queries: fromShards(2),
+			shard: &astmapper.ShardAnnotation{
+				Shard: 3,
+			},
+			expected: nil,
+		},
+		{
+			name:    "return correct shard",
+			queries: fromShards(3),
+			shard: &astmapper.ShardAnnotation{
+				Shard: 1,
+			},
+			expected: []IndexQuery{fromShards(2)[1]},
+		},
+	}
+
+	for _, c := range testExprs {
+		t.Run(c.name, func(t *testing.T) {
+			s := v10Entries{}
+			filtered := s.FilterReadQueries(c.queries, c.shard)
+			require.Equal(t, c.expected, filtered)
+		})
+	}
 }

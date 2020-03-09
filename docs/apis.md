@@ -13,10 +13,24 @@ Cortex supports Prometheus'
 [`remote_read`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read)
 and
 [`remote_write`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write)
-APIs.  The encoding is Protobuf over http.
+APIs.
 
-Read is on `/api/prom/read` and write is on `/api/prom/push`.
+The API for writes accepts a HTTP POST request with a body containing a request encoded with [Protocol Buffers](https://developers.google.com/protocol-buffers) and compressed with [Snappy](https://github.com/google/snappy).
+The HTTP path for writes is `/api/prom/push`.
+The definition of the protobuf message can be found in the [Cortex codebase](https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L30) or in the [Prometheus codebase](https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto#L22).
+The HTTP request should contain the header `X-Prometheus-Remote-Write-Version` set to `0.1.0`.
 
+The API for reads also accepts HTTP/protobuf/snappy, and the path is `/api/prom/read`.
+
+See the Prometheus documentation for [more information on the Prometheus remote write format](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations).
+
+## Alerts & Rules API
+
+Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
+
+`GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
+
+`GET /api/prom/api/v1/alerts` - List of all active alerts
 
 ## Configs API
 
@@ -36,16 +50,14 @@ The following schema is used both when retrieving the current configs from the A
 {
     "id": 99,
     "rule_format_version": "2",
-    "config": {
-        "alertmanager_config": "<standard alertmanager.yaml config>",
-        "rules_files": {
-            "rules.yaml": "<standard rules.yaml config>",
-            "rules2.yaml": "<standard rules.yaml config>"
-         },
-        "template_files": {
-            "templates.tmpl": "<standard template file>",
-            "templates2.tmpl": "<standard template file>"
-        }
+    "alertmanager_config": "<standard alertmanager.yaml config>",
+    "rules_files": {
+        "rules.yaml": "<standard rules.yaml config>",
+        "rules2.yaml": "<standard rules.yaml config>"
+     },
+    "template_files": {
+        "templates.tmpl": "<standard template file>",
+        "templates2.tmpl": "<standard template file>"
     }
 }
 ```
@@ -150,3 +162,7 @@ Note that setting a new config will effectively "re-enable" the Rules and Alertm
 
 - Normal Response Codes: NoContent(204)
 - Error Response Codes: Unauthorized(401)
+
+#### Testing APIs
+
+`POST /push` - Push samples directly to ingesters.  Accepts requests in Prometheus remote write format.  Indended for performance testing and debugging.

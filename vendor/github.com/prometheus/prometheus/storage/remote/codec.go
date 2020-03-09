@@ -88,10 +88,13 @@ func ToQuery(from, to int64, matchers []*labels.Matcher, p *storage.SelectParams
 	var rp *prompb.ReadHints
 	if p != nil {
 		rp = &prompb.ReadHints{
-			StepMs:  p.Step,
-			Func:    p.Func,
-			StartMs: p.Start,
-			EndMs:   p.End,
+			StepMs:   p.Step,
+			Func:     p.Func,
+			StartMs:  p.Start,
+			EndMs:    p.End,
+			Grouping: p.Grouping,
+			By:       p.By,
+			RangeMs:  p.Range,
 		}
 	}
 
@@ -141,7 +144,7 @@ func ToQueryResult(ss storage.SeriesSet, sampleLimit int) (*prompb.QueryResult, 
 	return resp, nil
 }
 
-// FromQueryResult unpacks a QueryResult proto.
+// FromQueryResult unpacks and sorts a QueryResult proto.
 func FromQueryResult(res *prompb.QueryResult) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(res.Timeseries))
 	for _, ts := range res.Timeseries {

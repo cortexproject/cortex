@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
@@ -52,48 +53,58 @@ type Config struct {
 
 // An Alertmanager manages the alerts for one user.
 type Alertmanager struct {
-	cfg        *Config
-	api        *api.API
-	logger     log.Logger
-	nflog      *nflog.Log
-	silences   *silence.Silences
-	marker     types.Marker
-	alerts     *mem.Alerts
-	dispatcher *dispatch.Dispatcher
-	inhibitor  *inhibit.Inhibitor
-	stop       chan struct{}
-	wg         sync.WaitGroup
-	mux        *http.ServeMux
-	registry   *prometheus.Registry
+	cfg             *Config
+	api             *api.API
+	logger          log.Logger
+	nflog           *nflog.Log
+	silences        *silence.Silences
+	marker          types.Marker
+	alerts          *mem.Alerts
+	dispatcher      *dispatch.Dispatcher
+	inhibitor       *inhibit.Inhibitor
+	pipelineBuilder *notify.PipelineBuilder
+	stop            chan struct{}
+	wg              sync.WaitGroup
+	mux             *http.ServeMux
+	registry        *prometheus.Registry
+
+	activeMtx sync.Mutex
+	active    bool
 }
 
-var webReload = make(chan chan error)
+var (
+	webReload = make(chan chan error)
+
+	// In order to workaround a bug in the alertmanager, which doesn't register the
+	// metrics in the input registry but to the global default one, we do define a
+	// singleton dispatcher metrics instance that is going to be shared across all
+	// tenants alertmanagers.
+	// TODO change this once the vendored alertmanager will have this PR merged into:
+	//      https://github.com/prometheus/alertmanager/pull/2200
+	dispatcherMetrics = dispatch.NewDispatcherMetrics(prometheus.NewRegistry())
+)
 
 func init() {
 	go func() {
-		for {
-			select {
-			// Since this is not a "normal" Alertmanager which reads its config
-			// from disk, we just ignore web-based reload signals. Config updates are
-			// only applied externally via ApplyConfig().
-			case <-webReload:
-			}
+		// Since this is not a "normal" Alertmanager which reads its config
+		// from disk, we just accept and ignore web-based reload signals. Config
+		// updates are only applied externally via ApplyConfig().
+		for range webReload {
 		}
 	}()
 }
 
 // New creates a new Alertmanager.
-func New(cfg *Config) (*Alertmanager, error) {
+func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am := &Alertmanager{
-		cfg:    cfg,
-		logger: log.With(cfg.Logger, "user", cfg.UserID),
-		stop:   make(chan struct{}),
+		cfg:       cfg,
+		logger:    log.With(cfg.Logger, "user", cfg.UserID),
+		stop:      make(chan struct{}),
+		active:    false,
+		activeMtx: sync.Mutex{},
 	}
 
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	am.registry = prometheus.NewRegistry()
+	am.registry = reg
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -129,6 +140,8 @@ func New(cfg *Config) (*Alertmanager, error) {
 		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 		am.silences.SetBroadcast(c.Broadcast)
 	}
+
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
 	am.wg.Add(1)
 	go func() {
@@ -173,7 +186,7 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
+	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
 			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)
@@ -188,8 +201,15 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	am.api.Update(conf, func(_ model.LabelSet) {})
 
-	am.inhibitor.Stop()
-	am.dispatcher.Stop()
+	// Ensure inhibitor is set before being called
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	// Ensure dispatcher is set before being called
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
@@ -205,8 +225,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	if err != nil {
 		return nil
 	}
-	pipelineBuilder := notify.NewPipelineBuilder(am.registry)
-	pipeline := pipelineBuilder.New(
+
+	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
@@ -221,17 +241,70 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.marker,
 		timeoutFunc,
 		log.With(am.logger, "component", "dispatcher"),
+		dispatcherMetrics,
 	)
 
 	go am.dispatcher.Run()
 	go am.inhibitor.Run()
 
+	// Ensure the alertmanager is set to active
+	am.activeMtx.Lock()
+	am.active = true
+	am.activeMtx.Unlock()
+
 	return nil
+}
+
+// IsActive returns if the alertmanager is currently running
+// or is paused
+func (am *Alertmanager) IsActive() bool {
+	am.activeMtx.Lock()
+	defer am.activeMtx.Unlock()
+	return am.active
+}
+
+// Pause running jobs in the alertmanager that are able to be restarted and sets
+// to inactives
+func (am *Alertmanager) Pause() {
+	// Set to inactive
+	am.activeMtx.Lock()
+	am.active = false
+	am.activeMtx.Unlock()
+
+	// Stop the inhibitor and dispatcher which will be recreated when
+	// a new config is applied
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+		am.inhibitor = nil
+	}
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+		am.dispatcher = nil
+	}
+
+	// Remove all of the active silences from the alertmanager
+	silences, _, err := am.silences.Query()
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "unable to retrieve silences for removal", "err", err)
+	}
+	for _, si := range silences {
+		err = am.silences.Expire(si.Id)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "unable to remove silence", "err", err, "silence", si.Id)
+		}
+	}
 }
 
 // Stop stops the Alertmanager.
 func (am *Alertmanager) Stop() {
-	am.dispatcher.Stop()
+	if am.inhibitor != nil {
+		am.inhibitor.Stop()
+	}
+
+	if am.dispatcher != nil {
+		am.dispatcher.Stop()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 	am.wg.Wait()

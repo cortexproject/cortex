@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -10,14 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -26,9 +26,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/user"
 )
 
 const userID = "1"
@@ -73,7 +73,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		// doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
@@ -83,7 +84,8 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
-		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		// doesn't actually unregister due to skipUnregister: true
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -105,13 +107,14 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing1))
 
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing1.lifecycler.GetState()
 	})
 
 	// Now write a sample to this ingester
-	req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = ing1.Push(ctx, req)
 	require.NoError(t, err)
@@ -124,6 +127,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing2))
 
 	// Let ing2 send chunks to ing1
 	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
@@ -133,7 +137,8 @@ func TestIngesterTransfer(t *testing.T) {
 	}
 
 	// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-	ing1.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing1))
+
 	test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
 		return ing2.lifecycler.GetState()
 	})
@@ -150,7 +155,7 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 
 	// Check we can send the same sample again to the new ingester and get the same result
-	req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	req, _, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	_, err = ing2.Push(ctx, req)
 	require.NoError(t, err)
 	response, err = ing2.Query(ctx, request)
@@ -169,6 +174,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	test.Poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
 		return ing.lifecycler.GetState()
@@ -372,7 +378,7 @@ func TestIngesterFlush(t *testing.T) {
 	// Now stop the ingester.  Don't call shutdown, as it waits for all goroutines
 	// to exit.  We just want to check that by the time the token is removed from
 	// the ring, the data is in the chunk store.
-	ing.lifecycler.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing.lifecycler))
 	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
 		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.IngesterRingKey)
 		if err != nil {
@@ -431,7 +437,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg1.TSDBConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
-				SecretAccessKey: "dummy",
+				SecretAccessKey: flagext.Secret{Value: "dummy"},
 				AccessKeyID:     "dummy",
 			}
 			cfg1.LifecyclerConfig.ID = "ingester1"
@@ -440,13 +446,14 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg1.MaxTransferRetries = 10
 			ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing1))
 
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 				return ing1.lifecycler.GetState()
 			})
 
 			// Now write a sample to this ingester
-			req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+			req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 			ctx := user.InjectOrgID(context.Background(), userID)
 			_, err = ing1.Push(ctx, req)
 			require.NoError(t, err)
@@ -458,7 +465,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg2.TSDBConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
-				SecretAccessKey: "dummy",
+				SecretAccessKey: flagext.Secret{Value: "dummy"},
 				AccessKeyID:     "dummy",
 			}
 			cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
@@ -467,6 +474,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 			ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing2))
 
 			// Let ing1 send blocks/wal to ing2
 			ingesterClientFactoryCount := 0
@@ -482,7 +490,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			}
 
 			// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-			ing1.Shutdown()
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing1))
 			test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
 				return ing2.lifecycler.GetState()
 			})
@@ -499,7 +507,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 			assert.Equal(t, expectedResponse, response)
 
 			// Check we can send the same sample again to the new ingester and get the same result
-			req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+			req, _, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 			_, err = ing2.Push(ctx, req)
 			require.NoError(t, err)
 			response, err = ing2.Query(ctx, request)

@@ -1,0 +1,2 @@
+**/*.pb.go linguist-generated=true
+vendor/**/* linguist-generated=true

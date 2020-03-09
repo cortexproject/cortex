@@ -51,10 +51,8 @@ example set of command-line parameters from a fairly modest install:
    -metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
    -metrics.target-queue-length=100000
    -dynamodb.url=dynamodb://us-east-1/
-   -dynamodb.use-periodic-tables=true
+   -schema-config-file=/etc/schema.yaml
 
-   -dynamodb.periodic-table.prefix=cortex_index_
-   -dynamodb.periodic-table.from=2019-05-02
    -dynamodb.periodic-table.write-throughput=1000
    -dynamodb.periodic-table.write-throughput.scale.enabled=true
    -dynamodb.periodic-table.write-throughput.scale.min-capacity=200
@@ -64,8 +62,6 @@ example set of command-line parameters from a fairly modest install:
    -dynamodb.periodic-table.read-throughput=300
    -dynamodb.periodic-table.tag=product_area=cortex
 
-   -dynamodb.chunk-table.from=2019-05-02
-   -dynamodb.chunk-table.prefix=cortex_data_
    -dynamodb.chunk-table.write-throughput=800
    -dynamodb.chunk-table.write-throughput.scale.enabled=true
    -dynamodb.chunk-table.write-throughput.scale.min-capacity=200

@@ -68,6 +68,30 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 ## Query Frontend
 
+- `-querier.parallelise-shardable-queries`
+
+   If set to true, will cause the query frontend to mutate incoming queries when possible by turning `sum` operations into sharded `sum` operations. This requires a shard-compatible schema (v10+). An abridged example:
+   `sum by (foo) (rate(bar{baz=”blip”}[1m]))` ->
+   ```
+   sum by (foo) (
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”0of16”}[1m])) or
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
+    ...
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
+   )
+   ```
+   When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume.
+   It's also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:
+
+   - `querier.max-outstanding-requests-per-tenant`
+   - `querier.max-query-parallelism`
+   - `querier.max-concurrent`
+   - `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
+
+   Furthermore, both querier and query-frontend components require the `querier.query-ingesters-within` parameter to know when to start sharding requests (ingester queries are not sharded). It's recommended to align this with `ingester.max-chunk-age`.
+
+   Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well (for instance via `JAEGER_REPORTER_MAX_QUEUE_SIZE`).
+
 - `-querier.align-querier-with-step`
 
    If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.
@@ -182,7 +206,12 @@ Flags for configuring KV store based on memberlist library. This feature is expe
    Timeout for writing 'packet' data.
 - `memberlist.transport-debug`
    Log debug transport messages. Note: global log.level must be at debug level as well.
-   
+- `memberlist.gossip-to-dead-nodes-time`
+   How long to keep gossiping to the nodes that seem to be dead. After this time, dead node is removed from list of nodes. If "dead" node appears again, it will simply join the cluster again, if its name is not reused by other node in the meantime. If the name has been reused, such a reanimated node will be ignored by other members.
+- `memberlist.dead-node-reclaim-time`
+   How soon can dead's node name be reused by a new node (using different IP). Disabled by default, name reclaim is not allowed until `gossip-to-dead-nodes-time` expires. This can be useful to set to low numbers when reusing node names, eg. in stateful sets.
+   If memberlist library detects that new node is trying to reuse the name of previous node, it will log message like this: `Conflicting address for ingester-6. Mine: 10.44.12.251:7946 Theirs: 10.44.12.54:7946 Old state: 2`. Node states are: "alive" = 0, "suspect" = 1 (doesn't respond, will be marked as dead if it doesn't respond), "dead" = 2.
+
 #### Multi KV
 
 This is a special key-value implementation that uses two different KV stores (eg. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to primary store. Other one, secondary, is only used for writes. The idea is that operator can use multi KV store to migrate from primary to secondary store in runtime.

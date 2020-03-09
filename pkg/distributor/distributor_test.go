@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -19,7 +20,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -28,15 +30,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -97,7 +97,7 @@ func TestDistributor_Push(t *testing.T) {
 				limits.IngestionBurstSize = 20
 
 				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
-				defer d.Stop()
+				defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 				request := makeWriteRequest(tc.samples)
 				response, err := d.Push(ctx, request)
@@ -176,7 +176,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			distributors := make([]*Distributor, testData.distributors)
 			for i := 0; i < testData.distributors; i++ {
 				distributors[i], _ = prepare(t, 1, 1, 0, true, limits, kvStore)
-				defer distributors[i].Stop()
+				defer services.StopAndAwaitTerminated(context.Background(), distributors[i]) //nolint:errcheck
 			}
 
 			// If the distributors ring is setup, wait until the first distributor
@@ -250,7 +250,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				limits.AcceptHASamples = true
 
 				d, _ := prepare(t, 1, 1, 0, shardByAllLabels, &limits, nil)
-				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+				codec := GetReplicaDescCodec()
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
 				if tc.enableTracker {
@@ -260,7 +260,8 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 						UpdateTimeout:   100 * time.Millisecond,
 						FailoverTimeout: time.Second,
 					})
-					assert.NoError(t, err)
+					require.NoError(t, err)
+					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
 					d.Replicas = r
 				}
 
@@ -372,7 +373,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil, nil)
-			defer d.Stop()
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			request := makeWriteRequest(tc.samples)
 			writeResponse, err := d.Push(ctx, request)
@@ -387,7 +388,11 @@ func TestDistributor_PushQuery(t *testing.T) {
 			series, err := d.QueryStream(ctx, 0, 10, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
-			response, err = chunkcompat.SeriesChunksToMatrix(0, 10, series)
+			if series == nil {
+				response, err = chunkcompat.SeriesChunksToMatrix(0, 10, nil)
+			} else {
+				response, err = chunkcompat.SeriesChunksToMatrix(0, 10, series.Chunkseries)
+			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedResponse.String(), response.String())
 		})
@@ -455,7 +460,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		limits.AcceptHASamples = tc.removeReplica
 
 		d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
-		defer d.Stop()
+		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 		// Push the series to the distributor
 		req := mockWriteRequest(tc.inputSeries, 1, 1)
@@ -557,7 +562,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
-			defer d.Stop()
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			// Push the series to the distributor
 			req := mockWriteRequest(testData.inputSeries, 1, 1)
@@ -594,7 +599,7 @@ func TestSlowQueries(t *testing.T) {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
 			d, _ := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil, nil)
-			defer d.Stop()
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
 			assert.Equal(t, expectedErr, err)
@@ -660,7 +665,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 
 	// Create distributor
 	d, _ := prepare(t, 3, 3, time.Duration(0), true, nil, nil)
-	defer d.Stop()
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 	// Push fixtures
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -762,6 +767,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 
 	d, err := New(cfg, clientConfig, overrides, ingestersRing, true)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
 	return d, ingesters
 }
@@ -1004,7 +1010,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		}
 
 		results = append(results, &client.QueryStreamResponse{
-			Timeseries: []client.TimeSeriesChunk{
+			Chunkseries: []client.TimeSeriesChunk{
 				{
 					Labels: ts.Labels,
 					Chunks: wireChunks,
@@ -1136,7 +1142,7 @@ func TestDistributorValidation(t *testing.T) {
 			limits.MaxLabelNamesPerSeries = 2
 
 			d, _ := prepare(t, 3, 3, 0, true, &limits, nil)
-			defer d.Stop()
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))
 			require.Equal(t, tc.err, err)

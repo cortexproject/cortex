@@ -36,12 +36,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
-// String constants for instrumentation.
 const (
-	namespace = "prometheus"
-	subsystem = "remote_storage"
-	queue     = "queue"
-
 	// We track samples in/out and how long pushes take using an Exponentially
 	// Weighted Moving Average.
 	ewmaWeight          = 0.2
@@ -59,7 +54,7 @@ var (
 			Name:      "succeeded_samples_total",
 			Help:      "Total number of samples successfully sent to remote storage.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	failedSamplesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -68,7 +63,7 @@ var (
 			Name:      "failed_samples_total",
 			Help:      "Total number of samples which failed on send to remote storage, non-recoverable errors.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	retriedSamplesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -77,7 +72,7 @@ var (
 			Name:      "retried_samples_total",
 			Help:      "Total number of samples which failed on send to remote storage but were retried because the send error was recoverable.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	droppedSamplesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -86,7 +81,7 @@ var (
 			Name:      "dropped_samples_total",
 			Help:      "Total number of samples which were dropped after being read from the WAL before being sent via remote write.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	enqueueRetriesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -95,7 +90,7 @@ var (
 			Name:      "enqueue_retries_total",
 			Help:      "Total number of times enqueue has failed because a shards queue was full.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	sentBatchDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -105,7 +100,7 @@ var (
 			Help:      "Duration of sample batch send calls to the remote storage.",
 			Buckets:   prometheus.DefBuckets,
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	queueHighestSentTimestamp = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -114,7 +109,7 @@ var (
 			Name:      "queue_highest_sent_timestamp_seconds",
 			Help:      "Timestamp from a WAL sample, the highest timestamp successfully sent by this queue, in seconds since epoch.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	queuePendingSamples = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -123,7 +118,7 @@ var (
 			Name:      "pending_samples",
 			Help:      "The number of samples pending in the queues shards to be sent to the remote storage.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	shardCapacity = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -132,7 +127,7 @@ var (
 			Name:      "shard_capacity",
 			Help:      "The capacity of each shard of the queue used for parallel sending to the remote storage.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	numShards = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -141,7 +136,7 @@ var (
 			Name:      "shards",
 			Help:      "The number of shards used for parallel sending to the remote storage.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	maxNumShards = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -150,7 +145,7 @@ var (
 			Name:      "shards_max",
 			Help:      "The maximum number of shards that the queue is allowed to run.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	minNumShards = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -159,7 +154,7 @@ var (
 			Name:      "shards_min",
 			Help:      "The minimum number of shards that the queue is allowed to run.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	desiredNumShards = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -168,7 +163,7 @@ var (
 			Name:      "shards_desired",
 			Help:      "The number of shards that the queues shard calculation wants to run based on the rate of samples in vs. samples out.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 	bytesSent = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -177,7 +172,7 @@ var (
 			Name:      "sent_bytes_total",
 			Help:      "The total number of bytes sent by the queue.",
 		},
-		[]string{queue},
+		[]string{remoteName, endpoint},
 	)
 )
 
@@ -186,8 +181,10 @@ var (
 type StorageClient interface {
 	// Store stores the given samples in the remote storage.
 	Store(context.Context, []byte) error
-	// Name identifies the remote storage implementation.
+	// Name uniquely identifies the remote storage.
 	Name() string
+	// Endpoint is the remote read or write endpoint for the storage client.
+	Endpoint() string
 }
 
 // QueueManager manages a queue of samples to be sent to the Storage
@@ -217,8 +214,6 @@ type QueueManager struct {
 	wg          sync.WaitGroup
 
 	samplesIn, samplesDropped, samplesOut, samplesOutDuration *ewmaRate
-	integralAccumulator                                       float64
-	startedAt                                                 time.Time
 
 	highestSentTimestampMetric *maxGauge
 	pendingSamplesMetric       prometheus.Gauge
@@ -242,8 +237,7 @@ func NewQueueManager(reg prometheus.Registerer, logger log.Logger, walDir string
 		logger = log.NewNopLogger()
 	}
 
-	name := client.Name()
-	logger = log.With(logger, "queue", name)
+	logger = log.With(logger, remoteName, client.Name(), endpoint, client.Endpoint())
 	t := &QueueManager{
 		logger:         logger,
 		flushDeadline:  flushDeadline,
@@ -266,7 +260,7 @@ func NewQueueManager(reg prometheus.Registerer, logger log.Logger, walDir string
 		samplesOutDuration: newEWMARate(ewmaWeight, shardUpdateDuration),
 	}
 
-	t.watcher = wal.NewWatcher(reg, wal.NewWatcherMetrics(reg), logger, name, t, walDir)
+	t.watcher = wal.NewWatcher(reg, wal.NewWatcherMetrics(reg), logger, client.Name(), t, walDir)
 	t.shards = t.newShards()
 
 	return t
@@ -320,28 +314,27 @@ outer:
 // Start the queue manager sending samples to the remote storage.
 // Does not block.
 func (t *QueueManager) Start() {
-	t.startedAt = time.Now()
-
 	// Setup the QueueManagers metrics. We do this here rather than in the
 	// constructor because of the ordering of creating Queue Managers's, stopping them,
 	// and then starting new ones in storage/remote/storage.go ApplyConfig.
 	name := t.client.Name()
+	ep := t.client.Endpoint()
 	t.highestSentTimestampMetric = &maxGauge{
-		Gauge: queueHighestSentTimestamp.WithLabelValues(name),
+		Gauge: queueHighestSentTimestamp.WithLabelValues(name, ep),
 	}
-	t.pendingSamplesMetric = queuePendingSamples.WithLabelValues(name)
-	t.enqueueRetriesMetric = enqueueRetriesTotal.WithLabelValues(name)
-	t.droppedSamplesTotal = droppedSamplesTotal.WithLabelValues(name)
-	t.numShardsMetric = numShards.WithLabelValues(name)
-	t.failedSamplesTotal = failedSamplesTotal.WithLabelValues(name)
-	t.sentBatchDuration = sentBatchDuration.WithLabelValues(name)
-	t.succeededSamplesTotal = succeededSamplesTotal.WithLabelValues(name)
-	t.retriedSamplesTotal = retriedSamplesTotal.WithLabelValues(name)
-	t.shardCapacity = shardCapacity.WithLabelValues(name)
-	t.maxNumShards = maxNumShards.WithLabelValues(name)
-	t.minNumShards = minNumShards.WithLabelValues(name)
-	t.desiredNumShards = desiredNumShards.WithLabelValues(name)
-	t.bytesSent = bytesSent.WithLabelValues(name)
+	t.pendingSamplesMetric = queuePendingSamples.WithLabelValues(name, ep)
+	t.enqueueRetriesMetric = enqueueRetriesTotal.WithLabelValues(name, ep)
+	t.droppedSamplesTotal = droppedSamplesTotal.WithLabelValues(name, ep)
+	t.numShardsMetric = numShards.WithLabelValues(name, ep)
+	t.failedSamplesTotal = failedSamplesTotal.WithLabelValues(name, ep)
+	t.sentBatchDuration = sentBatchDuration.WithLabelValues(name, ep)
+	t.succeededSamplesTotal = succeededSamplesTotal.WithLabelValues(name, ep)
+	t.retriedSamplesTotal = retriedSamplesTotal.WithLabelValues(name, ep)
+	t.shardCapacity = shardCapacity.WithLabelValues(name, ep)
+	t.maxNumShards = maxNumShards.WithLabelValues(name, ep)
+	t.minNumShards = minNumShards.WithLabelValues(name, ep)
+	t.desiredNumShards = desiredNumShards.WithLabelValues(name, ep)
+	t.bytesSent = bytesSent.WithLabelValues(name, ep)
 
 	// Initialise some metrics.
 	t.shardCapacity.Set(float64(t.cfg.Capacity))
@@ -380,19 +373,20 @@ func (t *QueueManager) Stop() {
 	t.seriesMtx.Unlock()
 	// Delete metrics so we don't have alerts for queues that are gone.
 	name := t.client.Name()
-	queueHighestSentTimestamp.DeleteLabelValues(name)
-	queuePendingSamples.DeleteLabelValues(name)
-	enqueueRetriesTotal.DeleteLabelValues(name)
-	droppedSamplesTotal.DeleteLabelValues(name)
-	numShards.DeleteLabelValues(name)
-	failedSamplesTotal.DeleteLabelValues(name)
-	sentBatchDuration.DeleteLabelValues(name)
-	succeededSamplesTotal.DeleteLabelValues(name)
-	retriedSamplesTotal.DeleteLabelValues(name)
-	shardCapacity.DeleteLabelValues(name)
-	maxNumShards.DeleteLabelValues(name)
-	minNumShards.DeleteLabelValues(name)
-	desiredNumShards.DeleteLabelValues(name)
+	ep := t.client.Endpoint()
+	queueHighestSentTimestamp.DeleteLabelValues(name, ep)
+	queuePendingSamples.DeleteLabelValues(name, ep)
+	enqueueRetriesTotal.DeleteLabelValues(name, ep)
+	droppedSamplesTotal.DeleteLabelValues(name, ep)
+	numShards.DeleteLabelValues(name, ep)
+	failedSamplesTotal.DeleteLabelValues(name, ep)
+	sentBatchDuration.DeleteLabelValues(name, ep)
+	succeededSamplesTotal.DeleteLabelValues(name, ep)
+	retriedSamplesTotal.DeleteLabelValues(name, ep)
+	shardCapacity.DeleteLabelValues(name, ep)
+	maxNumShards.DeleteLabelValues(name, ep)
+	minNumShards.DeleteLabelValues(name, ep)
+	desiredNumShards.DeleteLabelValues(name, ep)
 }
 
 // StoreSeries keeps track of which series we know about for lookups when sending samples to remote.
@@ -500,7 +494,7 @@ func (t *QueueManager) updateShardsLoop() {
 			// to stay close to shardUpdateDuration.
 			select {
 			case t.reshardChan <- desiredShards:
-				level.Info(t.logger).Log("msg", "Remote storage resharding", "from", t.numShards, "to", numShards)
+				level.Info(t.logger).Log("msg", "Remote storage resharding", "from", t.numShards, "to", desiredShards)
 				t.numShards = desiredShards
 			default:
 				level.Info(t.logger).Log("msg", "Currently resharding, skipping.")
@@ -532,25 +526,13 @@ func (t *QueueManager) calculateDesiredShards() int {
 		samplesPendingRate = samplesInRate*samplesKeptRatio - samplesOutRate
 		highestSent        = t.highestSentTimestampMetric.Get()
 		highestRecv        = highestTimestamp.Get()
-		samplesPending     = (highestRecv - highestSent) * samplesInRate * samplesKeptRatio
+		delay              = highestRecv - highestSent
+		samplesPending     = delay * samplesInRate * samplesKeptRatio
 	)
 
 	if samplesOutRate <= 0 {
 		return t.numShards
 	}
-
-	// We use an integral accumulator, like in a PID, to help dampen
-	// oscillation. The accumulator will correct for any errors not accounted
-	// for in the desired shard calculation by adjusting for pending samples.
-	const integralGain = 0.2
-	// Initialise the integral accumulator as the average rate of samples
-	// pending. This accounts for pending samples that were created while the
-	// WALWatcher starts up.
-	if t.integralAccumulator == 0 {
-		elapsed := time.Since(t.startedAt) / time.Second
-		t.integralAccumulator = integralGain * samplesPending / float64(elapsed)
-	}
-	t.integralAccumulator += samplesPendingRate * integralGain
 
 	// We shouldn't reshard if Prometheus hasn't been able to send to the
 	// remote endpoint successfully within some period of time.
@@ -561,10 +543,16 @@ func (t *QueueManager) calculateDesiredShards() int {
 		return t.numShards
 	}
 
+	// When behind we will try to catch up on a proporation of samples per tick.
+	// This works similarly to an integral accumulator in that pending samples
+	// is the result of the error integral.
+	const integralGain = 0.1 / float64(shardUpdateDuration/time.Second)
+
 	var (
 		timePerSample = samplesOutDuration / samplesOutRate
-		desiredShards = timePerSample * (samplesInRate + t.integralAccumulator)
+		desiredShards = timePerSample * (samplesInRate*samplesKeptRatio + integralGain*samplesPending)
 	)
+	t.desiredNumShards.Set(desiredShards)
 	level.Debug(t.logger).Log("msg", "QueueManager.calculateDesiredShards",
 		"samplesInRate", samplesInRate,
 		"samplesOutRate", samplesOutRate,
@@ -576,7 +564,6 @@ func (t *QueueManager) calculateDesiredShards() int {
 		"desiredShards", desiredShards,
 		"highestSent", highestSent,
 		"highestRecv", highestRecv,
-		"integralAccumulator", t.integralAccumulator,
 	)
 
 	// Changes in the number of shards must be greater than shardToleranceFraction.
@@ -591,7 +578,12 @@ func (t *QueueManager) calculateDesiredShards() int {
 	}
 
 	numShards := int(math.Ceil(desiredShards))
-	t.desiredNumShards.Set(float64(numShards))
+	// Do not downshard if we are more than ten seconds back.
+	if numShards < t.numShards && delay > 10.0 {
+		level.Debug(t.logger).Log("msg", "Not downsharding due to being too far behind")
+		return t.numShards
+	}
+
 	if numShards > t.cfg.MaxShards {
 		numShards = t.cfg.MaxShards
 	} else if numShards < t.cfg.MinShards {

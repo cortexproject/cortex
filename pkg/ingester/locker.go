@@ -4,8 +4,9 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 // Avoid false sharing when using array of mutexes.
 type paddedMutex struct {
 	sync.Mutex
+	//nolint:structcheck,unused
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{})]byte
 }
 

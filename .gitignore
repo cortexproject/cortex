@@ -1,5 +1,6 @@
 cmd/test-exporter/test-exporter
 cmd/cortex/cortex
+cmd/query-tee/query-tee
 .uptodate
 .pkg
 .cache
@@ -7,3 +8,6 @@ docker-images/
 website/public
 website/resources
 website/content/en/docs
+e2e_integration_test*
+active-query-tracker
+

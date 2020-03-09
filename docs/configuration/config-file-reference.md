@@ -1383,12 +1383,12 @@ bigtable:
   # CLI flag: -bigtable.table-cache.expiration
   [tablecacheexpiration: <duration> | default = 30m0s]
 
-  # BigTable rate limiter for write operations, with 0 is disable.
+  # BigTable rate limiter for write operations, 0 is disable.
   # CLI flag: -bigtable.write-rate-limit
   [writelimit: <int> | default = 0]
 
   # BigTable maximum burst size for write operations when the rate limit is
-  # enabled, with 0 is disabled.
+  # enabled, 0 is disabled.
   # CLI flag: -bigtable.write-limit-burst-size
   [maxwriteburstsize: <int> | default = 0]
 

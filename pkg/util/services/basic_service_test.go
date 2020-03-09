@@ -293,3 +293,23 @@ func (sl *serviceListener) Terminated(from State) {
 	sl.ch <- fmt.Sprintf("terminated: %v", from)
 	close(sl.ch)
 }
+
+func TestFailureCaseFromRunningIsPassedToStopping(t *testing.T) {
+	err := errors.New("test error")
+
+	s := NewBasicService(nil, func(_ context.Context) error {
+		return err
+	}, func(failureCase error) error {
+		if failureCase != err {
+			t.Log("invalid failureCase")
+			t.Fail()
+		}
+		return nil
+	})
+
+	require.NoError(t, s.StartAsync(context.Background()))
+	require.Error(t, s.AwaitTerminated(context.Background())) // service fails, so we expect Failed state
+
+	fc := s.FailureCase()
+	require.Equal(t, err, fc)
+}

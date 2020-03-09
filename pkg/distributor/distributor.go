@@ -219,7 +219,7 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 // Called after distributor is asked to stop via StopAsync.
-func (d *Distributor) stopping() error {
+func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 

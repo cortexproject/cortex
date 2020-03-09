@@ -191,7 +191,7 @@ func (r *Ruler) starting(ctx context.Context) error {
 
 // Stop stops the Ruler.
 // Each function of the ruler is terminated before leaving the ring
-func (r *Ruler) stopping() error {
+func (r *Ruler) stopping(_ error) error {
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
 		n.stop()

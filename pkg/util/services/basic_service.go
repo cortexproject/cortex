@@ -22,7 +22,8 @@ type RunningFn func(serviceContext context.Context) error
 // StoppingFn function is called when service enters Stopping state. When it returns, service moves to Terminated or Failed state,
 // depending on whether there was any error returned from previous RunningFn (if it was called) and this StoppingFn function. If both return error,
 // RunningFn's error will be saved as failure case for Failed state.
-type StoppingFn func() error
+// Parameter is error from Running function, or nil if there was no error.
+type StoppingFn func(failureCase error) error
 
 // BasicService implements contract of Service interface, using three supplied functions: StartingFn, RunningFn and StoppingFn.
 // When service is started, these three functions are called as service transitions to Starting, Running and Stopping state.
@@ -180,7 +181,7 @@ stop:
 	b.serviceCancel()
 
 	if b.stoppingFn != nil {
-		err = b.stoppingFn()
+		err = b.stoppingFn(failure)
 		if failure == nil {
 			failure = err
 		}

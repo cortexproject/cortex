@@ -307,7 +307,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	// BUT this extra functionality is ONE OF THE REASONS to introduce entire "Services" concept into Cortex.
 	// For now, only return service that stops the worker, and Querier will be used even before storeQueryable has finished starting.
 
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.worker.Stop()
 		return nil
 	}), nil
@@ -380,7 +380,7 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.store.Stop()
 		return nil
 	}), nil
@@ -425,7 +425,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 			t.frontend.Handler(),
 		),
 	)
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
 		if t.cache != nil {
 			t.cache.Stop()
@@ -501,7 +501,7 @@ func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
 
 	t.configAPI = api.New(t.configDB, cfg.Configs.API)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.configDB.Close()
 		return nil
 	}), nil
@@ -542,7 +542,7 @@ func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
 	}
 	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
 
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		kv := t.memberlistKVState.kv
 		if kv != nil {
 			kv.Stop()

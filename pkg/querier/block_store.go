@@ -120,7 +120,7 @@ func (u *UserStore) starting(ctx context.Context) error {
 	return nil
 }
 
-func (u *UserStore) stopping() error {
+func (u *UserStore) stopping(_ error) error {
 	u.serv.Stop()
 	return nil
 }

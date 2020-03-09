@@ -239,7 +239,7 @@ func (i *Ingester) loop(ctx context.Context) error {
 }
 
 // stopping is run when ingester is asked to stop
-func (i *Ingester) stopping() error {
+func (i *Ingester) stopping(_ error) error {
 	i.wal.Stop()
 
 	// This will prevent us accepting any more samples

@@ -33,7 +33,7 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 		}
 	}
 
-	stoppingFn := func() error {
+	stoppingFn := func(_ error) error {
 		// wait until all modules are done, and then shutdown server.
 		for _, s := range servicesToWaitFor() {
 			_ = s.AwaitTerminated(context.Background())

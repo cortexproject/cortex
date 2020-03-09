@@ -60,7 +60,7 @@ func (s *serv) run(ctx context.Context) error {
 	return s.conf.runRetVal
 }
 
-func (s *serv) shutDown() error {
+func (s *serv) shutDown(_ error) error {
 	return s.conf.stopRetVal
 }
 

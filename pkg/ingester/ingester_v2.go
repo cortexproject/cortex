@@ -169,7 +169,7 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 }
 
 // runs when V2 ingester is stopping
-func (i *Ingester) stoppingV2() error {
+func (i *Ingester) stoppingV2(_ error) error {
 	// It's important to wait until shipper is finished,
 	// because the blocks transfer should start only once it's guaranteed
 	// there's no shipping on-going.

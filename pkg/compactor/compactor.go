@@ -198,7 +198,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	return errors.Wrap(err, "failed to initialize compactor objects")
 }
 
-func (c *Compactor) stopping() error {
+func (c *Compactor) stopping(_ error) error {
 	if c.subservices != nil {
 		return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
 	}

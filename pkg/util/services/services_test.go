@@ -19,7 +19,7 @@ func TestIdleService(t *testing.T) {
 	s := NewIdleService(func(ctx context.Context) error {
 		started = true
 		return nil
-	}, func() error {
+	}, func(_ error) error {
 		stopped = true
 		return nil
 	})
@@ -109,7 +109,7 @@ func TestHelperFunctionsStopError(t *testing.T) {
 	t.Parallel()
 
 	e := errors.New("some error")
-	s := NewIdleService(nil, func() error { return e })
+	s := NewIdleService(nil, func(_ error) error { return e })
 
 	require.NoError(t, StartAndAwaitRunning(context.Background(), s))
 	require.Equal(t, e, StopAndAwaitTerminated(context.Background(), s))
@@ -118,7 +118,7 @@ func TestHelperFunctionsStopError(t *testing.T) {
 func TestHelperFunctionsStopTooSlow(t *testing.T) {
 	t.Parallel()
 
-	s := NewIdleService(nil, func() error { time.Sleep(1 * time.Second); return nil })
+	s := NewIdleService(nil, func(_ error) error { time.Sleep(1 * time.Second); return nil })
 
 	require.NoError(t, StartAndAwaitRunning(context.Background(), s))
 

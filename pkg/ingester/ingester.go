@@ -196,7 +196,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	var err error
 	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "starting WAL")
 	}
 
 	// Now that user states have been created, we can start the lifecycler.
@@ -736,7 +736,7 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 // Check implements the grpc healthcheck
 func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
+		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
 	}
 
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
@@ -751,8 +751,8 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) CheckReady(ctx context.Context) error {
-	if s := i.State(); s != services.Running {
-		return fmt.Errorf("service not Running: %v", s)
+	if err := i.checkRunningOrStopping(); err != nil {
+		return fmt.Errorf("ingester not ready: %v", err)
 	}
 	return i.lifecycler.CheckReady(ctx)
 }

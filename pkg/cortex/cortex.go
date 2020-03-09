@@ -185,12 +185,12 @@ type Cortex struct {
 	runtimeConfig *runtimeconfig.Manager
 	dataPurger    *purger.DataPurger
 
-	ruler             *ruler.Ruler
-	configAPI         *api.API
-	configDB          db.DB
-	alertmanager      *alertmanager.MultitenantAlertmanager
-	compactor         *compactor.Compactor
-	memberlistKVState *memberlistKVState
+	ruler        *ruler.Ruler
+	configAPI    *api.API
+	configDB     db.DB
+	alertmanager *alertmanager.MultitenantAlertmanager
+	compactor    *compactor.Compactor
+	memberlistKV *memberlist.KVInit
 
 	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

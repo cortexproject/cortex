@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/push"
@@ -204,7 +205,7 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
@@ -238,7 +239,7 @@ func (t *Cortex) initOverrides(cfg *Config) (serv services.Service, err error) {
 
 func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -337,7 +338,7 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 
 func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -465,7 +466,7 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
@@ -512,7 +513,7 @@ func (t *Cortex) initAlertManager(cfg *Config) (serv services.Service, err error
 
 func (t *Cortex) initCompactor(cfg *Config) (serv services.Service, err error) {
 	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -530,13 +531,10 @@ func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
 	cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
+	t.memberlistKV = memberlist.NewKVInit(&cfg.MemberlistKV)
 
 	return services.NewIdleService(nil, func(_ error) error {
-		kv := t.memberlistKVState.kv
-		if kv != nil {
-			kv.Stop()
-		}
+		t.memberlistKV.Stop()
 		return nil
 	}), nil
 }

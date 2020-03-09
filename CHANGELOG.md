@@ -169,6 +169,7 @@ Further, if you're using the configs service, we've upgraded the migration libra
 * [ENHANCEMENT] metric `cortex_ingester_flush_reasons` gets a new `reason` value: `Spread`, when `-ingester.spread-flushes` option is enabled. #1978
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service. #1923
 * [ENHANCEMENT] Upgraded Kubernetes API version for deployments from `extensions/v1beta1` to `apps/v1`. #1941
+* [ENHANCEMENT] Add ability to configure gRPC keepalive settings. #2066
 * [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. The max concurrency is set via `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`. #1917
 * [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store and in memory index cache (many metrics to list, but all have `cortex_querier_bucket_store_` or `cortex_querier_blocks_index_cache_` prefix). #1996
 * [ENHANCEMENT] Experimental TSDB: Improved multi-tenant bucket store. #1991
@@ -180,6 +181,7 @@ Further, if you're using the configs service, we've upgraded the migration libra
 * [BUGFIX] Fixed ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922
 * [BUGFIX] Table Manager: Fixed calculation of expected tables and creation of tables from next active schema considering grace period. #1976
+* [BUGFIX] Fixed leaked goroutines in the querier. #2070
 * [BUGFIX] Experimental TSDB: Fixed ingesters consistency during hand-over when using experimental TSDB blocks storage. #1854 #1818
 * [BUGFIX] Experimental TSDB: Fixed metrics when using experimental TSDB blocks storage. #1981 #1982 #1990 #1983
 * [BUGFIX] Experimental memberlist: Use the advertised address when sending packets to other peers of the Gossip memberlist. #1857
@@ -227,13 +229,11 @@ migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgre
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
 * [ENHANCEMENT] Added jitter to HA deduping heartbeats, configure using `distributor.ha-tracker.update-timeout-jitter-max` #1534
 * [ENHANCEMENT] Add ability to flush chunks with stale markers early. #1759
-* [ENHANCEMENT] Add ability to configure gRPC keepalive settings. #2066
 * [BUGFIX] Stop reporting successful actions as 500 errors in KV store metrics. #1798
 * [BUGFIX] Fix bug where duplicate labels can be returned through metadata APIs. #1790
 * [BUGFIX] Fix reading of old, v3 chunk data. #1779
 * [BUGFIX] Now support IAM roles in service accounts in AWS EKS. #1803
 * [BUGFIX] Fixed duplicated series returned when querying both ingesters and store with the experimental TSDB blocks storage. #1778
-* [BUGFIX] Fixed leaked goroutines in the querier. #2070
 
 In this release we updated the following dependencies:
 

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Removed support for flags to configure schema. Further, the flag for specifying the config file (`-config-yaml`) has been deprecated. Please use `schema-config-file`. See https://cortexmetrics.io/docs/configuration/schema-configuration/ for more details on how to configure the schema using the YAML file. #2221
 * [CHANGE] The frontend http server will now send 502 in case of deadline exceeded and 499 if the user requested cancellation. #2156
 * [CHANGE] Config file changed to remove top level `config_store` field in favor of a nested `configdb` field. #2125
 * [CHANGE] We now enforce queries to be up to `-querier.max-query-into-future` into the future (defaults to 10m). #1929

@@ -378,9 +378,12 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err error) {
-	err = cfg.Schema.Load()
-	if err != nil {
-		return
+	// Load the schema only if sharded queries is set.
+	if cfg.QueryRange.ShardedQueries {
+		err = cfg.Schema.Load()
+		if err != nil {
+			return
+		}
 	}
 
 	t.frontend, err = frontend.New(cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)

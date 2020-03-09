@@ -1,0 +1,15 @@
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: schema-config
+data:
+  schema.yaml: |
+    configs:
+      - from: "2020-01-01"
+        schema: v9
+        index:
+          period: 168h0m0s
+          prefix: cortex_weekly_ 
+        store: aws-dynamo 
+        object_store: s3

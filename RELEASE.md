@@ -42,7 +42,7 @@ Maintaining the release branches for older minor releases happens on a best effo
 
 ### Prepare your release
 
-Put the new version number into the file VERSION.
+Put the new version number into the file `VERSION` and Kubernetes manifests located at `k8s/`.
 
 For a patch release, work in the branch of the minor release you want to patch.
 

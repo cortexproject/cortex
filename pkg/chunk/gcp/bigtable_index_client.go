@@ -65,8 +65,6 @@ type storageClientColumnKey struct {
 	client       *bigtable.Client
 	keysFn       keysFn
 	writeLimiter *rate.Limiter
-
-	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.

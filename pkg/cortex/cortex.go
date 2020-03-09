@@ -348,8 +348,16 @@ func (t *Cortex) Run() error {
 	}
 
 	// Stop all the services, and wait until they are all done.
-	// We don't care about this error, as it cannot really fail. `err` has error from startup, which is more important.
+	// We don't care about this error, as it cannot really fail.
 	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
+
+	// if any service failed, report that as an error to caller
+	if err == nil {
+		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
+			// Details were reported via failure listener before
+			err = errors.New("failed services")
+		}
+	}
 	return err
 }
 

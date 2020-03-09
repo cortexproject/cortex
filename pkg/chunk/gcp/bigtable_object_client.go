@@ -69,9 +69,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 
 	for tableName := range keys {
 		table := s.client.Open(tableName)
-
 		if s.cfg.WriteLimit > 0 {
-
 			if _, ok := ctx.Deadline(); !ok {
 				ctxDeadline := time.Now().Add(5 * time.Minute)
 				newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)

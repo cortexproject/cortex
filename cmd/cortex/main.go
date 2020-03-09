@@ -105,11 +105,10 @@ func main() {
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
-	if err := t.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error running Cortex", "err", err)
-	}
+	err = t.Run()
 
 	runtime.KeepAlive(ballast)
+	util.CheckFatal("running cortex", err)
 }
 
 // Parse -config.file and -config.expand-env option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.

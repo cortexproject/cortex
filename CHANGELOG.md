@@ -86,6 +86,7 @@
 * [ENHANCEMENT] Background cache writes are batched to improve parallelism and observability. #2135
 * [ENHANCEMENT] Add automatic repair for checkpoint and WAL. #2105
 * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
+* [ENHANCEMENT] Skip expired requests in query-frontend scheduling. #2082
 * [BUGFIX] Alertmanager: fixed panic upon applying a new config, caused by duplicate metrics registration in the `NewPipelineBuilder` function. #211
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101
@@ -94,6 +95,7 @@
 * [BUGFIX] Fixed WAL metric names, added the `cortex_` prefix.
 * [BUGFIX] Restored histogram `cortex_configs_request_duration_seconds` #2138
 * [BUGFIX] Fix wrong syntax for `url` in config-file-reference. #2148
+* [BUGFIX] Fixed some 5xx status code returned by the query-frontend when they should actually be 4xx. #2122
 
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
 
@@ -202,11 +204,13 @@ migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgre
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
 * [ENHANCEMENT] Added jitter to HA deduping heartbeats, configure using `distributor.ha-tracker.update-timeout-jitter-max` #1534
 * [ENHANCEMENT] Add ability to flush chunks with stale markers early. #1759
+* [ENHANCEMENT] Add ability to configure gRPC keepalive settings. #2066
 * [BUGFIX] Stop reporting successful actions as 500 errors in KV store metrics. #1798
 * [BUGFIX] Fix bug where duplicate labels can be returned through metadata APIs. #1790
 * [BUGFIX] Fix reading of old, v3 chunk data. #1779
 * [BUGFIX] Now support IAM roles in service accounts in AWS EKS. #1803
 * [BUGFIX] Fixed duplicated series returned when querying both ingesters and store with the experimental TSDB blocks storage. #1778
+* [BUGFIX] Fixed leaked goroutines in the querier. #2070
 
 In this release we updated the following dependencies:
 

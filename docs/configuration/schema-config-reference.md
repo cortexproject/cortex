@@ -34,7 +34,7 @@ Where `periodic_table_config` is
 # The prefix to use for the tables.
 prefix: <string>
 # We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 168h (1week).
-period: <time.Duration>
+period: <duration>
 # The tags that can be set on the dynamo table.
 tags: <map[string]string>
 ```
@@ -42,12 +42,14 @@ tags: <map[string]string>
 Now an example of this file (also something recommended when starting out) is:
 ```
 configs:
-  - from: "2020-03-01" // Or typically a week before the Cortex cluster was created.
+  - from: "2020-03-01" # Or typically a week before the Cortex cluster was created.
     schema: v9
     index:
       period: 168h
       prefix: cortex_index_
-    chunks:                     // Chunks section is optional and required only if you're not using a separate object store.
+    # Chunks section is optional and required only if you're not using a
+    # separate object store.
+    chunks:
       period: 168h
       prefix: cortex_chunks  
     store: aws-dynamo/bigtable-hashed/cassandra/boltdb
@@ -57,12 +59,10 @@ configs:
 An example of an advanced schema file with a lot of changes:
 ```
 configs:
-
   # Starting from 2018-08-23 Cortex should store chunks and indexes
   # on Google BigTable using weekly periodic tables. The chunks table
   # names will be prefixed with "dev_chunks_", while index tables will be
   # prefixed with "dev_index_".
-
   - from: "2018-08-23"
     schema: v9
     chunks:
@@ -74,7 +74,6 @@ configs:
     store: gcp-columnkey
 
   # Starting 2018-02-13 we moved from BigTable to GCS for storing the chunks.
-
   - from: "2019-02-13"
     schema: v9
     chunks:
@@ -86,8 +85,8 @@ configs:
     object_store: gcs
     store: gcp-columnkey
 
-  # Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed which improves the distribution of keys.
-
+  # Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed
+  # which improves the distribution of keys.
   - from: "2019-02-24"
     schema: v9
     chunks:
@@ -100,7 +99,6 @@ configs:
     store: bigtable-hashed
 
   # Starting 2019-03-05 we moved from v9 schema to v10 schema. 
-
   - from: "2019-03-05"
     schema: v10
     chunks:

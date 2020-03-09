@@ -18,7 +18,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -185,20 +184,6 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 
 	t.server = serv
 
-	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
-		out, err := yaml.Marshal(cfg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/yaml")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(out); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
-		}
-	})
-
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
 		for m, s := range t.serviceMap {
@@ -209,7 +194,12 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		}
 		return svs
 	}
-	return NewServerService(t.server, servicesToWaitFor), nil
+
+	s := NewServerService(cfg, t.server, servicesToWaitFor)
+	serv.HTTP.HandleFunc("/", s.indexHandler)
+	serv.HTTP.HandleFunc("/config", s.configHandler)
+
+	return s, nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {

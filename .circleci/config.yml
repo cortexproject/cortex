@@ -112,7 +112,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:update-gogoproto-9a1b26ac6 configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-gogoproto-9a1b26ac6 configs-integration-test
 
   integration:
     machine:

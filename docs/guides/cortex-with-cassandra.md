@@ -110,12 +110,12 @@ storage:
 ```
 
 The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex 
-to find the latest stable version tag and use it in the command bellow (currently it is `v0.7.0`).
+to find the latest stable version tag and use it in the command bellow (currently it is `v0.6.1`).
 
 Run Cortex using the latest stable version:
 
 ```
-docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v0.7.0 -config.file=/etc/single-process-config.yaml
+docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v0.6.1 -config.file=/etc/single-process-config.yaml
 ```
 In case you prefer to run the master version, please follow this [documentation](https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md) on how to build Cortex from source.
 

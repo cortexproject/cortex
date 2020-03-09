@@ -3,7 +3,7 @@
 ## master / unreleased
 
 
-## 0.7.0 / 2020-03-09
+## 0.7.0-rc.0 / 2020-03-09
 
 Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read all the `[CHANGE]` entries below before upgrading your Cortex cluster. In particular:
 

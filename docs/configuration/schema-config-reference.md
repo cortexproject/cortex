@@ -113,7 +113,7 @@ configs:
     store: bigtable-hashed
 ```
 
-Note how we started out with v9 and just Bigtable, but later added GCS as the object store, finally moving to v10. This is a complex schema file from our dev cluster that saw a lot of changes dating all the way back to 2018, a typical schema config file usually has one or two schema versions.
+Note how we started out with v9 and just Bigtable, but later migrated to GCS as the object store, finally moving to v10. This is a complex schema file showing several changes changes over the time, while a typical schema config file usually has just one or two schema versions.
 
 ### Migrating from flags to schema file
 

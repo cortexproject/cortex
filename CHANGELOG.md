@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+
+## 0.7.0 / 2020-03-09
+
 * [CHANGE] Removed support for flags to configure schema. Further, the flag for specifying the config file (`-config-yaml`) has been deprecated. Please use `schema-config-file`. See https://cortexmetrics.io/docs/configuration/schema-configuration/ for more details on how to configure the schema using the YAML file. #2221
 * [CHANGE] The frontend http server will now send 502 in case of deadline exceeded and 499 if the user requested cancellation. #2156
 * [CHANGE] Config file changed to remove top level `config_store` field in favor of a nested `configdb` field. #2125
@@ -35,7 +38,6 @@
 * [FEATURE] Added user sub rings to distribute users to a subset of ingesters. #1947
   * `--experimental.distributor.user-subring-size`
 * [FEATURE] Added flag `-experimental.ruler.enable-api` to enable the ruler api which implements the Prometheus API `/api/v1/rules` and `/api/v1/alerts` endpoints under the configured `-http.prefix`. #1999
-  * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [FEATURE] Added sharding support to compactor when using the experimental TSDB blocks storage. #2113
 * [FEATURE] Added ability to override YAML config file settings using environment variables. #2147
   * `-config.expand-env`
@@ -83,6 +85,7 @@
 * [ENHANCEMENT] Configs API: Allow GET/POST configs in YAML format. #2181
 * [ENHANCEMENT] Background cache writes are batched to improve parallelism and observability. #2135
 * [ENHANCEMENT] Add automatic repair for checkpoint and WAL. #2105
+* [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [BUGFIX] Alertmanager: fixed panic upon applying a new config, caused by duplicate metrics registration in the `NewPipelineBuilder` function. #211
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101

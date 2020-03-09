@@ -14,6 +14,7 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | v0.4.0         | 2019-11-13                                 | Tom Wilkie (@tomwilkie)                     |
 | v0.5.0         | 2020-01-08                                 | _Abandoned_                                 |
 | v0.6.0         | 2020-01-22                                 | Marco Pracucci (@pracucci)                  |
+| v0.7.0         | 2020-03-09                                 | Marco Pracucci (@pracucci)                  |
 
 ## Release shepherd responsibilities
 
@@ -42,24 +43,20 @@ Maintaining the release branches for older minor releases happens on a best effo
 
 ### Prepare your release
 
-Put the new version number into the file `VERSION` and Kubernetes manifests located at `k8s/`.
+For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
 
-For a patch release, work in the branch of the minor release you want to patch.
-
-For a new major or minor release, create the corresponding release branch based on the master branch.
-
-Update `CHANGELOG.md` in a proper PR as this gives others the opportunity to chime in on the release in general and on the addition to the changelog in particular.
-
-Note that `CHANGELOG.md` should only document changes relevant to users of Cortex, including external API changes, performance improvements, and new features. Do not document changes of internal interfaces, code refactorings and clean-ups, changes to the build process, etc. People interested in these are asked to refer to the git history.
-
-Entries in the `CHANGELOG.md` are meant to be in this order:
-
-* `[CHANGE]`
-* `[FEATURE]`
-* `[ENHANCEMENT]`
-* `[BUGFIX]`
-
-To quickly look for the list of PR missing a reference in the `CHANGELOG.md` you can run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master`.
+1. Update version number in the following locations:
+   - The `VERSION` file
+   - Kubernetes manifests located at `k8s/`
+   - Documentation located at `docs/`
+2. Update `CHANGELOG.md`
+   - Add a new section for the new release with all the changelog entries
+   - Ensure changelog entries are in this order:
+     * `[CHANGE]`
+     * `[FEATURE]`
+     * `[ENHANCEMENT]`
+     * `[BUGFIX]`
+   - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
 
 ### Draft the new release
 

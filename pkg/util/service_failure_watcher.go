@@ -11,7 +11,7 @@ type ServiceFailureWatcher struct {
 	ch chan error
 }
 
-func NewServiceWatcher() *ServiceFailureWatcher {
+func NewServiceFailureWatcher() *ServiceFailureWatcher {
 	return &ServiceFailureWatcher{ch: make(chan error)}
 }
 

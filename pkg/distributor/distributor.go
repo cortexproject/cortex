@@ -112,7 +112,8 @@ type Distributor struct {
 	ingestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
-	subservices *services.Manager
+	subservices    *services.Manager
+	serviceWatcher *util.ServiceFailureWatcher
 }
 
 // Config contains the configuration require to
@@ -208,14 +209,25 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
+	d.serviceWatcher = util.NewServiceFailureWatcher()
+	d.serviceWatcher.WatchManager(d.subservices)
 
-	d.Service = services.NewIdleService(d.starting, d.stopping)
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 	return d, nil
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
 	// Only report success if all sub-services start properly
 	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
+
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.serviceWatcher.Chan():
+		return err
+	}
 }
 
 // Called after distributor is asked to stop via StopAsync.

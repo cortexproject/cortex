@@ -2137,7 +2137,7 @@ The `tsdb_config` configures the experimental blocks storage.
 [block_ranges_period: <list of duration> | default = 2h0m0s]
 
 # TSDB blocks retention in the ingester before a block is removed. This should
-# be larger than the block_ranges_period and large enough to give ingesters
+# be larger than the block_ranges_period and large enough to give queriers
 # enough time to discover newly uploaded blocks.
 # CLI flag: -experimental.tsdb.retention-period
 [retention_period: <duration> | default = 6h0m0s]

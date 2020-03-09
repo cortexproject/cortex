@@ -34,19 +34,7 @@ replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
 redundancy or less, depending on your risk appetite.&lt;/p&gt;
 &lt;h3 id=&#34;schema&#34;&gt;Schema&lt;/h3&gt;
-&lt;h4 id=&#34;schema-periodic-table&#34;&gt;Schema periodic table&lt;/h4&gt;
-&lt;p&gt;The periodic table from argument (&lt;code&gt;-dynamodb.periodic-table.from=&amp;lt;date&amp;gt;&lt;/code&gt; if
-using command line flags, the &lt;code&gt;from&lt;/code&gt; field for the first schema entry if using
-YAML) should be set to the date the oldest metrics you will be sending to
-Cortex. Generally that means set it to the date you are first deploying this
-instance. If you use an example date from years ago table-manager will create
-hundreds of tables. You can also avoid creating too many tables by setting a
-reasonable retention in the table-manager
-(&lt;code&gt;-table-manager.retention-period=&amp;lt;duration&amp;gt;&lt;/code&gt;).&lt;/p&gt;
-&lt;h4 id=&#34;schema-version&#34;&gt;Schema version&lt;/h4&gt;
-&lt;p&gt;Choose schema version 9 in most cases; version 10 if you expect
-hundreds of thousands of timeseries under a single name. Anything
-older than v9 is much less efficient.&lt;/p&gt;
+&lt;p&gt;See &lt;a href=&#34;/docs/configuration/schema-configuration/&#34;&gt;schema config file docs&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;chunk-encoding&#34;&gt;Chunk encoding&lt;/h3&gt;
 &lt;p&gt;Standard choice would be Bigchunk, which is the most flexible chunk
 encoding. You may get better compression from Varbit, if many of your
@@ -238,9 +226,7 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
 -metrics.target-queue-length=100000
 -dynamodb.url=dynamodb://us-east-1/
--dynamodb.use-periodic-tables=true
--dynamodb.periodic-table.prefix=cortex_index_
--dynamodb.periodic-table.from=2019-05-02
+-schema-config-file=/etc/schema.yaml
 -dynamodb.periodic-table.write-throughput=1000
 -dynamodb.periodic-table.write-throughput.scale.enabled=true
 -dynamodb.periodic-table.write-throughput.scale.min-capacity=200
@@ -249,8 +235,6 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
 -dynamodb.periodic-table.read-throughput=300
 -dynamodb.periodic-table.tag=product_area=cortex
--dynamodb.chunk-table.from=2019-05-02
--dynamodb.chunk-table.prefix=cortex_data_
 -dynamodb.chunk-table.write-throughput=800
 -dynamodb.chunk-table.write-throughput.scale.enabled=true
 -dynamodb.chunk-table.write-throughput.scale.min-capacity=200

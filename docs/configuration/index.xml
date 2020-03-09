@@ -2239,7 +2239,108 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Name of the object store to use for storing delete plans&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# CLI flag: -purger.object-store-type&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;object_store_type&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;string&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments/</guid><description>
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;object_store_type&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;string&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Schema Configuration</title><link>/docs/configuration/schema-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/schema-configuration/</guid><description>
+&lt;p&gt;Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.&lt;/p&gt;
+&lt;p&gt;Currently there are 9 schemas that are used in production but we recommend running with &lt;code&gt;v9&lt;/code&gt; schema when possible. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.&lt;/p&gt;
+&lt;p&gt;You can configure the schemas using a YAML config file, that you can point to using the &lt;code&gt;-schema-config-file&lt;/code&gt; flag. It has the following YAML spec:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;configs&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[]&lt;/span&gt;&amp;lt;period_config&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Where &lt;code&gt;period_config&lt;/code&gt; is&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# In YYYY-MM-DD format, for example: 2020-03-01.
+from: &amp;lt;string&amp;gt;
+# The index client to use, valid options: aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.
+store: &amp;lt;string&amp;gt;
+# The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
+object_store: &amp;lt;string&amp;gt;
+# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9.
+schema: &amp;lt;string&amp;gt;
+index: &amp;lt;periodic_table_config&amp;gt;
+chunks: &amp;lt;periodic_table_config&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Where &lt;code&gt;periodic_table_config&lt;/code&gt; is&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# The prefix to use for the tables.
+prefix: &amp;lt;string&amp;gt;
+# We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 168h (1week).
+period: &amp;lt;duration&amp;gt;
+# The tags that can be set on the dynamo table.
+tags: &amp;lt;map[string]string&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Now an example of this file (also something recommended when starting out) is:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;configs:
+- from: &amp;quot;2020-03-01&amp;quot; # Or typically a week before the Cortex cluster was created.
+schema: v9
+index:
+period: 168h
+prefix: cortex_index_
+# Chunks section is optional and required only if you&#39;re not using a
+# separate object store.
+chunks:
+period: 168h
+prefix: cortex_chunks
+store: aws-dynamo/bigtable-hashed/cassandra/boltdb
+object_store: &amp;lt;above options&amp;gt;/s3/gcs/azure/filesystem
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;An example of an advanced schema file with a lot of changes:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;configs:
+# Starting from 2018-08-23 Cortex should store chunks and indexes
+# on Google BigTable using weekly periodic tables. The chunks table
+# names will be prefixed with &amp;quot;dev_chunks_&amp;quot;, while index tables will be
+# prefixed with &amp;quot;dev_index_&amp;quot;.
+- from: &amp;quot;2018-08-23&amp;quot;
+schema: v9
+chunks:
+period: 168h0m0s
+prefix: dev_chunks_
+index:
+period: 168h0m0s
+prefix: dev_index_
+store: gcp-columnkey
+# Starting 2018-02-13 we moved from BigTable to GCS for storing the chunks.
+- from: &amp;quot;2019-02-13&amp;quot;
+schema: v9
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: gcp-columnkey
+# Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed
+# which improves the distribution of keys.
+- from: &amp;quot;2019-02-24&amp;quot;
+schema: v9
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+# Starting 2019-03-05 we moved from v9 schema to v10 schema.
+- from: &amp;quot;2019-03-05&amp;quot;
+schema: v10
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note how we started out with v9 and just Bigtable, but later migrated to GCS as the object store, finally moving to v10. This is a complex schema file showing several changes changes over the time, while a typical schema config file usually has just one or two schema versions.&lt;/p&gt;
+&lt;h3 id=&#34;migrating-from-flags-to-schema-file&#34;&gt;Migrating from flags to schema file&lt;/h3&gt;
+&lt;p&gt;Legacy versions of Cortex did support the ability to configure schema via flags. If you are still using flags, you need to migrate your configuration from flags to the config file.&lt;/p&gt;
+&lt;p&gt;If you&amp;rsquo;re using:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;chunk.storage-client&lt;/code&gt;: then set the corresponding &lt;code&gt;object_store&lt;/code&gt; field correctly in the schema file.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.daily-buckets-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with &lt;code&gt;v2&lt;/code&gt; schema.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.base64-buckets-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with &lt;code&gt;v3&lt;/code&gt; schema.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.v{4,5,6,9}-schema-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with schema &lt;code&gt;v{4,5,6,9}&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;bigtable.column-key-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date and use the &lt;code&gt;store&lt;/code&gt; as &lt;code&gt;bigtable-columnkey&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.use-periodic-tables&lt;/code&gt;: then set the right &lt;code&gt;index&lt;/code&gt; and &lt;code&gt;chunk&lt;/code&gt; fields with corresponding values from &lt;code&gt;dynamodb.periodic-table.{prefix, period, tag}&lt;/code&gt; and &lt;code&gt;dynamodb.chunk-table.{prefix, period, tag}&lt;/code&gt; flags. Note that the default period is 7 days, so please set the &lt;code&gt;period&lt;/code&gt; as &lt;code&gt;168h&lt;/code&gt; in the config file if none is set in the flags.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments/</guid><description>
 &lt;h2 id=&#34;general-notes&#34;&gt;General Notes&lt;/h2&gt;
 &lt;p&gt;Cortex has evolved over several years, and the command-line options sometimes reflect this heritage. In some cases the default value for options is not the recommended value, and in some cases names do not reflect the true meaning. We do intend to clean this up, but it requires a lot of care to avoid breaking existing installations. In the meantime we regret the inconvenience.&lt;/p&gt;
 &lt;p&gt;Duration arguments should be specified with a unit like &lt;code&gt;5s&lt;/code&gt; or &lt;code&gt;3h&lt;/code&gt;. Valid time units are &amp;ldquo;ms&amp;rdquo;, &amp;ldquo;s&amp;rdquo;, &amp;ldquo;m&amp;rdquo;, &amp;ldquo;h&amp;rdquo;.&lt;/p&gt;

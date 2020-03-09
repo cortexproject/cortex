@@ -2578,19 +2578,7 @@ replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
 redundancy or less, depending on your risk appetite.&lt;/p&gt;
 &lt;h3 id=&#34;schema&#34;&gt;Schema&lt;/h3&gt;
-&lt;h4 id=&#34;schema-periodic-table&#34;&gt;Schema periodic table&lt;/h4&gt;
-&lt;p&gt;The periodic table from argument (&lt;code&gt;-dynamodb.periodic-table.from=&amp;lt;date&amp;gt;&lt;/code&gt; if
-using command line flags, the &lt;code&gt;from&lt;/code&gt; field for the first schema entry if using
-YAML) should be set to the date the oldest metrics you will be sending to
-Cortex. Generally that means set it to the date you are first deploying this
-instance. If you use an example date from years ago table-manager will create
-hundreds of tables. You can also avoid creating too many tables by setting a
-reasonable retention in the table-manager
-(&lt;code&gt;-table-manager.retention-period=&amp;lt;duration&amp;gt;&lt;/code&gt;).&lt;/p&gt;
-&lt;h4 id=&#34;schema-version&#34;&gt;Schema version&lt;/h4&gt;
-&lt;p&gt;Choose schema version 9 in most cases; version 10 if you expect
-hundreds of thousands of timeseries under a single name. Anything
-older than v9 is much less efficient.&lt;/p&gt;
+&lt;p&gt;See &lt;a href=&#34;/docs/configuration/schema-configuration/&#34;&gt;schema config file docs&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;chunk-encoding&#34;&gt;Chunk encoding&lt;/h3&gt;
 &lt;p&gt;Standard choice would be Bigchunk, which is the most flexible chunk
 encoding. You may get better compression from Varbit, if many of your
@@ -2737,7 +2725,108 @@ the same data:&lt;/p&gt;
 &lt;p&gt;Add a chunk cache via &lt;code&gt;-memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
 &lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Schema Configuration</title><link>/docs/configuration/schema-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/schema-configuration/</guid><description>
+&lt;p&gt;Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.&lt;/p&gt;
+&lt;p&gt;Currently there are 9 schemas that are used in production but we recommend running with &lt;code&gt;v9&lt;/code&gt; schema when possible. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.&lt;/p&gt;
+&lt;p&gt;You can configure the schemas using a YAML config file, that you can point to using the &lt;code&gt;-schema-config-file&lt;/code&gt; flag. It has the following YAML spec:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;configs&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[]&lt;/span&gt;&amp;lt;period_config&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Where &lt;code&gt;period_config&lt;/code&gt; is&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# In YYYY-MM-DD format, for example: 2020-03-01.
+from: &amp;lt;string&amp;gt;
+# The index client to use, valid options: aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.
+store: &amp;lt;string&amp;gt;
+# The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
+object_store: &amp;lt;string&amp;gt;
+# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9.
+schema: &amp;lt;string&amp;gt;
+index: &amp;lt;periodic_table_config&amp;gt;
+chunks: &amp;lt;periodic_table_config&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Where &lt;code&gt;periodic_table_config&lt;/code&gt; is&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# The prefix to use for the tables.
+prefix: &amp;lt;string&amp;gt;
+# We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 168h (1week).
+period: &amp;lt;duration&amp;gt;
+# The tags that can be set on the dynamo table.
+tags: &amp;lt;map[string]string&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Now an example of this file (also something recommended when starting out) is:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;configs:
+- from: &amp;quot;2020-03-01&amp;quot; # Or typically a week before the Cortex cluster was created.
+schema: v9
+index:
+period: 168h
+prefix: cortex_index_
+# Chunks section is optional and required only if you&#39;re not using a
+# separate object store.
+chunks:
+period: 168h
+prefix: cortex_chunks
+store: aws-dynamo/bigtable-hashed/cassandra/boltdb
+object_store: &amp;lt;above options&amp;gt;/s3/gcs/azure/filesystem
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;An example of an advanced schema file with a lot of changes:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;configs:
+# Starting from 2018-08-23 Cortex should store chunks and indexes
+# on Google BigTable using weekly periodic tables. The chunks table
+# names will be prefixed with &amp;quot;dev_chunks_&amp;quot;, while index tables will be
+# prefixed with &amp;quot;dev_index_&amp;quot;.
+- from: &amp;quot;2018-08-23&amp;quot;
+schema: v9
+chunks:
+period: 168h0m0s
+prefix: dev_chunks_
+index:
+period: 168h0m0s
+prefix: dev_index_
+store: gcp-columnkey
+# Starting 2018-02-13 we moved from BigTable to GCS for storing the chunks.
+- from: &amp;quot;2019-02-13&amp;quot;
+schema: v9
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: gcp-columnkey
+# Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed
+# which improves the distribution of keys.
+- from: &amp;quot;2019-02-24&amp;quot;
+schema: v9
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+# Starting 2019-03-05 we moved from v9 schema to v10 schema.
+- from: &amp;quot;2019-03-05&amp;quot;
+schema: v10
+chunks:
+period: 168h
+prefix: dev_chunks_
+index:
+period: 168h
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note how we started out with v9 and just Bigtable, but later migrated to GCS as the object store, finally moving to v10. This is a complex schema file showing several changes changes over the time, while a typical schema config file usually has just one or two schema versions.&lt;/p&gt;
+&lt;h3 id=&#34;migrating-from-flags-to-schema-file&#34;&gt;Migrating from flags to schema file&lt;/h3&gt;
+&lt;p&gt;Legacy versions of Cortex did support the ability to configure schema via flags. If you are still using flags, you need to migrate your configuration from flags to the config file.&lt;/p&gt;
+&lt;p&gt;If you&amp;rsquo;re using:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;chunk.storage-client&lt;/code&gt;: then set the corresponding &lt;code&gt;object_store&lt;/code&gt; field correctly in the schema file.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.daily-buckets-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with &lt;code&gt;v2&lt;/code&gt; schema.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.base64-buckets-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with &lt;code&gt;v3&lt;/code&gt; schema.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.v{4,5,6,9}-schema-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with schema &lt;code&gt;v{4,5,6,9}&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;bigtable.column-key-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date and use the &lt;code&gt;store&lt;/code&gt; as &lt;code&gt;bigtable-columnkey&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dynamodb.use-periodic-tables&lt;/code&gt;: then set the right &lt;code&gt;index&lt;/code&gt; and &lt;code&gt;chunk&lt;/code&gt; fields with corresponding values from &lt;code&gt;dynamodb.periodic-table.{prefix, period, tag}&lt;/code&gt; and &lt;code&gt;dynamodb.chunk-table.{prefix, period, tag}&lt;/code&gt; flags. Note that the default period is 7 days, so please set the &lt;code&gt;period&lt;/code&gt; as &lt;code&gt;168h&lt;/code&gt; in the config file if none is set in the flags.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls
@@ -3530,9 +3619,7 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
 -metrics.target-queue-length=100000
 -dynamodb.url=dynamodb://us-east-1/
--dynamodb.use-periodic-tables=true
--dynamodb.periodic-table.prefix=cortex_index_
--dynamodb.periodic-table.from=2019-05-02
+-schema-config-file=/etc/schema.yaml
 -dynamodb.periodic-table.write-throughput=1000
 -dynamodb.periodic-table.write-throughput.scale.enabled=true
 -dynamodb.periodic-table.write-throughput.scale.min-capacity=200
@@ -3541,8 +3628,6 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
 -dynamodb.periodic-table.read-throughput=300
 -dynamodb.periodic-table.tag=product_area=cortex
--dynamodb.chunk-table.from=2019-05-02
--dynamodb.chunk-table.prefix=cortex_data_
 -dynamodb.chunk-table.write-throughput=800
 -dynamodb.chunk-table.write-throughput.scale.enabled=true
 -dynamodb.chunk-table.write-throughput.scale.min-capacity=200
@@ -4292,6 +4377,7 @@ to find the latest stable version tag and use it in the command bellow. At the t
 &lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;[CHANGE] Removed support for flags to configure schema. Further, the flag for specifying the config file (&lt;code&gt;-config-yaml&lt;/code&gt;) has been deprecated. Please use &lt;code&gt;schema-config-file&lt;/code&gt;. See &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/schema-configuration/&#34;&gt;https://cortexmetrics.io/docs/configuration/schema-configuration/&lt;/a&gt; for more details on how to configure the schema using the YAML file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2221&#34;&gt;#2221&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] The frontend http server will now send 502 in case of deadline exceeded and 499 if the user requested cancellation. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2156&#34;&gt;#2156&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] Config file changed to remove top level &lt;code&gt;config_store&lt;/code&gt; field in favor of a nested &lt;code&gt;configdb&lt;/code&gt; field. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] We now enforce queries to be up to &lt;code&gt;-querier.max-query-into-future&lt;/code&gt; into the future (defaults to 10m). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1929&#34;&gt;#1929&lt;/a&gt;&lt;/li&gt;

@@ -4399,6 +4399,7 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;[CHANGE] Utilize separate protos for rule state and storage. Experimental ruler API will not be functional until the rollout is complete. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2226&#34;&gt;#2226&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Flusher target to flush the WAL.
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-flusher.wal-dir&lt;/code&gt; for the WAL directory to recover from.&lt;/li&gt;

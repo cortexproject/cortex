@@ -20,8 +20,8 @@ import (
 const (
 	tablePrefix      = "cortex_"
 	chunkTablePrefix = "chunks_"
-	tablePeriod      = 7 * 24 * time.Hour
-	gracePeriod      = 15 * time.Minute
+	tablePeriod      = model.Duration(7 * 24 * time.Hour)
+	gracePeriod      = model.Duration(15 * time.Minute)
 	maxChunkAge      = 12 * time.Hour
 	inactiveWrite    = 1
 	inactiveRead     = 2
@@ -175,7 +175,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"Create tables",
-			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(baseTable("", inactiveRead, inactiveWrite),
 				autoScaledTable(0, read, write, 100, 80)...),
 		)
@@ -194,7 +194,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"Update tables with new settings",
-			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(baseTable("", inactiveRead, inactiveWrite),
 				autoScaledTable(0, read, write, 200, 90)...),
 		)
@@ -213,7 +213,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"Update tables with new settings",
-			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(append(baseTable("", inactiveRead, inactiveWrite),
 				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
 				autoScaledTable(1, read, write, 200, 90)...),
@@ -233,7 +233,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"Update tables with new settings",
-			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(append(baseTable("", inactiveRead, inactiveWrite),
 				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
 				staticTable(1, read, write, read, write)...),
@@ -278,7 +278,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"Legacy and latest tables",
-			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(baseTable("", inactiveRead, inactiveWrite),
 				staticTable(0, read, write, read, write)...),
 		)
@@ -294,7 +294,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"1 week of inactive tables with latest",
-			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(append(baseTable("", inactiveRead, inactiveWrite),
 				autoScaledTable(0, inactiveRead, inactiveWrite, 100, 80)...),
 				staticTable(1, read, write, read, write)...),
@@ -311,7 +311,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		test(t, client,
 			tableManager,
 			"3 weeks of inactive tables with latest",
-			time.Unix(0, 0).Add(tablePeriod*3).Add(maxChunkAge).Add(gracePeriod),
+			time.Unix(0, 0).Add(time.Duration(tablePeriod)*3).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 			append(append(append(append(baseTable("", inactiveRead, inactiveWrite),
 				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
 				autoScaledTable(1, inactiveRead, inactiveWrite, 100, 80)...),

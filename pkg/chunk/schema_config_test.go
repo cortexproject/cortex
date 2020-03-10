@@ -214,7 +214,7 @@ func TestDailyBuckets(t *testing.T) {
 }
 
 func TestChunkTableFor(t *testing.T) {
-	tablePeriod, err := time.ParseDuration("168h")
+	tablePeriod, err := model.ParseDuration("168h")
 	require.NoError(t, err)
 
 	periodConfigs := []PeriodConfig{
@@ -326,7 +326,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 30 * time.Minute},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(30 * time.Minute)},
 					},
 				},
 			},
@@ -337,8 +337,8 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 30 * time.Minute},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(6 * time.Hour)},
+						ChunkTables: PeriodicTableConfig{Period: model.Duration(30 * time.Minute)},
 					},
 				},
 			},
@@ -349,8 +349,8 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(6 * time.Hour)},
+						ChunkTables: PeriodicTableConfig{Period: model.Duration(6 * time.Hour)},
 					},
 				},
 			},
@@ -361,7 +361,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v10",
-						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(6 * time.Hour)},
 					},
 				},
 			},
@@ -372,8 +372,8 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v10",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(24 * time.Hour)},
+						ChunkTables: PeriodicTableConfig{Period: model.Duration(6 * time.Hour)},
 					},
 				},
 			},
@@ -384,8 +384,8 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				Configs: []PeriodConfig{
 					{
 						Schema:      "v10",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 24 * time.Hour},
+						IndexTables: PeriodicTableConfig{Period: model.Duration(24 * time.Hour)},
+						ChunkTables: PeriodicTableConfig{Period: model.Duration(24 * time.Hour)},
 					},
 				},
 			},

@@ -64,7 +64,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	}
 
 	// Create tables
-	startTime := time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod)
+	startTime := time.Unix(0, 0).Add(maxChunkAge).Add(time.Duration(gracePeriod))
 
 	test(t, client, tableManager, "Create tables",
 		startTime,
@@ -130,7 +130,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 
 	mockProm.SetResponseForWrites(0, 0, 0, []int{30, 30, 30, 30}, []int{50, 10, 100, 20})
 	test(t, client, tableManager, "Next week",
-		startTime.Add(tablePeriod),
+		startTime.Add(time.Duration(tablePeriod)),
 		// Nothing much happening - expect table 0 write rates to stay as-is and table 1 to be created with defaults
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 112, inactiveRead, 20)...),
@@ -140,7 +140,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	// No throttling on last week's index table, still some on chunk table
 	mockProm.SetResponseForWrites(0, 0, 0, []int{0, 30, 30, 30}, []int{10, 2, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
-		startTime.Add(tablePeriod).Add(time.Minute*10),
+		startTime.Add(time.Duration(tablePeriod)).Add(time.Minute*10),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // Scale back last week's index table
 			staticTable(1, read, write, read, write)...),
@@ -149,7 +149,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	// No throttling on last week's tables but some queueing
 	mockProm.SetResponseForWrites(20000, 20000, 20000, []int{0, 0, 1, 1}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
-		startTime.Add(tablePeriod).Add(time.Minute*20),
+		startTime.Add(time.Duration(tablePeriod)).Add(time.Minute*20),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
 			staticTable(1, read, write, read, write)...),
@@ -157,7 +157,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 
 	mockProm.SetResponseForWrites(120000, 130000, 140000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "next week, queues building, throttling on index table",
-		startTime.Add(tablePeriod).Add(time.Minute*30),
+		startTime.Add(time.Duration(tablePeriod)).Add(time.Minute*30),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
 			staticTable(1, read, 240, read, write)...), // scale up index table
@@ -165,7 +165,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 
 	mockProm.SetResponseForWrites(140000, 130000, 120000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "next week, queues shrinking, throttling on index table",
-		startTime.Add(tablePeriod).Add(time.Minute*40),
+		startTime.Add(time.Duration(tablePeriod)).Add(time.Minute*40),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 5, inactiveRead, 5)...), // scale right back
 			staticTable(1, read, 240, read, 25)...), // scale chunk table to usage/80%
@@ -222,7 +222,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 	}
 
 	// Create tables
-	startTime := time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod)
+	startTime := time.Unix(0, 0).Add(maxChunkAge).Add(time.Duration(gracePeriod))
 
 	test(t, client, tableManager, "Create tables",
 		startTime,

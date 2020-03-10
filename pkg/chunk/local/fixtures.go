@@ -57,7 +57,7 @@ func (f *fixture) Clients() (
 			From:      chunk.DayTime{Time: model.Now()},
 			ChunkTables: chunk.PeriodicTableConfig{
 				Prefix: "chunks",
-				Period: 10 * time.Minute,
+				Period: model.Duration(10 * time.Minute),
 			},
 		}},
 	}

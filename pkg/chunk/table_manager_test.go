@@ -17,9 +17,9 @@ const (
 	table2Prefix      = "cortex2_"
 	chunkTablePrefix  = "chunks_"
 	chunkTable2Prefix = "chunks2_"
-	tableRetention    = 2 * 7 * 24 * time.Hour
-	tablePeriod       = 7 * 24 * time.Hour
-	gracePeriod       = 15 * time.Minute
+	tableRetention    = model.Duration(2 * 7 * 24 * time.Hour)
+	tablePeriod       = model.Duration(7 * 24 * time.Hour)
+	gracePeriod       = model.Duration(15 * time.Minute)
 	maxChunkAge       = 12 * time.Hour
 	inactiveWrite     = 1
 	inactiveRead      = 2
@@ -33,8 +33,8 @@ const (
 
 var (
 	baseTableStart    = time.Unix(0, 0)
-	weeklyTableStart  = baseTableStart.Add(tablePeriod * 3)
-	weeklyTable2Start = baseTableStart.Add(tablePeriod * 5)
+	weeklyTableStart  = baseTableStart.Add(time.Duration(tablePeriod) * 3)
+	weeklyTable2Start = baseTableStart.Add(time.Duration(tablePeriod) * 5)
 	week1Suffix       = "3"
 	week2Suffix       = "4"
 )
@@ -212,7 +212,7 @@ func TestTableManager(t *testing.T) {
 	// Fast forward grace period, check we still have write throughput on base table
 	tmTest(t, client, tableManager,
 		"Move forward by grace period",
-		weeklyTableStart.Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
@@ -224,7 +224,7 @@ func TestTableManager(t *testing.T) {
 	// (and we don't put inactive auto-scaling on base table)
 	tmTest(t, client, tableManager,
 		"Move forward by max chunk age + grace period",
-		weeklyTableStart.Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
@@ -235,7 +235,7 @@ func TestTableManager(t *testing.T) {
 	// Fast forward table period - grace period, check we add another weekly table
 	tmTest(t, client, tableManager,
 		"Move forward by table period - grace period",
-		weeklyTableStart.Add(tablePeriod).Add(-gracePeriod+time.Second),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(-time.Duration(gracePeriod)+time.Second),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
@@ -248,7 +248,7 @@ func TestTableManager(t *testing.T) {
 	// Fast forward table period + grace period, check we still have provisioned throughput
 	tmTest(t, client, tableManager,
 		"Move forward by table period + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
@@ -261,7 +261,7 @@ func TestTableManager(t *testing.T) {
 	// Fast forward table period + max chunk age + grace period, check we remove provisioned throughput
 	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -274,7 +274,7 @@ func TestTableManager(t *testing.T) {
 	// Check running twice doesn't change anything
 	tmTest(t, client, tableManager,
 		"Nothing changed",
-		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -287,7 +287,7 @@ func TestTableManager(t *testing.T) {
 	// Move ahead where we are short by just grace period before hitting next section
 	tmTest(t, client, tableManager,
 		"Move ahead where we are short by just grace period before hitting next section",
-		weeklyTable2Start.Add(-gracePeriod+time.Second),
+		weeklyTable2Start.Add(-time.Duration(gracePeriod)+time.Second),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -377,7 +377,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	// Fast forward table period + grace period, check we still have provisioned throughput
 	tmTest(t, client, tableManager,
 		"Move forward by table period + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
@@ -391,7 +391,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 
 	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -465,7 +465,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	// Fast forward table period + grace period, check we still have provisioned throughput
 	tmTest(t, client, tableManager,
 		"Move forward by table period + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
@@ -480,7 +480,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	// a managed provisioning mode. However the week 1 chunk table will flip to the DynamicIO mode.
 	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
-		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig, UseOnDemandIOMode: false},
@@ -493,7 +493,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	// fast forward to another table period. Now week 1's dynamic mode will flip to true, as the managed autoscaling config is no longer active
 	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
-		weeklyTableStart.Add(tablePeriod*2).Add(maxChunkAge).Add(gracePeriod),
+		weeklyTableStart.Add(time.Duration(tablePeriod)*2).Add(maxChunkAge).Add(time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
 			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
@@ -625,7 +625,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	// Check after one week, we have two weekly tables
 	tmTest(t, client, tableManager,
 		"Move forward by one table period",
-		baseTableStart.Add(tablePeriod),
+		baseTableStart.Add(time.Duration(tablePeriod)),
 		[]TableDesc{
 			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
@@ -637,7 +637,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	// Check after two weeks, we have three tables (two previous periods and the new one)
 	tmTest(t, client, tableManager,
 		"Move forward by two table periods",
-		baseTableStart.Add(tablePeriod*2),
+		baseTableStart.Add(time.Duration(tablePeriod)*2),
 		[]TableDesc{
 			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
 			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
@@ -651,7 +651,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	// Check after three weeks, we have three tables (two previous periods and the new one), table 0 was deleted
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods",
-		baseTableStart.Add(tablePeriod*3),
+		baseTableStart.Add(time.Duration(tablePeriod)*3),
 		[]TableDesc{
 			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
 			{Name: tablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
@@ -665,7 +665,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	// Check after three weeks and a day short by grace period, we have three tables (two previous periods and the new one), table 0 was deleted
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods and a day short by grace period",
-		baseTableStart.Add(tablePeriod*3+24*time.Hour-gracePeriod),
+		baseTableStart.Add(time.Duration(tablePeriod)*3+24*time.Hour-time.Duration(gracePeriod)),
 		[]TableDesc{
 			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
 			{Name: tablePrefix + "2", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -687,7 +687,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods (no deletes)",
-		baseTableStart.Add(tablePeriod*3),
+		baseTableStart.Add(time.Duration(tablePeriod)*3),
 		[]TableDesc{
 			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
 			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
@@ -705,7 +705,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Verify that with a retention period of zero no tables outside the configs 'From' range are removed
 	tableManager.cfg.RetentionPeriod = 0
-	tableManager.schemaCfg.Configs[0].From = DayTime{model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())}
+	tableManager.schemaCfg.Configs[0].From = DayTime{model.TimeFromUnix(baseTableStart.Add(time.Duration(tablePeriod)).Unix())}
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
 	err = client.CreateTable(context.Background(), TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
 	require.NoError(t, err)
@@ -715,7 +715,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods (no deletes) and move From one table forward",
-		baseTableStart.Add(tablePeriod*3),
+		baseTableStart.Add(time.Duration(tablePeriod)*3),
 		[]TableDesc{
 			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
 			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},

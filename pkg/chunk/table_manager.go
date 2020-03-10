@@ -82,13 +82,13 @@ type TableManagerConfig struct {
 	RetentionDeletesEnabled bool `yaml:"retention_deletes_enabled"`
 
 	// How far back tables will be kept before they are deleted
-	RetentionPeriod time.Duration `yaml:"retention_period"`
+	RetentionPeriod model.Duration `yaml:"retention_period"`
 
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration `yaml:"dynamodb_poll_interval"`
 
 	// duration a table will be created before it is needed.
-	CreationGracePeriod time.Duration `yaml:"creation_grace_period"`
+	CreationGracePeriod model.Duration `yaml:"creation_grace_period"`
 
 	IndexTables ProvisionConfig `yaml:"index_tables_provisioning"`
 	ChunkTables ProvisionConfig `yaml:"chunk_tables_provisioning"`
@@ -115,9 +115,14 @@ type ProvisionConfig struct {
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
-	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
+
+	cfg.RetentionPeriod = model.Duration(0)
+	f.Var(&cfg.RetentionPeriod, "table-manager.retention-period", "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
+
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
-	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+
+	cfg.CreationGracePeriod = model.Duration(10 * time.Minute)
+	f.Var(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
 	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", f)
 	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", f)
@@ -230,7 +235,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
-	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
+	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-time.Duration(m.cfg.RetentionPeriod)))
 
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
@@ -267,7 +272,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 
 	for i, config := range m.schemaCfg.Configs {
 		// Consider configs which we are about to hit and requires tables to be created due to grace period
-		if config.From.Time.Time().After(mtime.Now().Add(m.cfg.CreationGracePeriod)) {
+		if config.From.Time.Time().After(mtime.Now().Add(time.Duration(m.cfg.CreationGracePeriod))) {
 			continue
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table
@@ -286,7 +291,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			if i+1 < len(m.schemaCfg.Configs) {
 				var (
 					endTime         = m.schemaCfg.Configs[i+1].From.Unix()
-					gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+					gracePeriodSecs = int64(m.cfg.CreationGracePeriod / model.Duration(time.Second))
 					maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
 					now             = mtime.Now().Unix()
 				)
@@ -310,7 +315,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 			result = append(result, table)
 		} else {
-			endTime := mtime.Now().Add(m.cfg.CreationGracePeriod)
+			endTime := mtime.Now().Add(time.Duration(m.cfg.CreationGracePeriod))
 			if i+1 < len(m.schemaCfg.Configs) {
 				nextFrom := m.schemaCfg.Configs[i+1].From.Time.Time()
 				if endTime.After(nextFrom) {
@@ -319,11 +324,11 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 			endModelTime := model.TimeFromUnix(endTime.Unix())
 			result = append(result, config.IndexTables.periodicTables(
-				config.From.Time, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+				config.From.Time, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, model.Duration(m.maxChunkAge), m.cfg.RetentionPeriod,
 			)...)
 			if config.ChunkTables.Prefix != "" {
 				result = append(result, config.ChunkTables.periodicTables(
-					config.From.Time, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+					config.From.Time, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, model.Duration(m.maxChunkAge), m.cfg.RetentionPeriod,
 				)...)
 			}
 		}

@@ -42,11 +42,11 @@ func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
 			From:      DayTime{from},
 			ChunkTables: PeriodicTableConfig{
 				Prefix: "cortex",
-				Period: 7 * 24 * time.Hour,
+				Period: model.Duration(7 * 24 * time.Hour),
 			},
 			IndexTables: PeriodicTableConfig{
 				Prefix: "cortex_chunks",
-				Period: 7 * 24 * time.Hour,
+				Period: model.Duration(7 * 24 * time.Hour),
 			},
 		}},
 	}

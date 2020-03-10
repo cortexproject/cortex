@@ -94,12 +94,11 @@ func main() {
 	util.InitEvents(eventSampleRate)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace, err := tracing.NewFromEnv("cortex-" + cfg.Target.String())
-	if err != nil {
+	if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target.String()); err != nil {
 		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
-		os.Exit(1)
+	} else {
+		defer trace.Close()
 	}
-	defer trace.Close()
 
 	// Initialise seed for randomness usage.
 	rand.Seed(time.Now().UnixNano())

@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"math"
-	"os"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -31,12 +30,11 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace, err := tracing.NewFromEnv("test-exporter")
-	if err != nil {
+	if trace, err := tracing.NewFromEnv("test-exporter"); err != nil {
 		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
-		os.Exit(1)
+	} else {
+		defer trace.Close()
 	}
-	defer trace.Close()
 
 	server, err := server.New(serverConfig)
 	util.CheckFatal("initializing server", err)

@@ -2295,6 +2295,11 @@ azure:
   # Number of retries for recoverable errors
   # CLI flag: -experimental.tsdb.azure.max-retries
   [max_retries: <int> | default = 20]
+
+filesystem:
+  # Local filesystem storage directory
+  # CLI flag: -experimental.tsdb.filesystem.directory
+  [directory: <string> | default = ""]
 ```
 
 ### `compactor_config`

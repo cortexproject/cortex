@@ -12,6 +12,7 @@ The supported backends for the blocks storage are:
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
+* [Local Filesystem](https://thanos.io/storage.md/#filesystem)
 
 _Internally, this storage engine is based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
 
@@ -252,6 +253,11 @@ tsdb:
     # Number of retries for recoverable errors
     # CLI flag: -experimental.tsdb.azure.max-retries
     [max_retries: <int> | default = 20]
+
+  filesystem:
+    # Local filesystem storage directory
+    # CLI flag: -experimental.tsdb.filesystem.directory
+    [directory: <string> | default = ""]
 ```
 ### `compactor_config`
 

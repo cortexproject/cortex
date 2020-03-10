@@ -2,13 +2,23 @@
 
 ## master / unreleased
 
+* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `cache.write-back-goroutines` and `cache.write-back-buffer`. This affects the following flags:
+  - `-frontend.memcache.write-back-buffer` --> `-frontend.cache.write-back-buffer` 
+  - `-frontend.memcache.write-back-goroutines` --> `-frontend.cache.write-back-goroutines`
+  - `-store.index-cache-read.memcache.write-back-buffer` --> `-store.index-cache-read.cache.write-back-buffer`
+  - `-store.index-cache-read.memcache.write-back-goroutines` --> `-store.index-cache-read.cache.write-back-goroutines`
+  - `-store.index-cache-write.memcache.write-back-buffer` --> `-store.index-cache-write.cache.write-back-buffer`
+  - `-store.index-cache-write.memcache.write-back-goroutines` --> `-store.index-cache-write.cache.write-back-goroutines`
+  - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the next change log for the difference.
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-goroutines`. Note the next change log for the difference.
+
 * [CHANGE] Renamed the chunk cache flags to have `store.chunks-cache.` as prefix. This means the following flags have been changed:
   - `-cache.enable-fifocache` --> `-store.chunks-cache.cache.enable-fifocache` 
   - `-default-validity` --> `-store.chunks-cache.default-validity` 
   - `-fifocache.duration` --> `-store.chunks-cache.fifocache.duration` 
   - `-fifocache.size` --> `-store.chunks-cache.fifocache.size` 
-  - `-memcache.write-back-buffer` --> `-store.chunks-cache.memcache.write-back-buffer` 
-  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.memcache.write-back-goroutines` 
+  - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the previous change log for the difference. 
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-goroutines`. Note the previous change log for the difference. 
   - `-memcached.batchsize` --> `-store.chunks-cache.memcached.batchsize` 
   - `-memcached.consistent-hash` --> `-store.chunks-cache.memcached.consistent-hash` 
   - `-memcached.expiration` --> `-store.chunks-cache.memcached.expiration` 

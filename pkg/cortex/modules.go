@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -43,126 +44,42 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-type moduleName int
+type moduleName string
 
 // The various modules that make up Cortex.
 const (
-	Ring moduleName = iota
-	RuntimeConfig
-	Overrides
-	Server
-	Distributor
-	Ingester
-	Querier
-	StoreQueryable
-	QueryFrontend
-	Store
-	TableManager
-	Ruler
-	Configs
-	AlertManager
-	Compactor
-	MemberlistKV
-	DataPurger
-	All
+	Ring           moduleName = "ring"
+	RuntimeConfig  moduleName = "runtime-config"
+	Overrides      moduleName = "overrides"
+	Server         moduleName = "server"
+	Distributor    moduleName = "distributor"
+	Ingester       moduleName = "ingester"
+	Flusher        moduleName = "flusher"
+	Querier        moduleName = "querier"
+	StoreQueryable moduleName = "store-queryable"
+	QueryFrontend  moduleName = "query-frontend"
+	Store          moduleName = "store"
+	TableManager   moduleName = "table-manager"
+	Ruler          moduleName = "ruler"
+	Configs        moduleName = "configs"
+	AlertManager   moduleName = "alertmanager"
+	Compactor      moduleName = "compactor"
+	MemberlistKV   moduleName = "memberlist-kv"
+	DataPurger     moduleName = "data-purger"
+	All            moduleName = "all"
 )
 
 func (m moduleName) String() string {
-	switch m {
-	case Ring:
-		return "ring"
-	case RuntimeConfig:
-		return "runtime-config"
-	case Overrides:
-		return "overrides"
-	case Server:
-		return "server"
-	case Distributor:
-		return "distributor"
-	case Store:
-		return "store"
-	case Ingester:
-		return "ingester"
-	case Querier:
-		return "querier"
-	case StoreQueryable:
-		return "store-queryable"
-	case QueryFrontend:
-		return "query-frontend"
-	case TableManager:
-		return "table-manager"
-	case Ruler:
-		return "ruler"
-	case Configs:
-		return "configs"
-	case AlertManager:
-		return "alertmanager"
-	case Compactor:
-		return "compactor"
-	case MemberlistKV:
-		return "memberlist-kv"
-	case DataPurger:
-		return "data-purger"
-	case All:
-		return "all"
-	default:
-		panic(fmt.Sprintf("unknown module name: %d", m))
-	}
+	return string(m)
 }
 
 func (m *moduleName) Set(s string) error {
-	switch strings.ToLower(s) {
-	case "ring":
-		*m = Ring
-		return nil
-	case "overrides":
-		*m = Overrides
-		return nil
-	case "server":
-		*m = Server
-		return nil
-	case "distributor":
-		*m = Distributor
-		return nil
-	case "store":
-		*m = Store
-		return nil
-	case "ingester":
-		*m = Ingester
-		return nil
-	case "querier":
-		*m = Querier
-		return nil
-	case "store-queryable":
-		*m = StoreQueryable
-		return nil
-	case "query-frontend":
-		*m = QueryFrontend
-		return nil
-	case "table-manager":
-		*m = TableManager
-		return nil
-	case "ruler":
-		*m = Ruler
-		return nil
-	case "configs":
-		*m = Configs
-		return nil
-	case "alertmanager":
-		*m = AlertManager
-		return nil
-	case "compactor":
-		*m = Compactor
-		return nil
-	case "data-purger":
-		*m = DataPurger
-		return nil
-	case "all":
-		*m = All
-		return nil
-	default:
+	l := moduleName(strings.ToLower(s))
+	if _, ok := modules[l]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", s)
 	}
+	*m = l
+	return nil
 }
 
 func (m moduleName) MarshalYAML() (interface{}, error) {
@@ -355,6 +272,21 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	t.server.HTTP.Handle("/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.ingester.Push)))
 	return t.ingester, nil
+}
+
+func (t *Cortex) initFlusher(cfg *Config) (serv services.Service, err error) {
+	t.flusher, err = flusher.New(
+		cfg.Flusher,
+		cfg.Ingester,
+		cfg.IngesterClient,
+		t.store,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return
+	}
+
+	return t.flusher, nil
 }
 
 func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
@@ -632,6 +564,11 @@ var modules = map[moduleName]module{
 	Ingester: {
 		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initIngester,
+	},
+
+	Flusher: {
+		deps:           []moduleName{Store, Server},
+		wrappedService: (*Cortex).initFlusher,
 	},
 
 	Querier: {

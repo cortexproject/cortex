@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -74,6 +75,7 @@ type Config struct {
 	Querier          querier.Config           `yaml:"querier,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
+	Flusher          flusher.Config           `yaml:"flusher,omitempty"`
 	Storage          storage.Config           `yaml:"storage,omitempty"`
 	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
 	Schema           chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
@@ -110,6 +112,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
+	c.Flusher.RegisterFlags(f)
 	c.Storage.RegisterFlags(f)
 	c.ChunkStore.RegisterFlags(f)
 	c.Schema.RegisterFlags(f)
@@ -177,6 +180,7 @@ type Cortex struct {
 	overrides     *validation.Overrides
 	distributor   *distributor.Distributor
 	ingester      *ingester.Ingester
+	flusher       *flusher.Flusher
 	store         chunk.Store
 	worker        frontend.Worker
 	frontend      *frontend.Frontend
@@ -318,7 +322,11 @@ func (t *Cortex) Run() error {
 		// let's find out which module failed
 		for m, s := range t.serviceMap {
 			if s == service {
-				level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				if service.FailureCase() == util.ErrStopCortex {
+					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+				} else {
+					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				}
 				return
 			}
 		}
@@ -354,8 +362,13 @@ func (t *Cortex) Run() error {
 	// if any service failed, report that as an error to caller
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
-			// Details were reported via failure listener before
-			err = errors.New("failed services")
+			for _, f := range failed {
+				if f.FailureCase() != util.ErrStopCortex {
+					// Details were reported via failure listener before
+					err = errors.New("failed services")
+					break
+				}
+			}
 		}
 	}
 	return err

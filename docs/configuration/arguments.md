@@ -352,6 +352,17 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 - `-ingester.recover-from-wal`
    Set this to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
 
+#### Flusher
+
+- `-flusher.wal-dir`
+   Directory where the WAL data should be recovered from.
+
+- `-flusher.concurrent-flushes`
+   Number of concurrent flushes.
+
+- `-flusher.flush-op-timeout`
+   Duration after which a flush should timeout.
+
 ## Runtime Configuration file
 
 Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.

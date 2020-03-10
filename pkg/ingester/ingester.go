@@ -208,12 +208,57 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
 
+	i.startFlushLoops()
+
+	return nil
+}
+
+func (i *Ingester) startFlushLoops() {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		go i.flushLoop(j)
 	}
+}
 
+// NewForFlusher constructs a new Ingester to be used by flusher target.
+// Compared to the 'New' method:
+//   * Always replays the WAL.
+//   * Does not start the lifecycler.
+//   * No ingester v2.
+func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+	if cfg.ingesterClientFactory == nil {
+		cfg.ingesterClientFactory = client.MakeIngesterClient
+	}
+
+	i := &Ingester{
+		cfg:          cfg,
+		clientConfig: clientConfig,
+		metrics:      newIngesterMetrics(registerer, true),
+		chunkStore:   chunkStore,
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		wal:          &noopWAL{},
+	}
+
+	i.Service = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
+	return i, nil
+}
+
+func (i *Ingester) startingForFlusher(ctx context.Context) error {
+	level.Info(util.Logger).Log("msg", "recovering from WAL")
+
+	// We recover from WAL always.
+	start := time.Now()
+	if err := recoverFromWAL(i); err != nil {
+		level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+		return err
+	}
+	elapsed := time.Since(start)
+
+	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	i.metrics.walReplayDuration.Set(elapsed.Seconds())
+
+	i.startFlushLoops()
 	return nil
 }
 
@@ -245,8 +290,13 @@ func (i *Ingester) stopping(_ error) error {
 	// This will prevent us accepting any more samples
 	i.stopIncomingRequests()
 
-	// Next initiate our graceful exit from the ring.
-	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	// Lifecycler can be nil if the ingester is for a flusher.
+	if i.lifecycler != nil {
+		// Next initiate our graceful exit from the ring.
+		return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	}
+
+	return nil
 }
 
 // ShutdownHandler triggers the following set of operations in order:

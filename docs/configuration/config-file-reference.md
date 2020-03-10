@@ -79,6 +79,19 @@ Where default_value is the value to use if the environment variable is undefined
 # The ingester_config configures the Cortex ingester.
 [ingester: <ingester_config>]
 
+flusher:
+  # Directory to read WAL from.
+  # CLI flag: -flusher.wal-dir
+  [wal_dir: <string> | default = "wal"]
+
+  # Number of concurrent goroutines flushing to dynamodb.
+  # CLI flag: -flusher.concurrent-flushes
+  [concurrent_flushes: <int> | default = 50]
+
+  # Timeout for individual flush operations.
+  # CLI flag: -flusher.flush-op-timeout
+  [flush_op_timeout: <duration> | default = 2m0s]
+
 # The storage_config configures where Cortex stores the data (chunks storage
 # engine).
 [storage: <storage_config>]

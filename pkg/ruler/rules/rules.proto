@@ -7,7 +7,6 @@ option go_package = "rules";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
-import "google/protobuf/timestamp.proto";
 import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 
 option (gogoproto.marshaler_all) = true;
@@ -15,19 +14,18 @@ option (gogoproto.unmarshaler_all) = true;
 
 // RuleGroupDesc is a proto representation of a cortex rule group
 message RuleGroupDesc {
+  reserved 5, 7, 8;
   string name = 1;
   string namespace = 2;
   google.protobuf.Duration interval = 3
       [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   repeated RuleDesc rules = 4;
-  bool deleted = 5;
   string user = 6;
-  google.protobuf.Timestamp evaluationTimestamp = 7  [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Duration evaluationDuration = 8 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule
 message RuleDesc {
+  reserved 7 to 12;
   string expr = 1;
   string record = 2;
   string alert = 3;
@@ -42,35 +40,4 @@ message RuleDesc {
     (gogoproto.customtype) =
         "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
   ];
-  string state = 7;
-  string health = 8;
-  string lastError = 9;
-  repeated AlertDesc alerts = 10;
-  google.protobuf.Timestamp evaluationTimestamp = 11  [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Duration evaluationDuration = 12 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
-}
-
-message AlertDesc {
-  string state = 1;
-  repeated cortex.LabelPair labels = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) =
-        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
-  ];
-  repeated cortex.LabelPair annotations = 3 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) =
-        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
-  ];
-  double value = 4;
-  google.protobuf.Timestamp active_at = 5
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Timestamp fired_at = 6
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Timestamp resolved_at = 7
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Timestamp last_sent_at = 8
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  google.protobuf.Timestamp valid_until = 9
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }

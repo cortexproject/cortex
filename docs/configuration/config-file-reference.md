@@ -644,12 +644,12 @@ results_cache:
     [default_validity: <duration> | default = 0s]
 
     background:
-      # How many goroutines to use to write back to memcache.
-      # CLI flag: -frontend.memcache.write-back-goroutines
+      # How many goroutines to use to write back to cache.
+      # CLI flag: -frontend.cache.write-back-goroutines
       [writeback_goroutines: <int> | default = 10]
 
       # How many key batches to buffer for background write-back.
-      # CLI flag: -frontend.memcache.write-back-buffer
+      # CLI flag: -frontend.cache.write-back-buffer
       [writeback_buffer: <int> | default = 10000]
 
     # The memcached_config block configures how data is stored in Memcached (ie.
@@ -1516,13 +1516,13 @@ index_queries_cache_config:
 
   background:
     # Cache config for index entry reading. How many goroutines to use to write
-    # back to memcache.
-    # CLI flag: -store.index-cache-read.memcache.write-back-goroutines
+    # back to cache.
+    # CLI flag: -store.index-cache-read.cache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry reading. How many key batches to buffer for
     # background write-back.
-    # CLI flag: -store.index-cache-read.memcache.write-back-buffer
+    # CLI flag: -store.index-cache-read.cache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.
@@ -1560,37 +1560,41 @@ The `chunk_store_config` configures how Cortex stores the data (chunks storage e
 ```yaml
 chunk_cache_config:
   # Cache config for chunks. Enable in-memory cache.
-  # CLI flag: -cache.enable-fifocache
+  # CLI flag: -store.chunks-cache.cache.enable-fifocache
   [enable_fifocache: <boolean> | default = false]
 
   # Cache config for chunks. The default validity of entries for caches unless
   # overridden.
-  # CLI flag: -default-validity
+  # CLI flag: -store.chunks-cache.default-validity
   [default_validity: <duration> | default = 0s]
 
   background:
     # Cache config for chunks. How many goroutines to use to write back to
-    # memcache.
-    # CLI flag: -memcache.write-back-goroutines
+    # cache.
+    # CLI flag: -store.chunks-cache.cache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for chunks. How many key batches to buffer for background
     # write-back.
-    # CLI flag: -memcache.write-back-buffer
+    # CLI flag: -store.chunks-cache.cache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.
   # expiration).
+  # The CLI flags prefix for this block config is: store.chunks-cache
   [memcached: <memcached_config>]
 
   # The memcached_client_config configures the client used to connect to
   # Memcached.
+  # The CLI flags prefix for this block config is: store.chunks-cache
   [memcached_client: <memcached_client_config>]
 
   # The redis_config configures the Redis backend cache.
+  # The CLI flags prefix for this block config is: store.chunks-cache
   [redis: <redis_config>]
 
   # The fifo_cache_config configures the local in-memory cache.
+  # The CLI flags prefix for this block config is: store.chunks-cache
   [fifocache: <fifo_cache_config>]
 
 write_dedupe_cache_config:
@@ -1605,13 +1609,13 @@ write_dedupe_cache_config:
 
   background:
     # Cache config for index entry writing. How many goroutines to use to write
-    # back to memcache.
-    # CLI flag: -store.index-cache-write.memcache.write-back-goroutines
+    # back to cache.
+    # CLI flag: -store.index-cache-write.cache.write-back-goroutines
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry writing. How many key batches to buffer for
     # background write-back.
-    # CLI flag: -store.index-cache-write.memcache.write-back-buffer
+    # CLI flag: -store.index-cache-write.cache.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.

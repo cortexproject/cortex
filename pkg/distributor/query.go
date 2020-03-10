@@ -145,6 +145,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			if err == io.EOF {
 				break
 			} else if err != nil {
+				ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 				return nil, err
 			}
 

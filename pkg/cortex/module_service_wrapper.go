@@ -85,9 +85,8 @@ func (w *moduleServiceWrapper) stop(_ error) error {
 
 	level.Debug(util.Logger).Log("msg", "stopping", "module", w.module)
 
-	w.service.StopAsync()
-	err := w.service.AwaitTerminated(context.Background())
-	if err != nil {
+	err := services.StopAndAwaitTerminated(context.Background(), w.service)
+	if err != nil && err != util.ErrStopCortex {
 		level.Warn(util.Logger).Log("msg", "error stopping module", "module", w.module, "err", err)
 	} else {
 		level.Info(util.Logger).Log("msg", "module stopped", "module", w.module)

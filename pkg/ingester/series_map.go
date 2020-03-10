@@ -23,8 +23,9 @@ type seriesMap struct {
 type shard struct {
 	mtx sync.Mutex
 	m   map[model.Fingerprint]*memorySeries
-	//nolint:structcheck,unused // Align this struct.
-	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*memorySeries{})]byte
+
+	// Align this struct.
+	_ [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*memorySeries{})]byte
 }
 
 // fingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.

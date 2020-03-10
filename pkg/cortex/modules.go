@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -53,6 +54,7 @@ const (
 	Server         moduleName = "server"
 	Distributor    moduleName = "distributor"
 	Ingester       moduleName = "ingester"
+	Flusher        moduleName = "flusher"
 	Querier        moduleName = "querier"
 	StoreQueryable moduleName = "store-queryable"
 	QueryFrontend  moduleName = "query-frontend"
@@ -270,6 +272,21 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	t.server.HTTP.Handle("/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.ingester.Push)))
 	return t.ingester, nil
+}
+
+func (t *Cortex) initFlusher(cfg *Config) (serv services.Service, err error) {
+	t.flusher, err = flusher.New(
+		cfg.Flusher,
+		cfg.Ingester,
+		cfg.IngesterClient,
+		t.store,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return
+	}
+
+	return t.flusher, nil
 }
 
 func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
@@ -547,6 +564,11 @@ var modules = map[moduleName]module{
 	Ingester: {
 		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initIngester,
+	},
+
+	Flusher: {
+		deps:           []moduleName{Store, Server},
+		wrappedService: (*Cortex).initFlusher,
 	},
 
 	Querier: {

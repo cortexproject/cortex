@@ -155,6 +155,10 @@ func (m *MockTransferTSDBClient) CloseAndRecv() (*client.TransferTSDBResponse, e
 	return &client.TransferTSDBResponse{}, nil
 }
 
+func (m *MockTransferTSDBClient) Context() context.Context {
+	return context.Background()
+}
+
 func TestTransferUser(t *testing.T) {
 	dir, err := ioutil.TempDir("", "tsdb")
 	require.NoError(t, err)

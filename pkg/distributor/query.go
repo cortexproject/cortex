@@ -5,11 +5,13 @@ import (
 	"io"
 	"sort"
 
+	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -145,7 +147,11 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			if err == io.EOF {
 				break
 			} else if err != nil {
-				ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+				// Do not track a failure if the context was canceled.
+				if !isGRPCContextCanceled(err) {
+					ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+				}
+
 				return nil, err
 			}
 
@@ -203,3 +209,12 @@ type byTimestamp []client.Sample
 func (b byTimestamp) Len() int           { return len(b) }
 func (b byTimestamp) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byTimestamp) Less(i, j int) bool { return b[i].TimestampMs < b[j].TimestampMs }
+
+func isGRPCContextCanceled(err error) bool {
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return status.Code() == codes.Canceled
+}

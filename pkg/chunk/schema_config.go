@@ -295,6 +295,39 @@ type PeriodicTableConfig struct {
 	Tags   Tags          `yaml:"tags,omitempty"`
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	g := struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{}
+	if err := unmarshal(&g); err != nil {
+		return err
+	}
+
+	cfg.Prefix = g.Prefix
+	cfg.Period = time.Duration(g.Period)
+	cfg.Tags = g.Tags
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
+	g := &struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{
+		Prefix: cfg.Prefix,
+		Period: model.Duration(cfg.Period),
+		Tags:   cfg.Tags,
+	}
+
+	return g, nil
+}
+
 // AutoScalingConfig for DynamoDB tables.
 type AutoScalingConfig struct {
 	Enabled     bool    `yaml:"enabled,omitempty"`

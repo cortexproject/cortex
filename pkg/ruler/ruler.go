@@ -472,9 +472,14 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id found in context")
+	}
+
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx)
 	}
 
 	return r.getLocalRules(userID)
@@ -564,7 +569,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
 	rulers, err := r.ring.GetAll()
 	if err != nil {
 		return nil, err

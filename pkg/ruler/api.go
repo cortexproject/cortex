@@ -129,14 +129,14 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
+	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := r.GetRules(ctx, userID)
+	rgs, err := r.GetRules(ctx)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -221,14 +221,14 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
+	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := r.GetRules(ctx, userID)
+	rgs, err := r.GetRules(ctx)
 
 	if err != nil {
 		respondError(logger, w, err.Error())

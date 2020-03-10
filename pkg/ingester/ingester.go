@@ -607,7 +607,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		if len(batch) == 0 {
 			return nil
 		}
-		err = stream.Send(&client.QueryStreamResponse{
+		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 			Chunkseries: batch,
 		})
 		batch = batch[:0]

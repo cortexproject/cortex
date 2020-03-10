@@ -622,7 +622,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		numSeries++
 		batchSize++
 		if batchSize >= queryStreamBatchSize {
-			err = stream.Send(&client.QueryStreamResponse{
+			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 				Timeseries: timeseries,
 			})
 			if err != nil {
@@ -641,7 +641,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 
 	// Final flush any existing metrics
 	if batchSize != 0 {
-		err = stream.Send(&client.QueryStreamResponse{
+		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 			Timeseries: timeseries,
 		})
 		if err != nil {

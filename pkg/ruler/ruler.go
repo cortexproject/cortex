@@ -472,15 +472,20 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id found in context")
+	}
+
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx)
 	}
 
 	return r.getLocalRules(userID)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
+func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	var groups []*promRules.Group
 	r.userManagerMtx.Lock()
 	if mngr, exists := r.userManagers[userID]; exists {
@@ -488,16 +493,18 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 	}
 	r.userManagerMtx.Unlock()
 
-	groupDescs := make([]*rules.RuleGroupDesc, 0, len(groups))
+	groupDescs := make([]*GroupStateDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
 	for _, group := range groups {
 		interval := group.Interval()
-		groupDesc := &rules.RuleGroupDesc{
-			Name:                group.Name(),
-			Namespace:           strings.TrimPrefix(group.File(), prefix),
-			Interval:            interval,
-			User:                userID,
+		groupDesc := &GroupStateDesc{
+			Group: &rules.RuleGroupDesc{
+				Name:      group.Name(),
+				Namespace: strings.TrimPrefix(group.File(), prefix),
+				Interval:  interval,
+				User:      userID,
+			},
 			EvaluationTimestamp: group.GetEvaluationTimestamp(),
 			EvaluationDuration:  group.GetEvaluationDuration(),
 		}
@@ -507,13 +514,13 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 				lastError = r.LastError().Error()
 			}
 
-			var ruleDesc *rules.RuleDesc
+			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
 				rule.ActiveAlerts()
-				alerts := []*rules.AlertDesc{}
+				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
-					alerts = append(alerts, &rules.AlertDesc{
+					alerts = append(alerts, &AlertStateDesc{
 						State:       a.State.String(),
 						Labels:      client.FromLabelsToLabelAdapters(a.Labels),
 						Annotations: client.FromLabelsToLabelAdapters(a.Annotations),
@@ -525,12 +532,14 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 						ValidUntil:  a.ValidUntil,
 					})
 				}
-				ruleDesc = &rules.RuleDesc{
-					Expr:                rule.Query().String(),
-					Alert:               rule.Name(),
-					For:                 rule.Duration(),
-					Labels:              client.FromLabelsToLabelAdapters(rule.Labels()),
-					Annotations:         client.FromLabelsToLabelAdapters(rule.Annotations()),
+				ruleDesc = &RuleStateDesc{
+					Rule: &rules.RuleDesc{
+						Expr:        rule.Query().String(),
+						Alert:       rule.Name(),
+						For:         rule.Duration(),
+						Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
+						Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
+					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),
 					LastError:           lastError,
@@ -539,10 +548,12 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			case *promRules.RecordingRule:
-				ruleDesc = &rules.RuleDesc{
-					Record:              rule.Name(),
-					Expr:                rule.Query().String(),
-					Labels:              client.FromLabelsToLabelAdapters(rule.Labels()),
+				ruleDesc = &RuleStateDesc{
+					Rule: &rules.RuleDesc{
+						Record: rule.Name(),
+						Expr:   rule.Query().String(),
+						Labels: client.FromLabelsToLabelAdapters(rule.Labels()),
+					},
 					Health:              string(rule.Health()),
 					LastError:           lastError,
 					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
@@ -551,14 +562,14 @@ func (r *Ruler) getLocalRules(userID string) ([]*rules.RuleGroupDesc, error) {
 			default:
 				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
 			}
-			groupDesc.Rules = append(groupDesc.Rules, ruleDesc)
+			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
 		groupDescs = append(groupDescs, groupDesc)
 	}
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*rules.RuleGroupDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
 	rulers, err := r.ring.GetAll()
 	if err != nil {
 		return nil, err
@@ -569,9 +580,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*rules.Ru
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	// len(rgs) can't be larger than len(rulers.Ingesters)
-	// alloc it in advance to avoid realloc
-	rgs := make([]*rules.RuleGroupDesc, 0, len(rulers.Ingesters))
+	rgs := []*GroupStateDesc{}
 
 	for _, rlr := range rulers.Ingesters {
 		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())

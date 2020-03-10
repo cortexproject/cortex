@@ -208,16 +208,24 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
 
+	i.startFlushLoops()
+
+	return nil
+}
+
+func (i *Ingester) startFlushLoops() {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		go i.flushLoop(j)
 	}
-
-	return nil
 }
 
 // NewForFlusher constructs a new Ingester to be used by flusher target.
+// Compared to the 'New' method:
+//   * Always replays the WAL.
+//   * Does not start the lifecycler.
+//   * No ingester v2.
 func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
@@ -230,19 +238,6 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 		chunkStore:   chunkStore,
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 	}
-
-	level.Info(util.Logger).Log("msg", "recovering from WAL")
-
-	// We recover from WAL always.
-	start := time.Now()
-	if err := recoverFromWAL(i); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
-		return nil, err
-	}
-	elapsed := time.Since(start)
-
-	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
-	i.metrics.walReplayDuration.Set(elapsed.Seconds())
 
 	// Should be a noop WAL.
 	cfg.WALConfig.WALEnabled = false
@@ -257,12 +252,20 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 }
 
 func (i *Ingester) startingForFlusher(ctx context.Context) error {
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
-		go i.flushLoop(j)
-	}
+	level.Info(util.Logger).Log("msg", "recovering from WAL")
 
+	// We recover from WAL always.
+	start := time.Now()
+	if err := recoverFromWAL(i); err != nil {
+		level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+		return err
+	}
+	elapsed := time.Since(start)
+
+	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	i.metrics.walReplayDuration.Set(elapsed.Seconds())
+
+	i.startFlushLoops()
 	return nil
 }
 

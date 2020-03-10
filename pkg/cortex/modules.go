@@ -394,7 +394,6 @@ func (t *Cortex) initFlusher(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.flusher.ReadinessHandler))
 	return t.flusher, nil
 }
 

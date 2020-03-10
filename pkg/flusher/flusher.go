@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -82,11 +81,8 @@ func (f *Flusher) starting(ctx context.Context) error {
 }
 
 func (f *Flusher) running(ctx context.Context) error {
-	if err := f.ingester.StartAsync(ctx); err != nil {
-		return errors.Wrap(err, "start ingester")
-	}
-	if err := f.ingester.AwaitRunning(ctx); err != nil {
-		return errors.Wrap(err, "awaing running ingester")
+	if err := services.StartAndAwaitRunning(ctx, f.ingester); err != nil {
+		return errors.Wrap(err, "start and await running ingester")
 	}
 
 	f.ingester.Flush()
@@ -96,18 +92,13 @@ func (f *Flusher) running(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("sleeping for %s to give chance for collection of metrics", postFlushSleepTime.String()))
 	time.Sleep(postFlushSleepTime)
 
-	f.ingester.StopAsync()
-	if err := f.ingester.AwaitTerminated(ctx); err != nil {
-		return err
+	if err := services.StopAndAwaitTerminated(ctx, f.ingester); err != nil {
+		return errors.Wrap(err, "stop and await terminated ingester")
 	}
 	return util.ErrStopCortex
 }
+
 func (f *Flusher) stopping() error {
 	// Nothing to do here.
 	return nil
-}
-
-// ReadinessHandler returns 204 always.
-func (f *Flusher) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNoContent)
 }

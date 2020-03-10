@@ -237,14 +237,7 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 		metrics:      newIngesterMetrics(registerer, true),
 		chunkStore:   chunkStore,
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-	}
-
-	// Should be a noop WAL.
-	cfg.WALConfig.WALEnabled = false
-	var err error
-	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
-	if err != nil {
-		return nil, err
+		wal:          &noopWAL{},
 	}
 
 	i.Service = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)

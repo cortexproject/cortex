@@ -3,7 +3,6 @@ package flusher
 import (
 	"context"
 	"flag"
-	"fmt"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -39,8 +38,6 @@ type Flusher struct {
 	clientConfig   client.Config
 	chunkStore     ingester.ChunkStore
 	registerer     prometheus.Registerer
-
-	ingester *ingester.Ingester
 }
 
 const (
@@ -68,37 +65,29 @@ func New(
 		chunkStore:     chunkStore,
 		registerer:     registerer,
 	}
-	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
+	f.Service = services.NewBasicService(nil, f.running, nil)
 	return f, nil
 }
 
-func (f *Flusher) starting(ctx context.Context) error {
-	// WAL replay happens here. We have it in the starting function and not New
-	// so that metrics can be collected in parallel with WAL replay.
-	var err error
-	f.ingester, err = ingester.NewForFlusher(f.ingesterConfig, f.clientConfig, f.chunkStore, f.registerer)
-	return err
-}
-
 func (f *Flusher) running(ctx context.Context) error {
-	if err := services.StartAndAwaitRunning(ctx, f.ingester); err != nil {
+	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.clientConfig, f.chunkStore, f.registerer)
+	if err != nil {
+		return errors.Wrap(err, "create ingester")
+	}
+
+	if err := services.StartAndAwaitRunning(ctx, ing); err != nil {
 		return errors.Wrap(err, "start and await running ingester")
 	}
 
-	f.ingester.Flush()
+	ing.Flush()
 
 	// Sleeping to give a chance to Prometheus
 	// to collect the metrics.
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("sleeping for %s to give chance for collection of metrics", postFlushSleepTime.String()))
+	level.Info(util.Logger).Log("msg", "sleeping to give chance for collection of metrics", "duration", postFlushSleepTime.String())
 	time.Sleep(postFlushSleepTime)
 
-	if err := services.StopAndAwaitTerminated(ctx, f.ingester); err != nil {
+	if err := services.StopAndAwaitTerminated(ctx, ing); err != nil {
 		return errors.Wrap(err, "stop and await terminated ingester")
 	}
 	return util.ErrStopCortex
-}
-
-func (f *Flusher) stopping(_ error) error {
-	// Nothing to do here.
-	return nil
 }

@@ -184,15 +184,6 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return m.Set(s)
 }
 
-func (m moduleName) IsJob() bool {
-	switch m {
-	case Flusher:
-		return true
-	}
-
-	return false
-}
-
 func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	serv, err := server.New(cfg.Server)
 	if err != nil {

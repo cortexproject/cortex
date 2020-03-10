@@ -362,8 +362,13 @@ func (t *Cortex) Run() error {
 	// if any service failed, report that as an error to caller
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
-			// Details were reported via failure listener before
-			err = errors.New("failed services")
+			for _, f := range failed {
+				if f.FailureCase() != util.ErrStopCortex {
+					// Details were reported via failure listener before
+					err = errors.New("failed services")
+					break
+				}
+			}
 		}
 	}
 	return err

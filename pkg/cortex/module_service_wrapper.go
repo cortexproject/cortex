@@ -70,7 +70,7 @@ func (w *moduleServiceWrapper) run(serviceContext context.Context) error {
 	return w.service.FailureCase()
 }
 
-func (w *moduleServiceWrapper) stop() error {
+func (w *moduleServiceWrapper) stop(_ error) error {
 	// wait until all stopDeps have stopped
 	for _, m := range w.stopDeps {
 		s := w.serviceMap[m]

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -76,6 +77,10 @@ func (mfm MetricFamilyMap) SumCounters(name string) float64 {
 
 func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 	return sum(mfm[name], gaugeValue)
+}
+
+func (mfm MetricFamilyMap) MaxGauges(name string) float64 {
+	return max(mfm[name], gaugeValue)
 }
 
 func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
@@ -188,6 +193,22 @@ func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn fun
 	return result
 }
 
+func (d MetricFamiliesPerUser) SendMaxOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	result := math.NaN()
+	for _, userMetrics := range d {
+		if value := userMetrics.MaxGauges(gauge); math.IsNaN(result) || value > result {
+			result = value
+		}
+	}
+
+	// If there's no metric, we do send 0 which is the gauge default.
+	if math.IsNaN(result) {
+		result = 0
+	}
+
+	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
+}
+
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
 	summaryData := SummaryData{}
 	for _, userMetrics := range d {
@@ -293,6 +314,25 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	for _, m := range mf.GetMetric() {
 		result += fn(m)
 	}
+	return result
+}
+
+// max returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
+// Supplied function extracts value.
+func max(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
+	result := math.NaN()
+
+	for _, m := range mf.GetMetric() {
+		if value := fn(m); math.IsNaN(result) || value > result {
+			result = value
+		}
+	}
+
+	// If there's no metric, we do return 0 which is the gauge default.
+	if math.IsNaN(result) {
+		return 0
+	}
+
 	return result
 }
 

@@ -241,7 +241,7 @@ func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
 }
 
 // stopping runs when MultitenantAlertmanager transitions to Stopping state.
-func (am *MultitenantAlertmanager) stopping() error {
+func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
 		am.Stop()

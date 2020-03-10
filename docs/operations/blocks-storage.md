@@ -105,7 +105,7 @@ tsdb:
   [block_ranges_period: <list of duration> | default = 2h0m0s]
 
   # TSDB blocks retention in the ingester before a block is removed. This should
-  # be larger than the block_ranges_period and large enough to give ingesters
+  # be larger than the block_ranges_period and large enough to give queriers
   # enough time to discover newly uploaded blocks.
   # CLI flag: -experimental.tsdb.retention-period
   [retention_period: <duration> | default = 6h0m0s]
@@ -165,6 +165,17 @@ tsdb:
     # storage per tenant.
     # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
     [meta_sync_concurrency: <int> | default = 20]
+
+    # Whether the bucket store should use the binary index header. If false, it
+    # uses the JSON index header.
+    # CLI flag: -experimental.tsdb.bucket-store.binary-index-header-enabled
+    [binary_index_header_enabled: <boolean> | default = true]
+
+    # Minimum age of a block before it's being read. Set it to safe value (e.g
+    # 30m) if your object storage is eventually consistent. GCS and S3 are
+    # (roughly) strongly consistent.
+    # CLI flag: -experimental.tsdb.bucket-store.consistency-delay
+    [consistency_delay: <duration> | default = 0s]
 
   # How frequently does Cortex try to compact TSDB head. Block is only created
   # if data covers smallest block range. Must be greater than 0 and max 5

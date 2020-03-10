@@ -30,6 +30,12 @@ func MergeFlags(inputs ...map[string]string) map[string]string {
 		}
 	}
 
+	for k, v := range output {
+		if v == "" {
+			delete(output, k)
+		}
+	}
+
 	return output
 }
 

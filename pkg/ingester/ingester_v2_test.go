@@ -3,8 +3,10 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,7 +24,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -409,7 +413,7 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -454,7 +458,7 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -574,7 +578,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -873,7 +877,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range fixtures {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -896,7 +900,70 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
-func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse) {
+func TestIngester_v2QueryStream(t *testing.T) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+	req, _, expectedResponse := mockWriteRequest(lbls, 123000, 456)
+	_, err = i.v2Push(ctx, req)
+	require.NoError(t, err)
+
+	// Create a GRPC server used to query back the data.
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, i)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	go func() {
+		require.NoError(t, serv.Serve(listener))
+	}()
+
+	// Query back the series using GRPC streaming.
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(t, err)
+	defer c.Close()
+
+	s, err := c.QueryStream(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   200000,
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	})
+	require.NoError(t, err)
+
+	count := 0
+	var lastResp *client.QueryStreamResponse
+	for {
+		resp, err := s.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		count += len(resp.Timeseries)
+		lastResp = resp
+	}
+	require.Equal(t, 1, count)
+	require.Equal(t, expectedResponse, lastResp)
+}
+
+func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {
 	samples := []client.Sample{
 		{
 			TimestampMs: timestampMs,
@@ -907,7 +974,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 	req := client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
 
 	// Generate the expected response
-	expectedResponse := &client.QueryResponse{
+	expectedQueryRes := &client.QueryResponse{
 		Timeseries: []client.TimeSeries{
 			{
 				Labels:  client.FromLabelsToLabelAdapters(lbls),
@@ -916,7 +983,16 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 		},
 	}
 
-	return req, expectedResponse
+	expectedQueryStreamRes := &client.QueryStreamResponse{
+		Timeseries: []client.TimeSeries{
+			{
+				Labels:  client.FromLabelsToLabelAdapters(lbls),
+				Samples: samples,
+			},
+		},
+	}
+
+	return req, expectedQueryRes, expectedQueryStreamRes
 }
 
 func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, func(), error) {
@@ -1106,7 +1182,7 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1152,7 +1228,7 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	})
 	for _, series := range series {
 		ctx := user.InjectOrgID(context.Background(), series.user)
-		req, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}

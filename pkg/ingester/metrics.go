@@ -29,6 +29,7 @@ type ingesterMetrics struct {
 	memSeriesCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal *prometheus.CounterVec
 	walReplayDuration     prometheus.Gauge
+	walCorruptionsTotal   prometheus.Counter
 }
 
 func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -87,6 +88,10 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			Name: "cortex_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
+		walCorruptionsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_wal_corruptions_total",
+			Help: "Total number of WAL corruptions encountered.",
+		}),
 	}
 
 	if r != nil {
@@ -101,6 +106,7 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			m.memSeries,
 			m.memUsers,
 			m.walReplayDuration,
+			m.walCorruptionsTotal,
 		)
 
 		if registerMetricsConflictingWithTSDB {
@@ -137,7 +143,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 
 		dirSyncs: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_syncs_total",
-			"TSDB: Total dir sync attempts",
+			"TSDB: Total number of dir syncs",
 			nil, nil),
 		dirSyncFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_sync_failures_total",
@@ -145,11 +151,11 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			nil, nil),
 		uploads: prometheus.NewDesc(
 			"cortex_ingester_shipper_uploads_total",
-			"TSDB: Total object upload attempts",
+			"TSDB: Total number of uploaded blocks",
 			nil, nil),
 		uploadFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_upload_failures_total",
-			"TSDB: Total number of failed object uploads",
+			"TSDB: Total number of block upload failures",
 			nil, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),

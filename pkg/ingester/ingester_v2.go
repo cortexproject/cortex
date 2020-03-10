@@ -27,6 +27,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -130,16 +131,16 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
-	// Scan and open TSDB's that already exist on disk // TODO: move to starting
-	if err := i.openExistingTSDB(context.Background()); err != nil {
-		return nil, err
-	}
-
 	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
 
 func (i *Ingester) startingV2(ctx context.Context) error {
+	// Scan and open TSDB's that already exist on disk
+	if err := i.openExistingTSDB(context.Background()); err != nil {
+		return errors.Wrap(err, "opening existing TSDBs")
+	}
+
 	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
 	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
@@ -168,7 +169,7 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 }
 
 // runs when V2 ingester is stopping
-func (i *Ingester) stoppingV2() error {
+func (i *Ingester) stoppingV2(_ error) error {
 	// It's important to wait until shipper is finished,
 	// because the blocks transfer should start only once it's guaranteed
 	// there's no shipping on-going.
@@ -564,6 +565,93 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
 	}
+}
+
+// v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
+func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	_, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+
+	i.metrics.queries.Inc()
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return nil
+	}
+
+	q, err := db.Querier(int64(from), int64(through))
+	if err != nil {
+		return err
+	}
+	defer q.Close()
+
+	ss, err := q.Select(matchers...)
+	if err != nil {
+		return err
+	}
+
+	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
+	batchSize := 0
+	numSamples := 0
+	numSeries := 0
+	for ss.Next() {
+		series := ss.At()
+
+		// convert labels to LabelAdapter
+		ts := client.TimeSeries{
+			Labels: client.FromLabelsToLabelAdapters(series.Labels()),
+		}
+
+		it := series.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
+		}
+		numSamples += len(ts.Samples)
+
+		timeseries = append(timeseries, ts)
+		numSeries++
+		batchSize++
+		if batchSize >= queryStreamBatchSize {
+			err = stream.Send(&client.QueryStreamResponse{
+				Timeseries: timeseries,
+			})
+			if err != nil {
+				return err
+			}
+
+			batchSize = 0
+			timeseries = timeseries[:0]
+		}
+	}
+
+	// Ensure no error occurred while iterating the series set.
+	if err := ss.Err(); err != nil {
+		return err
+	}
+
+	// Final flush any existing metrics
+	if batchSize != 0 {
+		err = stream.Send(&client.QueryStreamResponse{
+			Timeseries: timeseries,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
+	return nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {

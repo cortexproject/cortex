@@ -171,12 +171,17 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
-	if cfg.WALConfig.Recover {
+	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
+	return i, nil
+}
+
+func (i *Ingester) starting(ctx context.Context) error {
+	if i.cfg.WALConfig.Recover {
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
-			return nil, err
+			return errors.Wrap(err, "failed to recover from WAL")
 		}
 		elapsed := time.Since(start)
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
@@ -185,20 +190,15 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
 	}
 
-	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
+	var err error
+	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp)
 	if err != nil {
-		return nil, err
+		return errors.Wrap(err, "starting WAL")
 	}
 
-	// TODO: lot more stuff can be put into startingFn (esp. WAL replay), but for now keep it in New
-	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
-	return i, nil
-}
-
-func (i *Ingester) starting(ctx context.Context) error {
 	// Now that user states have been created, we can start the lifecycler.
 	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
 	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
@@ -291,9 +291,13 @@ func (i *Ingester) loop(ctx context.Context) error {
 }
 
 // stopping is run when ingester is asked to stop
-func (i *Ingester) stopping() error {
+func (i *Ingester) stopping(_ error) error {
 	i.wal.Stop()
 
+	// This will prevent us accepting any more samples
+	i.stopIncomingRequests()
+
+	// Lifecycler can be nil if the ingester is for a flusher.
 	if i.lifecycler != nil {
 		// Next initiate our graceful exit from the ring.
 		return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
@@ -314,15 +318,30 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// StopIncomingRequests is called during the shutdown process.
-func (i *Ingester) StopIncomingRequests() {
+// stopIncomingRequests is called during the shutdown process.
+func (i *Ingester) stopIncomingRequests() {
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 	i.stopped = true
 }
 
+// check that ingester has finished starting, i.e. it is in Running or Stopping state.
+// Why Stopping? Because ingester still runs, even when it is transferring data out in Stopping state.
+// Ingester handles this state on its own (via `stopped` flag).
+func (i *Ingester) checkRunningOrStopping() error {
+	s := i.State()
+	if s == services.Running || s == services.Stopping {
+		return nil
+	}
+	return status.Error(codes.Unavailable, s.String())
+}
+
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2Push(ctx, req)
 	}
@@ -467,6 +486,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2Query(ctx, req)
 	}
@@ -530,8 +553,12 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return err
+	}
+
 	if i.cfg.TSDBEnabled {
-		return fmt.Errorf("Unimplemented for V2")
+		return i.v2QueryStream(req, stream)
 	}
 
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
@@ -588,7 +615,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			return nil
 		}
 		err = stream.Send(&client.QueryStreamResponse{
-			Timeseries: batch,
+			Chunkseries: batch,
 		})
 		batch = batch[:0]
 		return err
@@ -606,6 +633,10 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelValues(ctx, req)
 	}
@@ -627,6 +658,10 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2LabelNames(ctx, req)
 	}
@@ -648,6 +683,10 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2MetricsForLabelMatchers(ctx, req)
 	}
@@ -691,6 +730,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2UserStats(ctx, req)
 	}
@@ -716,6 +759,10 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
 	if i.cfg.TSDBEnabled {
 		return i.v2AllUserStats(ctx, req)
 	}
@@ -745,6 +792,10 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 
 // Check implements the grpc healthcheck
 func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
+	}
+
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
@@ -757,8 +808,8 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) CheckReady(ctx context.Context) error {
-	if s := i.State(); s != services.Running {
-		return fmt.Errorf("service not Running: %v", s)
+	if err := i.checkRunningOrStopping(); err != nil {
+		return fmt.Errorf("ingester not ready: %v", err)
 	}
 	return i.lifecycler.CheckReady(ctx)
 }

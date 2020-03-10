@@ -58,7 +58,7 @@ func (b *BlockQueryable) starting(ctx context.Context) error {
 	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start UserStore")
 }
 
-func (b *BlockQueryable) stopping() error {
+func (b *BlockQueryable) stopping(_ error) error {
 	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping UserStore")
 }
 
@@ -116,7 +116,7 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
 	series := []*storepb.Series(nil)
@@ -130,7 +130,7 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, promql.ErrStorage{Err: err}
 		}
 
 		// response may either contain series or warning. If it's warning, we get nil here.

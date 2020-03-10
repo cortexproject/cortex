@@ -165,7 +165,7 @@ func (om *Manager) callListeners(newValue interface{}) {
 }
 
 // Stop stops the Manager
-func (om *Manager) stop() error {
+func (om *Manager) stop(_ error) error {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 

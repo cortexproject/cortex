@@ -189,12 +189,12 @@ type Cortex struct {
 	runtimeConfig *runtimeconfig.Manager
 	dataPurger    *purger.DataPurger
 
-	ruler             *ruler.Ruler
-	configAPI         *api.API
-	configDB          db.DB
-	alertmanager      *alertmanager.MultitenantAlertmanager
-	compactor         *compactor.Compactor
-	memberlistKVState *memberlistKVState
+	ruler        *ruler.Ruler
+	configAPI    *api.API
+	configDB     db.DB
+	alertmanager *alertmanager.MultitenantAlertmanager
+	compactor    *compactor.Compactor
+	memberlistKV *memberlist.KVInit
 
 	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
@@ -356,8 +356,16 @@ func (t *Cortex) Run() error {
 	}
 
 	// Stop all the services, and wait until they are all done.
-	// We don't care about this error, as it cannot really fail. `err` has error from startup, which is more important.
+	// We don't care about this error, as it cannot really fail.
 	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
+
+	// if any service failed, report that as an error to caller
+	if err == nil {
+		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
+			// Details were reported via failure listener before
+			err = errors.New("failed services")
+		}
+	}
 	return err
 }
 

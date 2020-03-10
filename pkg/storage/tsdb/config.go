@@ -109,7 +109,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "Local directory to store TSDBs in the ingesters.")
 	f.Var(&cfg.BlockRanges, "experimental.tsdb.block-ranges-period", "TSDB blocks range period.")
-	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB blocks retention in the ingester before a block is removed. This should be larger than the block_ranges_period and large enough to give ingesters enough time to discover newly uploaded blocks.")
+	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB blocks retention in the ingester before a block is removed. This should be larger than the block_ranges_period and large enough to give queriers enough time to discover newly uploaded blocks.")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 1*time.Minute, "How frequently the TSDB blocks are scanned and new ones are shipped to the storage. 0 means shipping is disabled.")
 	f.IntVar(&cfg.ShipConcurrency, "experimental.tsdb.ship-concurrency", 10, "Maximum number of tenants concurrently shipping blocks to the storage.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", `Backend storage to use. Either "s3" or "gcs".`)
@@ -155,6 +155,8 @@ type BucketStoreConfig struct {
 	TenantSyncConcurrency int           `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency  int           `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency   int           `yaml:"meta_sync_concurrency"`
+	BinaryIndexHeader     bool          `yaml:"binary_index_header_enabled"`
+	ConsistencyDelay      time.Duration `yaml:"consistency_delay"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -168,6 +170,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.TenantSyncConcurrency, "experimental.tsdb.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "experimental.tsdb.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
+	f.BoolVar(&cfg.BinaryIndexHeader, "experimental.tsdb.bucket-store.binary-index-header-enabled", true, "Whether the bucket store should use the binary index header. If false, it uses the JSON index header.")
+	f.DurationVar(&cfg.ConsistencyDelay, "experimental.tsdb.bucket-store.consistency-delay", 0, "Minimum age of a block before it's being read. Set it to safe value (e.g 30m) if your object storage is eventually consistent. GCS and S3 are (roughly) strongly consistent.")
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

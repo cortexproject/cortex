@@ -18,7 +18,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -36,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/push"
@@ -201,20 +201,6 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 
 	t.server = serv
 
-	t.server.HTTP.HandleFunc("/config", func(w http.ResponseWriter, _ *http.Request) {
-		out, err := yaml.Marshal(cfg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/yaml")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(out); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
-		}
-	})
-
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
 		for m, s := range t.serviceMap {
@@ -225,12 +211,17 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		}
 		return svs
 	}
-	return NewServerService(t.server, servicesToWaitFor), nil
+
+	s := NewServerService(cfg, t.server, servicesToWaitFor)
+	serv.HTTP.HandleFunc("/", s.indexHandler)
+	serv.HTTP.HandleFunc("/config", s.configHandler)
+
+	return s, nil
 }
 
 func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
@@ -264,7 +255,7 @@ func (t *Cortex) initOverrides(cfg *Config) (serv services.Service, err error) {
 
 func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -323,7 +314,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	// BUT this extra functionality is ONE OF THE REASONS to introduce entire "Services" concept into Cortex.
 	// For now, only return service that stops the worker, and Querier will be used even before storeQueryable has finished starting.
 
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.worker.Stop()
 		return nil
 	}), nil
@@ -363,7 +354,7 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 
 func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -411,16 +402,19 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.store.Stop()
 		return nil
 	}), nil
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err error) {
-	err = cfg.Schema.Load()
-	if err != nil {
-		return
+	// Load the schema only if sharded queries is set.
+	if cfg.QueryRange.ShardedQueries {
+		err = cfg.Schema.Load()
+		if err != nil {
+			return
+		}
 	}
 
 	t.frontend, err = frontend.New(cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
@@ -456,7 +450,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 			t.frontend.Handler(),
 		),
 	)
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
 		if t.cache != nil {
 			t.cache.Stop()
@@ -500,13 +494,13 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
+	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	return t.tableManager, err
 }
 
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
@@ -532,7 +526,7 @@ func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
 
 	t.configAPI = api.New(t.configDB, cfg.Configs.API)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
-	return services.NewIdleService(nil, func() error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.configDB.Close()
 		return nil
 	}), nil
@@ -553,7 +547,7 @@ func (t *Cortex) initAlertManager(cfg *Config) (serv services.Service, err error
 
 func (t *Cortex) initCompactor(cfg *Config) (serv services.Service, err error) {
 	cfg.Compactor.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
-	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
+	cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
 	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -571,13 +565,10 @@ func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
 	cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
+	t.memberlistKV = memberlist.NewKVInit(&cfg.MemberlistKV)
 
-	return services.NewIdleService(nil, func() error {
-		kv := t.memberlistKVState.kv
-		if kv != nil {
-			kv.Stop()
-		}
+	return services.NewIdleService(nil, func(_ error) error {
+		t.memberlistKV.Stop()
 		return nil
 	}), nil
 }

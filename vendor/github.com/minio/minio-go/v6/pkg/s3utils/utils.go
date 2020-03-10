@@ -84,16 +84,22 @@ func IsVirtualHostSupported(endpointURL url.URL, bucketName string) bool {
 // Refer for region styles - https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 
 // amazonS3HostHyphen - regular expression used to determine if an arg is s3 host in hyphenated style.
-var amazonS3HostHyphen = regexp.MustCompile(`^s3-(.*?)\.amazonaws\.com$`)
+var amazonS3HostHyphen = regexp.MustCompile(`^s3-(.*?).amazonaws.com$`)
 
 // amazonS3HostDualStack - regular expression used to determine if an arg is s3 host dualstack.
-var amazonS3HostDualStack = regexp.MustCompile(`^s3\.dualstack\.(.*?)\.amazonaws\.com$`)
+var amazonS3HostDualStack = regexp.MustCompile(`^s3.dualstack.(.*?).amazonaws.com$`)
 
 // amazonS3HostDot - regular expression used to determine if an arg is s3 host in . style.
-var amazonS3HostDot = regexp.MustCompile(`^s3\.(.*?)\.amazonaws\.com$`)
+var amazonS3HostDot = regexp.MustCompile(`^s3.(.*?).amazonaws.com$`)
 
 // amazonS3ChinaHost - regular expression used to determine if the arg is s3 china host.
-var amazonS3ChinaHost = regexp.MustCompile(`^s3\.(cn.*?)\.amazonaws\.com\.cn$`)
+var amazonS3ChinaHost = regexp.MustCompile(`^s3.(cn.*?).amazonaws.com.cn$`)
+
+// Regular expression used to determine if the arg is elb host.
+var elbAmazonRegex = regexp.MustCompile(`elb(.*?).amazonaws.com$`)
+
+// Regular expression used to determine if the arg is elb host in china.
+var elbAmazonCnRegex = regexp.MustCompile(`elb(.*?).amazonaws.com.cn$`)
 
 // GetRegionFromURL - returns a region from url host.
 func GetRegionFromURL(endpointURL url.URL) string {
@@ -105,6 +111,10 @@ func GetRegionFromURL(endpointURL url.URL) string {
 	}
 	if IsAmazonGovCloudEndpoint(endpointURL) {
 		return "us-gov-west-1"
+	}
+	// if elb's are used we cannot calculate which region it may be, just return empty.
+	if elbAmazonRegex.MatchString(endpointURL.Host) || elbAmazonCnRegex.MatchString(endpointURL.Host) {
+		return ""
 	}
 	parts := amazonS3HostDualStack.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
@@ -219,6 +229,31 @@ func QueryEncode(v url.Values) string {
 	return buf.String()
 }
 
+// TagEncode - encodes tag values in their URL encoded form. In
+// addition to the percent encoding performed by urlEncodePath() used
+// here, it also percent encodes '/' (forward slash)
+func TagEncode(tags map[string]string) string {
+	if tags == nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	keys := make([]string, 0, len(tags))
+	for k := range tags {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := tags[k]
+		prefix := percentEncodeSlash(EncodePath(k)) + "="
+		if buf.Len() > 0 {
+			buf.WriteByte('&')
+		}
+		buf.WriteString(prefix)
+		buf.WriteString(percentEncodeSlash(EncodePath(v)))
+	}
+	return buf.String()
+}
+
 // if object matches reserved string, no need to encode them
 var reservedObjectNames = regexp.MustCompile("^[a-zA-Z0-9-_.~/]+$")
 
@@ -274,10 +309,10 @@ func checkBucketNameCommon(bucketName string, strict bool) (err error) {
 		return errors.New("Bucket name cannot be empty")
 	}
 	if len(bucketName) < 3 {
-		return errors.New("Bucket name cannot be smaller than 3 characters")
+		return errors.New("Bucket name cannot be shorter than 3 characters")
 	}
 	if len(bucketName) > 63 {
-		return errors.New("Bucket name cannot be greater than 63 characters")
+		return errors.New("Bucket name cannot be longer than 63 characters")
 	}
 	if ipAddress.MatchString(bucketName) {
 		return errors.New("Bucket name cannot be an ip address")
@@ -313,7 +348,7 @@ func CheckValidBucketNameStrict(bucketName string) (err error) {
 //   - http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
 func CheckValidObjectNamePrefix(objectName string) error {
 	if len(objectName) > 1024 {
-		return errors.New("Object name cannot be greater than 1024 characters")
+		return errors.New("Object name cannot be longer than 1024 characters")
 	}
 	if !utf8.ValidString(objectName) {
 		return errors.New("Object name with non UTF-8 strings are not supported")

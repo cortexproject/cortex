@@ -98,7 +98,7 @@ func (f *Flusher) running(ctx context.Context) error {
 	return util.ErrStopCortex
 }
 
-func (f *Flusher) stopping() error {
+func (f *Flusher) stopping(_ error) error {
 	// Nothing to do here.
 	return nil
 }

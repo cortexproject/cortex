@@ -202,23 +202,14 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
 
-	// Start the query frontend worker once the query engine and the store
-	// have been successfully initialized.
-	t.worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	// Query frontend worker will only be started after all its dependencies are started, not here.
+	// Worker may also be nil, if not configured, which is OK.
+	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
 		return
 	}
 
-	// TODO: If queryable returned from querier.New was a service, it could actually wait for storeQueryable
-	// (if it also implemented Service) to finish starting... and return error if it's not in Running state.
-	// This requires extra work, which is out of scope for this proof-of-concept...
-	// BUT this extra functionality is ONE OF THE REASONS to introduce entire "Services" concept into Cortex.
-	// For now, only return service that stops the worker, and Querier will be used even before storeQueryable has finished starting.
-
-	return services.NewIdleService(nil, func(_ error) error {
-		t.worker.Stop()
-		return nil
-	}), nil
+	return worker, nil
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.

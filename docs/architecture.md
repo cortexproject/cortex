@@ -61,6 +61,7 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
+* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
 For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
 

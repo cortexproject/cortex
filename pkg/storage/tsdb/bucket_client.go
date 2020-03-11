@@ -7,6 +7,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
@@ -20,6 +21,8 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 		return gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
 	case BackendAzure:
 		return azure.NewBucketClient(cfg.Azure, name, logger)
+	case BackendFilesystem:
+		return filesystem.NewBucketClient(cfg.Filesystem)
 	default:
 		return nil, errUnsupportedBackend
 	}

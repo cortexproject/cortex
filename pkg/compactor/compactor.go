@@ -233,7 +233,7 @@ func (c *Compactor) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case err := <-c.serviceWatcher.Chan():
-			return err
+			return errors.Wrap(err, "compactor subservice failed")
 		}
 	}
 }

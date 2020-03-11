@@ -284,7 +284,7 @@ func (i *Ingester) loop(ctx context.Context) error {
 			return nil
 
 		case err := <-i.serviceWatcher.Chan():
-			return err
+			return errors.Wrap(err, "ingester subservice failed")
 		}
 	}
 }

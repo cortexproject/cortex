@@ -9,6 +9,7 @@ import (
 	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -226,7 +227,7 @@ func (d *Distributor) running(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	case err := <-d.serviceWatcher.Chan():
-		return err
+		return errors.Wrap(err, "distributor subservice failed")
 	}
 }
 

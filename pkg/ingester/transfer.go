@@ -473,7 +473,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				return errors.Wrap(err, "toWireChunks")
 			}
 
-			err = stream.Send(&client.TimeSeriesChunk{
+			err = client.SendTimeSeriesChunk(stream, &client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
 				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
@@ -756,7 +756,7 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 	i := 0
 	for ; i+batch < len(b); i += batch {
 		tsfile.Data = b[i : i+batch]
-		err := stream.Send(tsfile)
+		err := client.SendTimeSeriesFile(stream, tsfile)
 		if err != nil {
 			return err
 		}
@@ -766,7 +766,7 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 	// Send final data
 	if i < len(b) {
 		tsfile.Data = b[i:]
-		err := stream.Send(tsfile)
+		err := client.SendTimeSeriesFile(stream, tsfile)
 		if err != nil {
 			return err
 		}

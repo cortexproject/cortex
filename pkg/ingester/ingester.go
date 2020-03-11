@@ -100,10 +100,11 @@ type Ingester struct {
 
 	metrics *ingesterMetrics
 
-	chunkStore ChunkStore
-	lifecycler *ring.Lifecycler
-	limits     *validation.Overrides
-	limiter    *SeriesLimiter
+	chunkStore         ChunkStore
+	lifecycler         *ring.Lifecycler
+	limits             *validation.Overrides
+	limiter            *SeriesLimiter
+	subservicesWatcher *services.FailureWatcher
 
 	userStatesMtx sync.RWMutex // protects userStates and stopped
 	userStates    *userStates
@@ -170,6 +171,8 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return nil, err
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.subservicesWatcher = services.NewFailureWatcher()
+	i.subservicesWatcher.WatchService(i.lifecycler)
 
 	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
 	return i, nil
@@ -279,6 +282,9 @@ func (i *Ingester) loop(ctx context.Context) error {
 
 		case <-ctx.Done():
 			return nil
+
+		case err := <-i.subservicesWatcher.Chan():
+			return errors.Wrap(err, "ingester subservice failed")
 		}
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -197,7 +198,9 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 
 	worker, err := NewWorker(workerConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
-	defer worker.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 
 	test(httpListen.Addr().String())
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
 }

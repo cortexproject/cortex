@@ -87,6 +87,8 @@ func NewDynamoDB() *e2e.HTTPService {
 func NewBigtable() *e2e.HTTPService {
 	return e2e.NewHTTPService(
 		"bigtable",
+		// If you change the image tag, remember to update it in the preloading done
+		// by CircleCI too (see .circleci/config.yml).
 		"shopify/bigtable-emulator:0.1.0",
 		e2e.NewCommand(""),
 		nil,

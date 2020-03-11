@@ -2164,7 +2164,7 @@ The `tsdb_config` configures the experimental blocks storage.
 # CLI flag: -experimental.tsdb.ship-concurrency
 [ship_concurrency: <int> | default = 10]
 
-# Backend storage to use. Either "s3" or "gcs".
+# Backend storage to use. Supported backends are: s3, gcs, azure, filesystem.
 # CLI flag: -experimental.tsdb.backend
 [backend: <string> | default = "s3"]
 

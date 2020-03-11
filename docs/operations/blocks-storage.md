@@ -12,7 +12,7 @@ The supported backends for the blocks storage are:
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
-* [Local Filesystem](https://thanos.io/storage.md/#filesystem)
+* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
 _Internally, this storage engine is based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
 
@@ -120,7 +120,7 @@ tsdb:
   # CLI flag: -experimental.tsdb.ship-concurrency
   [ship_concurrency: <int> | default = 10]
 
-  # Backend storage to use. Either "s3" or "gcs".
+  # Backend storage to use. Supported backends are: s3, gcs, azure, filesystem.
   # CLI flag: -experimental.tsdb.backend
   [backend: <string> | default = "s3"]
 

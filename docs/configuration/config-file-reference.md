@@ -2297,9 +2297,9 @@ azure:
   [max_retries: <int> | default = 20]
 
 filesystem:
-  # Local filesystem storage directory
-  # CLI flag: -experimental.tsdb.filesystem.directory
-  [directory: <string> | default = ""]
+  # Local filesystem storage directory.
+  # CLI flag: -experimental.tsdb.filesystem.dir
+  [dir: <string> | default = ""]
 ```
 
 ### `compactor_config`

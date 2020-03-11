@@ -54,7 +54,7 @@ func TestSendQueryStream(t *testing.T) {
 		// Try to send the response and assert the error we get is the context.Canceled
 		// and not transport.ErrIllegalHeaderWrite. This is the assertion we care about
 		// in this test.
-		err = SendQueryStream(stream.(Ingester_QueryStreamServer), &QueryStreamResponse{})
+		err := SendQueryStream(stream.(Ingester_QueryStreamServer), &QueryStreamResponse{})
 		assert.Equal(t, context.Canceled, err)
 	})
 

@@ -58,3 +58,9 @@ tsdb:
   s3:
     bucket_name: cortex
     endpoint: s3.dualstack.us-east-1.amazonaws.com
+
+compactor:
+  data_dir: /tmp/cortex/compactor
+  sharding_ring:
+    kvstore:
+      store: inmemory

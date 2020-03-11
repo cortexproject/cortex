@@ -27,6 +27,15 @@ In-process caching can cut fetch times slightly and reduce the load on Memcached
 
 If multiple caches are enabled for each caching opportunities, they will be tiered – writes will go to all caches, but reads will first go to the in-memory FIFO cache, then memcached, then redis.
 
+### Prefixes
+The flags used to configure each caching opportunity are differentiated by the following prefixes:
+
+* no prefix: [Chunks Cache](#chunks-cache)
+* `store.index-cache-read` prefix: [Index Read Cache](#index-read-cache)
+* `store.index-cache-write` prefix: [Index Write Cache](#index-write-cache)
+* `frontend.cache` prefix: [Query Results Cache](#query-results-cache)
+
+
 ### Memcached
 
 For small deployments you can use a single memcached cluster for all the caching opportunities – the keys do not collide.

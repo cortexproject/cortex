@@ -22,7 +22,7 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	case BackendAzure:
 		return azure.NewBucketClient(cfg.Azure, name, logger)
 	case BackendFilesystem:
-		return filesystem.NewBucketClient(cfg.Filesystem, name, logger)
+		return filesystem.NewBucketClient(cfg.Filesystem)
 	default:
 		return nil, errUnsupportedBackend
 	}

@@ -21,7 +21,7 @@ func TestNilServiceFailureWatcher(t *testing.T) {
 func TestServiceFailureWatcher(t *testing.T) {
 	w := NewServiceFailureWatcher()
 
-	err := errors.New("failed...")
+	err := errors.New("this error doesn't end with dot")
 
 	failing := services.NewBasicService(nil, nil, func(_ error) error {
 		return err

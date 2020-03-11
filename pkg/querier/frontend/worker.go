@@ -85,7 +85,7 @@ func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (service
 }
 
 func (w *worker) stopping(_ error) error {
-	// wait until all per-address workers are done
+	// wait until all per-address workers are done. This is only called after watchDNSLoop exits.
 	w.wg.Wait()
 	return nil
 }
@@ -93,7 +93,10 @@ func (w *worker) stopping(_ error) error {
 // watchDNSLoop watches for changes in DNS and starts or stops workers.
 func (w *worker) watchDNSLoop(servCtx context.Context) error {
 	go func() {
-		// close the watcher, when this service is asked to stop
+		// Close the watcher, when this service is asked to stop.
+		// Closing the watcher makes watchDNSLoop exit, since it only iterates on watcher updates, and has no other
+		// way to stop. We cannot close the watcher in `stopping` method, because it is only called *after*
+		// watchDNSLoop exits.
 		<-servCtx.Done()
 		w.watcher.Close()
 	}()

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -32,6 +33,13 @@ var (
 		Help:      "The total number of evicted entries",
 	}, []string{"cache"})
 
+	cacheEntriesCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "querier",
+		Subsystem: "cache",
+		Name:      "entries",
+		Help:      "The total number of entries",
+	}, []string{"cache"})
+
 	cacheTotalGets = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "querier",
 		Subsystem: "cache",
@@ -51,6 +59,13 @@ var (
 		Subsystem: "cache",
 		Name:      "stale_gets_total",
 		Help:      "The total number of Get calls that had an entry which expired",
+	}, []string{"cache"})
+
+	cacheMemoryBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "querier",
+		Subsystem: "cache",
+		Name:      "memory_bytes",
+		Help:      "The total number of bytes",
 	}, []string{"cache"})
 )
 
@@ -81,9 +96,11 @@ type FifoCache struct {
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
 	entriesEvicted  prometheus.Counter
+	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
+	memoryBytes     prometheus.Gauge
 }
 
 type cacheEntry struct {
@@ -106,9 +123,11 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
 		entriesAddedNew: cacheEntriesAddedNew.WithLabelValues(name),
 		entriesEvicted:  cacheEntriesEvicted.WithLabelValues(name),
+		entriesCurrent:  cacheEntriesCurrent.WithLabelValues(name),
 		totalGets:       cacheTotalGets.WithLabelValues(name),
 		totalMisses:     cacheTotalMisses.WithLabelValues(name),
 		staleGets:       cacheStaleGets.WithLabelValues(name),
+		memoryBytes:     cacheMemoryBytes.WithLabelValues(name),
 	}
 }
 
@@ -160,11 +179,15 @@ func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}
 func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	// See if we already have the entry
 	index, ok := c.index[key]
+	var deltaSize int
+
 	if ok {
 		entry := c.entries[index]
+		deltaSize -= int(unsafe.Sizeof(entry))
 
 		entry.updated = time.Now()
 		entry.value = value
+		deltaSize += int(unsafe.Sizeof(entry))
 
 		// Remove this entry from the FIFO linked-list.
 		c.entries[entry.prev].next = entry.next
@@ -178,6 +201,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.first = index
 
 		c.entries[index] = entry
+		c.memoryBytes.Add(float64(deltaSize))
 		return
 	}
 	c.entriesAddedNew.Inc()
@@ -187,6 +211,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.entriesEvicted.Inc()
 		index = c.last
 		entry := c.entries[index]
+		deltaSize -= int(unsafe.Sizeof(entry))
 
 		c.last = entry.prev
 		c.first = index
@@ -197,22 +222,30 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		entry.value = value
 		entry.key = key
 		c.entries[index] = entry
+
+		deltaSize += int(unsafe.Sizeof(entry))
+		c.memoryBytes.Add(float64(deltaSize))
 		return
 	}
 
 	// Finally, no hit and we have space.
 	index = len(c.entries)
-	c.entries = append(c.entries, cacheEntry{
+	entry := cacheEntry{
 		updated: time.Now(),
 		key:     key,
 		value:   value,
 		prev:    c.last,
 		next:    c.first,
-	})
+	}
+	c.entries = append(c.entries, entry)
 	c.entries[c.first].prev = index
 	c.entries[c.last].next = index
 	c.first = index
 	c.index[key] = index
+
+	deltaSize += int(unsafe.Sizeof(entry))
+	c.memoryBytes.Add(float64(deltaSize))
+	c.entriesCurrent.Set(float64(len(c.entries)))
 }
 
 // Get returns the stored value against the key and when the key was last updated.

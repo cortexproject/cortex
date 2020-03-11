@@ -61,7 +61,7 @@ require (
 	github.com/thanos-io/thanos v0.11.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
-	github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
+	github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	go.uber.org/atomic v1.5.0

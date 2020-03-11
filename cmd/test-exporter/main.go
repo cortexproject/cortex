@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -26,11 +27,14 @@ func main() {
 	flagext.RegisterFlags(&serverConfig, &runnerConfig)
 	flag.Parse()
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.NewFromEnv("test-exporter")
-	defer trace.Close()
-
 	util.InitLogger(&serverConfig)
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	if trace, err := tracing.NewFromEnv("test-exporter"); err != nil {
+		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
+	} else {
+		defer trace.Close()
+	}
 
 	server, err := server.New(serverConfig)
 	util.CheckFatal("initializing server", err)

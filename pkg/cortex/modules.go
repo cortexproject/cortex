@@ -113,9 +113,9 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 		return svs
 	}
 
-	s := NewServerService(cfg, t.server, servicesToWaitFor)
-	serv.HTTP.HandleFunc("/", s.indexHandler)
-	serv.HTTP.HandleFunc("/config", s.configHandler)
+	s := NewServerService(t.server, servicesToWaitFor)
+	serv.HTTP.HandleFunc("/", indexHandler)
+	serv.HTTP.HandleFunc("/config", configHandler(cfg))
 
 	return s, nil
 }

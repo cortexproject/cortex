@@ -12,16 +12,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type ServerService struct {
-	services.Service
-
-	cfg *Config
-}
-
 // NewServerService constructs service from Server component.
 // servicesToWaitFor is called when server is stopping, and should return all
 // services that need to terminate before server actually stops.
-func NewServerService(cfg *Config, serv *server.Server, servicesToWaitFor func() []services.Service) *ServerService {
+// N.B.: this function is NOT Cortex specific, please let's keep it that way.
+func NewServerService(serv *server.Server, servicesToWaitFor func() []services.Service) services.Service {
 	serverDone := make(chan error, 1)
 
 	runFn := func(ctx context.Context) error {
@@ -56,10 +51,7 @@ func NewServerService(cfg *Config, serv *server.Server, servicesToWaitFor func()
 		return nil
 	}
 
-	return &ServerService{
-		cfg:     cfg,
-		Service: services.NewBasicService(nil, runFn, stoppingFn),
-	}
+	return services.NewBasicService(nil, runFn, stoppingFn)
 }
 
 const indexPageContent = `
@@ -87,23 +79,25 @@ const indexPageContent = `
 	</body>
 </html>`
 
-func (s *ServerService) indexHandler(w http.ResponseWriter, r *http.Request) {
+func indexHandler(w http.ResponseWriter, _ *http.Request) {
 	if _, err := w.Write([]byte(indexPageContent)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func (s *ServerService) configHandler(w http.ResponseWriter, r *http.Request) {
-	out, err := yaml.Marshal(s.cfg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+func configHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := yaml.Marshal(cfg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	w.Header().Set("Content-Type", "text/yaml")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(out); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing response", "err", err)
+		w.Header().Set("Content-Type", "text/yaml")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(out); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
+		}
 	}
 }

@@ -26,7 +26,7 @@ func TestServerStopViaContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	s := NewServerService(&Config{}, serv, func() []services.Service { return nil })
+	s := NewServerService(serv, func() []services.Service { return nil })
 	require.NoError(t, s.StartAsync(ctx))
 
 	// should terminate soon, since context has short timeout
@@ -44,7 +44,7 @@ func TestServerStopViaShutdown(t *testing.T) {
 	serv, err := server.New(server.Config{})
 	require.NoError(t, err)
 
-	s := NewServerService(&Config{}, serv, func() []services.Service { return nil })
+	s := NewServerService(serv, func() []services.Service { return nil })
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 
 	// we stop HTTP/gRPC Servers here... that should make server stop.
@@ -64,7 +64,7 @@ func TestServerStopViaStop(t *testing.T) {
 	serv, err := server.New(server.Config{})
 	require.NoError(t, err)
 
-	s := NewServerService(&Config{}, serv, func() []services.Service { return nil })
+	s := NewServerService(serv, func() []services.Service { return nil })
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 
 	serv.Stop()

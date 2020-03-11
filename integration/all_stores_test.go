@@ -49,7 +49,8 @@ func TestAllIndexStores(t *testing.T) {
 
 		tableManager := e2ecortex.NewTableManager("table-manager", mergeFlags(ChunksStorageFlags, map[string]string{
 			"-table-manager.retention-period": "2520h", // setting retention high enough
-		}), "", bigtableFlag)
+		}), "")
+		tableManager.HTTPService.SetEnvVars(bigtableFlag)
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
@@ -61,9 +62,12 @@ func TestAllIndexStores(t *testing.T) {
 	// Start rest of the Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs))))
 
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "", bigtableFlag)
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	ingester.HTTPService.SetEnvVars(bigtableFlag)
+
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "", bigtableFlag)
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	querier.HTTPService.SetEnvVars(bigtableFlag)
 
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 

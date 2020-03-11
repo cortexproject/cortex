@@ -106,9 +106,6 @@ storage:
   aws:
     dynamodbconfig:
       dynamodb: {{.DynamoDBURL}}
-  bigtable:
-    project: bigtable-project
-    instance: bigtable-instance
 
 table_manager:
   dynamodb_poll_interval: 1m

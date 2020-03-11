@@ -47,7 +47,7 @@ func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "", nil)
+		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
@@ -66,7 +66,7 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "", nil)
+		tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
@@ -92,7 +92,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	// Start Cortex components.
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "", nil)
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
 
@@ -100,7 +100,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "", nil)
+	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.

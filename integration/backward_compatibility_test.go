@@ -38,10 +38,10 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 
 	// Start Cortex components (ingester running on previous version).
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	tableManager := e2ecortex.NewTableManager("table-manager", flagsForOldImage, previousVersionImage, nil)
+	tableManager := e2ecortex.NewTableManager("table-manager", flagsForOldImage, previousVersionImage)
 	// Old table-manager doesn't expose a readiness probe, so we just check if the / returns 404
 	tableManager.SetReadinessProbe(e2e.NewReadinessProbe(tableManager.HTTPPort(), "/", 404))
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, "", nil)
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	// Old ring didn't have /ready probe, use /ring instead.
 	distributor.SetReadinessProbe(e2e.NewReadinessProbe(distributor.HTTPPort(), "/ring", 200))
@@ -67,7 +67,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
 		"-ingester.join-after": "10s",
-	}), "", nil)
+	}), "")
 	// Start ingester-2 on new version, to ensure the transfer is backward compatible.
 	require.NoError(t, s.Start(ingester2))
 
@@ -81,7 +81,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		if image == previousVersionImage {
 			flags = flagsForOldImage
 		}
-		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image, nil)
+		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image)
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.

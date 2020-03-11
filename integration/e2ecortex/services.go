@@ -51,15 +51,14 @@ func NewDistributorWithConfigFile(name, consulAddress, configFile string, flags 
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		nil,
 	)
 }
 
-func NewQuerier(name string, consulAddress string, flags map[string]string, image string, envVars map[string]string) *CortexService {
-	return NewQuerierWithConfigFile(name, consulAddress, "", flags, image, envVars)
+func NewQuerier(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewQuerierWithConfigFile(name, consulAddress, "", flags, image)
 }
 
-func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string, envVars map[string]string) *CortexService {
+func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
 	if configFile != "" {
 		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
 	}
@@ -87,15 +86,14 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		envVars,
 	)
 }
 
-func NewIngester(name string, consulAddress string, flags map[string]string, image string, envVars map[string]string) *CortexService {
-	return NewIngesterWithConfigFile(name, consulAddress, "", flags, image, envVars)
+func NewIngester(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewIngesterWithConfigFile(name, consulAddress, "", flags, image)
 }
 
-func NewIngesterWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string, envVars map[string]string) *CortexService {
+func NewIngesterWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
 	if configFile != "" {
 		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
 	}
@@ -122,15 +120,14 @@ func NewIngesterWithConfigFile(name, consulAddress, configFile string, flags map
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		envVars,
 	)
 }
 
-func NewTableManager(name string, flags map[string]string, image string, envVars map[string]string) *CortexService {
-	return NewTableManagerWithConfigFile(name, "", flags, image, envVars)
+func NewTableManager(name string, flags map[string]string, image string) *CortexService {
+	return NewTableManagerWithConfigFile(name, "", flags, image)
 }
 
-func NewTableManagerWithConfigFile(name, configFile string, flags map[string]string, image string, envVars map[string]string) *CortexService {
+func NewTableManagerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
 	if configFile != "" {
 		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
 	}
@@ -149,7 +146,6 @@ func NewTableManagerWithConfigFile(name, configFile string, flags map[string]str
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		envVars,
 	)
 }
 
@@ -176,7 +172,6 @@ func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]st
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		nil,
 	)
 }
 
@@ -194,7 +189,6 @@ func NewSingleBinary(name string, flags map[string]string, image string, httpPor
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		nil,
 		otherPorts...,
 	)
 }
@@ -214,6 +208,5 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 		e2e.NewReadinessProbe(httpPort, "/ready", 204),
 		httpPort,
 		grpcPort,
-		nil,
 	)
 }

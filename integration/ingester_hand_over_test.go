@@ -29,7 +29,7 @@ func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 
 		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
-		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "", nil)
+		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
@@ -49,8 +49,8 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	setup(t, s)
 
 	// Start Cortex components.
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "", nil)
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "", nil)
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
 
@@ -78,7 +78,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	// Start ingester-2.
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.join-after": "10s",
-	}), "", nil)
+	}), "")
 	require.NoError(t, s.Start(ingester2))
 
 	// Stop ingester-1. This function will return once the ingester-1 is successfully

@@ -113,8 +113,8 @@ type Distributor struct {
 	ingestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
-	subservices    *services.Manager
-	serviceWatcher *services.FailureWatcher
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 }
 
 // Config contains the configuration require to
@@ -210,8 +210,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
-	d.serviceWatcher = services.NewFailureWatcher()
-	d.serviceWatcher.WatchManager(d.subservices)
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
 
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 	return d, nil
@@ -226,7 +226,7 @@ func (d *Distributor) running(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return nil
-	case err := <-d.serviceWatcher.Chan():
+	case err := <-d.subservicesWatcher.Chan():
 		return errors.Wrap(err, "distributor subservice failed")
 	}
 }

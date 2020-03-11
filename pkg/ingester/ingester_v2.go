@@ -126,8 +126,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	if err != nil {
 		return nil, err
 	}
-	i.serviceWatcher = services.NewFailureWatcher()
-	i.serviceWatcher.WatchService(i.lifecycler)
+	i.subservicesWatcher = services.NewFailureWatcher()
+	i.subservicesWatcher.WatchService(i.lifecycler)
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
@@ -211,7 +211,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			}
 		case <-ctx.Done():
 			return nil
-		case err := <-i.serviceWatcher.Chan():
+		case err := <-i.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ingester subservice failed")
 		}
 	}

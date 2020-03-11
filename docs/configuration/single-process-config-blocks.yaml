@@ -49,11 +49,11 @@ ingester:
 storage:
   engine: tsdb
 
-  tsdb:
-    backend: s3
-    dir: /tmp/cortex/tsdb
-    bucket_store:
-      sync_dir: /tmp/cortex/tsdb-sync
-    s3:
-      bucket_name: cortex
-      endpoint: s3.dualstack.us-east-1.amazonaws.com
+tsdb:
+  backend: s3
+  dir: /tmp/cortex/tsdb
+  bucket_store:
+    sync_dir: /tmp/cortex/tsdb-sync
+  s3:
+    bucket_name: cortex
+    endpoint: s3.dualstack.us-east-1.amazonaws.com

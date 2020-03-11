@@ -88,7 +88,7 @@ type Compactor struct {
 
 	// Subservices manager (ring, lifecycler)
 	subservices    *services.Manager
-	serviceWatcher *util.ServiceFailureWatcher
+	serviceWatcher *services.FailureWatcher
 
 	// Metrics.
 	compactionRunsStarted   prometheus.Counter
@@ -182,7 +182,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 		c.subservices, err = services.NewManager(c.ringLifecycler, c.ring)
 		if err == nil {
-			c.serviceWatcher = util.NewServiceFailureWatcher()
+			c.serviceWatcher = services.NewFailureWatcher()
 			c.serviceWatcher.WatchManager(c.subservices)
 
 			err = services.StartManagerAndAwaitHealthy(ctx, c.subservices)

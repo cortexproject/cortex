@@ -114,7 +114,7 @@ type Distributor struct {
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices    *services.Manager
-	serviceWatcher *util.ServiceFailureWatcher
+	serviceWatcher *services.FailureWatcher
 }
 
 // Config contains the configuration require to
@@ -210,7 +210,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
-	d.serviceWatcher = util.NewServiceFailureWatcher()
+	d.serviceWatcher = services.NewFailureWatcher()
 	d.serviceWatcher.WatchManager(d.subservices)
 
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)

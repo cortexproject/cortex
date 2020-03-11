@@ -1,4 +1,4 @@
-package util
+package services
 
 import (
 	"context"
@@ -7,23 +7,21 @@ import (
 
 	e2 "github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestNilServiceFailureWatcher(t *testing.T) {
-	var w *ServiceFailureWatcher = nil
+	var w *FailureWatcher = nil
 
 	// prove it doesn't fail, but returns nil channel.
 	require.Nil(t, w.Chan())
 }
 
 func TestServiceFailureWatcher(t *testing.T) {
-	w := NewServiceFailureWatcher()
+	w := NewFailureWatcher()
 
 	err := errors.New("this error doesn't end with dot")
 
-	failing := services.NewBasicService(nil, nil, func(_ error) error {
+	failing := NewBasicService(nil, nil, func(_ error) error {
 		return err
 	})
 

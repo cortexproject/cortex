@@ -104,7 +104,7 @@ type Ingester struct {
 	lifecycler     *ring.Lifecycler
 	limits         *validation.Overrides
 	limiter        *SeriesLimiter
-	serviceWatcher *util.ServiceFailureWatcher
+	serviceWatcher *services.FailureWatcher
 
 	userStatesMtx sync.RWMutex // protects userStates and stopped
 	userStates    *userStates
@@ -171,7 +171,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return nil, err
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.serviceWatcher = util.NewServiceFailureWatcher()
+	i.serviceWatcher = services.NewFailureWatcher()
 	i.serviceWatcher.WatchService(i.lifecycler)
 
 	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)

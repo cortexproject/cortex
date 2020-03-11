@@ -126,7 +126,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	if err != nil {
 		return nil, err
 	}
-	i.serviceWatcher = util.NewServiceFailureWatcher()
+	i.serviceWatcher = services.NewFailureWatcher()
 	i.serviceWatcher.WatchService(i.lifecycler)
 
 	// Init the limter and instantiate the user states which depend on it

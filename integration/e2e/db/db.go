@@ -82,3 +82,14 @@ func NewDynamoDB() *e2e.HTTPService {
 		8000,
 	)
 }
+
+// while using Bigtable emulator as index store make sure you set BIGTABLE_EMULATOR_HOST environment variable to host:9035 for all the services which access stores
+func NewBigtable() *e2e.HTTPService {
+	return e2e.NewHTTPService(
+		"bigtable",
+		"shopify/bigtable-emulator:0.1.0",
+		e2e.NewCommand(""),
+		nil,
+		9035,
+	)
+}

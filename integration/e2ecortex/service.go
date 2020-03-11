@@ -16,12 +16,16 @@ func NewCortexService(
 	readiness *e2e.ReadinessProbe,
 	httpPort int,
 	grpcPort int,
+	envVars map[string]string,
 	otherPorts ...int,
 ) *CortexService {
-	return &CortexService{
+	service := CortexService{
 		HTTPService: e2e.NewHTTPService(name, image, command, readiness, httpPort, otherPorts...),
 		grpcPort:    grpcPort,
 	}
+	service.SetEnvVars(envVars)
+
+	return &service
 }
 
 func (s *CortexService) GRPCEndpoint() string {

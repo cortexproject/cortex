@@ -29,8 +29,8 @@ func TestExportedMetrics(t *testing.T) {
 	// Start Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "", nil)
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "", nil)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
 	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", ChunksStorageFlags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, queryFrontend, ingester, tableManager))
@@ -39,7 +39,7 @@ func TestExportedMetrics(t *testing.T) {
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
+	}), "", nil)
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the first table-manager sync has completed, so that we're

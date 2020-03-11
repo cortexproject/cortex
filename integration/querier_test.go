@@ -55,8 +55,8 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 
 			// Start Cortex components.
 			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-			ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
-			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+			ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "", nil)
+			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "", nil)
 			require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 
 			// Wait until both the distributor and querier have updated the ring.
@@ -160,7 +160,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 
 	// Start Cortex components for the write path.
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "", nil)
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	// Wait until the distributor has updated the ring.
@@ -193,7 +193,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	// Start the querier and configure it to not frequently sync blocks.
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-experimental.tsdb.bucket-store.sync-interval": "1m",
-	}), "")
+	}), "", nil)
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the querier has updated the ring.

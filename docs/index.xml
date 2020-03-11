@@ -4400,6 +4400,7 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;[CHANGE] Utilize separate protos for rule state and storage. Experimental ruler API will not be functional until the rollout is complete. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2226&#34;&gt;#2226&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] Frontend worker in querier now starts after all Querier module dependencies are started. This fixes issue where frontend worker started to send queries to querier before it was ready to serve them (mostly visible when using experimental blocks storage). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2246&#34;&gt;#2246&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Flusher target to flush the WAL.
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-flusher.wal-dir&lt;/code&gt; for the WAL directory to recover from.&lt;/li&gt;

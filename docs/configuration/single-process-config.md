@@ -64,7 +64,7 @@ schema:
     schema: v10
     index:
       prefix: index_
-      period: 168h
+      period: 1w 
 
 storage:
   boltdb:

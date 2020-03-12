@@ -22,10 +22,10 @@ const (
   schema: v9
   index:
     prefix: cortex_
-    period: 168h0m0s
+    period: 1w 
   chunks:
     prefix: cortex_chunks_
-    period: 168h0m0s
+    period: 1w 
 `
 
 	cortexAlertmanagerUserConfigYaml = `route:
@@ -91,7 +91,7 @@ tsdb:
 		"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
 		"-dynamodb.poll-interval":         "1m",
 		"-schema-config-file":             filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
-		"-table-manager.retention-period": "168h",
+		"-table-manager.retention-period": "1w",
 	}
 
 	ChunksStorageConfig = buildConfigFromTemplate(`
@@ -102,7 +102,7 @@ storage:
 
 table_manager:
   dynamodb_poll_interval: 1m
-  retention_period:       168h
+  retention_period:       1w 
 
 schema:
 {{.SchemaConfig}}

@@ -117,6 +117,8 @@ func (cfg *TableManagerConfig) MarshalYAML() (interface{}, error) {
 
 // Validate validates the config.
 func (cfg *TableManagerConfig) Validate() error {
+	// We're setting this field because when using flags, you set the RetentionPeriodModel but not RetentionPeriod.
+	// TODO(gouthamve): Its a hack, but I can't think of any other way :/
 	if cfg.RetentionPeriodModel > 0 {
 		cfg.RetentionPeriod = time.Duration(cfg.RetentionPeriodModel)
 	}

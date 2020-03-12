@@ -290,9 +290,9 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix string        `yaml:"prefix"`
-	Period time.Duration `yaml:"period,omitempty"`
-	Tags   Tags          `yaml:"tags,omitempty"`
+	Prefix string
+	Period time.Duration
+	Tags   Tags
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

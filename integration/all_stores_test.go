@@ -62,7 +62,9 @@ func TestAllIndexStores(t *testing.T) {
 	// Start rest of the Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs))))
 
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+		"-ingester.retain-period": "0s", // we want to make ingester not retain any chunks in memory after they are flushed so that queries get data only from the store
+	}), "")
 	ingester.HTTPService.SetEnvVars(bigtableFlag)
 
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
@@ -75,22 +77,30 @@ func TestAllIndexStores(t *testing.T) {
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
-	// Push and Query some series to Cortex for each day starting from oldest start time from configs until now so that we test all the Index Stores
+	distributorClient, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	querierClient, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
+	require.NoError(t, err)
+
+	// Push and Query some series from Cortex for each day starting from oldest start time from configs until now so that we test all the Index Stores
 	for ts := oldestStoreStartTime; ts.Before(now); ts = ts.Add(24 * time.Hour) {
 		series, expectedVector := generateSeries("series_1", ts)
 
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
-		require.NoError(t, err)
-
-		res, err := c.Push(series)
+		res, err := distributorClient.Push(series)
 		require.NoError(t, err)
 		require.Equal(t, 200, res.StatusCode)
 
-		// Query the series both from the querier and query-frontend (to hit the read path).
-		c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
+		// lets make ingester flush the chunks immediately to the store
+		res, err = e2e.GetRequest("http://" + ingester.HTTPEndpoint() + "/flush")
 		require.NoError(t, err)
+		require.Equal(t, 204, res.StatusCode)
 
-		result, err := c.Query("series_1", ts)
+		// lets wait till ingester has no chunks in memory
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_memory_chunks"))
+
+		// Query back the series.
+		result, err := querierClient.Query("series_1", ts)
 		require.NoError(t, err)
 		require.Equal(t, model.ValVector, result.Type())
 		assert.Equal(t, expectedVector, result.(model.Vector))

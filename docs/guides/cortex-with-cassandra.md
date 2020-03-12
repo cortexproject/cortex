@@ -117,7 +117,7 @@ Run Cortex using the latest stable version:
 ```
 docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v0.6.1 -config.file=/etc/single-process-config.yaml
 ```
-In case you prefer to run the master version, please follow this [documentation](https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md) on how to build Cortex from source.
+In case you prefer to run the master version, please follow this [documentation](../getting-started/getting-started-chunks.md) on how to build Cortex from source.
 
 
 ## Configure Prometheus to send series to Cortex

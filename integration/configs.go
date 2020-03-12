@@ -14,6 +14,7 @@ import (
 
 const (
 	networkName            = "e2e-cortex-test"
+	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	cortexSchemaConfigYaml = `configs:
@@ -53,7 +54,7 @@ var (
 		"-experimental.tsdb.head-compaction-interval":   "1s",
 		"-experimental.tsdb.s3.access-key-id":           e2edb.MinioAccessKey,
 		"-experimental.tsdb.s3.secret-access-key":       e2edb.MinioSecretKey,
-		"-experimental.tsdb.s3.bucket-name":             "cortex",
+		"-experimental.tsdb.s3.bucket-name":             bucketName,
 		"-experimental.tsdb.s3.endpoint":                fmt.Sprintf("%s-minio-9000:9000", networkName),
 		"-experimental.tsdb.s3.insecure":                "true",
 	}

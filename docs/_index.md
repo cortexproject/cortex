@@ -28,7 +28,7 @@ Cortex is primarily used as a [remote write](https://prometheus.io/docs/operatin
 
 ## Documentation
 
-Read the [getting started guide](getting_started.md) if you're new to the
+Read the [getting started guide](getting-started/) if you're new to the
 project. Before deploying Cortex with a permanent storage backend you
 should read:
 

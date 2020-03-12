@@ -1,8 +1,8 @@
 ---
-title: "Chunks Storage"
+title: "Getting Started with Chunks Storage"
 linkTitle: "Chunks Storage"
 weight: 1
-slug: getting-started
+slug: getting-started-chunks-storage
 ---
 
 Cortex can be run as a single binary or as multiple independent microservices.
@@ -51,17 +51,17 @@ $ ./prometheus --config.file=./documentation/examples/prometheus.yml
 Your Prometheus instance will now start pushing data to Cortex.  To query that data, start a Grafana instance:
 
 ```sh
-$ docker run -d --name=grafana -p 3000:3000 grafana/grafana
+$ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus) and run `docker rm -f grafana`.
+**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus).
 
 ## Horizontally scale out
 
-Next we're going to show how you can run a scale out Cortex cluster using Docker.
-We'll need:
+Next we're going to show how you can run a scale out Cortex cluster using Docker. We'll need:
+
 - A built Cortex image.
 - A Docker network to put these containers on so they can resolve each other by name.
 - A single node Consul instance to coordinate the Cortex cluster.
@@ -72,7 +72,7 @@ $ docker network create cortex
 $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
 ```
 
-Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note with Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
+Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note the Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
@@ -136,7 +136,7 @@ $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 con
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 
-Finally, launch 3 Cortex nodes with replication factor 3:
+Then, launch 3 Cortex nodes with replication factor 3:
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \

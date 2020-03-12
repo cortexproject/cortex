@@ -1,6 +1,6 @@
 ---
-title: "Blocks Storage (Experimental)"
-linkTitle: "Blocks Storage (Experimental)"
+title: "Getting Started with Blocks Storage (experimental)"
+linkTitle: "Blocks Storage (experimental)"
 weight: 2
 slug: getting-started-blocks-storage
 ---
@@ -8,8 +8,8 @@ slug: getting-started-blocks-storage
 Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
-This document will focus on single-process Cortex.
-See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../operations/blocks-storage.md) for more information about blocks storage.
+
+This document will focus on single-process Cortex with the experimental blocks storage. See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../operations/blocks-storage.md) for more information about the blocks storage.
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
 This document will focus on using S3.
@@ -50,17 +50,17 @@ $ ./prometheus --config.file=./documentation/examples/prometheus.yml
 Your Prometheus instance will now start pushing data to Cortex.  To query that data, start a Grafana instance:
 
 ```sh
-$ docker run -d --name=grafana -p 3000:3000 grafana/grafana
+$ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus) and run `docker rm -f grafana`.
+**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus).
 
 ## Horizontally scale out
 
-Next we're going to show how you can run a scale out Cortex cluster using Docker.
-We'll need:
+Next we're going to show how you can run a scale out Cortex cluster using Docker. We'll need:
+
 - A built Cortex image.
 - A Docker network to put these containers on so they can resolve each other by name.
 - A single node Consul instance to coordinate the Cortex cluster.
@@ -71,7 +71,7 @@ $ docker network create cortex
 $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
 ```
 
-Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note with Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
+Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note the Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
@@ -135,7 +135,7 @@ $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 con
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 
-Finally, launch 3 Cortex nodes with replication factor 3:
+Then, launch 3 Cortex nodes with replication factor 3:
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \

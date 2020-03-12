@@ -12,14 +12,18 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 )
 
+type storeConfig struct {
+	From, IndexStore string
+}
+
 const (
 	networkName            = "e2e-cortex-test"
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
-	cortexSchemaConfigYaml = `configs:
-- from: "2019-03-20"
-  store: aws-dynamo
+	storeConfigTemplate    = `
+- from: {{.From}}
+  store: {{.IndexStore}}
   schema: v9
   index:
     prefix: cortex_
@@ -38,6 +42,8 @@ receivers:
 )
 
 var (
+	cortexSchemaConfigYaml = buildSchemaConfigWith([]storeConfig{{From: "2019-03-20", IndexStore: "aws-dynamo"}})
+
 	AlertmanagerFlags = map[string]string{
 		"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 		"-alertmanager.storage.type":       "local",
@@ -145,4 +151,16 @@ func indentConfig(config string, indentation int) string {
 	}
 
 	return output.String()
+}
+
+func buildSchemaConfigWith(configs []storeConfig) string {
+	configYamls := ""
+	for _, config := range configs {
+		configYamls += buildConfigFromTemplate(
+			storeConfigTemplate,
+			config,
+		)
+	}
+
+	return "configs:" + configYamls
 }

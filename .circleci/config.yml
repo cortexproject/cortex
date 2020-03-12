@@ -147,6 +147,7 @@ jobs:
           docker pull amazon/dynamodb-local:1.11.477
           docker pull consul:0.9
           docker pull quay.io/cortexproject/cortex:v0.6.0
+          docker pull shopify/bigtable-emulator:0.1.0
     - run:
         name: Integration Tests
         command: |

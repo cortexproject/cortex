@@ -52,7 +52,7 @@ var (
 
 	RulerConfigs = map[string]string{
 		"-ruler.enable-sharding":             "false",
-		"-ruler.poll-interval":               "5s",
+		"-ruler.poll-interval":               "2s",
 		"-experimental.ruler.enable-api":     "true",
 		"-ruler.storage.type":                "s3",
 		"-ruler.storage.s3.buckets":          "cortex-rules",

@@ -54,10 +54,9 @@ func TestRulerAPI(t *testing.T) {
 	require.Equal(t, retrievedNamespace[0].Name, rg.Name)
 
 	// Ensure the rule group is loaded by the per-tenant Prometheus rules manager
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_cortex_ruler_managers_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
 	require.NoError(t, c.DeleteRuleGroup(namespace, rg.Name))
-
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(2), "cortex_ruler_config_updates_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
 
 	_, err = c.GetRuleGroups()
 	require.Error(t, err)

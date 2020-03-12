@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -136,6 +137,27 @@ func (w *markdownWriter) writeConfigBlock(block *configBlock) {
 			desc = regexp.MustCompile(regexp.QuoteMeta(block.name)).ReplaceAllStringFunc(desc, func(input string) string {
 				return "`" + input + "`"
 			})
+		}
+
+		// List of all prefixes used to reference this config block.
+		if len(block.flagsPrefixes) > 1 {
+			sortedPrefixes := sort.StringSlice(block.flagsPrefixes)
+			sortedPrefixes.Sort()
+
+			desc += " The supported CLI flags `<prefix>` used to reference this config block are:\n\n"
+
+			for _, prefix := range sortedPrefixes {
+				if prefix == "" {
+					desc += "- _no prefix_\n"
+				} else {
+					desc += fmt.Sprintf("- `%s`\n", prefix)
+				}
+			}
+
+			// Unfortunately the markdown compiler used by the website generator has a bug
+			// when there's a list followed by a code block (no matter know many newlines
+			// in between). To workaround it we add a non-breaking space.
+			desc += "\n&nbsp;"
 		}
 
 		w.out.WriteString(desc + "\n")

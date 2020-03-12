@@ -98,7 +98,12 @@ type TableManagerConfig struct {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
 func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	if err := unmarshal(&cfg); err != nil {
+
+	// If we call unmarshal on TableManagerConfig, it will call UnmarshalYAML leading to infinite recursion.
+	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
+	// again, we have to hide it using a type indirection.
+	type plain TableManagerConfig
+	if err := unmarshal((*plain)(cfg)); err != nil {
 		return err
 	}
 

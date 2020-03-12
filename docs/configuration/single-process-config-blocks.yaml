@@ -28,7 +28,9 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
+  # Disable blocks transfers on ingesters shutdown or rollout.
   max_transfer_retries: 0
+
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by
     # looking up address on eth0 or en0; can be specified if this fails.
@@ -58,6 +60,9 @@ tsdb:
   s3:
     bucket_name: cortex
     endpoint: s3.dualstack.us-east-1.amazonaws.com
+    # Configure your S3 credentials below.
+    # secret_access_key: "TODO"
+    # access_key_id:     "TODO"
 
 compactor:
   data_dir: /tmp/cortex/compactor

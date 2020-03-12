@@ -49,7 +49,7 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 
 	{
-		out := runPromQLAndGetJsonResult(t, "rate(metr[1m])", ts, 10*time.Second)
+		out := runPromQLAndGetJSONResult(t, "rate(metr[1m])", ts, 10*time.Second)
 		require.Contains(t, out, "\"NaN\"")
 	}
 
@@ -65,7 +65,7 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 
 	{
-		out := runPromQLAndGetJsonResult(t, "rate(metr[1m])", deduped, 10*time.Second)
+		out := runPromQLAndGetJSONResult(t, "rate(metr[1m])", deduped, 10*time.Second)
 		require.NotContains(t, out, "\"NaN\"")
 	}
 }
@@ -84,7 +84,7 @@ func dedupeSorted(samples []client.Sample) []client.Sample {
 	return out
 }
 
-func runPromQLAndGetJsonResult(t *testing.T, query string, ts client.TimeSeries, step time.Duration) string {
+func runPromQLAndGetJSONResult(t *testing.T, query string, ts client.TimeSeries, step time.Duration) string {
 	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]client.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{

@@ -21,6 +21,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: nil,
 		},
@@ -30,15 +35,25 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: nil,
 		},
-		"should fail on unknown backend": {
+		"should fail on unknown storage backend": {
 			config: Config{
 				Backend:    "unknown",
 				StripeSize: 2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
-			expectedErr: errUnsupportedBackend,
+			expectedErr: errUnsupportedStorageBackend,
 		},
 		"should fail on invalid ship concurrency": {
 			config: Config{
@@ -46,6 +61,11 @@ func TestConfig_Validate(t *testing.T) {
 				ShipInterval:    time.Minute,
 				ShipConcurrency: 0,
 				StripeSize:      2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidShipConcurrency,
 		},
@@ -57,6 +77,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: nil,
 		},
@@ -65,6 +90,11 @@ func TestConfig_Validate(t *testing.T) {
 				Backend:                "s3",
 				HeadCompactionInterval: 0 * time.Minute,
 				StripeSize:             2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},
@@ -73,6 +103,11 @@ func TestConfig_Validate(t *testing.T) {
 				Backend:                "s3",
 				HeadCompactionInterval: 10 * time.Minute,
 				StripeSize:             2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},
@@ -82,6 +117,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    time.Minute,
 				HeadCompactionConcurrency: 0,
 				StripeSize:                2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidCompactionConcurrency,
 		},
@@ -91,6 +131,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    time.Minute,
 				HeadCompactionConcurrency: 10,
 				StripeSize:                2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: nil,
 		},
@@ -100,6 +145,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                -2,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
@@ -109,6 +159,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                0,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
@@ -118,6 +173,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                1,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
@@ -127,6 +187,11 @@ func TestConfig_Validate(t *testing.T) {
 				HeadCompactionInterval:    1 * time.Minute,
 				HeadCompactionConcurrency: 5,
 				StripeSize:                1 << 14,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
 			},
 			expectedErr: nil,
 		},

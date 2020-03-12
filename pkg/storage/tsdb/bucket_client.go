@@ -24,6 +24,6 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	case BackendFilesystem:
 		return filesystem.NewBucketClient(cfg.Filesystem)
 	default:
-		return nil, errUnsupportedBackend
+		return nil, errUnsupportedStorageBackend
 	}
 }

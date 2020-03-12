@@ -18,6 +18,9 @@ services:
     volumes:
       - .data-minio:/data:delegated
 
+  memcached:
+    image: memcached:1.6
+
   configstore:
     image: nginx
     volumes:

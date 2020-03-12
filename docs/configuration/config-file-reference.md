@@ -2227,11 +2227,6 @@ bucket_store:
   # CLI flag: -experimental.tsdb.bucket-store.sync-interval
   [sync_interval: <duration> | default = 5m0s]
 
-  # Size in bytes of in-memory index cache used to speed up blocks index lookups
-  # (shared between all tenants).
-  # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
-  [index_cache_size_bytes: <int> | default = 1073741824]
-
   # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
   # allocations.
   # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
@@ -2270,6 +2265,54 @@ bucket_store:
   # (roughly) strongly consistent.
   # CLI flag: -experimental.tsdb.bucket-store.consistency-delay
   [consistency_delay: <duration> | default = 0s]
+
+  index_cache:
+    # The index cache backend type. Supported values: inmemory, memcached.
+    # CLI flag: -experimental.tsdb.bucket-store.index-cache.backend
+    [backend: <string> | default = "inmemory"]
+
+    inmemory:
+      # Maximum size in bytes of in-memory index cache used to speed up blocks
+      # index lookups (shared between all tenants).
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes
+      [max_size_bytes: <int> | default = 1073741824]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are splitted into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
 
 # How frequently does Cortex try to compact TSDB head. Block is only created if
 # data covers smallest block range. Must be greater than 0 and max 5 minutes.

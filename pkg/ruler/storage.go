@@ -16,15 +16,15 @@ import (
 
 // RuleStoreConfig conigures a rule store
 type RuleStoreConfig struct {
-	Type     string `yaml:"type"`
-	ConfigDB client.Config
+	Type     string        `yaml:"type"`
+	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	Azure azure.BlobStorageConfig `yaml:"azure,omitempty"`
-	GCS   gcp.GCSConfig           `yaml:"gcs,omitempty"`
-	S3    aws.S3Config            `yaml:"s3,omitempty"`
+	Azure azure.BlobStorageConfig `yaml:"azure"`
+	GCS   gcp.GCSConfig           `yaml:"gcs"`
+	S3    aws.S3Config            `yaml:"s3"`
 
-	mock rules.RuleStore
+	mock rules.RuleStore `yaml:"-"`
 }
 
 // RegisterFlags registers flags.

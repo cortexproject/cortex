@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -345,6 +346,22 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 			fieldFlag:    fieldFlag.Name,
 			fieldDesc:    fieldFlag.Usage,
 			fieldType:    "string",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeOf(model.Duration(0)) {
+		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "duration",
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}

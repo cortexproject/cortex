@@ -9,8 +9,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -443,20 +441,4 @@ func (b *mockReadBatchIter) RangeValue() []byte {
 
 func (b *mockReadBatchIter) Value() []byte {
 	return b.items[b.index].value
-}
-
-func SetupTestDeleteStore() (*DeleteStore, error) {
-	var deleteStoreConfig DeleteStoreConfig
-	flagext.DefaultValues(&deleteStoreConfig)
-
-	mockStorage := NewMockStorage()
-
-	err := mockStorage.CreateTable(context.Background(), TableDesc{
-		Name: deleteStoreConfig.RequestsTableName,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return NewDeleteStore(deleteStoreConfig, mockStorage)
 }

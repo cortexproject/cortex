@@ -123,8 +123,6 @@ type Ingester struct {
 
 	// Prometheus block storage
 	TSDBState TSDBState
-
-	tombstonesLoader cortex_chunk.TombstonesLoader
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -133,7 +131,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, tombstonesLoader cortex_chunk.TombstonesLoader) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -156,13 +154,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	i := &Ingester{
-		cfg:              cfg,
-		clientConfig:     clientConfig,
-		metrics:          newIngesterMetrics(registerer, true),
-		limits:           limits,
-		chunkStore:       chunkStore,
-		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tombstonesLoader: tombstonesLoader,
+		cfg:          cfg,
+		clientConfig: clientConfig,
+		metrics:      newIngesterMetrics(registerer, true),
+		limits:       limits,
+		chunkStore:   chunkStore,
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 	}
 
 	var err error
@@ -520,18 +517,8 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-
-	ts, err := i.tombstonesLoader.GetPendingTombstones(userID)
-	if err != nil {
-		return nil, err
-	}
 	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		if len(series.chunkDescs) <= 0 {
-			return nil
-		}
-		deletedInterval := ts.GetDeletedIntervals(series.metric, series.firstTime(), series.lastTime)
-
-		values, err := series.samplesForRange(from, through, deletedInterval)
+		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
 		}
@@ -591,11 +578,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return nil
 	}
 
-	ts, err := i.tombstonesLoader.GetPendingTombstones(state.userID)
-	if err != nil {
-		return err
-	}
-
 	numSeries, numChunks := 0, 0
 	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	// We'd really like to have series in label order, not FP order, so we
@@ -603,21 +585,10 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
 	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		deletedIntervals := ts.GetDeletedIntervals(series.metric, from, through)
-
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
-				deletedIntervalsForChunk := deletedIntervals.GetOverlappingIntervalsFor(model.Interval{Start: chunk.FirstTime, End: chunk.LastTime})
-				if len(deletedIntervalsForChunk) == 1 && deletedIntervalsForChunk[0].Start == chunk.FirstTime && deletedIntervalsForChunk[1].End == chunk.LastTime {
-					continue
-				} else if len(deletedIntervalsForChunk) == 0 {
-					chunks = append(chunks, chunk.slice(from, through))
-				} else {
-					cs := chunk.slice(from, through)
-					cs.deletedIntervals = deletedIntervalsForChunk
-					chunks = append(chunks, cs)
-				}
+				chunks = append(chunks, chunk.slice(from, through))
 			}
 		}
 

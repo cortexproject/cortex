@@ -48,25 +48,26 @@ type moduleName string
 
 // The various modules that make up Cortex.
 const (
-	Ring           moduleName = "ring"
-	RuntimeConfig  moduleName = "runtime-config"
-	Overrides      moduleName = "overrides"
-	Server         moduleName = "server"
-	Distributor    moduleName = "distributor"
-	Ingester       moduleName = "ingester"
-	Flusher        moduleName = "flusher"
-	Querier        moduleName = "querier"
-	StoreQueryable moduleName = "store-queryable"
-	QueryFrontend  moduleName = "query-frontend"
-	Store          moduleName = "store"
-	TableManager   moduleName = "table-manager"
-	Ruler          moduleName = "ruler"
-	Configs        moduleName = "configs"
-	AlertManager   moduleName = "alertmanager"
-	Compactor      moduleName = "compactor"
-	MemberlistKV   moduleName = "memberlist-kv"
-	DataPurger     moduleName = "data-purger"
-	All            moduleName = "all"
+	Ring                moduleName = "ring"
+	RuntimeConfig       moduleName = "runtime-config"
+	Overrides           moduleName = "overrides"
+	Server              moduleName = "server"
+	Distributor         moduleName = "distributor"
+	Ingester            moduleName = "ingester"
+	Flusher             moduleName = "flusher"
+	Querier             moduleName = "querier"
+	StoreQueryable      moduleName = "store-queryable"
+	QueryFrontend       moduleName = "query-frontend"
+	Store               moduleName = "store"
+	DeleteRequestsStore moduleName = "delete-requests-store"
+	TableManager        moduleName = "table-manager"
+	Ruler               moduleName = "ruler"
+	Configs             moduleName = "configs"
+	AlertManager        moduleName = "alertmanager"
+	Compactor           moduleName = "compactor"
+	MemberlistKV        moduleName = "memberlist-kv"
+	DataPurger          moduleName = "data-purger"
+	All                 moduleName = "all"
 )
 
 func (m moduleName) String() string {
@@ -175,7 +176,15 @@ func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error)
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
+	var tombstonesLoader *purger.TombstonesLoader
+	if cfg.DataPurgerConfig.Enable {
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+	} else {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		tombstonesLoader = purger.NewTombstonesLoader(nil)
+	}
+
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -252,7 +261,7 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
-	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer, t.tombstonesLoader)
+	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -289,25 +298,7 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	if cfg.DataPurgerConfig.Enable {
-		var indexClient chunk.IndexClient
-		indexClient, err = storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
-		if err != nil {
-			return
-		}
-
-		t.deletesStore, err = chunk.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
-		if err != nil {
-			return
-		}
-
-		t.tombstonesLoader = chunk.NewTombstonesLoader(t.deletesStore)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		t.tombstonesLoader = chunk.NewTombstonesLoader(nil)
-	}
-
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, t.tombstonesLoader)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
 	if err != nil {
 		return
 	}
@@ -316,6 +307,25 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		t.store.Stop()
 		return nil
 	}), nil
+}
+
+func (t *Cortex) initDeleteRequestsStore(cfg *Config) (serv services.Service, err error) {
+	if !cfg.DataPurgerConfig.Enable {
+		return
+	}
+
+	var indexClient chunk.IndexClient
+	indexClient, err = storage.NewIndexClient(cfg.Storage.DeleteStoreConfig.Store, cfg.Storage, cfg.Schema)
+	if err != nil {
+		return
+	}
+
+	t.deletesStore, err = purger.NewDeleteStore(cfg.Storage.DeleteStoreConfig, indexClient)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err error) {
@@ -409,9 +419,17 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
+	var tombstonesLoader *purger.TombstonesLoader
+	if cfg.DataPurgerConfig.Enable {
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+	} else {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		tombstonesLoader = purger.NewTombstonesLoader(nil)
+	}
+
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -559,6 +577,10 @@ var modules = map[moduleName]module{
 		wrappedService: (*Cortex).initStore,
 	},
 
+	DeleteRequestsStore: {
+		wrappedService: (*Cortex).initDeleteRequestsStore,
+	},
+
 	Ingester: {
 		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initIngester,
@@ -575,7 +597,7 @@ var modules = map[moduleName]module{
 	},
 
 	StoreQueryable: {
-		deps:           []moduleName{Store},
+		deps:           []moduleName{Store, DeleteRequestsStore},
 		wrappedService: (*Cortex).initStoreQueryable,
 	},
 
@@ -610,11 +632,11 @@ var modules = map[moduleName]module{
 	},
 
 	DataPurger: {
-		deps:           []moduleName{Store, Server},
+		deps:           []moduleName{Store, DeleteRequestsStore, Server},
 		wrappedService: (*Cortex).initDataPurger,
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
 	},
 }

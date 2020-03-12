@@ -1,4 +1,4 @@
-package chunk
+package purger
 
 import (
 	"context"
@@ -9,10 +9,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-)
-
-const (
-	modelTimeDay = model.Time(24 * time.Hour / time.Millisecond)
 )
 
 func TestTombstonesLoader(t *testing.T) {
@@ -99,7 +95,7 @@ func TestTombstonesLoader(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			deleteStore, err := SetupTestDeleteStore()
+			deleteStore, err := setupTestDeleteStore()
 			require.NoError(t, err)
 
 			tombstonesLoader := NewTombstonesLoader(deleteStore)

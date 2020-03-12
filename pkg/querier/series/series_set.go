@@ -19,6 +19,8 @@ package series
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -187,3 +189,179 @@ type byLabels []storage.Series
 func (b byLabels) Len() int           { return len(b) }
 func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }
+
+type DeletedSeriesSet struct {
+	seriesSet     storage.SeriesSet
+	tombstones    *purger.TombstonesSet
+	queryInterval model.Interval
+}
+
+func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones *purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
+	return &DeletedSeriesSet{
+		seriesSet:     seriesSet,
+		tombstones:    tombstones,
+		queryInterval: queryInterval,
+	}
+}
+
+func (d DeletedSeriesSet) Next() bool {
+	return d.seriesSet.Next()
+}
+
+func (d DeletedSeriesSet) At() storage.Series {
+	series := d.seriesSet.At()
+	deletedIntervals := d.tombstones.GetDeletedIntervals(series.Labels(), d.queryInterval.Start, d.queryInterval.End)
+
+	// series is deleted for whole query range so return empty series
+	if len(deletedIntervals) == 1 && deletedIntervals[0] == d.queryInterval {
+		return NewEmptySeries(series.Labels())
+	}
+
+	return NewDeletedSeries(series, deletedIntervals)
+}
+
+func (d DeletedSeriesSet) Err() error {
+	return d.seriesSet.Err()
+}
+
+type DeletedSeries struct {
+	series           storage.Series
+	deletedIntervals []model.Interval
+}
+
+func NewDeletedSeries(series storage.Series, deletedIntervals []model.Interval) storage.Series {
+	return &DeletedSeries{
+		series:           series,
+		deletedIntervals: deletedIntervals,
+	}
+}
+
+func (d DeletedSeries) Labels() labels.Labels {
+	return d.series.Labels()
+}
+
+func (d DeletedSeries) Iterator() storage.SeriesIterator {
+	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
+}
+
+type DeletedSeriesIterator struct {
+	itr              storage.SeriesIterator
+	deletedIntervals []model.Interval
+}
+
+func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []model.Interval) storage.SeriesIterator {
+	return &DeletedSeriesIterator{
+		itr:              itr,
+		deletedIntervals: deletedIntervals,
+	}
+}
+
+func (d DeletedSeriesIterator) Seek(t int64) bool {
+	t = d.reboundTimestamp(t)
+	for {
+		found := d.itr.Seek(t)
+		if !found {
+			return false
+		}
+
+		// if current value is deleted then reboundTimestamp would return a different timestamp
+		seekedTs, _ := d.At()
+		newTs := d.reboundTimestamp(seekedTs)
+		if newTs == seekedTs {
+			// timestamp returned from reboundTimestamp is same as what was passed, which means current value is not deleted
+			return true
+		}
+
+		// current value was deleted, lets go through the process finding a new non deleted value
+		t = newTs
+	}
+}
+
+func (d DeletedSeriesIterator) At() (t int64, v float64) {
+	return d.itr.At()
+}
+
+func (d DeletedSeriesIterator) Next() bool {
+	if len(d.deletedIntervals) == 0 {
+		return d.itr.Next()
+	}
+
+	hasNext := d.itr.Next()
+	if !hasNext {
+		return false
+	}
+
+	currentTs, _ := d.At()
+
+	// if current value is deleted then reboundTimestamp would return a different timestamp
+	newTs := d.reboundTimestamp(currentTs)
+	if newTs != currentTs {
+		return d.Seek(newTs)
+	}
+
+	return true
+}
+
+func (d DeletedSeriesIterator) Err() error {
+	return d.itr.Err()
+}
+
+func (d *DeletedSeriesIterator) reboundTimestamp(t int64) int64 {
+	mt := model.Time(t)
+	for _, deletedInterval := range d.deletedIntervals {
+		if mt > deletedInterval.End {
+			// end of deletedInterval is smaller than t, remove it
+			d.deletedIntervals = d.deletedIntervals[1:]
+			continue
+		} else if mt < deletedInterval.Start {
+			// we have eliminated all the intervals we don't care about
+			break
+		}
+
+		// deletedInterval includes t, lets set t to timestamp greater than end of deletedInterval
+		t = int64(deletedInterval.End + 1)
+		d.deletedIntervals = d.deletedIntervals[1:]
+		break
+	}
+
+	return t
+}
+
+type emptySeries struct {
+	labels labels.Labels
+}
+
+func NewEmptySeries(labels labels.Labels) storage.Series {
+	return emptySeries{labels}
+}
+
+func (e emptySeries) Labels() labels.Labels {
+	return e.labels
+}
+
+func (emptySeries) Iterator() storage.SeriesIterator {
+	return NewEmptySeriesIterator()
+}
+
+type emptySeriesIterator struct {
+}
+
+func NewEmptySeriesIterator() storage.SeriesIterator {
+	return emptySeriesIterator{}
+}
+
+func (emptySeriesIterator) Seek(t int64) bool {
+	return false
+}
+
+func (emptySeriesIterator) At() (t int64, v float64) {
+	return 0, 0
+}
+
+func (emptySeriesIterator) Next() bool {
+	return false
+}
+
+func (emptySeriesIterator) Err() error {
+	return nil
+}

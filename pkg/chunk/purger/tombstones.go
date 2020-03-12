@@ -1,4 +1,4 @@
-package chunk
+package purger
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	intervals_util "github.com/cortexproject/cortex/pkg/util/intervals"
 )
 
 const tombstonesReloadDuration = 15 * time.Minute
@@ -23,9 +22,9 @@ type TombstonesSet struct {
 	oldestTombstoneStart, newestTombstoneEnd model.Time // Used as optimization to find whether we want to iterate over tombstones or not
 }
 
-// tombstonesLoader loads delete requests and gen numbers from store and keeps checking for updates.
+// TombstonesLoader loads delete requests and gen numbers from store and keeps checking for updates.
 // It keeps checking for changes in gen numbers, which also means changes in delete requests and reloads specific users delete requests.
-type tombstonesLoader struct {
+type TombstonesLoader struct {
 	tombstones    map[string]*TombstonesSet
 	tombstonesMtx sync.RWMutex
 
@@ -33,9 +32,9 @@ type tombstonesLoader struct {
 	quit        chan struct{}
 }
 
-// NewTombstonesLoader creates a tombstonesLoader
-func NewTombstonesLoader(deleteStore *DeleteStore) TombstonesLoader {
-	tl := tombstonesLoader{
+// NewTombstonesLoader creates a TombstonesLoader
+func NewTombstonesLoader(deleteStore *DeleteStore) *TombstonesLoader {
+	tl := TombstonesLoader{
 		tombstones:  map[string]*TombstonesSet{},
 		deleteStore: deleteStore,
 	}
@@ -44,12 +43,12 @@ func NewTombstonesLoader(deleteStore *DeleteStore) TombstonesLoader {
 	return &tl
 }
 
-// Stop stops tombstonesLoader
-func (tl *tombstonesLoader) Stop() {
+// Stop stops TombstonesLoader
+func (tl *TombstonesLoader) Stop() {
 	close(tl.quit)
 }
 
-func (tl *tombstonesLoader) loop() {
+func (tl *TombstonesLoader) loop() {
 	tombstonesReloadTimer := time.NewTicker(tombstonesReloadDuration)
 	for {
 		select {
@@ -64,7 +63,7 @@ func (tl *tombstonesLoader) loop() {
 	}
 }
 
-func (tl *tombstonesLoader) reloadTombstones() error {
+func (tl *TombstonesLoader) reloadTombstones() error {
 	// check for updates in loaded gen numbers
 	tl.tombstonesMtx.Lock()
 
@@ -87,7 +86,7 @@ func (tl *tombstonesLoader) reloadTombstones() error {
 }
 
 // GetPendingTombstones returns all pending tombstones
-func (tl *tombstonesLoader) GetPendingTombstones(userID string) (TombstonesAnalyzer, error) {
+func (tl *TombstonesLoader) GetPendingTombstones(userID string) (*TombstonesSet, error) {
 	tl.tombstonesMtx.RLock()
 
 	tombstoneSet, isOK := tl.tombstones[userID]
@@ -108,7 +107,39 @@ func (tl *tombstonesLoader) GetPendingTombstones(userID string) (TombstonesAnaly
 	return tl.tombstones[userID], nil
 }
 
-func (tl *tombstonesLoader) loadPendingTombstones(userID string) error {
+// GetPendingTombstones returns all pending tombstones
+func (tl *TombstonesLoader) GetPendingTombstonesForInterval(userID string, from, to model.Time) (*TombstonesSet, error) {
+	allTombstones, err := tl.GetPendingTombstones(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !allTombstones.HasTombstonesForInterval(from, to) {
+		return &TombstonesSet{}, nil
+	}
+
+	filteredSet := TombstonesSet{oldestTombstoneStart: model.Now()}
+
+	for _, tombstone := range allTombstones.tombstones {
+		if !intervalsOverlap(model.Interval{Start: from, End: to}, model.Interval{Start: tombstone.StartTime, End: tombstone.EndTime}) {
+			continue
+		}
+
+		filteredSet.tombstones = append(filteredSet.tombstones, tombstone)
+
+		if tombstone.StartTime < filteredSet.oldestTombstoneStart {
+			filteredSet.oldestTombstoneStart = tombstone.StartTime
+		}
+
+		if tombstone.EndTime > filteredSet.newestTombstoneEnd {
+			filteredSet.newestTombstoneEnd = tombstone.EndTime
+		}
+	}
+
+	return &filteredSet, nil
+}
+
+func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 	if tl.deleteStore == nil {
 		tl.tombstonesMtx.Lock()
 		defer tl.tombstonesMtx.Unlock()
@@ -151,7 +182,7 @@ func (tl *tombstonesLoader) loadPendingTombstones(userID string) error {
 }
 
 // GetDeletedIntervals returns non-overlapping, sorted  deleted intervals.
-func (ts TombstonesSet) GetDeletedIntervals(labels labels.Labels, from, to model.Time) intervals_util.Intervals {
+func (ts TombstonesSet) GetDeletedIntervals(lbls labels.Labels, from, to model.Time) []model.Interval {
 	if len(ts.tombstones) == 0 || to < ts.oldestTombstoneStart || from > ts.newestTombstoneEnd {
 		return nil
 	}
@@ -160,7 +191,7 @@ func (ts TombstonesSet) GetDeletedIntervals(labels labels.Labels, from, to model
 	requestedInterval := model.Interval{Start: from, End: to}
 
 	for i := range ts.tombstones {
-		overlaps, overlappingInterval := intervals_util.GetOverlappingInterval(requestedInterval,
+		overlaps, overlappingInterval := getOverlappingInterval(requestedInterval,
 			model.Interval{Start: ts.tombstones[i].StartTime, End: ts.tombstones[i].EndTime})
 
 		if !overlaps {
@@ -169,7 +200,7 @@ func (ts TombstonesSet) GetDeletedIntervals(labels labels.Labels, from, to model
 
 		matches := false
 		for _, matchers := range ts.tombstones[i].Matchers {
-			if util.CompareMatchersWithLabels(matchers, labels) {
+			if labels.Selector(matchers).Matches(lbls) {
 				matches = true
 				break
 			}
@@ -201,7 +232,7 @@ func (ts TombstonesSet) Len() int {
 
 // HasTombstonesForInterval tells whether there are any tombstones which overlapping given interval
 func (ts TombstonesSet) HasTombstonesForInterval(from, to model.Time) bool {
-	if to < ts.oldestTombstoneStart || from > ts.newestTombstoneEnd {
+	if len(ts.tombstones) == 0 || to < ts.oldestTombstoneStart || from > ts.newestTombstoneEnd {
 		return false
 	}
 
@@ -239,4 +270,24 @@ func mergeIntervals(intervals []model.Interval) []model.Interval {
 	mergedIntervals = append(mergedIntervals, model.Interval{Start: ongoingTrFrom, End: ongoingTrTo})
 
 	return mergedIntervals
+}
+
+func getOverlappingInterval(interval1, interval2 model.Interval) (bool, model.Interval) {
+	if interval2.Start > interval1.Start {
+		interval1.Start = interval2.Start
+	}
+
+	if interval2.End < interval1.End {
+		interval1.End = interval2.End
+	}
+
+	return interval1.Start < interval1.End, interval1
+}
+
+func intervalsOverlap(interval1, interval2 model.Interval) bool {
+	if interval1.Start > interval2.End || interval2.Start > interval1.End {
+		return false
+	}
+
+	return true
 }

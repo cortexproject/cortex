@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
@@ -26,7 +27,7 @@ import (
 )
 
 // RegisterRoutes registers the ruler API HTTP routes with the provided Router.
-func (r *Ruler) RegisterRoutes(router *mux.Router) {
+func (r *Ruler) RegisterRoutes(router *mux.Router, middleware middleware.Interface) {
 	router = router.UseEncodedPath()
 	for _, route := range []struct {
 		name, method, path string
@@ -41,7 +42,7 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 		{"delete_rulegroup", "DELETE", "/rules/{namespace}/{groupName}", r.deleteRuleGroup},
 	} {
 		level.Debug(util.Logger).Log("msg", "ruler: registering route", "name", route.name, "method", route.method, "path", route.path)
-		router.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
+		router.Handle(route.path, middleware.Wrap(route.handler)).Methods(route.method).Name(route.name)
 	}
 }
 

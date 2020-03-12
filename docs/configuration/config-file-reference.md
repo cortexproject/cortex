@@ -18,7 +18,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 
 * `<boolean>`: a boolean that can take the values `true` or `false`
 * `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>`: a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+* `<duration>`: a duration matching the regular expression `[0-9]+(ns|us|µs|ms|s|m|h|d|w|y)` where y = 365 days.
 * `<string>`: a regular string
 * `<url>`: an URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)

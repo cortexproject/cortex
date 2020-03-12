@@ -10,6 +10,7 @@
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
+* [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting table period and retention. #2252 
 
 ## 0.7.0-rc.0 / 2020-03-09
 

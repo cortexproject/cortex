@@ -33,7 +33,7 @@ Where `periodic_table_config` is
 ```
 # The prefix to use for the tables.
 prefix: <string>
-# We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 168h (1week).
+# We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 1w (1week).
 period: <duration>
 # The tags that can be set on the dynamo table.
 tags: <map[string]string>
@@ -45,12 +45,12 @@ configs:
   - from: "2020-03-01" # Or typically a week before the Cortex cluster was created.
     schema: v9
     index:
-      period: 168h
+      period: 1w 
       prefix: cortex_index_
     # Chunks section is optional and required only if you're not using a
     # separate object store.
     chunks:
-      period: 168h
+      period: 1w 
       prefix: cortex_chunks
     store: aws-dynamo/bigtable-hashed/cassandra/boltdb
     object_store: <above options>/s3/gcs/azure/filesystem
@@ -66,10 +66,10 @@ configs:
   - from: "2018-08-23"
     schema: v9
     chunks:
-        period: 168h0m0s
+        period: 1w 
         prefix: dev_chunks_
     index:
-        period: 168h0m0s
+        period: 1w 
         prefix: dev_index_
     store: gcp-columnkey
 
@@ -77,10 +77,10 @@ configs:
   - from: "2019-02-13"
     schema: v9
     chunks:
-        period: 168h
+        period: 1w 
         prefix: dev_chunks_
     index:
-        period: 168h
+        period: 1w 
         prefix: dev_index_
     object_store: gcs
     store: gcp-columnkey
@@ -90,10 +90,10 @@ configs:
   - from: "2019-02-24"
     schema: v9
     chunks:
-        period: 168h
+        period: 1w 
         prefix: dev_chunks_
     index:
-        period: 168h
+        period: 1w 
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed
@@ -102,10 +102,10 @@ configs:
   - from: "2019-03-05"
     schema: v10
     chunks:
-        period: 168h
+        period: 1w 
         prefix: dev_chunks_
     index:
-        period: 168h
+        period: 1w 
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed

@@ -89,5 +89,5 @@ func (f *Flusher) running(ctx context.Context) error {
 	if err := services.StopAndAwaitTerminated(ctx, ing); err != nil {
 		return errors.Wrap(err, "stop and await terminated ingester")
 	}
-	return util.ErrStopCortex
+	return util.ErrStopProcess
 }

@@ -321,7 +321,7 @@ func (t *Cortex) Run() error {
 		// let's find out which module failed
 		for m, s := range t.serviceMap {
 			if s == service {
-				if service.FailureCase() == util.ErrStopCortex {
+				if service.FailureCase() == util.ErrStopProcess {
 					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
 				} else {
 					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
@@ -362,7 +362,7 @@ func (t *Cortex) Run() error {
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
-				if f.FailureCase() != util.ErrStopCortex {
+				if f.FailureCase() != util.ErrStopProcess {
 					// Details were reported via failure listener before
 					err = errors.New("failed services")
 					break

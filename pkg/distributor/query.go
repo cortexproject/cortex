@@ -185,7 +185,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			if existing.Samples == nil {
 				existing.Samples = series.Samples
 			} else {
-				existing.Samples = mergeSamplesIntoFirst(existing.Samples, series.Samples)
+				existing.Samples = mergeSamples(existing.Samples, series.Samples)
 			}
 			hashToTimeSeries[hash] = existing
 		}
@@ -205,27 +205,42 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	return resp, nil
 }
 
-// Merges and dedupes two sorted slices with samples together, storing result in the first slice.
-// If a and b overlap, weird things will happen.
-func mergeSamplesIntoFirst(a, b []ingester_client.Sample) []ingester_client.Sample {
+// Merges and dedupes two sorted slices with samples together.
+func mergeSamples(a, b []ingester_client.Sample) []ingester_client.Sample {
+	if sameSamples(a, b) {
+		return a
+	}
+
+	result := make([]ingester_client.Sample, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		if a[i].TimestampMs < b[j].TimestampMs {
+			result = append(result, a[i])
 			i++
 		} else if a[i].TimestampMs > b[j].TimestampMs {
-			a = append(a, ingester_client.Sample{}) // make sure 'a' has enough space
-			copy(a[i+1:], a[i:])                    // shift elements in 'a'
-			a[i] = b[j]                             // insert b[j] at i-th place
+			result = append(result, b[j])
 			j++
-		} else { // same timestamp, we keep a[i], but advance both
+		} else {
+			result = append(result, a[i])
 			i++
 			j++
 		}
 	}
+	// Add the rest of a or b. One of them is empty now.
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
+}
 
-	// if there are more elements in 'b', just append them. No special care needed for elements in 'a'.
-	if j < len(b) {
-		a = append(a, b[j:]...)
+func sameSamples(a, b []ingester_client.Sample) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	return a
+
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

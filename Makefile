@@ -77,7 +77,7 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
+GO_FLAGS := -mod=vendor -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
@@ -162,7 +162,7 @@ endif
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache
-	go clean ./...
+	go clean -mod=vendor ./...
 
 clean-protos:
 	rm -rf $(PROTO_GOS)

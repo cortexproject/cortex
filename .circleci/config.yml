@@ -118,8 +118,6 @@ jobs:
     machine:
       image: ubuntu-1604:201903-01
 
-    # Make sure the working directory is within the GOPATH, otherwise
-    # "go test" will not download module dependencies.
     working_directory: ~/.go_workspace/src/github.com/cortexproject/cortex
     steps:
     - run:
@@ -155,7 +153,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${CIRCLE_TAG:-$(./tools/image-tag)}"
           export CORTEX_CHECKOUT_DIR="/home/circleci/.go_workspace/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 300s -v -count=1 ./integration/...
+          go test -mod=vendor -tags=requires_docker -timeout 300s -v -count=1 ./integration/...
 
   build:
     <<: *defaults

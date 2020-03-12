@@ -291,6 +291,8 @@ var (
 	ErrNoRuleGroups = errors.New("no rule groups found")
 	// ErrNoUserID is returned when no user ID is provided
 	ErrNoUserID = errors.New("no id provided")
+	// ErrBadRuleGroup is returned when the provided rule group can not be unmarshalled
+	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
 
 // ValidateRuleGroup validates a rulegroup
@@ -316,29 +318,58 @@ func ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	return errs
 }
 
-func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
+// parseNamespace parses the namespace from the provided set of params, in this
+// api these params are derived from the url path
+func parseNamespace(params map[string]string) (string, error) {
+	namespace, exists := params["namespace"]
+	if !exists {
+		return "", ErrNoNamespace
 	}
 
-	if userID == "" {
-		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
+	namespace, err := url.PathUnescape(namespace) // namespaces needs to be unescaped if in the URL
+	if err != nil {
+		return "", err
+	}
+
+	return namespace, nil
+}
+
+// parseGroupName parses the group name from the provided set of params, in this
+// api these params are derived from the url path
+func parseGroupName(params map[string]string) (string, error) {
+	groupName, exists := params["groupName"]
+	if !exists {
+		return "", ErrNoGroupName
+	}
+
+	groupName, err := url.PathUnescape(groupName) // groupName needs to be unescaped if in the URL
+	if err != nil {
+		return "", err
+	}
+
+	return groupName, nil
+}
+
+func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
+	userID, err := user.ExtractOrgID(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	vars := mux.Vars(req)
 
-	namespace := vars["namespace"]
-	if namespace != "" {
-		namespace, err = url.PathUnescape(namespace) // namespaces need to be unescaped if in the URL
-		if err != nil {
+	// Parse the namespace from the url path parameters and return
+	// a 400 if it is invalid and return a full set of rules if no
+	// namespace is provided
+	namespace, err := parseNamespace(vars)
+	if err != nil {
+		// If a namespace is not provided continue as usual and return a full set of rules
+		if err != ErrNoNamespace {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
 		level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	}
 
@@ -376,38 +407,25 @@ func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
 
 func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	if userID == "" {
-		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	vars := mux.Vars(req)
-	namespace, exists := vars["namespace"]
-	if !exists {
-		http.Error(w, ErrNoNamespace.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	namespace, err = url.PathUnescape(namespace) // namespaces need to be unescaped if in the URL
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	groupName, exists := vars["groupName"]
-	if !exists {
-		http.Error(w, ErrNoGroupName.Error(), http.StatusUnauthorized)
+	vars := mux.Vars(req)
+
+	// Parse the namespace from the url path parameters and return
+	// a 400 if it is invalid
+	namespace, err := parseNamespace(vars)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	groupName, err = url.PathUnescape(groupName) // groupName need to be unescaped if in the URL
+	// Parse the rule group name from the url path parameters and return
+	// a 400 if it is invalid
+	groupName, err := parseGroupName(vars)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -442,27 +460,15 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if userID == "" {
-		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	vars := mux.Vars(req)
-
-	namespace := vars["namespace"]
-	if namespace == "" {
-		level.Error(logger).Log("err", "no namespace provided with rule group")
-		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
-		return
-	}
-
-	namespace, err = url.PathUnescape(namespace) // namespaces need to be unescaped if in the URL
+	// Parse the namespace from the url path parameters and return
+	// a 400 if it is invalid
+	namespace, err := parseNamespace(mux.Vars(req))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -481,7 +487,7 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	err = yaml.Unmarshal(payload, &rg)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -508,37 +514,25 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	if userID == "" {
-		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	vars := mux.Vars(req)
-	namespace, exists := vars["namespace"]
-	if !exists {
-		http.Error(w, ErrNoNamespace.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	namespace, err = url.PathUnescape(namespace)
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	groupName, exists := vars["groupName"]
-	if !exists {
-		http.Error(w, ErrNoGroupName.Error(), http.StatusUnauthorized)
+	vars := mux.Vars(req)
+
+	// Parse the namespace from the url path parameters and return
+	// a 400 if it is invalid
+	namespace, err := parseNamespace(vars)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	groupName, err = url.PathUnescape(groupName)
+	// Parse the rule group name from the url path parameters and return
+	// a 400 if it is invalid
+	groupName, err := parseGroupName(vars)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

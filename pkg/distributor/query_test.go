@@ -35,7 +35,7 @@ func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
 		{Value: 1.092038719, TimestampMs: 1583946882302},
 	}
 
-	a = mergeSamplesIntoFirst(a, b)
+	a = mergeSamples(a, b)
 
 	// should be the same
 	require.Equal(t, a, b)
@@ -61,7 +61,7 @@ func TestMergeSamplesIntoFirst(t *testing.T) {
 		{Value: 6, TimestampMs: 55},
 	}
 
-	a = mergeSamplesIntoFirst(a, b)
+	a = mergeSamples(a, b)
 
 	require.Equal(t, []ingester_client.Sample{
 		{Value: 1, TimestampMs: 5},
@@ -88,7 +88,7 @@ func TestMergeSamplesIntoFirstNilA(t *testing.T) {
 		{Value: 6, TimestampMs: 55},
 	}
 
-	a := mergeSamplesIntoFirst(nil, b)
+	a := mergeSamples(nil, b)
 
 	require.Equal(t, b, a)
 }
@@ -102,7 +102,7 @@ func TestMergeSamplesIntoFirstNilB(t *testing.T) {
 		{Value: 5, TimestampMs: 50},
 	}
 
-	b := mergeSamplesIntoFirst(a, nil)
+	b := mergeSamples(a, nil)
 
 	require.Equal(t, b, a)
 }

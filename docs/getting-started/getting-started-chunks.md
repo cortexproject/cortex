@@ -18,7 +18,7 @@ Cortex can also make use of external memcacheds for caching and although these a
 
 ## Single instance, single process
 
-For simplicity & to get started, we'll run it as a [single process](../configuration/single-process-config.md) with no dependencies:
+For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config.md) with no dependencies:
 
 ```sh
 $ go build ./cmd/cortex

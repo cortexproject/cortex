@@ -77,17 +77,14 @@ func TestAllIndexStores(t *testing.T) {
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
-	distributorClient, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
-	require.NoError(t, err)
-
-	querierClient, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
 
 	// Push and Query some series from Cortex for each day starting from oldest start time from configs until now so that we test all the Index Stores
 	for ts := oldestStoreStartTime; ts.Before(now); ts = ts.Add(24 * time.Hour) {
 		series, expectedVector := generateSeries("series_1", ts)
 
-		res, err := distributorClient.Push(series)
+		res, err := client.Push(series)
 		require.NoError(t, err)
 		require.Equal(t, 200, res.StatusCode)
 
@@ -100,7 +97,7 @@ func TestAllIndexStores(t *testing.T) {
 		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_memory_chunks"))
 
 		// Query back the series.
-		result, err := querierClient.Query("series_1", ts)
+		result, err := client.Query("series_1", ts)
 		require.NoError(t, err)
 		require.Equal(t, model.ValVector, result.Type())
 		assert.Equal(t, expectedVector, result.(model.Vector))

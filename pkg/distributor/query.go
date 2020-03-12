@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"io"
-	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -183,7 +182,11 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			hash := client.FastFingerprint(series.Labels)
 			existing := hashToTimeSeries[hash]
 			existing.Labels = series.Labels
-			existing.Samples = append(existing.Samples, series.Samples...)
+			if existing.Samples == nil {
+				existing.Samples = series.Samples
+			} else {
+				existing.Samples = mergeSamplesIntoFirst(existing.Samples, series.Samples)
+			}
 			hashToTimeSeries[hash] = existing
 		}
 	}
@@ -196,15 +199,33 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		resp.Chunkseries = append(resp.Chunkseries, series)
 	}
 	for _, series := range hashToTimeSeries {
-		sort.Sort(byTimestamp(series.Samples))
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
 
 	return resp, nil
 }
 
-type byTimestamp []client.Sample
+// Merges and dedupes two sorted slices with samples together, storing result in the first slice.
+// If a and b overlap, weird things will happen.
+func mergeSamplesIntoFirst(a, b []ingester_client.Sample) []ingester_client.Sample {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].TimestampMs < b[j].TimestampMs {
+			i++
+		} else if a[i].TimestampMs > b[j].TimestampMs {
+			a = append(a, ingester_client.Sample{}) // make sure 'a' has enough space
+			copy(a[i+1:], a[i:])                    // shift elements in 'a'
+			a[i] = b[j]                             // insert b[j] at i-th place
+			j++
+		} else { // same timestamp, we keep a[i], but advance both
+			i++
+			j++
+		}
+	}
 
-func (b byTimestamp) Len() int           { return len(b) }
-func (b byTimestamp) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b byTimestamp) Less(i, j int) bool { return b[i].TimestampMs < b[j].TimestampMs }
+	// if there are more elements in 'b', just append them. No special care needed for elements in 'a'.
+	if j < len(b) {
+		a = append(a, b[j:]...)
+	}
+	return a
+}

@@ -1,4 +1,4 @@
-// +build integration
+// +build requires_docker
 
 package main
 
@@ -36,20 +36,23 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		"-config-yaml":        ChunksStorageFlags["-schema-config-file"],
 	})
 
-	// Start Cortex components (ingester running on previous version).
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	tableManager := e2ecortex.NewTableManager("table-manager", flagsForOldImage, previousVersionImage)
-	// Old table-manager doesn't expose a readiness probe, so we just check if the / returns 404
-	tableManager.SetReadinessProbe(e2e.NewReadinessProbe(tableManager.HTTPPort(), "/", 404))
+
+	// Start Cortex table-manager (running on current version since the backward compatibility
+	// test is about testing a rolling update of other services).
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	require.NoError(t, s.StartAndWaitReady(tableManager))
+
+	// Wait until the first table-manager sync has completed, so that we're
+	// sure the tables have been created.
+	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+
+	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	// Old ring didn't have /ready probe, use /ring instead.
 	distributor.SetReadinessProbe(e2e.NewReadinessProbe(distributor.HTTPPort(), "/ring", 200))
-	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, tableManager))
-
-	// Wait until the first table-manager sync has completed, so that we're
-	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_dynamo_sync_tables_seconds"))
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
 	// Wait until the distributor has updated the ring.
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))

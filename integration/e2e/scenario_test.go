@@ -1,4 +1,4 @@
-// +build integration
+// +build requires_docker
 
 package e2e_test
 

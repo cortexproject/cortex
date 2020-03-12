@@ -38,6 +38,9 @@ const (
 	// a URL derived from Config.AutoWebhookRoot
 	autoWebhookURL = "http://internal.monitor"
 
+	configStatusValid   = "valid"
+	configStatusInvalid = "invalid"
+
 	statusPage = `
 <!doctype html>
 <html>
@@ -76,6 +79,10 @@ var (
 )
 
 func init() {
+	// Ensure the metric values are initialized.
+	totalConfigs.WithLabelValues(configStatusInvalid).Set(0)
+	totalConfigs.WithLabelValues(configStatusValid).Set(0)
+
 	prometheus.MustRegister(totalConfigs)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
 		"state": func(enabled bool) string {
@@ -313,8 +320,8 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
-	totalConfigs.WithLabelValues("invalid").Set(float64(invalid))
-	totalConfigs.WithLabelValues("valid").Set(float64(len(am.cfgs) - invalid))
+	totalConfigs.WithLabelValues(configStatusInvalid).Set(float64(invalid))
+	totalConfigs.WithLabelValues(configStatusValid).Set(float64(len(am.cfgs) - invalid))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {

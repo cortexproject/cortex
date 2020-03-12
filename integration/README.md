@@ -7,9 +7,10 @@
 
 ## Running
 
-Integration tests have `integration` tag (`// +build integration` line followed by empty line on top of Go files), to avoid running them unintentionally, e.g. by `go test ./...` in main Cortex package.
+Integration tests have `requires_docker` tag (`// +build requires_docker` line followed by empty line on top of Go files),
+to avoid running them unintentionally as they require docker, e.g. by `go test ./...` in main Cortex package.
 
-To run integration tests, one needs to run `go test -tags=integration ./integration/...` (or just `go test -tags=integration ./...` to run unit tests as well).
+To run integration tests, one needs to run `go test -tags=requires_docker ./integration/...` (or just `go test -tags=requires_docker ./...` to run unit tests as well).
 
 ## Owners
 

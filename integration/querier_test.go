@@ -1,4 +1,4 @@
-// +build integration
+// +build requires_docker
 
 package main
 
@@ -83,9 +83,9 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			// Wait until the TSDB head is compacted and shipped to the storage.
 			// The shipped block contains the 1st series, while the 2ns series in in the head.
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
+			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_created_total"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
-			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
 			// Push another series to further compact another block and delete the first block
 			// due to expired retention.
@@ -97,9 +97,9 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.Equal(t, 200, res.StatusCode)
 
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_shipper_uploads_total"))
+			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(3), "cortex_ingester_memory_series_created_total"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
-			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
 			// Wait until the querier has synched the new uploaded blocks.
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_querier_bucket_store_blocks_loaded"))

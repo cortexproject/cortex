@@ -1,4 +1,4 @@
-// +build integration
+// +build requires_docker
 
 package e2e
 
@@ -107,6 +107,8 @@ metric_b_summary_count 1
 
 	require.NoError(t, s.WaitSumMetrics(LessAmongTwo, "metric_a", "metric_b"))
 	require.Error(t, s.WaitSumMetrics(LessAmongTwo, "metric_b", "metric_a"))
+
+	require.Error(t, s.WaitSumMetrics(Equals(0), "non_existing_metric"))
 }
 
 func TestWaitSumMetric_Nan(t *testing.T) {

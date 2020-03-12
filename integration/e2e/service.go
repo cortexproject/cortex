@@ -461,6 +461,7 @@ func sumValues(family *io_prometheus_client.MetricFamily) float64 {
 	return sum
 }
 
+// Equals is an isExpected function for WaitSumMetrics that returns true if given single sum is equals to given value.
 func Equals(value float64) func(sums ...float64) bool {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
@@ -470,6 +471,7 @@ func Equals(value float64) func(sums ...float64) bool {
 	}
 }
 
+// Greater is an isExpected function for WaitSumMetrics that returns true if given single sum is greater than given value.
 func Greater(value float64) func(sums ...float64) bool {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
@@ -479,6 +481,7 @@ func Greater(value float64) func(sums ...float64) bool {
 	}
 }
 
+// Less is an isExpected function for WaitSumMetrics that returns true if given single sum is less than given value.
 func Less(value float64) func(sums ...float64) bool {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
@@ -488,7 +491,7 @@ func Less(value float64) func(sums ...float64) bool {
 	}
 }
 
-// EqualsAmongTwo returns true if first sum is equal to the second.
+// EqualsAmongTwo is an isExpected function for WaitSumMetrics that returns true if first sum is equal to the second.
 // NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
 // usually not atomic.
 func EqualsAmongTwo(sums ...float64) bool {
@@ -498,7 +501,7 @@ func EqualsAmongTwo(sums ...float64) bool {
 	return sums[0] == sums[1]
 }
 
-// GreaterAmongTwo returns true if first sum is greater than second.
+// GreaterAmongTwo is an isExpected function for WaitSumMetrics that returns true if first sum is greater than second.
 // NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
 // usually not atomic.
 func GreaterAmongTwo(sums ...float64) bool {
@@ -508,7 +511,7 @@ func GreaterAmongTwo(sums ...float64) bool {
 	return sums[0] > sums[1]
 }
 
-// LessAmongTwo returns true if first sum is smaller than second.
+// LessAmongTwo is an isExpected function for WaitSumMetrics that returns true if first sum is smaller than second.
 // NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
 // usually not atomic.
 func LessAmongTwo(sums ...float64) bool {
@@ -518,6 +521,8 @@ func LessAmongTwo(sums ...float64) bool {
 	return sums[0] < sums[1]
 }
 
+// WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
+// when passed to given isExpected(...).
 func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
 	sums := make([]float64, len(metricNames))
 
@@ -537,10 +542,11 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 			sums[i] = 0.0
 
 			// Check if the metric is exported.
-			mf, ok := families[m]
-			if ok {
+			if mf, ok := families[m]; ok {
 				sums[i] = sumValues(mf)
+				continue
 			}
+			return errors.Errorf("metric %s not found in %s metric page", m, s.name)
 		}
 
 		if isExpected(sums...) {

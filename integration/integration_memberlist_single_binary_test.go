@@ -1,4 +1,4 @@
-// +build integration
+// +build requires_docker
 
 package main
 

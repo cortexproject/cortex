@@ -113,7 +113,7 @@ type cacheEntry struct {
 // NewFifoCache returns a new initialised FifoCache of size.
 // TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
 func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
-	return &FifoCache{
+	cache := &FifoCache{
 		size:     cfg.Size,
 		validity: cfg.Validity,
 		entries:  make([]cacheEntry, 0, cfg.Size),
@@ -129,6 +129,9 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		staleGets:       cacheStaleGets.WithLabelValues(name),
 		memoryBytes:     cacheMemoryBytes.WithLabelValues(name),
 	}
+	// set initial memory allocation
+	cache.memoryBytes.Set(float64(int(unsafe.Sizeof(cacheEntry{})) * cache.size))
+	return cache
 }
 
 // Fetch implements Cache.
@@ -179,20 +182,19 @@ func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}
 func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	// See if we already have the entry
 	index, ok := c.index[key]
-	var deltaSize int
-
 	if ok {
 		entry := c.entries[index]
-		deltaSize -= int(unsafe.Sizeof(entry))
+		deltaSize := sizeOf(value) - sizeOf(entry.value)
 
 		entry.updated = time.Now()
 		entry.value = value
-		deltaSize += int(unsafe.Sizeof(entry))
-
 		// Remove this entry from the FIFO linked-list.
 		c.entries[entry.prev].next = entry.next
 		c.entries[entry.next].prev = entry.prev
-
+		// Corner case: updating last element
+		if c.last == index {
+			c.last = entry.prev
+		}
 		// Insert it at the beginning
 		entry.next = c.first
 		entry.prev = c.last
@@ -211,7 +213,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.entriesEvicted.Inc()
 		index = c.last
 		entry := c.entries[index]
-		deltaSize -= int(unsafe.Sizeof(entry))
+		deltaSize := sizeOf(key) + sizeOf(value) - sizeOf(entry.key) - sizeOf(entry.value)
 
 		c.last = entry.prev
 		c.first = index
@@ -222,8 +224,6 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		entry.value = value
 		entry.key = key
 		c.entries[index] = entry
-
-		deltaSize += int(unsafe.Sizeof(entry))
 		c.memoryBytes.Add(float64(deltaSize))
 		return
 	}
@@ -243,8 +243,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	c.first = index
 	c.index[key] = index
 
-	deltaSize += int(unsafe.Sizeof(entry))
-	c.memoryBytes.Add(float64(deltaSize))
+	c.memoryBytes.Add(float64(sizeOf(entry.key) + sizeOf(entry.value)))
 	c.entriesCurrent.Set(float64(len(c.entries)))
 }
 
@@ -272,4 +271,33 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 
 	c.totalMisses.Inc()
 	return nil, false
+}
+
+func sizeOf(i interface{}) int {
+	switch v := i.(type) {
+	case string:
+		return len(v)
+	case []int8:
+		return len(v)
+	case []uint8:
+		return len(v)
+	case []int32:
+		return len(v) * 4
+	case []uint32:
+		return len(v) * 4
+	case []float32:
+		return len(v) * 4
+	case []int:
+		return len(v) * 8
+	case []uint:
+		return len(v) * 8
+	case []int64:
+		return len(v) * 8
+	case []uint64:
+		return len(v) * 8
+	case []float64:
+		return len(v) * 8
+	default:
+		return int(unsafe.Sizeof(i))
+	}
 }

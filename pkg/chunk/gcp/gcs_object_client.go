@@ -145,7 +145,7 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 
 	if err != nil {
 		if err == storage.ErrObjectNotExist {
-			return chunk.ErrStorageObjectNotFounds
+			return chunk.ErrStorageObjectNotFound
 		}
 		return err
 	}

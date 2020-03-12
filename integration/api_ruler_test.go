@@ -28,9 +28,11 @@ func TestRulerAPI(t *testing.T) {
 	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags, RulerConfigs), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
+	// Create a client with the ruler address configured
 	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
 	require.NoError(t, err)
 
+	// Create example namespace and rule group to use for tests
 	namespace := "test_namespace"
 	rg := rulefmt.RuleGroup{
 		Name:     "test_group",
@@ -43,8 +45,13 @@ func TestRulerAPI(t *testing.T) {
 		},
 	}
 
+	// Set the rule group into the ruler
 	require.NoError(t, c.SetRuleGroup(rg, namespace))
 
+	// Wait until the user manager is created
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+
+	// Check to ensure the rules running in the ruler match what was set
 	rgs, err := c.GetRuleGroups()
 	require.NoError(t, err)
 
@@ -53,11 +60,13 @@ func TestRulerAPI(t *testing.T) {
 	require.Len(t, retrievedNamespace, 1)
 	require.Equal(t, retrievedNamespace[0].Name, rg.Name)
 
-	// Ensure the rule group is loaded by the per-tenant Prometheus rules manager
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+	// Delete the set rule group
 	require.NoError(t, c.DeleteRuleGroup(namespace, rg.Name))
+
+	// Wait until the users manager has been terminated
 	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
 
+	// Check to ensure the rule groups are no longer active
 	_, err = c.GetRuleGroups()
 	require.Error(t, err)
 }

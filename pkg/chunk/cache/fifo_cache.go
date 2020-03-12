@@ -65,7 +65,7 @@ var (
 		Namespace: "querier",
 		Subsystem: "cache",
 		Name:      "memory_bytes",
-		Help:      "The total number of bytes",
+		Help:      "The current cache size in bytes",
 	}, []string{"cache"})
 )
 

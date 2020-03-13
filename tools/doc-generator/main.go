@@ -221,8 +221,16 @@ func annotateFlagPrefix(blocks []*configBlock) {
 			}
 		}
 
+		allPrefixes := []string{}
 		for i, prefix := range findFlagsPrefix(flags) {
 			group[i].flagsPrefix = prefix
+			allPrefixes = append(allPrefixes, prefix)
+		}
+
+		// Store all found prefixes into each block so that when we generate the
+		// markdown we also know which are all the prefixes for each root block.
+		for _, block := range group {
+			block.flagsPrefixes = allPrefixes
 		}
 	}
 

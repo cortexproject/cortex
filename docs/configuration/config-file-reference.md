@@ -1743,7 +1743,15 @@ grpc_client_config:
 
 ### `etcd_config`
 
-The `etcd_config` configures the etcd client.
+The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `compactor.ring`
+- `distributor.ha-tracker`
+- `distributor.ring`
+- `ruler.ring`
+
+&nbsp;
 
 ```yaml
 # The etcd endpoints to connect to.
@@ -1761,7 +1769,15 @@ The `etcd_config` configures the etcd client.
 
 ### `consul_config`
 
-The `consul_config` configures the consul client.
+The `consul_config` configures the consul client. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `compactor.ring`
+- `distributor.ha-tracker`
+- `distributor.ring`
+- `ruler.ring`
+
+&nbsp;
 
 ```yaml
 # Hostname and port of Consul.
@@ -1997,7 +2013,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 ### `redis_config`
 
-The `redis_config` configures the Redis backend cache.
+The `redis_config` configures the Redis backend cache. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `frontend`
+- `store.index-cache-read`
+- `store.index-cache-write`
+
+&nbsp;
 
 ```yaml
 # Redis service endpoint to use when caching chunks. If empty, no redis will be
@@ -2032,7 +2055,14 @@ The `redis_config` configures the Redis backend cache.
 
 ### `memcached_config`
 
-The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
+The `memcached_config` block configures how data is stored in Memcached (ie. expiration). The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `frontend`
+- `store.index-cache-read`
+- `store.index-cache-write`
+
+&nbsp;
 
 ```yaml
 # How long keys stay in the memcache.
@@ -2050,7 +2080,14 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 
 ### `memcached_client_config`
 
-The `memcached_client_config` configures the client used to connect to Memcached.
+The `memcached_client_config` configures the client used to connect to Memcached. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `frontend`
+- `store.index-cache-read`
+- `store.index-cache-write`
+
+&nbsp;
 
 ```yaml
 # Hostname for memcached service to use when caching chunks. If empty, no
@@ -2081,7 +2118,14 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 ### `fifo_cache_config`
 
-The `fifo_cache_config` configures the local in-memory cache.
+The `fifo_cache_config` configures the local in-memory cache. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `frontend`
+- `store.index-cache-read`
+- `store.index-cache-write`
+
+&nbsp;
 
 ```yaml
 # The number of entries to cache.
@@ -2124,7 +2168,12 @@ api:
 
 ### `configstore_config`
 
-The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager.
+The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- `alertmanager`
+- `ruler`
+
+&nbsp;
 
 ```yaml
 # URL of configs API server.

@@ -21,10 +21,11 @@ var (
 )
 
 type configBlock struct {
-	name        string
-	desc        string
-	entries     []*configEntry
-	flagsPrefix string
+	name          string
+	desc          string
+	entries       []*configEntry
+	flagsPrefix   string
+	flagsPrefixes []string
 }
 
 func (b *configBlock) Add(entry *configEntry) {

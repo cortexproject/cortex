@@ -644,8 +644,8 @@ results_cache:
     [default_validity: <duration> | default = 0s]
 
     background:
-      # How many goroutines to use to write back to cache.
-      # CLI flag: -frontend.cache.write-back-goroutines
+      # At what concurrency to write back to cache.
+      # CLI flag: -frontend.cache.write-back-concurrency
       [writeback_goroutines: <int> | default = 10]
 
       # How many key batches to buffer for background write-back.
@@ -1515,9 +1515,9 @@ index_queries_cache_config:
   [default_validity: <duration> | default = 0s]
 
   background:
-    # Cache config for index entry reading. How many goroutines to use to write
-    # back to cache.
-    # CLI flag: -store.index-cache-read.cache.write-back-goroutines
+    # Cache config for index entry reading. At what concurrency to write back to
+    # cache.
+    # CLI flag: -store.index-cache-read.cache.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry reading. How many key batches to buffer for
@@ -1569,9 +1569,8 @@ chunk_cache_config:
   [default_validity: <duration> | default = 0s]
 
   background:
-    # Cache config for chunks. How many goroutines to use to write back to
-    # cache.
-    # CLI flag: -store.chunks-cache.cache.write-back-goroutines
+    # Cache config for chunks. At what concurrency to write back to cache.
+    # CLI flag: -store.chunks-cache.cache.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for chunks. How many key batches to buffer for background
@@ -1608,9 +1607,9 @@ write_dedupe_cache_config:
   [default_validity: <duration> | default = 0s]
 
   background:
-    # Cache config for index entry writing. How many goroutines to use to write
-    # back to cache.
-    # CLI flag: -store.index-cache-write.cache.write-back-goroutines
+    # Cache config for index entry writing. At what concurrency to write back to
+    # cache.
+    # CLI flag: -store.index-cache-write.cache.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry writing. How many key batches to buffer for

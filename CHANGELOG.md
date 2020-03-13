@@ -2,15 +2,15 @@
 
 ## master / unreleased
 
-* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `cache.write-back-goroutines` and `cache.write-back-buffer`. This affects the following flags:
+* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `cache.write-back-concurrency` and `cache.write-back-buffer`. This affects the following flags:
   - `-frontend.memcache.write-back-buffer` --> `-frontend.cache.write-back-buffer` 
-  - `-frontend.memcache.write-back-goroutines` --> `-frontend.cache.write-back-goroutines`
+  - `-frontend.memcache.write-back-goroutines` --> `-frontend.cache.write-back-concurrency`
   - `-store.index-cache-read.memcache.write-back-buffer` --> `-store.index-cache-read.cache.write-back-buffer`
-  - `-store.index-cache-read.memcache.write-back-goroutines` --> `-store.index-cache-read.cache.write-back-goroutines`
+  - `-store.index-cache-read.memcache.write-back-goroutines` --> `-store.index-cache-read.cache.write-back-concurrency`
   - `-store.index-cache-write.memcache.write-back-buffer` --> `-store.index-cache-write.cache.write-back-buffer`
-  - `-store.index-cache-write.memcache.write-back-goroutines` --> `-store.index-cache-write.cache.write-back-goroutines`
+  - `-store.index-cache-write.memcache.write-back-goroutines` --> `-store.index-cache-write.cache.write-back-concurrency`
   - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the next change log for the difference.
-  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-goroutines`. Note the next change log for the difference.
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-concurrency`. Note the next change log for the difference.
 
 * [CHANGE] Renamed the chunk cache flags to have `store.chunks-cache.` as prefix. This means the following flags have been changed:
   - `-cache.enable-fifocache` --> `-store.chunks-cache.cache.enable-fifocache` 
@@ -18,7 +18,7 @@
   - `-fifocache.duration` --> `-store.chunks-cache.fifocache.duration` 
   - `-fifocache.size` --> `-store.chunks-cache.fifocache.size` 
   - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the previous change log for the difference. 
-  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-goroutines`. Note the previous change log for the difference. 
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-concurrency`. Note the previous change log for the difference. 
   - `-memcached.batchsize` --> `-store.chunks-cache.memcached.batchsize` 
   - `-memcached.consistent-hash` --> `-store.chunks-cache.memcached.consistent-hash` 
   - `-memcached.expiration` --> `-store.chunks-cache.memcached.expiration` 
@@ -35,7 +35,7 @@
   - `-redis.max-idle-conns` --> `-store.chunks-cache.redis.max-idle-conns` 
   - `-redis.password` --> `-store.chunks-cache.redis.password` 
   - `-redis.timeout` --> `-store.chunks-cache.redis.timeout` 
-* [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunk-cache.cache-stubs` to be more inline with above.
+* [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above.
 * [CHANGE] Don't support mixed time units anymore for duration. For example, 168h5m0s doesn't work anymore, please use just one unit (s|m|h|d|w|y). #2252
 * [CHANGE] Utilize separate protos for rule state and storage. Experimental ruler API will not be functional until the rollout is complete. #2226
 * [CHANGE] Frontend worker in querier now starts after all Querier module dependencies are started. This fixes issue where frontend worker started to send queries to querier before it was ready to serve them (mostly visible when using experimental blocks storage). #2246

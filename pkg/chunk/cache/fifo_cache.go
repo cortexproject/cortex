@@ -33,7 +33,7 @@ var (
 		Help:      "The total number of evicted entries",
 	}, []string{"cache"})
 
-	cacheEntriesCurrent = promauto.NewCounterVec(prometheus.CounterOpts{
+	cacheEntriesCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "querier",
 		Subsystem: "cache",
 		Name:      "entries",
@@ -96,7 +96,7 @@ type FifoCache struct {
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
 	entriesEvicted  prometheus.Counter
-	entriesCurrent  prometheus.Counter
+	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
@@ -295,7 +295,7 @@ func sizeOf(i interface{}) int {
 		return len(v) * 8
 	case []float64:
 		return len(v) * 8
-	// next 2 cases are machine dependen
+	// next 2 cases are machine dependent
 	case []int:
 		if l := len(v); l > 0 {
 			return int(unsafe.Sizeof(v[0])) * l

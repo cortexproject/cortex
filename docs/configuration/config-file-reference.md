@@ -2019,8 +2019,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 The `redis_config` configures the Redis backend cache. The supported CLI flags `<prefix>` used to reference this config block are:
 
-- _no prefix_
 - `frontend`
+- `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -2061,8 +2061,8 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 
 The `memcached_config` block configures how data is stored in Memcached (ie. expiration). The supported CLI flags `<prefix>` used to reference this config block are:
 
-- _no prefix_
 - `frontend`
+- `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -2086,8 +2086,8 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 
 The `memcached_client_config` configures the client used to connect to Memcached. The supported CLI flags `<prefix>` used to reference this config block are:
 
-- _no prefix_
 - `frontend`
+- `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -2124,8 +2124,8 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 The `fifo_cache_config` configures the local in-memory cache. The supported CLI flags `<prefix>` used to reference this config block are:
 
-- _no prefix_
 - `frontend`
+- `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
 

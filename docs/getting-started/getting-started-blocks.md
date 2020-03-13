@@ -9,22 +9,24 @@ Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 
-This document will focus on single-process Cortex with the experimental blocks storage. See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../operations/blocks-storage.md) for more information about the blocks storage.
+This document will focus on single-process Cortex with the experimental blocks storage.
+See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../operations/blocks-storage.md)
+for more information about the blocks storage.
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
-This document will focus on using S3.
-Cortex can also make use of external memcacheds and redis for caching but this feature is not available (yet) using block storage.
+Cortex can also make use of external Memcacheds and Redis for caching but this feature is not (yet) available using blocks storage.
 
 ## Single instance, single process
 
-For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config-blocks.yaml) with no dependencies:
+For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config-blocks.yaml) with no dependencies.
+You can reconfigure the config to use GCS, Azure storage or local storage as shown in the file's comments.
 
 ```sh
 $ go build ./cmd/cortex
 $ ./cortex -config.file=./docs/configuration/single-process-config-blocks.yaml
 ```
 
-This starts a single Cortex node storing blocks to S3 in bucket `cortex`.
+Unless reconfigured this starts a single Cortex node storing blocks to S3 in bucket `cortex`.
 It is not intended for production use.
 
 Clone and build prometheus

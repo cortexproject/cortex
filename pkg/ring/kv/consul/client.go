@@ -35,12 +35,12 @@ var (
 
 // Config to create a ConsulClient
 type Config struct {
-	Host              string
-	ACLToken          string
-	HTTPClientTimeout time.Duration
-	ConsistentReads   bool
-	WatchKeyRateLimit float64 // Zero disables rate limit
-	WatchKeyBurstSize int     // Burst when doing rate-limit, defaults to 1
+	Host              string        `yaml:"host"`
+	ACLToken          string        `yaml:"acl_token"`
+	HTTPClientTimeout time.Duration `yaml:"http_client_timeout"`
+	ConsistentReads   bool          `yaml:"consistent_reads"`
+	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
+	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
 }
 
 type kv interface {

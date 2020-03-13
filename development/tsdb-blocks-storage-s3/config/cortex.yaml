@@ -56,7 +56,7 @@ ruler:
   storeconfig:
     type: configdb
     configdb:
-      configsapiurl: http://configstore:80/
+      configs_api_url: http://configstore:80/
 
 storage:
   engine: tsdb

@@ -26,12 +26,12 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent        int
-	Timeout              time.Duration
-	Iterators            bool
-	BatchIterators       bool
-	IngesterStreaming    bool
-	MaxSamples           int
+	MaxConcurrent        int           `yaml:"max_concurrent"`
+	Timeout              time.Duration `yaml:"timeout"`
+	Iterators            bool          `yaml:"iterators"`
+	BatchIterators       bool          `yaml:"batch_iterators"`
+	IngesterStreaming    bool          `yaml:"ingester_streaming"`
+	MaxSamples           int           `yaml:"max_samples"`
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
@@ -41,7 +41,7 @@ type Config struct {
 	// The default evaluation interval for the promql engine.
 	// Needs to be configured for subqueries to work as it is the default
 	// step if not specified.
-	DefaultEvaluationInterval time.Duration
+	DefaultEvaluationInterval time.Duration `yaml:"default_evaluation_interval"`
 
 	// Directory for ActiveQueryTracker. If empty, ActiveQueryTracker will be disabled and MaxConcurrent will not be applied (!).
 	// ActiveQueryTracker logs queries that were active during the last crash, but logs them on the next startup.

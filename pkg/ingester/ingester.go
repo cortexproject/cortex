@@ -48,17 +48,17 @@ type Config struct {
 	MaxTransferRetries int `yaml:"max_transfer_retries"`
 
 	// Config for chunk flushing.
-	FlushCheckPeriod  time.Duration
-	RetainPeriod      time.Duration
-	MaxChunkIdle      time.Duration
-	MaxStaleChunkIdle time.Duration
-	FlushOpTimeout    time.Duration
-	MaxChunkAge       time.Duration
-	ChunkAgeJitter    time.Duration
-	ConcurrentFlushes int
-	SpreadFlushes     bool
+	FlushCheckPeriod  time.Duration `yaml:"flush_period"`
+	RetainPeriod      time.Duration `yaml:"retain_period"`
+	MaxChunkIdle      time.Duration `yaml:"max_chunk_idle"`
+	MaxStaleChunkIdle time.Duration `yaml:"max_stale_chunk_idle"`
+	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
+	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
+	ChunkAgeJitter    time.Duration `yaml:"chunk_age_jitter"`
+	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
+	SpreadFlushes     bool          `yaml:"spread_flushes"`
 
-	RateUpdatePeriod time.Duration
+	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
 	// Use tsdb block storage
 	TSDBEnabled bool        `yaml:"-"`
@@ -806,9 +806,9 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
-// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 204 when the ingester is
-// ready, 500 otherwise.
+// CheckReady is the readiness handler is used to indicate to k8s when the ingesters
+// are ready for the addition removal of another ingester. Returns 204 when the
+// ingester is ready, 500 otherwise.
 func (i *Ingester) CheckReady(ctx context.Context) error {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return fmt.Errorf("ingester not ready: %v", err)

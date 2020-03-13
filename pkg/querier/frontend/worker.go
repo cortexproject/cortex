@@ -31,9 +31,9 @@ var (
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address           string
-	Parallelism       int
-	DNSLookupDuration time.Duration
+	Address           string        `yaml:"address"`
+	Parallelism       int           `yaml:"parallelism"`
+	DNSLookupDuration time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }

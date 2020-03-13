@@ -99,13 +99,13 @@ func init() {
 
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
-	DynamoDB               flagext.URLValue
-	APILimit               float64
-	ThrottleLimit          float64
-	ApplicationAutoScaling flagext.URLValue
-	Metrics                MetricsAutoScalingConfig
-	ChunkGangSize          int
-	ChunkGetMaxParallelism int
+	DynamoDB               flagext.URLValue         `yaml:"dynamodb_url"`
+	APILimit               float64                  `yaml:"api_limit"`
+	ThrottleLimit          float64                  `yaml:"throttle_limit"`
+	ApplicationAutoScaling flagext.URLValue         `yaml:"application_autoscaling_url"`
+	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
+	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
+	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
 	backoffConfig          util.BackoffConfig
 }
 

@@ -13,7 +13,6 @@ require (
 	github.com/armon/go-metrics v0.3.0
 	github.com/aws/aws-sdk-go v1.25.48
 	github.com/blang/semver v3.5.0+incompatible
-	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cenkalti/backoff v1.0.0 // indirect
 	github.com/cespare/xxhash v1.1.0

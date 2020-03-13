@@ -185,6 +185,7 @@ type Cortex struct {
 	ingester      *ingester.Ingester
 	flusher       *flusher.Flusher
 	store         chunk.Store
+	deletesStore  *purger.DeleteStore
 	frontend      *frontend.Frontend
 	tableManager  *chunk.TableManager
 	cache         cache.Cache

@@ -297,6 +297,7 @@ func (d *DeletedSeriesIterator) isDeleted(ts int64) bool {
 	for _, interval := range d.deletedIntervals {
 		if mts > interval.End {
 			d.deletedIntervals = d.deletedIntervals[1:]
+			continue
 		} else if mts < interval.Start {
 			return false
 		}

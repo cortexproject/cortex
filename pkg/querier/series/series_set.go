@@ -257,12 +257,17 @@ func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []mod
 }
 
 func (d DeletedSeriesIterator) Seek(t int64) bool {
-	found := d.itr.Seek(t)
-	if !found {
+	if found := d.itr.Seek(t); !found {
 		return false
 	}
 
-	return d.Next()
+	seekedTs, _ := d.itr.At()
+	if d.isDeleted(seekedTs) {
+		// point we have seeked into is deleted, Next() should find a new non-deleted sample which is after t and seekedTs
+		return d.Next()
+	}
+
+	return true
 }
 
 func (d DeletedSeriesIterator) At() (t int64, v float64) {
@@ -285,6 +290,7 @@ func (d DeletedSeriesIterator) Err() error {
 	return d.itr.Err()
 }
 
+// isDeleted removes intervals which are past ts while checking for whether ts happens to be in one of the deleted intervals
 func (d *DeletedSeriesIterator) isDeleted(ts int64) bool {
 	mts := model.Time(ts)
 

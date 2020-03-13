@@ -257,24 +257,12 @@ func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []mod
 }
 
 func (d DeletedSeriesIterator) Seek(t int64) bool {
-	t = d.reboundTimestamp(t)
-	for {
-		found := d.itr.Seek(t)
-		if !found {
-			return false
-		}
-
-		// if current value is deleted then reboundTimestamp would return a different timestamp
-		seekedTs, _ := d.At()
-		newTs := d.reboundTimestamp(seekedTs)
-		if newTs == seekedTs {
-			// timestamp returned from reboundTimestamp is same as what was passed, which means current value is not deleted
-			return true
-		}
-
-		// current value was deleted, lets go through the process finding a new non deleted value
-		t = newTs
+	found := d.itr.Seek(t)
+	if !found {
+		return false
 	}
+
+	return d.Next()
 }
 
 func (d DeletedSeriesIterator) At() (t int64, v float64) {
@@ -282,49 +270,35 @@ func (d DeletedSeriesIterator) At() (t int64, v float64) {
 }
 
 func (d DeletedSeriesIterator) Next() bool {
-	if len(d.deletedIntervals) == 0 {
-		return d.itr.Next()
+	for d.itr.Next() {
+		ts, _ := d.itr.At()
+
+		if d.isDeleted(ts) {
+			continue
+		}
+		return true
 	}
-
-	hasNext := d.itr.Next()
-	if !hasNext {
-		return false
-	}
-
-	currentTs, _ := d.At()
-
-	// if current value is deleted then reboundTimestamp would return a different timestamp
-	newTs := d.reboundTimestamp(currentTs)
-	if newTs != currentTs {
-		return d.Seek(newTs)
-	}
-
-	return true
+	return false
 }
 
 func (d DeletedSeriesIterator) Err() error {
 	return d.itr.Err()
 }
 
-func (d *DeletedSeriesIterator) reboundTimestamp(t int64) int64 {
-	mt := model.Time(t)
-	for _, deletedInterval := range d.deletedIntervals {
-		if mt > deletedInterval.End {
-			// end of deletedInterval is smaller than t, remove it
+func (d *DeletedSeriesIterator) isDeleted(ts int64) bool {
+	mts := model.Time(ts)
+
+	for _, interval := range d.deletedIntervals {
+		if mts > interval.End {
 			d.deletedIntervals = d.deletedIntervals[1:]
-			continue
-		} else if mt < deletedInterval.Start {
-			// we have eliminated all the intervals we don't care about
-			break
+		} else if mts < interval.Start {
+			return false
 		}
 
-		// deletedInterval includes t, lets set t to timestamp greater than end of deletedInterval
-		t = int64(deletedInterval.End + 1)
-		d.deletedIntervals = d.deletedIntervals[1:]
-		break
+		return true
 	}
 
-	return t
+	return false
 }
 
 type emptySeries struct {

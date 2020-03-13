@@ -33,7 +33,7 @@ var (
 		Help:      "The total number of evicted entries",
 	}, []string{"cache"})
 
-	cacheEntriesCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	cacheEntriesCurrent = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "querier",
 		Subsystem: "cache",
 		Name:      "entries",
@@ -96,7 +96,7 @@ type FifoCache struct {
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
 	entriesEvicted  prometheus.Counter
-	entriesCurrent  prometheus.Gauge
+	entriesCurrent  prometheus.Counter
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
@@ -246,7 +246,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	c.index[key] = index
 
 	c.memoryBytes.Add(float64(sizeOf(key) + sizeOf(value)))
-	c.entriesCurrent.Set(float64(len(c.entries)))
+	c.entriesCurrent.Inc()
 }
 
 // Get returns the stored value against the key and when the key was last updated.
@@ -289,16 +289,23 @@ func sizeOf(i interface{}) int {
 		return len(v) * 4
 	case []float32:
 		return len(v) * 4
-	case []int:
-		return len(v) * 8
-	case []uint:
-		return len(v) * 8
 	case []int64:
 		return len(v) * 8
 	case []uint64:
 		return len(v) * 8
 	case []float64:
 		return len(v) * 8
+	// next 2 cases are machine dependen
+	case []int:
+		if l := len(v); l > 0 {
+			return int(unsafe.Sizeof(v[0])) * l
+		}
+		return 0
+	case []uint:
+		if l := len(v); l > 0 {
+			return int(unsafe.Sizeof(v[0])) * l
+		}
+		return 0
 	default:
 		return int(unsafe.Sizeof(i))
 	}

@@ -4583,6 +4583,8 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Add support for local &lt;code&gt;filesystem&lt;/code&gt; backend. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2245&#34;&gt;#2245&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting table period and retention. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2252&#34;&gt;#2252&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Fixed bug in updating last element of FIFO cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;0-7-0-rc-0-2020-03-09&#34;&gt;0.7.0-rc.0 / 2020-03-09&lt;/h2&gt;
 &lt;p&gt;Cortex &lt;code&gt;0.7.0&lt;/code&gt; introduces some &lt;strong&gt;breaking changes&lt;/strong&gt;. You&amp;rsquo;re encouraged to read all the &lt;code&gt;[CHANGE]&lt;/code&gt; entries below before upgrading your Cortex cluster. In particular:&lt;/p&gt;

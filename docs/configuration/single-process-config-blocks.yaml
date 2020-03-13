@@ -53,16 +53,30 @@ storage:
   engine: tsdb
 
 tsdb:
-  backend: s3
   dir: /tmp/cortex/tsdb
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync
+
+  # You can choose between local storage and Amazon S3, Google GCS and Azure storage. Each option requires additional configuration
+  # as shown below. All options can be configured via flags as well which might be handy for secret inputs.
+  backend: s3 # s3, gcs, azure or filesystem are valid options
   s3:
     bucket_name: cortex
     endpoint: s3.dualstack.us-east-1.amazonaws.com
     # Configure your S3 credentials below.
     # secret_access_key: "TODO"
     # access_key_id:     "TODO"
+#  gcs:
+#    bucket_name: cortex
+#    service_account: # if empty or omitted Cortex will use your default service account as per Google's fallback logic
+#  azure:
+#    account_name:
+#    account_key:
+#    container_name:
+#    endpoint_suffix:
+#    max_retries: # Number of retries for recoverable errors (defaults to 20)
+# filesystem:
+#   dir: ./data/tsdb
 
 compactor:
   data_dir: /tmp/cortex/compactor

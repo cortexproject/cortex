@@ -114,15 +114,17 @@ $ docker network remove cortex
 &lt;p&gt;Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.&lt;/p&gt;
-&lt;p&gt;This document will focus on single-process Cortex with the experimental blocks storage. See &lt;a href=&#34;/docs/architecture/&#34;&gt;the architecture doc&lt;/a&gt; for more information about the microservices and &lt;a href=&#34;/docs/operations/blocks-storage/&#34;&gt;blocks operation&lt;/a&gt; for more information about the blocks storage.&lt;/p&gt;
+&lt;p&gt;This document will focus on single-process Cortex with the experimental blocks storage.
+See &lt;a href=&#34;/docs/architecture/&#34;&gt;the architecture doc&lt;/a&gt; for more information about the microservices and &lt;a href=&#34;/docs/operations/blocks-storage/&#34;&gt;blocks operation&lt;/a&gt;
+for more information about the blocks storage.&lt;/p&gt;
 &lt;p&gt;Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
-This document will focus on using S3.
-Cortex can also make use of external memcacheds and redis for caching but this feature is not available (yet) using block storage.&lt;/p&gt;
+Cortex can also make use of external Memcacheds and Redis for caching but this feature is not (yet) available using blocks storage.&lt;/p&gt;
 &lt;h2 id=&#34;single-instance-single-process&#34;&gt;Single instance, single process&lt;/h2&gt;
-&lt;p&gt;For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href=&#34;../configuration/single-process-config-blocks.yaml&#34;&gt;single process&lt;/a&gt; with no dependencies:&lt;/p&gt;
+&lt;p&gt;For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href=&#34;../configuration/single-process-config-blocks.yaml&#34;&gt;single process&lt;/a&gt; with no dependencies.
+You can reconfigure the config to use GCS, Azure storage or local storage as shown in the file&amp;rsquo;s comments.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ go build ./cmd/cortex
 $ ./cortex -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./docs/configuration/single-process-config-blocks.yaml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;This starts a single Cortex node storing blocks to S3 in bucket &lt;code&gt;cortex&lt;/code&gt;.
+&lt;p&gt;Unless reconfigured this starts a single Cortex node storing blocks to S3 in bucket &lt;code&gt;cortex&lt;/code&gt;.
 It is not intended for production use.&lt;/p&gt;
 &lt;p&gt;Clone and build prometheus&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ git clone https://github.com/prometheus/prometheus

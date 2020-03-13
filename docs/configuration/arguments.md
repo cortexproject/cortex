@@ -329,7 +329,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. The optimum value will depend on how many labels are sent with your timeseries samples.
 
-- `-store.chunk-cache-stubs`
+- `-store.chunk-cache.cache-stubs`
 
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.

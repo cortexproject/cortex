@@ -245,7 +245,7 @@ the same data:
         -ingester.spread-flushes=true
         -ingester.chunk-age-jitter=0
 
-Add a chunk cache via `-memcached.hostname` to allow writes to be de-duplicated.
+Add a chunk cache via `-store.chunks-cache.memcached.hostname` to allow writes to be de-duplicated.
 
 As recommended under [Chunk encoding](#chunk-encoding), use Bigchunk:
 

@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const tombstonesReloadDuration = 15 * time.Minute
+const tombstonesReloadDuration = 5 * time.Minute
 
 // TombstonesSet holds all the pending delete requests for a user
 type TombstonesSet struct {

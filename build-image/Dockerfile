@@ -31,6 +31,11 @@ COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]
 
+# Install faillint used to lint go imports in CI.
+ENV FAILLINT_VERSION=1.2.0
+RUN GO111MODULE=on go get github.com/fatih/faillint@v${FAILLINT_VERSION} && \
+    rm -rf /go/pkg /go/src
+
 ARG revision
 LABEL org.opencontainers.image.title="build-image" \
       org.opencontainers.image.source="https://github.com/cortexproject/cortex/tree/master/build-image" \

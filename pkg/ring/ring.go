@@ -65,9 +65,9 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	KVStore           kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
-	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
+	KVStore           kv.Config     `yaml:"kvstore"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor int           `yaml:"replication_factor"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix

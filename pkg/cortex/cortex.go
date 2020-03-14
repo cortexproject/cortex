@@ -65,35 +65,35 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      moduleName `yaml:"target,omitempty"`
-	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
+	Target      moduleName `yaml:"target"`
+	AuthEnabled bool       `yaml:"auth_enabled"`
 	PrintConfig bool       `yaml:"-"`
 	HTTPPrefix  string     `yaml:"http_prefix"`
 
-	Server           server.Config            `yaml:"server,omitempty"`
-	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
-	Querier          querier.Config           `yaml:"querier,omitempty"`
-	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
-	Flusher          flusher.Config           `yaml:"flusher,omitempty"`
-	Storage          storage.Config           `yaml:"storage,omitempty"`
-	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema           chunk.SchemaConfig       `yaml:"schema,omitempty" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig     validation.Limits        `yaml:"limits,omitempty"`
-	Prealloc         client.PreallocConfig    `yaml:"prealloc,omitempty" doc:"hidden"`
-	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
-	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
-	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
-	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Server           server.Config            `yaml:"server"`
+	Distributor      distributor.Config       `yaml:"distributor"`
+	Querier          querier.Config           `yaml:"querier"`
+	IngesterClient   client.Config            `yaml:"ingester_client"`
+	Ingester         ingester.Config          `yaml:"ingester"`
+	Flusher          flusher.Config           `yaml:"flusher"`
+	Storage          storage.Config           `yaml:"storage"`
+	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store"`
+	Schema           chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig     validation.Limits        `yaml:"limits"`
+	Prealloc         client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
+	Worker           frontend.WorkerConfig    `yaml:"frontend_worker"`
+	Frontend         frontend.Config          `yaml:"frontend"`
+	QueryRange       queryrange.Config        `yaml:"query_range"`
+	TableManager     chunk.TableManagerConfig `yaml:"table_manager"`
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB             tsdb.Config              `yaml:"tsdb"`
-	Compactor        compactor.Config         `yaml:"compactor,omitempty"`
-	DataPurgerConfig purger.Config            `yaml:"purger,omitempty"`
+	Compactor        compactor.Config         `yaml:"compactor"`
+	DataPurgerConfig purger.Config            `yaml:"purger"`
 
-	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
-	Configs       configs.Config                             `yaml:"configs,omitempty"`
-	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
-	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
+	Ruler         ruler.Config                               `yaml:"ruler"`
+	Configs       configs.Config                             `yaml:"configs"`
+	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
 }
 

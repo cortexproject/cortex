@@ -29,11 +29,11 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	WALEnabled         bool                  `yaml:"wal_enabled,omitempty"`
-	CheckpointEnabled  bool                  `yaml:"checkpoint_enabled,omitempty"`
-	Recover            bool                  `yaml:"recover_from_wal,omitempty"`
-	Dir                string                `yaml:"wal_dir,omitempty"`
-	CheckpointDuration time.Duration         `yaml:"checkpoint_duration,omitempty"`
+	WALEnabled         bool                  `yaml:"wal_enabled"`
+	CheckpointEnabled  bool                  `yaml:"checkpoint_enabled"`
+	Recover            bool                  `yaml:"recover_from_wal"`
+	Dir                string                `yaml:"wal_dir"`
+	CheckpointDuration time.Duration         `yaml:"checkpoint_duration"`
 	metricsRegisterer  prometheus.Registerer `yaml:"-"`
 }
 

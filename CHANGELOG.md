@@ -130,7 +130,7 @@ Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting w
 
 ### Known issues
 
-- The gRPC streaming for ingesters doesn't work when using the experimental TSDB blocks storage. Please do not enable `-querier.ingester-streaming` if you're using the TSDB blocks storage.
+- The gRPC streaming for ingesters doesn't work when using the experimental TSDB blocks storage. Please do not enable `-querier.ingester-streaming` if you're using the TSDB blocks storage. If you want to enable it, you can build Cortex from `master` given the issue has been fixed after Cortex `0.7` branch has been cut and the fix wasn't included in the `0.7` because related to an experimental feature.
 
 ### Annotated config file breaking changes
 
@@ -149,7 +149,7 @@ In this section you can find a config file diff showing the breaking changes int
 
 ### `distributor_config`
 
- # The built-in billing system has been removed.
+ # The support to hook an external billing system has been removed.
 -[enable_billing: <boolean> | default = false]
 -billing:
 -  [maxbufferedevents: <int> | default = 1024]

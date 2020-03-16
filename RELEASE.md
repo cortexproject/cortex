@@ -85,7 +85,7 @@ To publish a stable release:
    - Merge to `master` in the local checkout
    - Fix any conflict and `git commit -s`
    - Temporarily disable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
-   - `git push`
+   - Push changes to upstream
    - Re-enable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
 
 ### How to tag a release

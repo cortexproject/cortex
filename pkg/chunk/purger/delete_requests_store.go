@@ -18,7 +18,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-type DeleteRequestStatus string
+type (
+	DeleteRequestStatus string
+	CacheKind           string
+)
 
 const (
 	StatusReceived     DeleteRequestStatus = "received"
@@ -27,6 +30,11 @@ const (
 	StatusProcessed    DeleteRequestStatus = "processed"
 
 	separator = "\000" // separator for series selectors in delete requests
+
+	// CacheKindStore is for cache gen number for store cache
+	CacheKindStore CacheKind = "store"
+	// CacheKindResults is for cache gen number for results cache
+	CacheKindResults CacheKind = "results"
 )
 
 var (
@@ -47,6 +55,11 @@ type DeleteRequest struct {
 	CreatedAt model.Time          `json:"created_at"`
 }
 
+// CacheGenNumbers holds store and results cache gen numbers for a user
+type CacheGenNumbers struct {
+	store, results string
+}
+
 // DeleteStore provides all the methods required to manage lifecycle of delete request and things related to it
 type DeleteStore struct {
 	cfg         DeleteStoreConfig
@@ -55,14 +68,16 @@ type DeleteStore struct {
 
 // DeleteStoreConfig holds configuration for delete store
 type DeleteStoreConfig struct {
-	Store             string `yaml:"store"`
-	RequestsTableName string `yaml:"requests_table_name"`
+	Store                    string `yaml:"store"`
+	RequestsTableName        string `yaml:"requests_table_name"`
+	CacheGenNumbersTableName string `yaml:"cache_gen_numbers_table_name"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *DeleteStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Store, "deletes.store", "", "Store for keeping delete request")
 	f.StringVar(&cfg.RequestsTableName, "deletes.requests-table-name", "delete_requests", "Name of the table which stores delete requests")
+	f.StringVar(&cfg.CacheGenNumbersTableName, "deletes.cache-gen-numbers-table-name", "cache_gen_numbers", "Name of the table which stores cache generation numbers")
 }
 
 // NewDeleteStore creates a store for managing delete requests
@@ -105,6 +120,10 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))
 	writeBatch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, separator)))
 
+	// we update only cache gen number because only query responses are changing at this stage.
+	// we still have to query data from store for doing query time filtering and we don't want to invalidate its results now.
+	writeBatch.Add(ds.cfg.CacheGenNumbersTableName, fmt.Sprintf("%s:%s", userID, CacheKindResults), nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
+
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
@@ -133,6 +152,12 @@ func (ds *DeleteStore) UpdateStatus(ctx context.Context, userID, requestID strin
 
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(newStatus))
+
+	if newStatus == StatusProcessed {
+		// we have deleted data from store so invalidate cache only for store since we don't have to do runtime filtering anymore.
+		// we don't have to change cache gen number because we were anyways doing runtime filtering
+		writeBatch.Add(ds.cfg.CacheGenNumbersTableName, fmt.Sprintf("%s:%s", userID, CacheKindStore), nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
+	}
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -220,6 +245,41 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []ch
 	}
 
 	return deleteRequests, nil
+}
+
+// GetCacheGenerationNumbers returns cache gen numbers for a user
+func (ds *DeleteStore) GetCacheGenerationNumbers(ctx context.Context, userID string) (*CacheGenNumbers, error) {
+	storeCacheGen, err := ds.queryCacheGenerationNumber(ctx, userID, CacheKindStore)
+	if err != nil {
+		return nil, err
+	}
+
+	resultsCacheGen, err := ds.queryCacheGenerationNumber(ctx, userID, CacheKindResults)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CacheGenNumbers{storeCacheGen, resultsCacheGen}, nil
+}
+
+func (ds *DeleteStore) queryCacheGenerationNumber(ctx context.Context, userID string, kind CacheKind) (string, error) {
+	query := chunk.IndexQuery{TableName: ds.cfg.CacheGenNumbersTableName, HashValue: fmt.Sprintf("%s:%s", userID, kind)}
+
+	genNumber := ""
+	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{query}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+		itr := batch.Iterator()
+		for itr.Next() {
+			genNumber = string(itr.Value())
+			break
+		}
+		return false
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return genNumber, nil
 }
 
 func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest) (DeleteRequest, error) {

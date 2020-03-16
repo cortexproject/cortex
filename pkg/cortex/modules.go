@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
@@ -187,12 +188,15 @@ func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error)
 
 func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	var tombstonesLoader *purger.TombstonesLoader
+
 	if cfg.DataPurgerConfig.Enable {
 		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
 	} else {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
 		tombstonesLoader = purger.NewTombstonesLoader(nil)
 	}
+
+	httpCacheGenNumberHeaderSetterMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
 
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 
@@ -288,12 +292,22 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		return nil, nil
 	}
+
+	var tombstonesLoader *purger.TombstonesLoader
+
+	if cfg.DataPurgerConfig.Enable {
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+	} else {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		tombstonesLoader = purger.NewTombstonesLoader(nil)
+	}
+
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer, tombstonesLoader)
 	if err != nil {
 		return
 	}
@@ -341,7 +355,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		util.Logger,
 		t.overrides,
 		queryrange.PrometheusCodec,
-		queryrange.PrometheusResponseExtractor,
+		queryrange.PrometheusResponseExtractor{},
 		cfg.Schema,
 		promql.EngineOpts{
 			Logger:     util.Logger,
@@ -570,7 +584,7 @@ var modules = map[ModuleName]module{
 	},
 
 	Store: {
-		deps:           []ModuleName{Overrides},
+		deps:           []ModuleName{Overrides, DeleteRequestsStore},
 		wrappedService: (*Cortex).initStore,
 	},
 
@@ -594,7 +608,7 @@ var modules = map[ModuleName]module{
 	},
 
 	StoreQueryable: {
-		deps:           []ModuleName{Store, DeleteRequestsStore},
+		deps:           []ModuleName{Store},
 		wrappedService: (*Cortex).initStoreQueryable,
 	},
 
@@ -641,4 +655,26 @@ var modules = map[ModuleName]module{
 	All: {
 		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
+}
+
+// middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
+func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			cacheGenNumber, err := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
+			next.ServeHTTP(w, r)
+		})
+	})
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -28,6 +30,9 @@ import (
 var (
 	// Value that cachecontrolHeader has if the response indicates that the results should not be cached.
 	noCacheValue = "no-store"
+
+	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
+	ResultsCacheGenNumberHeaderName = "results-cache-gen-number"
 )
 
 // ResultsCacheConfig is the config for the results cache.
@@ -49,33 +54,15 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
 	Extract(start, end int64, from Response) Response
+	ExtractCacheGenNumber(from Response) string
 }
 
-// ExtractorFunc is a sugar syntax for declaring an Extractor from a function.
-type ExtractorFunc func(start, end int64, from Response) Response
-
-// Extract calls the `ExtractorFunc` to implements an `Extractor`.
-func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
-	return e(start, end, from)
+// PrometheusResponseExtractor helps extracting specific info from Query Response
+type PrometheusResponseExtractor struct {
 }
 
-// CacheSplitter generates cache keys. This is a useful interface for downstream
-// consumers who wish to implement their own strategies.
-type CacheSplitter interface {
-	GenerateCacheKey(userID string, r Request) string
-}
-
-// constSplitter is a utility for using a constant split interval when determining cache keys
-type constSplitter time.Duration
-
-// GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
-	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
-}
-
-// PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
-var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
+// Extract extracts response for specific a range from a response
+func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
 	promRes := from.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -85,7 +72,33 @@ var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Resp
 		},
 		Headers: promRes.Headers,
 	}
-})
+}
+
+// ExtractCacheGenNumber extracts gen number from a response
+func (PrometheusResponseExtractor) ExtractCacheGenNumber(from Response) string {
+	promRes := from.(*PrometheusResponse)
+	return promRes.CacheGenNumber
+}
+
+// CacheSplitter generates cache keys. This is a useful interface for downstream
+// consumers who wish to implement their own strategies.
+type CacheSplitter interface {
+	GenerateCacheKey(cacheGenNumber, userID string, r Request) string
+}
+
+// constSplitter is a utility for using a constant split interval when determining cache keys
+type constSplitter time.Duration
+
+// GenerateCacheKey generates a cache key based on the userID, Request and interval.
+func (t constSplitter) GenerateCacheKey(cacheGenNumber, userID string, r Request) string {
+	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+
+	// when cacheGenNumber is empty we do not want to add `:` otherwise cache would be invalidated for all the users
+	if cacheGenNumber != "" {
+		cacheGenNumber = fmt.Sprintf("%s:", cacheGenNumber)
+	}
+	return fmt.Sprintf("%s%s:%s:%d:%d", cacheGenNumber, userID, r.GetQuery(), r.GetStep(), currentInterval)
+}
 
 type resultsCache struct {
 	logger   log.Logger
@@ -95,8 +108,9 @@ type resultsCache struct {
 	limits   Limits
 	splitter CacheSplitter
 
-	extractor Extractor
-	merger    Merger
+	extractor       Extractor
+	merger          Merger
+	cacheGenNumbers map[string]string
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -139,9 +153,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(userID, r)
-		extents  []Extent
-		response Response
+		cacheGenNumber = s.cacheGenNumbers[userID]
+		key            = s.splitter.GenerateCacheKey(cacheGenNumber, userID, r)
+		extents        []Extent
+		response       Response
 	)
 
 	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
@@ -153,7 +168,13 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r)
+		response, extents, err = s.handleMiss(ctx, r, userID)
+
+		// check if there is change in gen number to cache data with new gen number
+		newCacheGenNumber := s.cacheGenNumbers[userID]
+		if newCacheGenNumber != cacheGenNumber {
+			key = strings.Replace(key, cacheGenNumber, newCacheGenNumber, 1)
+		}
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -185,7 +206,7 @@ func (s resultsCache) shouldCacheResponse(r Response) bool {
 	return true
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r Request, userID string) (Response, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
@@ -193,6 +214,29 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 
 	if !s.shouldCacheResponse(response) {
 		return response, []Extent{}, nil
+	}
+
+	cacheGenNumber := s.extractor.ExtractCacheGenNumber(response)
+
+	if cacheGenNumber != "" {
+		if s.cacheGenNumbers[userID] == "" {
+			s.cacheGenNumbers[userID] = cacheGenNumber
+		} else {
+			// see if we have received higher gen number and start using it for caching new results using that
+			existingGenNumber, err := strconv.ParseInt(s.cacheGenNumbers[userID], 10, 64)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			newGenNumber, err := strconv.ParseInt(cacheGenNumber, 10, 64)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if newGenNumber > existingGenNumber {
+				s.cacheGenNumbers[userID] = strconv.FormatInt(newGenNumber, 10)
+			}
+		}
 	}
 
 	extent, err := toExtent(ctx, r, response)

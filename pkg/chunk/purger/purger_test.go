@@ -30,11 +30,15 @@ func setupTestDeleteStore() (*DeleteStore, error) {
 
 	mockStorage := chunk.NewMockStorage()
 
-	err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
-		Name: deleteStoreConfig.RequestsTableName,
-	})
-	if err != nil {
-		return nil, err
+	tablesToCreate := []string{deleteStoreConfig.RequestsTableName, deleteStoreConfig.CacheGenNumbersTableName}
+
+	for _, tableToCreate := range tablesToCreate {
+		err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
+			Name: tableToCreate,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return NewDeleteStore(deleteStoreConfig, mockStorage)

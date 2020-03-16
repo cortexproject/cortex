@@ -129,18 +129,49 @@ func (resp *PrometheusResponse) minTime() int64 {
 }
 
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
-	promResponses := make([]*PrometheusResponse, 0, len(responses))
-	for _, res := range responses {
-		promResponses = append(promResponses, res.(*PrometheusResponse))
-	}
-	// Merge the responses.
-	sort.Sort(byFirstTime(promResponses))
-
-	if len(promResponses) == 0 {
+	if len(responses) == 0 {
 		return &PrometheusResponse{
 			Status: StatusSuccess,
 		}, nil
 	}
+
+	// difference in gen numbers in different responses means not everyone has caught up with changes in delete requests
+	// and there could be a change in results when they catch up
+	// we want to use smallest cache gen number to avoid caching results with latest gen number until all queriers catch up
+
+	smallestCacheGenNumberStr := responses[0].(*PrometheusResponse).CacheGenNumber
+	smallestCacheGenNumber := int64(-1)
+	var err error
+
+	promResponses := make([]*PrometheusResponse, 0, len(responses))
+
+	if smallestCacheGenNumberStr != "" {
+		smallestCacheGenNumber, err = strconv.ParseInt(smallestCacheGenNumberStr, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for i, res := range responses {
+		promResponses = append(promResponses, res.(*PrometheusResponse))
+
+		if smallestCacheGenNumber != -1 && promResponses[i].CacheGenNumber != "" {
+			currGen, err := strconv.ParseInt(promResponses[i].CacheGenNumber, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			if currGen < smallestCacheGenNumber {
+				smallestCacheGenNumber = currGen
+			}
+		}
+	}
+
+	if smallestCacheGenNumber > 0 {
+		smallestCacheGenNumberStr = strconv.FormatInt(smallestCacheGenNumber, 10)
+	}
+
+	// Merge the responses.
+	sort.Sort(byFirstTime(promResponses))
 
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -148,6 +179,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
+		CacheGenNumber: smallestCacheGenNumberStr,
 	}, nil
 }
 
@@ -239,6 +271,8 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	for h, hv := range r.Header {
 		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
+
+	resp.CacheGenNumber = r.Header.Get(ResultsCacheGenNumberHeaderName)
 	return &resp, nil
 }
 

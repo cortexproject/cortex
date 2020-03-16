@@ -423,9 +423,13 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamples) {
+	if err := d.ingestionRateLimiter.WaitN(ctx, now, userID, validatedSamples); err != nil {
 		// Ensure the request slice is reused if the request is rate limited.
 		client.ReuseSlice(req.Timeseries)
+
+		if ctxErr := ctx.Err(); ctxErr != nil { // bail out if caller cancelled
+			return nil, ctxErr
+		}
 
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.

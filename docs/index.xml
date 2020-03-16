@@ -4554,9 +4554,9 @@ addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command bellow (currently it is &lt;code&gt;v0.6.1&lt;/code&gt;).&lt;/p&gt;
+to find the latest stable version tag and use it in the command bellow (currently it is &lt;code&gt;v0.7.0&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;Run Cortex using the latest stable version:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v0.6.1 -config.file=/etc/single-process-config.yaml
+&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v0.7.0 -config.file=/etc/single-process-config.yaml
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;In case you prefer to run the master version, please follow this &lt;a href=&#34;/docs/getting-started/getting-started-chunks-storage/&#34;&gt;documentation&lt;/a&gt; on how to build Cortex from source.&lt;/p&gt;
 &lt;h2 id=&#34;configure-prometheus-to-send-series-to-cortex&#34;&gt;Configure Prometheus to send series to Cortex&lt;/h2&gt;
@@ -4588,10 +4588,11 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;[ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed bug in updating last element of FIFO cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h2 id=&#34;0-7-0-rc-0-2020-03-09&#34;&gt;0.7.0-rc.0 / 2020-03-09&lt;/h2&gt;
-&lt;p&gt;Cortex &lt;code&gt;0.7.0&lt;/code&gt; introduces some &lt;strong&gt;breaking changes&lt;/strong&gt;. You&amp;rsquo;re encouraged to read all the &lt;code&gt;[CHANGE]&lt;/code&gt; entries below before upgrading your Cortex cluster. In particular:&lt;/p&gt;
+&lt;h2 id=&#34;0-7-0-2020-03-16&#34;&gt;0.7.0 / 2020-03-16&lt;/h2&gt;
+&lt;p&gt;Cortex &lt;code&gt;0.7.0&lt;/code&gt; is a major step forward the upcoming &lt;code&gt;1.0&lt;/code&gt; release. In this release, we&amp;rsquo;ve got 164 contributions from 26 authors. Thanks to all contributors! ❤️&lt;/p&gt;
+&lt;p&gt;Please be aware that Cortex &lt;code&gt;0.7.0&lt;/code&gt; introduces some &lt;strong&gt;breaking changes&lt;/strong&gt;. You&amp;rsquo;re encouraged to read all the &lt;code&gt;[CHANGE]&lt;/code&gt; entries below before upgrading your Cortex cluster. In particular:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Cleaned up some configuration options in preparation for the Cortex &lt;code&gt;1.0.0&lt;/code&gt; release:
+&lt;li&gt;Cleaned up some configuration options in preparation for the Cortex &lt;code&gt;1.0.0&lt;/code&gt; release (see also the &lt;a href=&#34;#annotated-config-file-breaking-changes&#34;&gt;annotated config file breaking changes&lt;/a&gt; below):
 &lt;ul&gt;
 &lt;li&gt;Removed CLI flags support to configure the schema (see &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/schema-configuration/#migrating-from-flags-to-schema-file&#34;&gt;how to migrate from flags to schema file&lt;/a&gt;)&lt;/li&gt;
 &lt;li&gt;Renamed CLI flag &lt;code&gt;-config-yaml&lt;/code&gt; to &lt;code&gt;-schema-config-file&lt;/code&gt;&lt;/li&gt;
@@ -4617,7 +4618,7 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;h3 id=&#34;full-changelog&#34;&gt;Full changelog&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;[CHANGE] Removed support for flags to configure schema. Further, the flag for specifying the config file (&lt;code&gt;-config-yaml&lt;/code&gt;) has been deprecated. Please use &lt;code&gt;-schema-config-file&lt;/code&gt;. See the &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/schema-configuration/&#34;&gt;Schema Configuration documentation&lt;/a&gt; for more details on how to configure the schema using the YAML file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2221&#34;&gt;#2221&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[CHANGE] Config file changed to remove top level &lt;code&gt;config_store&lt;/code&gt; field in favor of a nested &lt;code&gt;configdb&lt;/code&gt; field. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] In the config file, the root level &lt;code&gt;config_store&lt;/code&gt; config option has been moved to &lt;code&gt;alertmanager&lt;/code&gt; &amp;gt; &lt;code&gt;store&lt;/code&gt; &amp;gt; &lt;code&gt;configdb&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2125&#34;&gt;#2125&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] Removed unnecessary &lt;code&gt;frontend.cache-split-interval&lt;/code&gt; in favor of &lt;code&gt;querier.split-queries-by-interval&lt;/code&gt; both to reduce configuration complexity and guarantee alignment of these two configs. Starting from now, &lt;code&gt;-querier.cache-results&lt;/code&gt; may only be enabled in conjunction with &lt;code&gt;-querier.split-queries-by-interval&lt;/code&gt; (previously the cache interval default was &lt;code&gt;24h&lt;/code&gt; so if you want to preserve the same behaviour you should set &lt;code&gt;-querier.split-queries-by-interval=24h&lt;/code&gt;). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2040&#34;&gt;#2040&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] Renamed Configs configuration options. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2187&#34;&gt;#2187&lt;/a&gt;
 &lt;ul&gt;
@@ -4706,6 +4707,7 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;[ENHANCEMENT] Add automatic repair for checkpoint and WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2105&#34;&gt;#2105&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Support &lt;code&gt;lastEvaluation&lt;/code&gt; and &lt;code&gt;evaluationTime&lt;/code&gt; in &lt;code&gt;/api/v1/rules&lt;/code&gt; endpoints and make order of groups stable. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2196&#34;&gt;#2196&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Skip expired requests in query-frontend scheduling. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2082&#34;&gt;#2082&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Add ability to configure gRPC keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2066&#34;&gt;#2066&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with &lt;code&gt;cortex_compactor_&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2023&#34;&gt;#2023&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Added dedicated flag &lt;code&gt;-experimental.tsdb.bucket-store.tenant-sync-concurrency&lt;/code&gt; to configure the maximum number of concurrent tenants for which blocks are synched. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2026&#34;&gt;#2026&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Expose metrics for objstore operations (prefixed with &lt;code&gt;cortex_&amp;lt;component&amp;gt;_thanos_objstore_&lt;/code&gt;, component being one of &lt;code&gt;ingester&lt;/code&gt;, &lt;code&gt;querier&lt;/code&gt; and &lt;code&gt;compactor&lt;/code&gt;). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2027&#34;&gt;#2027&lt;/a&gt;&lt;/li&gt;
@@ -4719,12 +4721,94 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;[BUGFIX] Restored histogram &lt;code&gt;cortex_configs_request_duration_seconds&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2138&#34;&gt;#2138&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fix wrong syntax for &lt;code&gt;url&lt;/code&gt; in config-file-reference. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2148&#34;&gt;#2148&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed some 5xx status code returned by the query-frontend when they should actually be 4xx. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2122&#34;&gt;#2122&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Fixed leaked goroutines in the querier. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2070&#34;&gt;#2070&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed &lt;code&gt;/all_user_stats&lt;/code&gt; and &lt;code&gt;/api/prom/user_stats&lt;/code&gt; endpoints when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2042&#34;&gt;#2042&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2101&#34;&gt;#2101&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;changes-to-denormalised-tokens-in-the-ring&#34;&gt;Changes to denormalised tokens in the ring&lt;/h3&gt;
 &lt;p&gt;Cortex 0.4.0 is the last version that can &lt;em&gt;write&lt;/em&gt; denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.&lt;/p&gt;
 &lt;p&gt;Cortex 0.6.0 is the last version that can &lt;em&gt;read&lt;/em&gt; denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with &lt;code&gt;-ingester.normalise-tokens=false&lt;/code&gt;) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.&lt;/p&gt;
+&lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;The gRPC streaming for ingesters doesn&amp;rsquo;t work when using the experimental TSDB blocks storage. Please do not enable &lt;code&gt;-querier.ingester-streaming&lt;/code&gt; if you&amp;rsquo;re using the TSDB blocks storage. If you want to enable it, you can build Cortex from &lt;code&gt;master&lt;/code&gt; given the issue has been fixed after Cortex &lt;code&gt;0.7&lt;/code&gt; branch has been cut and the fix wasn&amp;rsquo;t included in the &lt;code&gt;0.7&lt;/code&gt; because related to an experimental feature.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;annotated-config-file-breaking-changes&#34;&gt;Annotated config file breaking changes&lt;/h3&gt;
+&lt;p&gt;In this section you can find a config file diff showing the breaking changes introduced in Cortex &lt;code&gt;0.7&lt;/code&gt;. You can also find the &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/configuration-file/&#34;&gt;full configuration file reference doc&lt;/a&gt; in the website.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-diff&#34; data-lang=&#34;diff&#34;&gt;### Root level config
+# &amp;#34;configdb&amp;#34; has been moved to &amp;#34;alertmanager &amp;gt; store &amp;gt; configdb&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;-[configdb: &amp;lt;configdb_config&amp;gt;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+# &amp;#34;config_store&amp;#34; has been renamed to &amp;#34;configs&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;-[config_store: &amp;lt;configstore_config&amp;gt;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[configs: &amp;lt;configs_config&amp;gt;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### `distributor_config`
+# The support to hook an external billing system has been removed.
+&lt;span style=&#34;color:#a40000&#34;&gt;-[enable_billing: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-billing:
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [maxbufferedevents: &amp;lt;int&amp;gt; | default = 1024]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [retrydelay: &amp;lt;duration&amp;gt; | default = 500ms]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [ingesterhostport: &amp;lt;string&amp;gt; | default = &amp;#34;localhost:24225&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+### `querier_config`
+# &amp;#34;ingestermaxquerylookback&amp;#34; has been renamed to &amp;#34;query_ingesters_within&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;-[ingestermaxquerylookback: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[query_ingesters_within: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### `queryrange_config`
+results_cache:
+cache:
+# &amp;#34;defaul_validity&amp;#34; has been renamed to &amp;#34;default_validity&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;- [defaul_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [default_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+# &amp;#34;cache_split_interval&amp;#34; has been deprecated in favor of &amp;#34;split_queries_by_interval&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;- [cache_split_interval: &amp;lt;duration&amp;gt; | default = 24h0m0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+### `alertmanager_config`
+# The &amp;#34;store&amp;#34; config block has been added. This includes &amp;#34;configdb&amp;#34; which previously
+# was the &amp;#34;configdb&amp;#34; root level config block.
+&lt;span style=&#34;color:#00a000&#34;&gt;+store:
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [type: &amp;lt;string&amp;gt; | default = &amp;#34;configdb&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [configdb: &amp;lt;configstore_config&amp;gt;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ local:
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [path: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### `storage_config`
+&lt;span style=&#34;color:#000080;font-weight:bold&#34;&gt;index_queries_cache_config:
+&lt;/span&gt;&lt;span style=&#34;color:#000080;font-weight:bold&#34;&gt;&lt;/span&gt; # &amp;#34;defaul_validity&amp;#34; has been renamed to &amp;#34;default_validity&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;- [defaul_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [default_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### `chunk_store_config`
+chunk_cache_config:
+# &amp;#34;defaul_validity&amp;#34; has been renamed to &amp;#34;default_validity&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;- [defaul_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [default_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+write_dedupe_cache_config:
+# &amp;#34;defaul_validity&amp;#34; has been renamed to &amp;#34;default_validity&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;- [defaul_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [default_validity: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+# &amp;#34;min_chunk_age&amp;#34; has been removed in favor of &amp;#34;querier &amp;gt; query_store_after&amp;#34;.
+&lt;span style=&#34;color:#a40000&#34;&gt;-[min_chunk_age: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+### `configs_config`
+&lt;span style=&#34;color:#a40000&#34;&gt;-# &amp;#34;uri&amp;#34; has been moved to &amp;#34;database &amp;gt; uri&amp;#34;.
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-[uri: &amp;lt;string&amp;gt; | default = &amp;#34;postgres://postgres@configs-db.weave.local/configs?sslmode=disable&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#a40000&#34;&gt;-# &amp;#34;migrationsdir&amp;#34; has been moved to &amp;#34;database &amp;gt; migrations_dir&amp;#34;.
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-[migrationsdir: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#a40000&#34;&gt;-# &amp;#34;passwordfile&amp;#34; has been moved to &amp;#34;database &amp;gt; password_file&amp;#34;.
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-[passwordfile: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#00a000&#34;&gt;+database:
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [uri: &amp;lt;string&amp;gt; | default = &amp;#34;postgres://postgres@configs-db.weave.local/configs?sslmode=disable&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [migrations_dir: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [password_file: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;h2 id=&#34;0-6-1-2020-02-05&#34;&gt;0.6.1 / 2020-02-05&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;[BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2071&#34;&gt;#2071&lt;/a&gt;&lt;/li&gt;
@@ -4769,11 +4853,9 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;[FEATURE] Added support to store ring tokens to a file and read it back on startup, instead of generating/fetching the tokens to/from the ring. This feature can be enabled with the flag &lt;code&gt;-ingester.tokens-file-path&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1750&#34;&gt;#1750&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Experimental TSDB: Added &lt;code&gt;/series&lt;/code&gt; API endpoint support with TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1830&#34;&gt;#1830&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Experimental TSDB: Added TSDB blocks &lt;code&gt;compactor&lt;/code&gt; component, which iterates over users blocks stored in the bucket and compact them according to the configured block ranges. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1942&#34;&gt;#1942&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[FEATURE] Experimental: Implements gRPC streaming for ingesters when using the experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1845&#34;&gt;#1845&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] metric &lt;code&gt;cortex_ingester_flush_reasons&lt;/code&gt; gets a new &lt;code&gt;reason&lt;/code&gt; value: &lt;code&gt;Spread&lt;/code&gt;, when &lt;code&gt;-ingester.spread-flushes&lt;/code&gt; option is enabled. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1978&#34;&gt;#1978&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Added &lt;code&gt;password&lt;/code&gt; and &lt;code&gt;enable_tls&lt;/code&gt; options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1923&#34;&gt;#1923&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Upgraded Kubernetes API version for deployments from &lt;code&gt;extensions/v1beta1&lt;/code&gt; to &lt;code&gt;apps/v1&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1941&#34;&gt;#1941&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Add ability to configure gRPC keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2066&#34;&gt;#2066&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. The max concurrency is set via &lt;code&gt;--experimental.tsdb.max-tsdb-opening-concurrency-on-startup&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1917&#34;&gt;#1917&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store and in memory index cache (many metrics to list, but all have &lt;code&gt;cortex_querier_bucket_store_&lt;/code&gt; or &lt;code&gt;cortex_querier_blocks_index_cache_&lt;/code&gt; prefix). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1996&#34;&gt;#1996&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Improved multi-tenant bucket store. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1991&#34;&gt;#1991&lt;/a&gt;
@@ -4787,7 +4869,6 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;[BUGFIX] Fixed ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1921&#34;&gt;#1921&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Reduce memory usage when ingester Push() errors. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1922&#34;&gt;#1922&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Table Manager: Fixed calculation of expected tables and creation of tables from next active schema considering grace period. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1976&#34;&gt;#1976&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[BUGFIX] Fixed leaked goroutines in the querier. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2070&#34;&gt;#2070&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: Fixed ingesters consistency during hand-over when using experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1854&#34;&gt;#1854&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1818&#34;&gt;#1818&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: Fixed metrics when using experimental TSDB blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1981&#34;&gt;#1981&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1982&#34;&gt;#1982&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1990&#34;&gt;#1990&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1983&#34;&gt;#1983&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental memberlist: Use the advertised address when sending packets to other peers of the Gossip memberlist. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1857&#34;&gt;#1857&lt;/a&gt;&lt;/li&gt;
@@ -4800,7 +4881,7 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;&lt;p&gt;Run the migrate command:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;migrate -path &amp;lt;absolute_path_to_cortex&amp;gt;/cmd/cortex/migrations -database postgres://localhost:5432/database force &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;2&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
 &lt;/ol&gt;
-&lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
+&lt;h3 id=&#34;known-issues-1&#34;&gt;Known issues&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;p&gt;The &lt;code&gt;cortex_prometheus_rule_group_last_evaluation_timestamp_seconds&lt;/code&gt; metric, tracked by the ruler, is not unregistered for rule groups not being used anymore. This issue will be fixed in the next Cortex release (see &lt;a href=&#34;https://github.com/cortexproject/cortex/issues/2033&#34;&gt;2033&lt;/a&gt;).&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;Write-Ahead-Log (WAL) does not have automatic repair of corrupt checkpoint or WAL segments, which is possible if ingester crashes abruptly or the underlying disk corrupts. Currently the only way to resolve this is to manually delete the affected checkpoint and/or WAL segments. Automatic repair will be added in the future releases.&lt;/p&gt;&lt;/li&gt;

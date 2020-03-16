@@ -80,7 +80,13 @@ To publish a stable release:
 4. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 5. Create a release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
-   - Build binaries with `make disk` and attach them to the release
+   - Build binaries with `make dist` and attach them to the release
+6. Merge the release branch `release-x.y` to `master`
+   - Merge to `master` in the local checkout
+   - Fix any conflict and `git commit -s`
+   - Temporarily disable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
+   - Push changes to upstream (please double check before pushing!)
+   - Re-enable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
 
 ### How to tag a release
 

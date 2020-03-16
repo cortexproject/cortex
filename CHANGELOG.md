@@ -15,11 +15,14 @@
 * [ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. #2270
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270
 
-## 0.7.0-rc.0 / 2020-03-09
 
-Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read all the `[CHANGE]` entries below before upgrading your Cortex cluster. In particular:
+## 0.7.0 / 2020-03-16
 
-- Cleaned up some configuration options in preparation for the Cortex `1.0.0` release:
+Cortex `0.7.0` is a major step forward the upcoming `1.0` release. In this release, we've got 164 contributions from 26 authors. Thanks to all contributors! ❤️
+
+Please be aware that Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read all the `[CHANGE]` entries below before upgrading your Cortex cluster. In particular:
+
+- Cleaned up some configuration options in preparation for the Cortex `1.0.0` release (see also the [annotated config file breaking changes](#annotated-config-file-breaking-changes) below):
   - Removed CLI flags support to configure the schema (see [how to migrate from flags to schema file](https://cortexmetrics.io/docs/configuration/schema-configuration/#migrating-from-flags-to-schema-file))
   - Renamed CLI flag `-config-yaml` to `-schema-config-file`
   - Removed CLI flag `-store.min-chunk-age` in favor of `-querier.query-store-after`. The corresponding YAML config option `ingestermaxquerylookback` has been renamed to [`query_ingesters_within`](https://cortexmetrics.io/docs/configuration/configuration-file/#querier-config)
@@ -39,7 +42,7 @@ Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read a
 ### Full changelog
 
 * [CHANGE] Removed support for flags to configure schema. Further, the flag for specifying the config file (`-config-yaml`) has been deprecated. Please use `-schema-config-file`. See the [Schema Configuration documentation](https://cortexmetrics.io/docs/configuration/schema-configuration/) for more details on how to configure the schema using the YAML file. #2221
-* [CHANGE] Config file changed to remove top level `config_store` field in favor of a nested `configdb` field. #2125
+* [CHANGE] In the config file, the root level `config_store` config option has been moved to `alertmanager` > `store` > `configdb`. #2125
 * [CHANGE] Removed unnecessary `frontend.cache-split-interval` in favor of `querier.split-queries-by-interval` both to reduce configuration complexity and guarantee alignment of these two configs. Starting from now, `-querier.cache-results` may only be enabled in conjunction with `-querier.split-queries-by-interval` (previously the cache interval default was `24h` so if you want to preserve the same behaviour you should set `-querier.split-queries-by-interval=24h`). #2040
 * [CHANGE] Renamed Configs configuration options. #2187
   * configuration options
@@ -114,6 +117,7 @@ Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read a
 * [ENHANCEMENT] Add automatic repair for checkpoint and WAL. #2105
 * [ENHANCEMENT] Support `lastEvaluation` and `evaluationTime` in `/api/v1/rules` endpoints and make order of groups stable. #2196
 * [ENHANCEMENT] Skip expired requests in query-frontend scheduling. #2082
+* [ENHANCEMENT] Add ability to configure gRPC keepalive settings. #2066
 * [ENHANCEMENT] Experimental TSDB: Export TSDB Syncer metrics from Compactor component, they are prefixed with `cortex_compactor_`. #2023
 * [ENHANCEMENT] Experimental TSDB: Added dedicated flag `-experimental.tsdb.bucket-store.tenant-sync-concurrency` to configure the maximum number of concurrent tenants for which blocks are synched. #2026
 * [ENHANCEMENT] Experimental TSDB: Expose metrics for objstore operations (prefixed with `cortex_<component>_thanos_objstore_`, component being one of `ingester`, `querier` and `compactor`). #2027
@@ -127,6 +131,7 @@ Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read a
 * [BUGFIX] Restored histogram `cortex_configs_request_duration_seconds` #2138
 * [BUGFIX] Fix wrong syntax for `url` in config-file-reference. #2148
 * [BUGFIX] Fixed some 5xx status code returned by the query-frontend when they should actually be 4xx. #2122
+* [BUGFIX] Fixed leaked goroutines in the querier. #2070
 * [BUGFIX] Experimental TSDB: fixed `/all_user_stats` and `/api/prom/user_stats` endpoints when using the experimental TSDB blocks storage. #2042
 * [BUGFIX] Experimental TSDB: fixed ruler to correctly work with the experimental TSDB blocks storage. #2101
 
@@ -135,6 +140,106 @@ Cortex `0.7.0` introduces some **breaking changes**. You're encouraged to read a
 Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
 
 Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with `-ingester.normalise-tokens=false`) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.
+
+### Known issues
+
+- The gRPC streaming for ingesters doesn't work when using the experimental TSDB blocks storage. Please do not enable `-querier.ingester-streaming` if you're using the TSDB blocks storage. If you want to enable it, you can build Cortex from `master` given the issue has been fixed after Cortex `0.7` branch has been cut and the fix wasn't included in the `0.7` because related to an experimental feature.
+
+### Annotated config file breaking changes
+
+In this section you can find a config file diff showing the breaking changes introduced in Cortex `0.7`. You can also find the [full configuration file reference doc](https://cortexmetrics.io/docs/configuration/configuration-file/) in the website.
+
+ ```diff
+### Root level config
+
+ # "configdb" has been moved to "alertmanager > store > configdb".
+-[configdb: <configdb_config>]
+
+ # "config_store" has been renamed to "configs".
+-[config_store: <configstore_config>]
++[configs: <configs_config>]
+
+
+### `distributor_config`
+
+ # The support to hook an external billing system has been removed.
+-[enable_billing: <boolean> | default = false]
+-billing:
+-  [maxbufferedevents: <int> | default = 1024]
+-  [retrydelay: <duration> | default = 500ms]
+-  [ingesterhostport: <string> | default = "localhost:24225"]
+
+
+### `querier_config`
+
+ # "ingestermaxquerylookback" has been renamed to "query_ingesters_within".
+-[ingestermaxquerylookback: <duration> | default = 0s]
++[query_ingesters_within: <duration> | default = 0s]
+
+
+### `queryrange_config`
+
+results_cache:
+  cache:
+     # "defaul_validity" has been renamed to "default_validity".
+-    [defaul_validity: <duration> | default = 0s]
++    [default_validity: <duration> | default = 0s]
+
+   # "cache_split_interval" has been deprecated in favor of "split_queries_by_interval".
+-  [cache_split_interval: <duration> | default = 24h0m0s]
+
+
+### `alertmanager_config`
+
+# The "store" config block has been added. This includes "configdb" which previously
+# was the "configdb" root level config block.
++store:
++  [type: <string> | default = "configdb"]
++  [configdb: <configstore_config>]
++  local:
++    [path: <string> | default = ""]
+
+
+### `storage_config`
+
+index_queries_cache_config:
+   # "defaul_validity" has been renamed to "default_validity".
+-  [defaul_validity: <duration> | default = 0s]
++  [default_validity: <duration> | default = 0s]
+
+
+### `chunk_store_config`
+
+chunk_cache_config:
+   # "defaul_validity" has been renamed to "default_validity".
+-  [defaul_validity: <duration> | default = 0s]
++  [default_validity: <duration> | default = 0s]
+
+write_dedupe_cache_config:
+   # "defaul_validity" has been renamed to "default_validity".
+-  [defaul_validity: <duration> | default = 0s]
++  [default_validity: <duration> | default = 0s]
+
+ # "min_chunk_age" has been removed in favor of "querier > query_store_after".
+-[min_chunk_age: <duration> | default = 0s]
+
+
+### `configs_config`
+
+-# "uri" has been moved to "database > uri".
+-[uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
+
+-# "migrationsdir" has been moved to "database > migrations_dir".
+-[migrationsdir: <string> | default = ""]
+
+-# "passwordfile" has been moved to "database > password_file".
+-[passwordfile: <string> | default = ""]
+
++database:
++  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
++  [migrations_dir: <string> | default = ""]
++  [password_file: <string> | default = ""]
+```
 
 ## 0.6.1 / 2020-02-05
 
@@ -177,11 +282,9 @@ Further, if you're using the configs service, we've upgraded the migration libra
 * [FEATURE] Added support to store ring tokens to a file and read it back on startup, instead of generating/fetching the tokens to/from the ring. This feature can be enabled with the flag `-ingester.tokens-file-path`. #1750
 * [FEATURE] Experimental TSDB: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Experimental TSDB: Added TSDB blocks `compactor` component, which iterates over users blocks stored in the bucket and compact them according to the configured block ranges. #1942
-* [FEATURE] Experimental: Implements gRPC streaming for ingesters when using the experimental TSDB blocks storage. #1845
 * [ENHANCEMENT] metric `cortex_ingester_flush_reasons` gets a new `reason` value: `Spread`, when `-ingester.spread-flushes` option is enabled. #1978
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service. #1923
 * [ENHANCEMENT] Upgraded Kubernetes API version for deployments from `extensions/v1beta1` to `apps/v1`. #1941
-* [ENHANCEMENT] Add ability to configure gRPC keepalive settings. #2066
 * [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. The max concurrency is set via `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`. #1917
 * [ENHANCEMENT] Experimental TSDB: Querier now exports aggregate metrics from Thanos bucket store and in memory index cache (many metrics to list, but all have `cortex_querier_bucket_store_` or `cortex_querier_blocks_index_cache_` prefix). #1996
 * [ENHANCEMENT] Experimental TSDB: Improved multi-tenant bucket store. #1991
@@ -193,7 +296,6 @@ Further, if you're using the configs service, we've upgraded the migration libra
 * [BUGFIX] Fixed ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Reduce memory usage when ingester Push() errors. #1922
 * [BUGFIX] Table Manager: Fixed calculation of expected tables and creation of tables from next active schema considering grace period. #1976
-* [BUGFIX] Fixed leaked goroutines in the querier. #2070
 * [BUGFIX] Experimental TSDB: Fixed ingesters consistency during hand-over when using experimental TSDB blocks storage. #1854 #1818
 * [BUGFIX] Experimental TSDB: Fixed metrics when using experimental TSDB blocks storage. #1981 #1982 #1990 #1983
 * [BUGFIX] Experimental memberlist: Use the advertised address when sending packets to other peers of the Gossip memberlist. #1857

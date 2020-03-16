@@ -354,22 +354,22 @@ type ReadinessProbe interface {
 	Ready(service *ConcreteService) (err error)
 }
 
-// ReadinessProbeHTTP checks readiness by making HTTP call and checking for expected HTTP status code
-type ReadinessProbeHTTP struct {
+// HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code
+type HTTPReadinessProbe struct {
 	port           int
 	path           string
 	expectedStatus int
 }
 
-func NewReadinessProbeHTTP(port int, path string, expectedStatus int) *ReadinessProbeHTTP {
-	return &ReadinessProbeHTTP{
+func NewHTTPReadinessProbe(port int, path string, expectedStatus int) *HTTPReadinessProbe {
+	return &HTTPReadinessProbe{
 		port:           port,
 		path:           path,
 		expectedStatus: expectedStatus,
 	}
 }
 
-func (p *ReadinessProbeHTTP) Ready(service *ConcreteService) (err error) {
+func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	// Map the container port to the local port
 	localPort, ok := service.networkPortsContainerToLocal[p.port]
 	if !ok {
@@ -390,16 +390,16 @@ func (p *ReadinessProbeHTTP) Ready(service *ConcreteService) (err error) {
 	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
 }
 
-// ReadinessProbeCmd checks readiness by `Exec`ing a command which returns 0 to consider status being ready
-type ReadinessProbeCmd struct {
+// CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready
+type CmdReadinessProbe struct {
 	cmd *Command
 }
 
-func NewReadinessProbeCmd(cmd *Command) *ReadinessProbeCmd {
-	return &ReadinessProbeCmd{cmd: cmd}
+func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
+	return &CmdReadinessProbe{cmd: cmd}
 }
 
-func (p *ReadinessProbeCmd) Ready(service *ConcreteService) error {
+func (p *CmdReadinessProbe) Ready(service *ConcreteService) error {
 	_, err := service.Exec(p.cmd)
 	return err
 }

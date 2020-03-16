@@ -3,7 +3,7 @@
 ## master / unreleased
 
 
-## 0.7.0-rc.0 / 2020-03-09
+## 0.7.0 / 2020-03-16
 
 Cortex `0.7.0` is a major step forward the upcoming `1.0` release. In this release, we've got 164 contributions from 26 authors. Thanks to all contributors! ❤️
 

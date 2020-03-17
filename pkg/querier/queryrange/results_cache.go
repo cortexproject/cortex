@@ -218,6 +218,11 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request, userID string) 
 
 	cacheGenNumber := s.extractor.ExtractCacheGenNumber(response)
 
+	if cacheGenNumber == "-1" {
+		level.Debug(s.logger).Log("msg", "there is an inconsistency in cache generation numbers, not caching the response")
+		return response, []Extent{}, nil
+	}
+
 	if cacheGenNumber != "" {
 		if s.cacheGenNumbers[userID] == "" {
 			s.cacheGenNumbers[userID] = cacheGenNumber

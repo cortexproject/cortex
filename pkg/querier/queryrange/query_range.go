@@ -137,37 +137,19 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	// difference in gen numbers in different responses means not everyone has caught up with changes in delete requests
 	// and there could be a change in results when they catch up
-	// we want to use smallest cache gen number to avoid caching results with latest gen number until all queriers catch up
+	// If there is a difference, lets set cache gen to -1 to let the consumer know that
+	// there is an inconsistency in generation number so results could change for same query
 
-	smallestCacheGenNumberStr := responses[0].(*PrometheusResponse).CacheGenNumber
-	smallestCacheGenNumber := int64(-1)
-	var err error
+	finalCacheGenNumber := responses[0].(*PrometheusResponse).CacheGenNumber
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
 
-	if smallestCacheGenNumberStr != "" {
-		smallestCacheGenNumber, err = strconv.ParseInt(smallestCacheGenNumberStr, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	for i, res := range responses {
+	for _, res := range responses {
 		promResponses = append(promResponses, res.(*PrometheusResponse))
 
-		if smallestCacheGenNumber != -1 && promResponses[i].CacheGenNumber != "" {
-			currGen, err := strconv.ParseInt(promResponses[i].CacheGenNumber, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			if currGen < smallestCacheGenNumber {
-				smallestCacheGenNumber = currGen
-			}
+		if finalCacheGenNumber != "-1" && finalCacheGenNumber != responses[0].(*PrometheusResponse).CacheGenNumber {
+			finalCacheGenNumber = "-1"
 		}
-	}
-
-	if smallestCacheGenNumber > 0 {
-		smallestCacheGenNumberStr = strconv.FormatInt(smallestCacheGenNumber, 10)
 	}
 
 	// Merge the responses.
@@ -179,7 +161,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
-		CacheGenNumber: smallestCacheGenNumberStr,
+		CacheGenNumber: finalCacheGenNumber,
 	}, nil
 }
 

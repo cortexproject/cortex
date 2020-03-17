@@ -28,6 +28,10 @@ func DoParallelQueries(
 	ctx context.Context, doSingleQuery DoSingleQuery, queries []chunk.IndexQuery,
 	callback func(chunk.IndexQuery, chunk.ReadBatch) bool,
 ) error {
+	if len(queries) == 1 {
+		return doSingleQuery(ctx, queries[0], callback)
+	}
+
 	queue := make(chan chunk.IndexQuery)
 	incomingErrors := make(chan error)
 	n := util.Min(len(queries), QueryParallelism)

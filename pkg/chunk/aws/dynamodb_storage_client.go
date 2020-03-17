@@ -289,7 +289,7 @@ func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
-func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -343,7 +343,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 			return err
 		}
 
-		if !callback(response) {
+		if !callback(query, response) {
 			if err != nil {
 				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
 			}

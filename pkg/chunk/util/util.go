@@ -15,7 +15,7 @@ import (
 // DoSingleQuery is the interface for indexes that don't support batching yet.
 type DoSingleQuery func(
 	ctx context.Context, query chunk.IndexQuery,
-	callback func(chunk.ReadBatch) bool,
+	callback func(chunk.IndexQuery, chunk.ReadBatch) bool,
 ) error
 
 // QueryParallelism is the maximum number of subqueries run in
@@ -41,9 +41,7 @@ func DoParallelQueries(
 				if !ok {
 					return
 				}
-				incomingErrors <- doSingleQuery(ctx, query, func(r chunk.ReadBatch) bool {
-					return callback(query, r)
-				})
+				incomingErrors <- doSingleQuery(ctx, query, callback)
 			}
 		}()
 	}

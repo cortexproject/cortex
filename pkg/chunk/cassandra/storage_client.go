@@ -248,7 +248,7 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(query chunk.IndexQuery, result chunk.ReadBatch) (shouldContinue bool)) error {
 	var q *gocql.Query
 
 	switch {
@@ -285,7 +285,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
-		if !callback(b) {
+		if !callback(query, b) {
 			return nil
 		}
 	}

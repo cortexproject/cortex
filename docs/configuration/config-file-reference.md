@@ -2099,6 +2099,11 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -<prefix>.memcached.service
 [service: <string> | default = "memcached"]
 
+# EXPERIMENTAL: Comma separated endpoints list in Thanos DNS Service Discovery
+# format: https://thanos.io/service-discovery.md/#dns-service-discovery
+# CLI flag: -<prefix>.memcached.endpoints
+[endpoints: <string> | default = ""]
+
 # Maximum time to wait before giving up on memcached requests.
 # CLI flag: -<prefix>.memcached.timeout
 [timeout: <duration> | default = 100ms]

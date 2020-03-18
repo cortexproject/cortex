@@ -370,13 +370,14 @@ func NewHTTPReadinessProbe(port int, path string, expectedStatus int) *HTTPReadi
 }
 
 func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
-	// Map the container port to the local port
-	localPort, ok := service.networkPortsContainerToLocal[p.port]
-	if !ok {
-		return fmt.Errorf("unknown port %d configured in the readiness probe", p.port)
+	endpoint := service.Endpoint(p.port)
+	if endpoint == "" {
+		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+	} else if endpoint == "stopped" {
+		return errors.New("service has stopped")
 	}
 
-	res, err := GetRequest(fmt.Sprintf("http://localhost:%d%s", localPort, p.path))
+	res, err := GetRequest("http://" + endpoint + p.path)
 	if err != nil {
 		return err
 	}

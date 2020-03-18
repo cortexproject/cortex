@@ -28,6 +28,8 @@ import (
 
 // RegisterRoutes registers the ruler API HTTP routes with the provided Router.
 func (r *Ruler) RegisterRoutes(router *mux.Router, middleware middleware.Interface) {
+	// Routes for this API must be encoded to allow for various characters to be
+	// present in the path URL
 	router = router.UseEncodedPath()
 	for _, route := range []struct {
 		name, method, path string
@@ -284,14 +286,12 @@ func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
 }
 
 var (
-	// ErrNoNamespace signals the requested namespace does not exist
-	ErrNoNamespace = errors.New("a namespace must be provided in the url")
+	// ErrNoNamespace signals that no namespace was specified in the request
+	ErrNoNamespace = errors.New("a namespace must be provided in the request")
 	// ErrNoGroupName signals a group name url parameter was not found
 	ErrNoGroupName = errors.New("a matching group name must be provided in the request")
 	// ErrNoRuleGroups signals the rule group requested does not exist
 	ErrNoRuleGroups = errors.New("no rule groups found")
-	// ErrNoUserID is returned when no user ID is provided
-	ErrNoUserID = errors.New("no id provided")
 	// ErrBadRuleGroup is returned when the provided rule group can not be unmarshalled
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
@@ -319,6 +319,39 @@ func ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	return errs
 }
 
+func marshalAndSend(formatted interface{}, w http.ResponseWriter, logger log.Logger) {
+	d, err := yaml.Marshal(&formatted)
+	if err != nil {
+		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/yaml")
+	if _, err := w.Write(d); err != nil {
+		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
+		return
+	}
+}
+
+func respondAccepted(w http.ResponseWriter, logger log.Logger) {
+	b, err := json.Marshal(&response{
+		Status: "success",
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		respondError(logger, w, "unable to marshal the requested data")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
+	w.WriteHeader(http.StatusAccepted)
+	if n, err := w.Write(b); err != nil {
+		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
+}
+
 // parseNamespace parses the namespace from the provided set of params, in this
 // api these params are derived from the url path
 func parseNamespace(params map[string]string) (string, error) {
@@ -327,7 +360,7 @@ func parseNamespace(params map[string]string) (string, error) {
 		return "", ErrNoNamespace
 	}
 
-	namespace, err := url.PathUnescape(namespace) // namespaces needs to be unescaped if in the URL
+	namespace, err := url.PathUnescape(namespace)
 	if err != nil {
 		return "", err
 	}
@@ -343,7 +376,7 @@ func parseGroupName(params map[string]string) (string, error) {
 		return "", ErrNoGroupName
 	}
 
-	groupName, err := url.PathUnescape(groupName) // groupName needs to be unescaped if in the URL
+	groupName, err := url.PathUnescape(groupName)
 	if err != nil {
 		return "", err
 	}
@@ -351,30 +384,40 @@ func parseGroupName(params map[string]string) (string, error) {
 	return groupName, nil
 }
 
-func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
+func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
+	id, err := user.ExtractOrgID(req.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return "", "", "", user.ErrNoOrgID
 	}
 
 	vars := mux.Vars(req)
 
-	// Parse the namespace from the url path parameters and return
-	// a 400 if it is invalid and return a full set of rules if no
-	// namespace is provided
 	namespace, err := parseNamespace(vars)
 	if err != nil {
-		// If a namespace is not provided continue as usual and return a full set of rules
-		if err != ErrNoNamespace {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		if err != ErrNoNamespace || requireNamespace {
+			return "", "", "", err
 		}
-		level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	}
 
-	level.Debug(logger).Log("msg", "retrieving rule groups from rule store", "userID", userID)
+	group, err := parseGroupName(vars)
+	if err != nil {
+		if err != ErrNoGroupName || requireGroup {
+			return "", "", "", err
+		}
+	}
+
+	return id, namespace, group, nil
+}
+
+func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
+
+	userID, namespace, _, err := parseRequest(req, false, false)
+	if err != nil {
+		respondError(logger, w, err.Error())
+	}
+
+	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	rgs, err := r.store.ListRuleGroups(req.Context(), userID, namespace)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -390,46 +433,14 @@ func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	formatted := rgs.Formatted()
-
-	d, err := yaml.Marshal(&formatted)
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/yaml")
-	if _, err := w.Write(d); err != nil {
-		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	marshalAndSend(formatted, w, logger)
 }
 
 func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	vars := mux.Vars(req)
-
-	// Parse the namespace from the url path parameters and return
-	// a 400 if it is invalid
-	namespace, err := parseNamespace(vars)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Parse the rule group name from the url path parameters and return
-	// a 400 if it is invalid
-	groupName, err := parseGroupName(vars)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		respondError(logger, w, err.Error())
 	}
 
 	rg, err := r.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
@@ -442,37 +453,15 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formattedRG := store.FromProto(rg)
-
-	d, err := yaml.Marshal(&formattedRG)
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/yaml")
-	if _, err := w.Write(d); err != nil {
-		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	formatted := store.FromProto(rg)
+	marshalAndSend(formatted, w, logger)
 }
 
 func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Parse the namespace from the url path parameters and return
-	// a 400 if it is invalid
-	namespace, err := parseNamespace(mux.Vars(req))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		respondError(logger, w, err.Error())
 	}
 
 	payload, err := ioutil.ReadAll(req.Body)
@@ -509,34 +498,15 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
-	w.WriteHeader(http.StatusAccepted)
+	respondAccepted(w, logger)
 }
 
 func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 
-	vars := mux.Vars(req)
-
-	// Parse the namespace from the url path parameters and return
-	// a 400 if it is invalid
-	namespace, err := parseNamespace(vars)
+	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Parse the rule group name from the url path parameters and return
-	// a 400 if it is invalid
-	groupName, err := parseGroupName(vars)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		respondError(logger, w, err.Error())
 	}
 
 	err = r.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
@@ -550,6 +520,5 @@ func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
-	w.WriteHeader(http.StatusAccepted)
+	respondAccepted(w, logger)
 }

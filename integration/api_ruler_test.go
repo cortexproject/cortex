@@ -32,10 +32,11 @@ func TestRulerAPI(t *testing.T) {
 	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
 	require.NoError(t, err)
 
-	// Create example namespace and rule group to use for tests
-	namespace := "test_namespace"
+	// Create example namespace and rule group to use for tests, using strings that
+	// require url escaping.
+	namespace := "test_encoded_+namespace?"
 	rg := rulefmt.RuleGroup{
-		Name:     "test_group",
+		Name:     "test_encoded_+\"+group_name?",
 		Interval: 100,
 		Rules: []rulefmt.Rule{
 			rulefmt.Rule{

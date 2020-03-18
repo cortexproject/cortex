@@ -23,12 +23,13 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
 	bigtable := e2edb.NewBigtable()
+	cassandra := e2edb.NewCassandra()
 
-	stores := []string{"aws-dynamo", "bigtable"}
+	stores := []string{"aws-dynamo", "bigtable", "cassandra"}
 	perStoreDuration := 14 * 24 * time.Hour
 
 	consul := e2edb.NewConsul()
-	require.NoError(t, s.StartAndWaitReady(dynamo, bigtable, consul))
+	require.NoError(t, s.StartAndWaitReady(cassandra, dynamo, bigtable, consul))
 
 	// lets build config for each type of Index Store.
 	now := time.Now()
@@ -39,6 +40,11 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		storeConfigs[i] = storeConfig{From: oldestStoreStartTime.Add(time.Duration(i) * perStoreDuration).Format("2006-01-02"), IndexStore: store}
 	}
 
+	storageFlags := mergeFlags(ChunksStorageFlags, map[string]string{
+		"-cassandra.addresses": cassandra.NetworkHTTPEndpoint(),
+		"-cassandra.keyspace":  "tests", // keyspace gets created on startup if it does not exist
+	})
+
 	// bigtable client needs to set an environment variable when connecting to an emulator
 	bigtableFlag := map[string]string{"BIGTABLE_EMULATOR_HOST": bigtable.NetworkHTTPEndpoint()}
 
@@ -47,7 +53,7 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	for i := range storeConfigs {
 		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs[i:i+1]))))
 
-		tableManager := e2ecortex.NewTableManager("table-manager", mergeFlags(ChunksStorageFlags, map[string]string{
+		tableManager := e2ecortex.NewTableManager("table-manager", mergeFlags(storageFlags, map[string]string{
 			"-table-manager.retention-period": "2520h", // setting retention high enough
 		}), "")
 		tableManager.HTTPService.SetEnvVars(bigtableFlag)
@@ -62,13 +68,13 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	// Start rest of the Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs))))
 
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(storageFlags, map[string]string{
 		"-ingester.retain-period": "0s", // we want to make ingester not retain any chunks in memory after they are flushed so that queries get data only from the store
 	}), "")
 	ingester.HTTPService.SetEnvVars(bigtableFlag)
 
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), storageFlags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), storageFlags, "")
 	querier.HTTPService.SetEnvVars(bigtableFlag)
 
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))

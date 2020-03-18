@@ -13,7 +13,7 @@ func NewCortexService(
 	name string,
 	image string,
 	command *e2e.Command,
-	readiness *e2e.ReadinessProbe,
+	readiness e2e.ReadinessProbe,
 	httpPort int,
 	grpcPort int,
 	otherPorts ...int,

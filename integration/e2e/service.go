@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -37,7 +38,7 @@ type ConcreteService struct {
 	env          map[string]string
 	user         string
 	command      *Command
-	readiness    *ReadinessProbe
+	readiness    ReadinessProbe
 
 	// Maps container ports to dynamically binded local ports.
 	networkPortsContainerToLocal map[int]int
@@ -54,7 +55,7 @@ func NewConcreteService(
 	name string,
 	image string,
 	command *Command,
-	readiness *ReadinessProbe,
+	readiness ReadinessProbe,
 	networkPorts ...int,
 ) *ConcreteService {
 	return &ConcreteService{
@@ -218,7 +219,7 @@ func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) strin
 	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
-func (s *ConcreteService) SetReadinessProbe(probe *ReadinessProbe) {
+func (s *ConcreteService) SetReadinessProbe(probe ReadinessProbe) {
 	s.readiness = probe
 }
 
@@ -232,13 +233,7 @@ func (s *ConcreteService) Ready() error {
 		return nil
 	}
 
-	// Map the container port to the local port
-	localPort, ok := s.networkPortsContainerToLocal[s.readiness.port]
-	if !ok {
-		return fmt.Errorf("unknown port %d configured in the readiness probe", s.readiness.port)
-	}
-
-	return s.readiness.Ready(localPort)
+	return s.readiness.Ready(s)
 }
 
 func containerName(netName string, name string) string {
@@ -303,14 +298,35 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 	}
 
 	// Disable entrypoint if required
-	if s.command.entrypointDisabled {
+	if s.command != nil && s.command.entrypointDisabled {
 		args = append(args, "--entrypoint", "")
 	}
 
 	args = append(args, s.image)
-	args = append(args, s.command.cmd)
-	args = append(args, s.command.args...)
+
+	if s.command != nil {
+		args = append(args, s.command.cmd)
+		args = append(args, s.command.args...)
+	}
+
 	return args
+}
+
+func (s *ConcreteService) Exec(command *Command) (string, error) {
+	args := []string{"exec", s.containerName()}
+	args = append(args, command.cmd)
+	args = append(args, command.args...)
+
+	cmd := exec.Command("docker", args...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return stdout.String(), nil
 }
 
 type Command struct {
@@ -334,22 +350,34 @@ func NewCommandWithoutEntrypoint(cmd string, args ...string) *Command {
 	}
 }
 
-type ReadinessProbe struct {
+type ReadinessProbe interface {
+	Ready(service *ConcreteService) (err error)
+}
+
+// HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code
+type HTTPReadinessProbe struct {
 	port           int
 	path           string
 	expectedStatus int
 }
 
-func NewReadinessProbe(port int, path string, expectedStatus int) *ReadinessProbe {
-	return &ReadinessProbe{
+func NewHTTPReadinessProbe(port int, path string, expectedStatus int) *HTTPReadinessProbe {
+	return &HTTPReadinessProbe{
 		port:           port,
 		path:           path,
 		expectedStatus: expectedStatus,
 	}
 }
 
-func (p *ReadinessProbe) Ready(localPort int) (err error) {
-	res, err := GetRequest(fmt.Sprintf("http://localhost:%d%s", localPort, p.path))
+func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
+	endpoint := service.Endpoint(p.port)
+	if endpoint == "" {
+		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+	} else if endpoint == "stopped" {
+		return errors.New("service has stopped")
+	}
+
+	res, err := GetRequest("http://" + endpoint + p.path)
 	if err != nil {
 		return err
 	}
@@ -361,6 +389,20 @@ func (p *ReadinessProbe) Ready(localPort int) (err error) {
 	}
 
 	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
+}
+
+// CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready
+type CmdReadinessProbe struct {
+	cmd *Command
+}
+
+func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
+	return &CmdReadinessProbe{cmd: cmd}
+}
+
+func (p *CmdReadinessProbe) Ready(service *ConcreteService) error {
+	_, err := service.Exec(p.cmd)
+	return err
 }
 
 type LinePrefixWriter struct {
@@ -398,7 +440,7 @@ func NewHTTPService(
 	name string,
 	image string,
 	command *Command,
-	readiness *ReadinessProbe,
+	readiness ReadinessProbe,
 	httpPort int,
 	otherPorts ...int,
 ) *HTTPService {

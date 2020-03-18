@@ -25,7 +25,7 @@ func NewMinio(port int, bktName string) *e2e.HTTPService {
 		"minio/minio:RELEASE.2019-12-30T05-45-39Z",
 		// Create the "cortex" bucket before starting minio
 		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf("mkdir -p /data/%s && minio server --address :%v --quiet /data", bktName, port)),
-		e2e.NewReadinessProbe(port, "/minio/health/ready", 200),
+		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200),
 		port,
 	)
 	m.SetEnvVars(map[string]string{
@@ -78,7 +78,7 @@ func NewDynamoDB() *e2e.HTTPService {
 		"amazon/dynamodb-local:1.11.477",
 		e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
 		// DynamoDB doesn't have a readiness probe, so we check if the / works even if returns 400
-		e2e.NewReadinessProbe(8000, "/", 400),
+		e2e.NewHTTPReadinessProbe(8000, "/", 400),
 		8000,
 	)
 }
@@ -90,8 +90,21 @@ func NewBigtable() *e2e.HTTPService {
 		// If you change the image tag, remember to update it in the preloading done
 		// by CircleCI too (see .circleci/config.yml).
 		"shopify/bigtable-emulator:0.1.0",
-		e2e.NewCommand(""),
+		nil,
 		nil,
 		9035,
+	)
+}
+
+func NewCassandra() *e2e.HTTPService {
+	return e2e.NewHTTPService(
+		"cassandra",
+		// If you change the image tag, remember to update it in the preloading done
+		// by CircleCI too (see .circleci/config.yml).
+		"rinscy/cassandra:3.11.0",
+		nil,
+		// readiness probe inspired from https://github.com/kubernetes/examples/blob/b86c9d50be45eaf5ce74dee7159ce38b0e149d38/cassandra/image/files/ready-probe.sh
+		e2e.NewCmdReadinessProbe(e2e.NewCommand("bash", "-c", "nodetool status | grep UN")),
+		9042,
 	)
 }

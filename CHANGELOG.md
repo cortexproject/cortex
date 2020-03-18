@@ -12,6 +12,7 @@
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
 * [ENHANCEMENT] Better re-use of connections to DynamoDB and S3. #2268
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
+* [ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. #2290
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting table period and retention. #2252 
 * [ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. #2270
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209

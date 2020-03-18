@@ -287,7 +287,7 @@ var (
 	// ErrNoNamespace signals the requested namespace does not exist
 	ErrNoNamespace = errors.New("a namespace must be provided in the url")
 	// ErrNoGroupName signals a group name url parameter was not found
-	ErrNoGroupName = errors.New("a matching group name must be provided in the url")
+	ErrNoGroupName = errors.New("a matching group name must be provided in the request")
 	// ErrNoRuleGroups signals the rule group requested does not exist
 	ErrNoRuleGroups = errors.New("no rule groups found")
 	// ErrNoUserID is returned when no user ID is provided

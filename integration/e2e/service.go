@@ -250,7 +250,12 @@ func (s *ConcreteService) WaitStarted() (err error) {
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		err = exec.Command("docker", "inspect", s.containerName()).Run()
+		// Enforce a timeout on the command execution because we've seen some flaky tests
+		// stuck here.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err = exec.CommandContext(ctx, "docker", "inspect", s.containerName()).Run()
 		if err == nil {
 			return nil
 		}

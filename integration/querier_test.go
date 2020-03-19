@@ -21,18 +21,15 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 	tests := map[string]struct {
 		flags map[string]string
 	}{
-		"querier running with ingester gRPC streaming disabled": {
+		"querier running with ingester gRPC streaming disabled and inmemory index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
-				"-querier.ingester-streaming": "false",
+				"-querier.ingester-streaming":                         "false",
+				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
 			}),
 		},
-		"querier running with ingester gRPC streaming enabled": {
+		"querier running with ingester gRPC streaming enabled and inmemory index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
-				"-querier.ingester-streaming": "true",
-			}),
-		},
-		"querier running with inmemory index cache": {
-			flags: mergeFlags(BlocksStorageFlags, map[string]string{
+				"-querier.ingester-streaming":                         "true",
 				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
 			}),
 		},

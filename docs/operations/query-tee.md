@@ -1,7 +1,7 @@
 ---
 title: "Query Tee (service)"
 linkTitle: "Query Tee (service)"
-weight: 4
+weight: 3
 slug: query-tee
 ---
 

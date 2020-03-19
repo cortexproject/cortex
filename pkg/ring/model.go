@@ -377,6 +377,7 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 type TokenDesc struct {
 	Token    uint32
 	Ingester string
+	Zone     string
 }
 
 // Returns sorted list of tokens with ingester names.
@@ -388,7 +389,7 @@ func (d *Desc) getTokens() []TokenDesc {
 	tokens := make([]TokenDesc, 0, numTokens)
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})
+			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
 		}
 	}
 

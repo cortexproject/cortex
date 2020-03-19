@@ -319,8 +319,8 @@ func ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	return errs
 }
 
-func marshalAndSend(formatted interface{}, w http.ResponseWriter, logger log.Logger) {
-	d, err := yaml.Marshal(&formatted)
+func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
+	d, err := yaml.Marshal(&output)
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -384,8 +384,11 @@ func parseGroupName(params map[string]string) (string, error) {
 	return groupName, nil
 }
 
+// parseRequest parses the incoming request to parse out the userID, rules namespace, and rule group name
+// and returns them in that order. It also allows users to require a namespace or group name and return
+// an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	id, err := user.ExtractOrgID(req.Context())
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}
@@ -406,7 +409,7 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 		}
 	}
 
-	return id, namespace, group, nil
+	return userID, namespace, group, nil
 }
 
 func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
@@ -415,6 +418,7 @@ func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
 	userID, namespace, _, err := parseRequest(req, false, false)
 	if err != nil {
 		respondError(logger, w, err.Error())
+		return
 	}
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
@@ -441,6 +445,7 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
 		respondError(logger, w, err.Error())
+		return
 	}
 
 	rg, err := r.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
@@ -462,11 +467,12 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
 		respondError(logger, w, err.Error())
+		return
 	}
 
 	payload, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		level.Error(logger).Log("err", err.Error())
+		level.Error(logger).Log("msg", "unable to read rule group payload", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -476,14 +482,16 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	rg := rulefmt.RuleGroup{}
 	err = yaml.Unmarshal(payload, &rg)
 	if err != nil {
-		level.Error(logger).Log("err", err.Error())
+		level.Error(logger).Log("msg", "unable to unmarshal rule group payload", "err", err.Error())
 		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
 		return
 	}
 
 	errs := ValidateRuleGroup(rg)
 	if len(errs) > 0 {
-		level.Error(logger).Log("err", err.Error())
+		for _, err := range errs {
+			level.Error(logger).Log("msg", "unable to validate rule group payload", "err", err.Error())
+		}
 		http.Error(w, errs[0].Error(), http.StatusBadRequest)
 		return
 	}
@@ -493,7 +501,7 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
 	err = r.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)
 	if err != nil {
-		level.Error(logger).Log("err", err.Error())
+		level.Error(logger).Log("msg", "unable to store rule group", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -507,6 +515,7 @@ func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
 		respondError(logger, w, err.Error())
+		return
 	}
 
 	err = r.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
@@ -515,8 +524,7 @@ func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(logger, w, err.Error())
 		return
 	}
 

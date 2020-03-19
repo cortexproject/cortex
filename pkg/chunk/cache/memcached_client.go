@@ -58,13 +58,13 @@ type memcachedClient struct {
 
 // MemcachedClientConfig defines how a MemcachedClient should be constructed.
 type MemcachedClientConfig struct {
-	Host           string        `yaml:"host,omitempty"`
-	Service        string        `yaml:"service,omitempty"`
+	Host           string        `yaml:"host"`
+	Service        string        `yaml:"service"`
 	Addresses      string        `yaml:"addresses"` // EXPERIMENTAL.
-	Timeout        time.Duration `yaml:"timeout,omitempty"`
-	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
-	UpdateInterval time.Duration `yaml:"update_interval,omitempty"`
-	ConsistentHash bool          `yaml:"consistent_hash,omitempty"`
+	Timeout        time.Duration `yaml:"timeout"`
+	MaxIdleConns   int           `yaml:"max_idle_conns"`
+	UpdateInterval time.Duration `yaml:"update_interval"`
+	ConsistentHash bool          `yaml:"consistent_hash"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -143,7 +143,10 @@ func (c *memcachedClient) updateMemcacheServers() error {
 	var servers []string
 
 	if len(c.addresses) > 0 {
-		c.provider.Resolve(context.Background(), c.addresses)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		c.provider.Resolve(ctx, c.addresses)
 		servers = c.provider.Addresses()
 	} else {
 		_, addrs, err := net.LookupSRV(c.service, "tcp", c.hostname)

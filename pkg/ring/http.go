@@ -30,6 +30,7 @@ const pageContent = `
 				<thead>
 					<tr>
 						<th>Instance ID</th>
+						<th>Availabilty Zone</th>
 						<th>State</th>
 						<th>Address</th>
 						<th>Last Heartbeat</th>
@@ -46,6 +47,7 @@ const pageContent = `
 					<tr bgcolor="#BEBEBE">
 					{{ end }}
 						<td>{{ .ID }}</td>
+						<td>{{ .Zone }}</td>
 						<td>{{ .State }}</td>
 						<td>{{ .Address }}</td>
 						<td>{{ .Timestamp }}</td>

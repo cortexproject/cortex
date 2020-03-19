@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	strconv "strconv"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), strconv.Itoa(i), tokens, ACTIVE)
 	}
 
 	cfg := Config{}
@@ -97,7 +98,7 @@ func TestAddIngester(t *testing.T) {
 
 	ing1Tokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ingName, "addr", ing1Tokens, ACTIVE)
+	r.AddIngester(ingName, "addr", "1", ing1Tokens, ACTIVE)
 
 	require.Equal(t, "addr", r.Ingesters[ingName].Addr)
 	require.Equal(t, ing1Tokens, r.Ingesters[ingName].Tokens)
@@ -115,7 +116,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 
 	newTokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
+	r.AddIngester(ing1Name, "addr", "1", newTokens, ACTIVE)
 
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
@@ -129,7 +130,7 @@ func TestSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}
@@ -183,7 +184,7 @@ func TestStableSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}

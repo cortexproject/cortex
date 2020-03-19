@@ -41,6 +41,11 @@ func TestCortex(t *testing.T) {
 			S3: s3.Config{
 				Endpoint: "localhost",
 			},
+			BucketStore: tsdb.BucketStoreConfig{
+				IndexCache: tsdb.IndexCacheConfig{
+					Backend: tsdb.IndexCacheBackendInMemory,
+				},
+			},
 		},
 		Target: All,
 	}

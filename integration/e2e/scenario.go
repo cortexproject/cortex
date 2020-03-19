@@ -54,7 +54,7 @@ func NewScenario(networkName string) (*Scenario, error) {
 
 	// Setup the docker network.
 	if out, err := RunCommandAndGetOutput("docker", "network", "create", networkName); err != nil {
-		fmt.Println(string(out))
+		logger.Log(string(out))
 		s.clean()
 		return nil, errors.Wrapf(err, "create docker network '%s'", networkName)
 	}
@@ -90,8 +90,7 @@ func (s *Scenario) StartAndWaitReady(services ...Service) error {
 
 func (s *Scenario) Start(services ...Service) error {
 	for _, service := range services {
-		// TODO(bwplotka): Some basic logger would be nice.
-		fmt.Println("Starting", service.Name())
+		logger.Log("Starting", service.Name())
 
 		// Ensure another service with the same name doesn't exist.
 		if s.isRegistered(service.Name()) {
@@ -153,7 +152,7 @@ func (s *Scenario) Close() {
 // TODO(bwplotka): Add comments.
 func (s *Scenario) clean() {
 	if err := os.RemoveAll(s.sharedDir); err != nil {
-		fmt.Println("error while removing sharedDir", s.sharedDir, "err:", err)
+		logger.Log("error while removing sharedDir", s.sharedDir, "err:", err)
 	}
 }
 
@@ -161,7 +160,7 @@ func (s *Scenario) shutdown() {
 	// Kill the services in the opposite order.
 	for i := len(s.services) - 1; i >= 0; i-- {
 		if err := s.services[i].Kill(); err != nil {
-			fmt.Println("Unable to kill service", s.services[i].Name(), ":", err.Error())
+			logger.Log("Unable to kill service", s.services[i].Name(), ":", err.Error())
 		}
 	}
 
@@ -181,13 +180,13 @@ func (s *Scenario) shutdown() {
 			}
 
 			if out, err = RunCommandAndGetOutput("docker", "rm", "--force", containerID); err != nil {
-				fmt.Println(string(out))
-				fmt.Println("Unable to cleanup leftover container", containerID, ":", err.Error())
+				logger.Log(string(out))
+				logger.Log("Unable to cleanup leftover container", containerID, ":", err.Error())
 			}
 		}
 	} else {
-		fmt.Println(string(out))
-		fmt.Println("Unable to cleanup leftover containers:", err.Error())
+		logger.Log(string(out))
+		logger.Log("Unable to cleanup leftover containers:", err.Error())
 	}
 
 	// Teardown the docker network. In case the network does not exists (ie. this function
@@ -195,8 +194,8 @@ func (s *Scenario) shutdown() {
 	// an error which may be misleading.
 	if ok, err := existDockerNetwork(s.networkName); ok || err != nil {
 		if out, err := RunCommandAndGetOutput("docker", "network", "rm", s.networkName); err != nil {
-			fmt.Println(string(out))
-			fmt.Println("Unable to remove docker network", s.networkName, ":", err.Error())
+			logger.Log(string(out))
+			logger.Log("Unable to remove docker network", s.networkName, ":", err.Error())
 		}
 	}
 }
@@ -204,8 +203,8 @@ func (s *Scenario) shutdown() {
 func existDockerNetwork(networkName string) (bool, error) {
 	out, err := RunCommandAndGetOutput("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", networkName))
 	if err != nil {
-		fmt.Println(string(out))
-		fmt.Println("Unable to check if docker network", networkName, "exists:", err.Error())
+		logger.Log(string(out))
+		logger.Log("Unable to check if docker network", networkName, "exists:", err.Error())
 	}
 
 	return strings.TrimSpace(string(out)) != "", nil

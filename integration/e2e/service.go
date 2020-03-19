@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
-	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -104,8 +103,8 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	}()
 
 	cmd := exec.Command("docker", s.buildDockerRunArgs(networkName, sharedDir)...)
-	cmd.Stdout = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stdout}
-	cmd.Stderr = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stderr}
+	cmd.Stdout = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
+	cmd.Stderr = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
 	if err = cmd.Start(); err != nil {
 		return err
 	}
@@ -142,7 +141,7 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		}
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
-	fmt.Println("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
+	logger.Log("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 
@@ -151,10 +150,10 @@ func (s *ConcreteService) Stop() error {
 		return nil
 	}
 
-	fmt.Println("Stopping", s.name)
+	logger.Log("Stopping", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
-		fmt.Println(string(out))
+		logger.Log(string(out))
 		return err
 	}
 	s.usedNetworkName = ""
@@ -167,10 +166,10 @@ func (s *ConcreteService) Kill() error {
 		return nil
 	}
 
-	fmt.Println("Killing", s.name)
+	logger.Log("Killing", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
-		fmt.Println(string(out))
+		logger.Log(string(out))
 		return err
 	}
 	s.usedNetworkName = ""
@@ -405,12 +404,12 @@ func (p *CmdReadinessProbe) Ready(service *ConcreteService) error {
 	return err
 }
 
-type LinePrefixWriter struct {
-	prefix  string
-	wrapped io.Writer
+type LinePrefixLogger struct {
+	prefix string
+	logger log.Logger
 }
 
-func (w *LinePrefixWriter) Write(p []byte) (n int, err error) {
+func (w *LinePrefixLogger) Write(p []byte) (n int, err error) {
 	for _, line := range strings.Split(string(p), "\n") {
 		// Skip empty lines
 		line = strings.TrimSpace(line)
@@ -419,8 +418,7 @@ func (w *LinePrefixWriter) Write(p []byte) (n int, err error) {
 		}
 
 		// Write the prefix + line to the wrapped writer
-		_, err := w.wrapped.Write([]byte(w.prefix + line + "\n"))
-		if err != nil {
+		if err := w.logger.Log(w.prefix + line); err != nil {
 			return 0, err
 		}
 	}

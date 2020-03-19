@@ -38,6 +38,7 @@ func (l *Logger) Log(keyvals ...interface{}) error {
 	}
 
 	log.WriteString("\n")
-	l.w.Write([]byte(log.String()))
-	return nil
+
+	_, err := l.w.Write([]byte(log.String()))
+	return err
 }

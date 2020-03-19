@@ -74,7 +74,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The querier supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two types of caches are supported:
+The querier supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -84,11 +84,11 @@ The querier supports a cache to speed up postings and series lookups from TSDB b
 The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
 
 - Pros: zero latency
-- Cons: increases querier memory usage, not shared across multiple querier replicas
+- Cons: increased querier memory usage, not shared across multiple querier replicas
 
 ### Memcached index cache
 
-The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache type is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](dns-service-discovery.md).
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](dns-service-discovery.md).
 
 The trade-off of using the Memcached index cache is:
 

@@ -4717,6 +4717,7 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;[ENHANCEMENT] Output all config fields to /config API, including those with empty value. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2209&#34;&gt;#2209&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed etcd client keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2278&#34;&gt;#2278&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed bug in updating last element of FIFO cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Register the metrics of the WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2295&#34;&gt;#2295&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;0-7-0-2020-03-16&#34;&gt;0.7.0 / 2020-03-16&lt;/h2&gt;
 &lt;p&gt;Cortex &lt;code&gt;0.7.0&lt;/code&gt; is a major step forward the upcoming &lt;code&gt;1.0&lt;/code&gt; release. In this release, we&amp;rsquo;ve got 164 contributions from 26 authors. Thanks to all contributors! ❤️&lt;/p&gt;

@@ -420,8 +420,7 @@ func (p *TCPReadinessProbe) Ready(service *ConcreteService) (err error) {
 		return err
 	}
 
-	_ = conn.Close()
-	return nil
+	return conn.Close()
 }
 
 // CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready

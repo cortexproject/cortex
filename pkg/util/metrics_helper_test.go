@@ -120,42 +120,48 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 		"user-2": user2Reg,
 	})
 
-	desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
-	actual, err := collectMetrics(func(out chan prometheus.Metric) {
-		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one")
-	})
-	require.NoError(t, err)
-	expected := []*dto.Metric{
-		{Label: makeLabels("label_one", "a", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(180)}},
-		{Label: makeLabels("label_one", "a", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(180)}},
+			{Label: makeLabels("label_one", "a", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+		}
+		require.ElementsMatch(t, expected, actual)
 	}
-	require.ElementsMatch(t, expected, actual)
 
-	desc = prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
-	actual, err = collectMetrics(func(out chan prometheus.Metric) {
-		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_two")
-	})
-	require.NoError(t, err)
-	expected = []*dto.Metric{
-		{Label: makeLabels("label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
-		{Label: makeLabels("label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
-		{Label: makeLabels("label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
-		{Label: makeLabels("label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+			{Label: makeLabels("label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
+			{Label: makeLabels("label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
+			{Label: makeLabels("label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+		}
+		require.ElementsMatch(t, expected, actual)
 	}
-	require.ElementsMatch(t, expected, actual)
 
-	desc = prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
-	actual, err = collectMetrics(func(out chan prometheus.Metric) {
-		mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
-	})
-	require.NoError(t, err)
-	expected = []*dto.Metric{
-		{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
-		{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
-		{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
-		{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
+			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
+			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(60)}},
+			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(40)}},
+		}
+		require.ElementsMatch(t, expected, actual)
 	}
-	require.ElementsMatch(t, expected, actual)
 }
 
 func TestSendMaxOfGauges(t *testing.T) {
@@ -197,6 +203,84 @@ func TestSendMaxOfGauges(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
+func TestSendSumOfHistogramsWithLabels(t *testing.T) {
+	buckets := []float64{1, 2, 3}
+	user1Metric := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_metric", Buckets: buckets}, []string{"label_one", "label_two"})
+	user2Metric := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_metric", Buckets: buckets}, []string{"label_one", "label_two"})
+	user1Metric.WithLabelValues("a", "b").Observe(1)
+	user1Metric.WithLabelValues("a", "c").Observe(2)
+	user2Metric.WithLabelValues("a", "b").Observe(3)
+	user2Metric.WithLabelValues("a", "c").Observe(4)
+
+	user1Reg := prometheus.NewRegistry()
+	user2Reg := prometheus.NewRegistry()
+	user1Reg.MustRegister(user1Metric)
+	user2Reg.MustRegister(user2Metric)
+
+	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
+		"user-1": user1Reg,
+		"user-2": user2Reg,
+	})
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"label_one"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a"), Histogram: &dto.Histogram{SampleCount: uint64p(4), SampleSum: float64p(10), Bucket: []*dto.Bucket{
+				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(2), CumulativeCount: uint64p(2)},
+				{UpperBound: float64p(3), CumulativeCount: uint64p(3)},
+			}}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
+				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(3), CumulativeCount: uint64p(2)},
+			}}},
+			{Label: makeLabels("label_two", "c"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(6), Bucket: []*dto.Bucket{
+				{UpperBound: float64p(1), CumulativeCount: uint64p(0)},
+				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(3), CumulativeCount: uint64p(1)},
+			}}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"label_one", "label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a", "label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
+				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(3), CumulativeCount: uint64p(2)},
+			}}},
+			{Label: makeLabels("label_one", "a", "label_two", "c"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(6), Bucket: []*dto.Bucket{
+				{UpperBound: float64p(1), CumulativeCount: uint64p(0)},
+				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
+				{UpperBound: float64p(3), CumulativeCount: uint64p(1)},
+			}}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+}
+
 func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error) {
 	out := make(chan prometheus.Metric)
 
@@ -217,4 +301,12 @@ func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error
 	}
 
 	return metrics, nil
+}
+
+func float64p(v float64) *float64 {
+	return &v
+}
+
+func uint64p(v uint64) *uint64 {
+	return &v
 }

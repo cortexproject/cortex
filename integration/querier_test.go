@@ -11,22 +11,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
+	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestQuerierWithBlocksStorage(t *testing.T) {
 	tests := map[string]struct {
 		flags map[string]string
 	}{
-		"querier running with ingester gRPC streaming disabled": {
+		"querier running with ingester gRPC streaming disabled and inmemory index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
-				"-querier.ingester-streaming": "false",
+				"-querier.ingester-streaming":                         "false",
+				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
 			}),
 		},
-		"querier running with ingester gRPC streaming enabled": {
+		"querier running with ingester gRPC streaming enabled and inmemory index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
-				"-querier.ingester-streaming": "true",
+				"-querier.ingester-streaming":                         "true",
+				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
+			}),
+		},
+		"queintegration/e2e/service.gorier running with memcached index cache": {
+			flags: mergeFlags(BlocksStorageFlags, map[string]string{
+				// The address will be inject during the test execution because it's dynamic.
+				"-experimental.tsdb.bucket-store.index-cache.backend": "memcached",
 			}),
 		},
 	}
@@ -48,10 +58,20 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 				"-experimental.tsdb.retention-period":           ((blockRangePeriod * 2) - 1).String(),
 			})
 
+			// Detect the index cache backend from flags.
+			indexCacheBackend := tsdb.IndexCacheBackendDefault
+			if flags["-experimental.tsdb.bucket-store.index-cache.backend"] != "" {
+				indexCacheBackend = flags["-experimental.tsdb.bucket-store.index-cache.backend"]
+			}
+
 			// Start dependencies.
 			consul := e2edb.NewConsul()
 			minio := e2edb.NewMinio(9000, flags["-experimental.tsdb.s3.bucket-name"])
-			require.NoError(t, s.StartAndWaitReady(consul, minio))
+			memcached := e2ecache.NewMemcached()
+			require.NoError(t, s.StartAndWaitReady(consul, minio, memcached))
+
+			// Add the memcached address to the flags.
+			flags["-experimental.tsdb.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
 
 			// Start Cortex components.
 			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
@@ -121,9 +141,15 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			assert.Equal(t, expectedVector3, result.(model.Vector))
 
 			// Check the in-memory index cache metrics (in the querier).
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items"))             // 2 series both for postings and series cache
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items_added_total")) // 2 series both for postings and series cache
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(0), "cortex_querier_blocks_index_cache_hits_total"))          // no cache hit cause the cache was empty
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(7), "cortex_querier_blocks_index_cache_requests_total"))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(0), "cortex_querier_blocks_index_cache_hits_total")) // no cache hit cause the cache was empty
+
+			if indexCacheBackend == tsdb.IndexCacheBackendInMemory {
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items"))             // 2 series both for postings and series cache
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items_added_total")) // 2 series both for postings and series cache
+			} else if indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(11), "cortex_querier_blocks_index_cache_memcached_operations_total")) // 7 gets + 4 sets
+			}
 
 			// Query back again the 1st series from storage. This time it should use the index cache.
 			result, err = c.Query("series_1", series1Timestamp)
@@ -131,9 +157,15 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.Equal(t, model.ValVector, result.Type())
 			assert.Equal(t, expectedVector1, result.(model.Vector))
 
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items"))             // as before
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items_added_total")) // as before
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_querier_blocks_index_cache_hits_total"))          // this time has used the index cache
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(7+2), "cortex_querier_blocks_index_cache_requests_total"))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_querier_blocks_index_cache_hits_total")) // this time has used the index cache
+
+			if indexCacheBackend == tsdb.IndexCacheBackendInMemory {
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items"))             // as before
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*2), "cortex_querier_blocks_index_cache_items_added_total")) // as before
+			} else if indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(11+2), "cortex_querier_blocks_index_cache_memcached_operations_total")) // as before + 2 gets
+			}
 		})
 	}
 }

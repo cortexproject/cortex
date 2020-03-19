@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -249,7 +250,12 @@ func (s *ConcreteService) WaitStarted() (err error) {
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		err = exec.Command("docker", "inspect", s.containerName()).Run()
+		// Enforce a timeout on the command execution because we've seen some flaky tests
+		// stuck here.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err = exec.CommandContext(ctx, "docker", "inspect", s.containerName()).Run()
 		if err == nil {
 			return nil
 		}
@@ -388,6 +394,33 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	}
 
 	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
+}
+
+// TCPReadinessProbe checks readiness by ensure a TCP connection can be established.
+type TCPReadinessProbe struct {
+	port int
+}
+
+func NewTCPReadinessProbe(port int) *TCPReadinessProbe {
+	return &TCPReadinessProbe{
+		port: port,
+	}
+}
+
+func (p *TCPReadinessProbe) Ready(service *ConcreteService) (err error) {
+	endpoint := service.Endpoint(p.port)
+	if endpoint == "" {
+		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+	} else if endpoint == "stopped" {
+		return errors.New("service has stopped")
+	}
+
+	conn, err := net.DialTimeout("tcp", endpoint, time.Second)
+	if err != nil {
+		return err
+	}
+
+	return conn.Close()
 }
 
 // CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready

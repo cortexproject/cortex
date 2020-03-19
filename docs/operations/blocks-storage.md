@@ -72,6 +72,37 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 - `GET /compactor_ring`<br />
   Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.
 
+## Index cache
+
+The querier supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+
+- `inmemory`
+- `memcached`
+
+### In-memory index cache
+
+The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
+
+- Pros: zero latency
+- Cons: increased querier memory usage, not shared across multiple querier replicas
+
+### Memcached index cache
+
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](dns-service-discovery.md).
+
+The trade-off of using the Memcached index cache is:
+
+- Pros: can scale beyond a single node memory (Memcached cluster), shared across multiple querier instances
+- Cons: higher latency in the cache round trip compared to the in-memory one
+
+The Memcached client uses a jump hash algorithm to shard cached entries across a cluster of Memcached servers. For this reason, you should make sure memcached servers are **not** behind any kind of load balancer and their address is configured so that servers are added/removed to the end of the list whenever a scale up/down occurs.
+
+For example, if you're running Memcached in Kubernetes, you may:
+
+1. Deploy your Memcached cluster using a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+2. Create an [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
+3. Configure the Cortex's Memcached client address using the `dnssrvnoa+` [service discovery](dns-service-discovery.md)
+
 ## Configuration
 
 The general [configuration documentation](../configuration/_index.md) also applied to a Cortex cluster running the blocks storage, with few differences:
@@ -134,11 +165,6 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m0s]
 
-    # Size in bytes of in-memory index cache used to speed up blocks index
-    # lookups (shared between all tenants).
-    # CLI flag: -experimental.tsdb.bucket-store.index-cache-size-bytes
-    [index_cache_size_bytes: <int> | default = 1073741824]
-
     # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
     # allocations.
     # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
@@ -177,6 +203,54 @@ tsdb:
     # (roughly) strongly consistent.
     # CLI flag: -experimental.tsdb.bucket-store.consistency-delay
     [consistency_delay: <duration> | default = 0s]
+
+    index_cache:
+      # The index cache backend type. Supported values: inmemory, memcached.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.backend
+      [backend: <string> | default = "inmemory"]
+
+      inmemory:
+        # Maximum size in bytes of in-memory index cache used to speed up blocks
+        # index lookups (shared between all tenants).
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes
+        [max_size_bytes: <int> | default = 1073741824]
+
+      memcached:
+        # Comma separated list of memcached addresses. Supported prefixes are:
+        # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
+        # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
+        # made after that).
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.addresses
+        [addresses: <string> | default = ""]
+
+        # The socket read/write timeout.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.timeout
+        [timeout: <duration> | default = 100ms]
+
+        # The maximum number of idle connections that will be maintained per
+        # address.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-idle-connections
+        [max_idle_connections: <int> | default = 16]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of concurrent connections running get operations.
+        # If set to 0, concurrency is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum number of keys a single underlying get operation should
+        # run. If more keys are specified, internally keys are splitted into
+        # multiple batches and fetched concurrently, honoring the max
+        # concurrency. If set to 0, the max batch size is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-batch-size
+        [max_get_multi_batch_size: <int> | default = 0]
 
   # How frequently does Cortex try to compact TSDB head. Block is only created
   # if data covers smallest block range. Must be greater than 0 and max 5

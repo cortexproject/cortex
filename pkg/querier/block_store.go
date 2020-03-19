@@ -41,7 +41,7 @@ type UserStore struct {
 	client             storepb.StoreClient
 	logLevel           logging.Level
 	bucketStoreMetrics *tsdbBucketStoreMetrics
-	indexCacheMetrics  *tsdbIndexCacheMetrics
+	indexCacheMetrics  prometheus.Collector
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
@@ -67,7 +67,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
-		indexCacheMetrics:  newTSDBIndexCacheMetrics(indexCacheRegistry),
+		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -77,7 +77,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 
 	// Init the index cache.
 	var err error
-	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore, logger, indexCacheRegistry); err != nil {
+	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, indexCacheRegistry); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}
 

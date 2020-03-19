@@ -69,7 +69,7 @@ func TestNewBucketClient(t *testing.T) {
 		},
 		"should return error on unknown backend": {
 			config:       configWithUnknownBackend,
-			expectedErr:  errUnsupportedBackend,
+			expectedErr:  errUnsupportedStorageBackend,
 			expectedType: nil,
 		},
 	}

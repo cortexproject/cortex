@@ -98,8 +98,10 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string) MemcachedClient 
 		hostname:   cfg.Host,
 		service:    cfg.Service,
 		addresses:  strings.Split(cfg.Addresses, ","),
-		provider:   dns.NewProvider(util.Logger, prometheus.DefaultRegisterer, dns.GolangResolverType),
-		quit:       make(chan struct{}),
+		provider: dns.NewProvider(util.Logger, prometheus.WrapRegistererWith(prometheus.Labels{
+			"name": name,
+		}, prometheus.DefaultRegisterer), dns.GolangResolverType),
+		quit: make(chan struct{}),
 
 		numServers: memcacheServersDiscovered.WithLabelValues(name),
 	}

@@ -5,7 +5,7 @@ weight: 2
 slug: dns-service-discovery
 ---
 
-Cortex supports a DNS service discovery to discover addresses of backend servers to connect to (ie. caching servers). This service discovery is not widely supported in Cortex yet. The clients supporting it are:
+Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:
 
 - [Blocks storage's memcached index cache](blocks-storage.md#memcached-index-cache)
 

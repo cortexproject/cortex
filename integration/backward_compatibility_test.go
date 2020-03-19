@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,13 +16,24 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-const (
+var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
-	previousVersionImage = "quay.io/cortexproject/cortex:v0.6.0"
+	previousVersionImages = []string{
+		"quay.io/cortexproject/cortex:v0.6.0",
+		"quay.io/cortexproject/cortex:v0.7.0",
+	}
 )
 
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
+	for _, previousImage := range previousVersionImages {
+		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
+			runBackwardCompatibilityTestWithChunksStorage(t, previousImage)
+		})
+	}
+}
+
+func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -79,9 +91,9 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	require.NoError(t, s.Stop(ingester1))
 
 	// Query the new ingester both with the old and the new querier.
-	for _, image := range []string{previousVersionImage, ""} {
+	for _, image := range []string{previousImage, ""} {
 		flags := ChunksStorageFlags
-		if image == previousVersionImage {
+		if image == previousImage {
 			flags = flagsForOldImage
 		}
 		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image)

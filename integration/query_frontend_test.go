@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
+	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
@@ -85,16 +86,26 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	require.NoError(t, err)
 	defer s.Close()
 
+	memcached := e2ecache.NewMemcached()
 	consul := e2edb.NewConsul()
-	require.NoError(t, s.StartAndWaitReady(consul))
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
 
 	configFile, flags := setup(t, s)
+
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.cache-results":             "true",
+		"-querier.split-queries-by-interval": "24h",
+		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+	})
 
 	// Start Cortex components.
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
 	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
+
+	// Check if we're discovering memcache or not.
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(1), "cortex_memcache_client_servers"))
 
 	// Start the querier after the query-frontend otherwise we're not
 	// able to get the query-frontend network endpoint.

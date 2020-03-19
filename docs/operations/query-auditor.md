@@ -1,7 +1,7 @@
 ---
 title: "Query Auditor (tool)"
 linkTitle: "Query Auditor (tool)"
-weight: 3
+weight: 2
 slug: query-auditor
 ---
 

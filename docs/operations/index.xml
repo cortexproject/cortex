@@ -54,7 +54,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;li&gt;Cons: increased querier memory usage, not shared across multiple querier replicas&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;memcached-index-cache&#34;&gt;Memcached index cache&lt;/h3&gt;
-&lt;p&gt;The &lt;code&gt;memcached&lt;/code&gt; index cache allows to use &lt;a href=&#34;https://memcached.org/&#34;&gt;Memcached&lt;/a&gt; as cache backend. This cache backend is configured using &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.backend=memcached&lt;/code&gt; and requires the Memcached server(s) addresses via &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.memcached.addresses&lt;/code&gt; (or config file). The addresses are resolved using the &lt;a href=&#34;/docs/operations/dns-service-discovery/&#34;&gt;DNS service provider&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;memcached&lt;/code&gt; index cache allows to use &lt;a href=&#34;https://memcached.org/&#34;&gt;Memcached&lt;/a&gt; as cache backend. This cache backend is configured using &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.backend=memcached&lt;/code&gt; and requires the Memcached server(s) addresses via &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.memcached.addresses&lt;/code&gt; (or config file). The addresses are resolved using the &lt;a href=&#34;/docs/configuration/arguments/#dns-service-discovery&#34;&gt;DNS service provider&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;The trade-off of using the Memcached index cache is:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Pros: can scale beyond a single node memory (Memcached cluster), shared across multiple querier instances&lt;/li&gt;
@@ -65,7 +65,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;ol&gt;
 &lt;li&gt;Deploy your Memcached cluster using a &lt;a href=&#34;https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/&#34;&gt;StatefulSet&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Create an &lt;a href=&#34;https://kubernetes.io/docs/concepts/services-networking/service/#headless-services&#34;&gt;headless service&lt;/a&gt; for Memcached StatefulSet&lt;/li&gt;
-&lt;li&gt;Configure the Cortex&amp;rsquo;s Memcached client address using the &lt;code&gt;dnssrvnoa+&lt;/code&gt; &lt;a href=&#34;/docs/operations/dns-service-discovery/&#34;&gt;service discovery&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Configure the Cortex&amp;rsquo;s Memcached client address using the &lt;code&gt;dnssrvnoa+&lt;/code&gt; &lt;a href=&#34;/docs/configuration/arguments/#dns-service-discovery&#34;&gt;service discovery&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
 &lt;p&gt;The general &lt;a href=&#34;/docs/configuration/&#34;&gt;configuration documentation&lt;/a&gt; also applied to a Cortex cluster running the blocks storage, with few differences:&lt;/p&gt;
@@ -376,21 +376,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;heartbeat_timeout&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;duration&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1m0s&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;h2 id=&#34;known-issues&#34;&gt;Known issues&lt;/h2&gt;
 &lt;h3 id=&#34;migrating-from-the-chunks-to-the-blocks-storage&#34;&gt;Migrating from the chunks to the blocks storage&lt;/h3&gt;
-&lt;p&gt;Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.&lt;/p&gt;</description></item><item><title>Docs: DNS service discovery</title><link>/docs/operations/dns-service-discovery/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/dns-service-discovery/</guid><description>
-&lt;p&gt;Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;/docs/operations/blocks-storage/#memcached-index-cache&#34;&gt;Blocks storage&amp;rsquo;s memcached index cache&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id=&#34;supported-discovery-modes&#34;&gt;Supported discovery modes&lt;/h2&gt;
-&lt;p&gt;The DNS service discovery supports different discovery modes. A discovery mode is selected adding a specific prefix to the address. The supported prefixes are:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;dns+&lt;/code&gt;&lt;/strong&gt;&lt;br /&gt;
-The domain name after the prefix is looked up as an A/AAAA query. For example: &lt;code&gt;dns+memcached.local:11211&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;dnssrv+&lt;/code&gt;&lt;/strong&gt;&lt;br /&gt;
-The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code&gt;dnssrv+memcached.namespace.svc.cluster.local&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;dnssrvnoa+&lt;/code&gt;&lt;/strong&gt;&lt;br /&gt;
-The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code&gt;dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>
+&lt;p&gt;Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.&lt;/p&gt;</description></item><item><title>Docs: Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>
 &lt;p&gt;The query auditor is a tool bundled in the Cortex repository, but &lt;strong&gt;not&lt;/strong&gt; included in Docker images &amp;ndash; this must be built from source. It&amp;rsquo;s primarily useful for those &lt;em&gt;developing&lt;/em&gt; Cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).&lt;/p&gt;
 &lt;h2 id=&#34;how-it-works&#34;&gt;How it works&lt;/h2&gt;
 &lt;p&gt;The &lt;code&gt;query-audit&lt;/code&gt; tool performs a set of queries against two backends that expose the Prometheus read API. This is generally the &lt;code&gt;query-frontend&lt;/code&gt; component of two Cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:&lt;/p&gt;

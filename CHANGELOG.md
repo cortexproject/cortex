@@ -18,6 +18,7 @@
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270
+* [BUGFIX] Register the metrics of the WAL. #2295
 
 
 ## 0.7.0 / 2020-03-16

@@ -18,6 +18,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -29,12 +30,11 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	WALEnabled         bool                  `yaml:"wal_enabled"`
-	CheckpointEnabled  bool                  `yaml:"checkpoint_enabled"`
-	Recover            bool                  `yaml:"recover_from_wal"`
-	Dir                string                `yaml:"wal_dir"`
-	CheckpointDuration time.Duration         `yaml:"checkpoint_duration"`
-	metricsRegisterer  prometheus.Registerer `yaml:"-"`
+	WALEnabled         bool          `yaml:"wal_enabled"`
+	CheckpointEnabled  bool          `yaml:"checkpoint_enabled"`
+	Recover            bool          `yaml:"recover_from_wal"`
+	Dir                string        `yaml:"wal_dir"`
+	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -76,14 +76,14 @@ type walWrapper struct {
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
-func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
+func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, registerer prometheus.Registerer) (WAL, error) {
 	if !cfg.WALEnabled {
 		return &noopWAL{}, nil
 	}
 
 	var walRegistry prometheus.Registerer
-	if cfg.metricsRegisterer != nil {
-		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, cfg.metricsRegisterer)
+	if registerer != nil {
+		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)
 	}
 	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, true)
 	if err != nil {
@@ -97,36 +97,27 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 		getUserStates: userStatesFunc,
 	}
 
-	w.checkpointDeleteFail = prometheus.NewCounter(prometheus.CounterOpts{
+	w.checkpointDeleteFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_deletions_failed_total",
 		Help: "Total number of checkpoint deletions that failed.",
 	})
-	w.checkpointDeleteTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	w.checkpointDeleteTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_deletions_total",
 		Help: "Total number of checkpoint deletions attempted.",
 	})
-	w.checkpointCreationFail = prometheus.NewCounter(prometheus.CounterOpts{
+	w.checkpointCreationFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_creations_failed_total",
 		Help: "Total number of checkpoint creations that failed.",
 	})
-	w.checkpointCreationTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	w.checkpointCreationTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_creations_total",
 		Help: "Total number of checkpoint creations attempted.",
 	})
-	w.checkpointDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+	w.checkpointDuration = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
 		Name:       "cortex_ingester_checkpoint_duration_seconds",
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
-	if cfg.metricsRegisterer != nil {
-		cfg.metricsRegisterer.MustRegister(
-			w.checkpointDeleteFail,
-			w.checkpointDeleteTotal,
-			w.checkpointCreationFail,
-			w.checkpointCreationTotal,
-			w.checkpointDuration,
-		)
-	}
 
 	w.wait.Add(1)
 	go w.run()

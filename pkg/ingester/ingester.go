@@ -117,6 +117,8 @@ type Ingester struct {
 
 	// This should never be nil.
 	wal WAL
+	// To be passed to the WAL.
+	registerer prometheus.Registerer
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
@@ -160,6 +162,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		limits:       limits,
 		chunkStore:   chunkStore,
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		registerer:   registerer,
 	}
 
 	var err error
@@ -197,7 +200,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	}
 
 	var err error
-	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp)
+	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer)
 	if err != nil {
 		return errors.Wrap(err, "starting WAL")
 	}

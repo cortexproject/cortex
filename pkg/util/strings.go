@@ -1,9 +1,9 @@
 package util
 
-// StringsContain returns true if haystack contains needle.
-func StringsContain(haystack []string, needle string) bool {
-	for _, v := range haystack {
-		if needle == v {
+// StringsContain returns true if the search value is within the list of input values.
+func StringsContain(values []string, search string) bool {
+	for _, v := range values {
+		if search == v {
 			return true
 		}
 	}

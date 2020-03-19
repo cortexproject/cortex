@@ -40,9 +40,9 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 
 type response struct {
 	Status    string       `json:"status"`
-	Data      interface{}  `json:"data,omitempty"`
-	ErrorType v1.ErrorType `json:"errorType,omitempty"`
-	Error     string       `json:"error,omitempty"`
+	Data      interface{}  `json:"data"`
+	ErrorType v1.ErrorType `json:"errorType"`
+	Error     string       `json:"error"`
 }
 
 // AlertDiscovery has info for all active alerts.
@@ -55,7 +55,7 @@ type Alert struct {
 	Labels      labels.Labels `json:"labels"`
 	Annotations labels.Labels `json:"annotations"`
 	State       string        `json:"state"`
-	ActiveAt    *time.Time    `json:"activeAt,omitempty"`
+	ActiveAt    *time.Time    `json:"activeAt"`
 	Value       string        `json:"value"`
 }
 
@@ -89,7 +89,7 @@ type alertingRule struct {
 	Annotations    labels.Labels `json:"annotations"`
 	Alerts         []*Alert      `json:"alerts"`
 	Health         string        `json:"health"`
-	LastError      string        `json:"lastError,omitempty"`
+	LastError      string        `json:"lastError"`
 	Type           v1.RuleType   `json:"type"`
 	LastEvaluation time.Time     `json:"lastEvaluation"`
 	EvaluationTime float64       `json:"evaluationTime"`
@@ -98,9 +98,9 @@ type alertingRule struct {
 type recordingRule struct {
 	Name           string        `json:"name"`
 	Query          string        `json:"query"`
-	Labels         labels.Labels `json:"labels,omitempty"`
+	Labels         labels.Labels `json:"labels"`
 	Health         string        `json:"health"`
-	LastError      string        `json:"lastError,omitempty"`
+	LastError      string        `json:"lastError"`
 	Type           v1.RuleType   `json:"type"`
 	LastEvaluation time.Time     `json:"lastEvaluation"`
 	EvaluationTime float64       `json:"evaluationTime"`

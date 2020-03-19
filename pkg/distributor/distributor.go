@@ -120,18 +120,18 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	PoolConfig ingester_client.PoolConfig `yaml:"pool,omitempty"`
+	PoolConfig ingester_client.PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout   time.Duration `yaml:"remote_timeout,omitempty"`
-	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay,omitempty"`
+	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
+	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
+	ShardByAllLabels bool `yaml:"shard_by_all_labels"`
 
 	// Distributors ring
-	DistributorRing RingConfig `yaml:"ring,omitempty"`
+	DistributorRing RingConfig `yaml:"ring"`
 
 	// for testing
 	ingesterClientFactory client.Factory `yaml:"-"`

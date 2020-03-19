@@ -41,11 +41,11 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig             `yaml:"walconfig,omitempty"`
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+	WALConfig        WALConfig             `yaml:"walconfig"`
+	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
+	MaxTransferRetries int `yaml:"max_transfer_retries"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration

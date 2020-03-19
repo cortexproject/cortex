@@ -43,7 +43,7 @@ var (
 
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
-	RingConfig Config `yaml:"ring,omitempty"`
+	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
 	ListenPort       *int          `yaml:"-"`

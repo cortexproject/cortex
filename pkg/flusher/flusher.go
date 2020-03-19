@@ -17,9 +17,9 @@ import (
 
 // Config for an Ingester.
 type Config struct {
-	WALDir            string        `yaml:"wal_dir,omitempty"`
-	ConcurrentFlushes int           `yaml:"concurrent_flushes,omitempty"`
-	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout,omitempty"`
+	WALDir            string        `yaml:"wal_dir"`
+	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
+	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

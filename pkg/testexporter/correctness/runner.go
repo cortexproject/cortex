@@ -88,7 +88,7 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// By default, we only query for values from when this process started
 	f.Var(&cfg.timeQueryStart, "test-query-start", "Minimum start date for queries")
-	f.DurationVar(&cfg.durationQuerySince, "test-query-since", 0, "Duration in the past to test.  Overrides --test-query-start")
+	f.DurationVar(&cfg.durationQuerySince, "test-query-since", 0, "Duration in the past to test.  Overrides -test-query-start")
 
 	f.StringVar(&cfg.extraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
 	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")

@@ -33,12 +33,12 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+	ingester := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
 		"-ingester.max-transfer-retries": "0",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
-	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1, tableManager))
+	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester, tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
 	// sure the tables have been created.
@@ -73,9 +73,12 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector2, result.(model.Vector))
 
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+
 	// Stop ingester-1, so that it will flush all chunks to the storage. This function will return
 	// once the ingester-1 is successfully stopped, which means the flushing is completed.
-	require.NoError(t, s.Stop(ingester1))
+	require.NoError(t, s.Stop(ingester))
 
 	// Ensure chunks have been uploaded to the storage (DynamoDB).
 	dynamoURL := "dynamodb://u:p@" + dynamo.Endpoint(8000)
@@ -94,4 +97,9 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	out, err = dynamoClient.Scan(&dynamodb.ScanInput{TableName: aws.String(chunksTable)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), *out.Count)
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Querier, querier)
+	assertServiceMetricsPrefixes(t, TableManager, tableManager)
 }

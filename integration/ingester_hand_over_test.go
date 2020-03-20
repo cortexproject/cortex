@@ -89,4 +89,9 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	result, err = c.Query("series_1", now)
 	require.NoError(t, err)
 	assert.Equal(t, expectedVector, result.(model.Vector))
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester2)
+	assertServiceMetricsPrefixes(t, Querier, querier)
 }

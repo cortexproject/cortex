@@ -108,4 +108,9 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		require.Equal(t, model.ValVector, result.Type())
 		assert.Equal(t, expectedVector, result.(model.Vector))
 	}
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+	assertServiceMetricsPrefixes(t, Querier, querier)
 }

@@ -169,6 +169,11 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			} else if indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(11+2), "cortex_querier_blocks_index_cache_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Ensure no service-specific metrics prefix is used by the wrong service.
+			assertServiceMetricsPrefixes(t, Distributor, distributor)
+			assertServiceMetricsPrefixes(t, Ingester, ingester)
+			assertServiceMetricsPrefixes(t, Querier, querier)
 		})
 	}
 }

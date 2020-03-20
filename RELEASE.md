@@ -87,6 +87,7 @@ To publish a stable release:
    - Temporarily disable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
    - Push changes to upstream (please double check before pushing!)
    - Re-enable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
+7. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
 
 ### How to tag a release
 

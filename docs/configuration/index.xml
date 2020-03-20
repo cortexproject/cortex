@@ -2848,7 +2848,7 @@ Duration after which a flush should timeout.&lt;/p&gt;&lt;/li&gt;
 &lt;p&gt;Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a href=&#34;/docs/operations/blocks-storage/#memcached-index-cache&#34;&gt;Blocks storage&amp;rsquo;s memcached index cache&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;/docs/configuration/configuration-file/#memcached_client_config&#34;&gt;All caching memcached servers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;/docs/configuration/configuration-file/#memcached-client-config&#34;&gt;All caching memcached servers&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;supported-discovery-modes&#34;&gt;Supported discovery modes&lt;/h3&gt;
 &lt;p&gt;The DNS service discovery, inspired from Thanos DNS SD, supports different discovery modes. A discovery mode is selected adding a specific prefix to the address. The supported prefixes are:&lt;/p&gt;

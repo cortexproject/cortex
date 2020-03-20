@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -70,20 +71,10 @@ const (
 )
 
 var (
-	totalConfigs = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "alertmanager_configs",
-		Help:      "How many configs the multitenant alertmanager knows about.",
-	}, []string{"status"})
 	statusTemplate *template.Template
 )
 
 func init() {
-	// Ensure the metric values are initialized.
-	totalConfigs.WithLabelValues(configStatusInvalid).Set(0)
-	totalConfigs.WithLabelValues(configStatusValid).Set(0)
-
-	prometheus.MustRegister(totalConfigs)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
 		"state": func(enabled bool) string {
 			if enabled {
@@ -133,6 +124,24 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Store.RegisterFlags(f)
 }
 
+type multitenantAlertmanagerMetrics struct {
+	totalConfigs *prometheus.GaugeVec
+}
+
+func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAlertmanagerMetrics {
+	m := &multitenantAlertmanagerMetrics{}
+
+	m.totalConfigs = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "alertmanager_configs",
+		Help:      "How many configs the multitenant alertmanager knows about.",
+	}, []string{"status"})
+	m.totalConfigs.WithLabelValues(configStatusInvalid).Set(0)
+	m.totalConfigs.WithLabelValues(configStatusValid).Set(0)
+
+	return m
+}
+
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
 // organizations.
 type MultitenantAlertmanager struct {
@@ -153,8 +162,9 @@ type MultitenantAlertmanager struct {
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
-	logger  log.Logger
-	metrics *alertmanagerMetrics
+	logger              log.Logger
+	alertmanagerMetrics *alertmanagerMetrics
+	multitenantMetrics  *multitenantAlertmanagerMetrics
 
 	peer *cluster.Peer
 }
@@ -213,18 +223,19 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 
 func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, logger log.Logger, registerer prometheus.Registerer) *MultitenantAlertmanager {
 	am := &MultitenantAlertmanager{
-		cfg:            cfg,
-		fallbackConfig: string(fallbackConfig),
-		cfgs:           map[string]alerts.AlertConfigDesc{},
-		alertmanagers:  map[string]*Alertmanager{},
-		metrics:        newAlertmanagerMetrics(),
-		peer:           peer,
-		store:          store,
-		logger:         log.With(logger, "component", "MultiTenantAlertmanager"),
+		cfg:                 cfg,
+		fallbackConfig:      string(fallbackConfig),
+		cfgs:                map[string]alerts.AlertConfigDesc{},
+		alertmanagers:       map[string]*Alertmanager{},
+		alertmanagerMetrics: newAlertmanagerMetrics(),
+		multitenantMetrics:  newMultitenantAlertmanagerMetrics(registerer),
+		peer:                peer,
+		store:               store,
+		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 	}
 
 	if registerer != nil {
-		registerer.MustRegister(am.metrics)
+		registerer.MustRegister(am.alertmanagerMetrics)
 	}
 
 	am.Service = services.NewTimerService(am.cfg.PollInterval, am.starting, am.iteration, am.stopping)
@@ -320,8 +331,8 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
-	totalConfigs.WithLabelValues(configStatusInvalid).Set(float64(invalid))
-	totalConfigs.WithLabelValues(configStatusValid).Set(float64(len(am.cfgs) - invalid))
+	am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid).Set(float64(invalid))
+	am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid).Set(float64(len(am.cfgs) - invalid))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
@@ -437,7 +448,6 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
 	reg := prometheus.NewRegistry()
-	am.metrics.addUserRegistry(userID, reg)
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
@@ -455,7 +465,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
 	}
 
-	am.metrics.addUserRegistry(userID, reg)
+	am.alertmanagerMetrics.addUserRegistry(userID, reg)
 	return newAM, nil
 }
 

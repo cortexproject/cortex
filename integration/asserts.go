@@ -10,14 +10,15 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-type ServiceType string
+type ServiceType int
 
 const (
-	Distributor   = ServiceType("distributor")
-	Ingester      = ServiceType("ingester")
-	Querier       = ServiceType("querier")
-	QueryFrontend = ServiceType("query-frontend")
-	TableManager  = ServiceType("table-manager")
+	Distributor = iota
+	Ingester
+	Querier
+	QueryFrontend
+	TableManager
+	AlertManager
 )
 
 var (
@@ -28,6 +29,12 @@ var (
 		Querier:       []string{},
 		QueryFrontend: []string{"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  []string{},
+		AlertManager:  []string{"cortex_alertmanager"},
+	}
+
+	// Blacklisted metrics prefixes across any Cortex service.
+	blacklistedMetricsPrefixes = []string{
+		"cortex_alert_manager", // It should be "cortex_alertmanager"
 	}
 )
 
@@ -52,7 +59,7 @@ func assertServiceMetricsPrefixes(t *testing.T, serviceType ServiceType, service
 }
 
 func getBlacklistedMetricsPrefixesByService(serviceType ServiceType) []string {
-	blacklist := []string{}
+	blacklist := append([]string{}, blacklistedMetricsPrefixes...)
 
 	// Add any service-specific metrics prefix excluding the service itself.
 	for t, prefixes := range serviceMetricsPrefixes {

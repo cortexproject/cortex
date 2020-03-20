@@ -36,4 +36,7 @@ func TestAlertmanager(t *testing.T) {
 	require.Equal(t, "example_groupby", cfg.Route.GroupByStr[0])
 	require.Len(t, cfg.Receivers, 1)
 	require.Equal(t, "example_receiver", cfg.Receivers[0].Name)
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, AlertManager, alertmanager)
 }

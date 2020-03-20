@@ -7,6 +7,10 @@ slug: design-patterns-and-code-conventions
 
 Cortex adopts some design patterns and code conventions that we ask you to follow when contributing to the project. These conventions have been adopted based on the experience gained over the time and aim to enforce good coding practices and keep a consistent UX (ie. config).
 
+## Go coding style
+
+Cortex follows the [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) styleguide and the [Formatting and style](https://peter.bourgon.org/go-in-production/#formatting-and-style) section of Peter Bourgon's [Go: Best Practices for Production Environments](https://peter.bourgon.org/go-in-production/).
+
 ## No global variables
 
 - Do not use global variables

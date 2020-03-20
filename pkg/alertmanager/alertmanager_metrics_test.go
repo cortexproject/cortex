@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -220,48 +221,37 @@ type nflogMetrics struct {
 func newNflogMetrics(r prometheus.Registerer) *nflogMetrics {
 	m := &nflogMetrics{}
 
-	m.gcDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.gcDuration = promauto.With(r).NewSummary(prometheus.SummaryOpts{
 		Name:       "alertmanager_nflog_gc_duration_seconds",
 		Help:       "Duration of the last notification log garbage collection cycle.",
 		Objectives: map[float64]float64{},
 	})
-	m.snapshotDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.snapshotDuration = promauto.With(r).NewSummary(prometheus.SummaryOpts{
 		Name:       "alertmanager_nflog_snapshot_duration_seconds",
 		Help:       "Duration of the last notification log snapshot.",
 		Objectives: map[float64]float64{},
 	})
-	m.snapshotSize = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.snapshotSize = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "alertmanager_nflog_snapshot_size_bytes",
 		Help: "Size of the last notification log snapshot in bytes.",
 	})
-	m.queriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.queriesTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_nflog_queries_total",
 		Help: "Number of notification log queries were received.",
 	})
-	m.queryErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.queryErrorsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_nflog_query_errors_total",
 		Help: "Number notification log received queries that failed.",
 	})
-	m.queryDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.queryDuration = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 		Name: "alertmanager_nflog_query_duration_seconds",
 		Help: "Duration of notification log query evaluation.",
 	})
-	m.propagatedMessagesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.propagatedMessagesTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_nflog_gossip_messages_propagated_total",
 		Help: "Number of received gossip messages that have been further gossiped.",
 	})
 
-	if r != nil {
-		r.MustRegister(
-			m.gcDuration,
-			m.snapshotDuration,
-			m.snapshotSize,
-			m.queriesTotal,
-			m.queryErrorsTotal,
-			m.queryDuration,
-			m.propagatedMessagesTotal,
-		)
-	}
 	return m
 }
 
@@ -282,66 +272,52 @@ type silenceMetrics struct {
 func newSilenceMetrics(r prometheus.Registerer) *silenceMetrics {
 	m := &silenceMetrics{}
 
-	m.gcDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.gcDuration = promauto.With(r).NewSummary(prometheus.SummaryOpts{
 		Name:       "alertmanager_silences_gc_duration_seconds",
 		Help:       "Duration of the last silence garbage collection cycle.",
 		Objectives: map[float64]float64{},
 	})
-	m.snapshotDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.snapshotDuration = promauto.With(r).NewSummary(prometheus.SummaryOpts{
 		Name:       "alertmanager_silences_snapshot_duration_seconds",
 		Help:       "Duration of the last silence snapshot.",
 		Objectives: map[float64]float64{},
 	})
-	m.snapshotSize = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.snapshotSize = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "alertmanager_silences_snapshot_size_bytes",
 		Help: "Size of the last silence snapshot in bytes.",
 	})
-	m.queriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.queriesTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_silences_queries_total",
 		Help: "How many silence queries were received.",
 	})
-	m.queryErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.queryErrorsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_silences_query_errors_total",
 		Help: "How many silence received queries did not succeed.",
 	})
-	m.queryDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.queryDuration = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 		Name: "alertmanager_silences_query_duration_seconds",
 		Help: "Duration of silence query evaluation.",
 	})
-	m.propagatedMessagesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.propagatedMessagesTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_silences_gossip_messages_propagated_total",
 		Help: "Number of received gossip messages that have been further gossiped.",
 	})
-	m.silencesActive = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.silencesActive = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
 		ConstLabels: prometheus.Labels{"state": string(types.SilenceStateActive)},
 	})
-	m.silencesPending = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.silencesPending = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
 		ConstLabels: prometheus.Labels{"state": string(types.SilenceStatePending)},
 	})
-	m.silencesExpired = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.silencesExpired = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
 		ConstLabels: prometheus.Labels{"state": string(types.SilenceStateExpired)},
 	})
 
-	if r != nil {
-		r.MustRegister(
-			m.gcDuration,
-			m.snapshotDuration,
-			m.snapshotSize,
-			m.queriesTotal,
-			m.queryErrorsTotal,
-			m.queryDuration,
-			m.silencesActive,
-			m.silencesPending,
-			m.silencesExpired,
-			m.propagatedMessagesTotal,
-		)
-	}
 	return m
 }
 
@@ -354,17 +330,17 @@ type notifyMetrics struct {
 
 func newNotifyMetrics(r prometheus.Registerer) *notifyMetrics {
 	m := &notifyMetrics{
-		numNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numNotifications: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_total",
 			Help:      "The total number of attempted notifications.",
 		}, []string{"integration"}),
-		numFailedNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numFailedNotifications: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_failed_total",
 			Help:      "The total number of failed notifications.",
 		}, []string{"integration"}),
-		notificationLatencySeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		notificationLatencySeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "alertmanager",
 			Name:      "notification_latency_seconds",
 			Help:      "The latency of notifications in seconds.",
@@ -376,7 +352,6 @@ func newNotifyMetrics(r prometheus.Registerer) *notifyMetrics {
 		m.numFailedNotifications.WithLabelValues(integration)
 		m.notificationLatencySeconds.WithLabelValues(integration)
 	}
-	r.MustRegister(m.numNotifications, m.numFailedNotifications, m.notificationLatencySeconds)
 	return m
 }
 
@@ -385,15 +360,12 @@ type markerMetrics struct {
 }
 
 func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
-	m := &markerMetrics{
-		alerts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	return &markerMetrics{
+		alerts: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "alertmanager_alerts",
 			Help: "How many alerts by state.",
 		}, []string{"state"}),
 	}
-
-	r.MustRegister(m.alerts)
-	return m
 }
 
 // Copied from github.com/alertmanager/api/metrics/metrics.go
@@ -404,19 +376,17 @@ type apiMetrics struct {
 }
 
 func newAPIMetrics(version string, r prometheus.Registerer) *apiMetrics {
-	numReceivedAlerts := prometheus.NewCounterVec(prometheus.CounterOpts{
+	numReceivedAlerts := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Name:        "alertmanager_alerts_received_total",
 		Help:        "The total number of received alerts.",
 		ConstLabels: prometheus.Labels{"version": version},
 	}, []string{"status"})
-	numInvalidAlerts := prometheus.NewCounter(prometheus.CounterOpts{
+	numInvalidAlerts := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name:        "alertmanager_alerts_invalid_total",
 		Help:        "The total number of received alerts that were invalid.",
 		ConstLabels: prometheus.Labels{"version": version},
 	})
-	if r != nil {
-		r.MustRegister(numReceivedAlerts, numInvalidAlerts)
-	}
+
 	return &apiMetrics{
 		firing:   numReceivedAlerts.WithLabelValues("firing"),
 		resolved: numReceivedAlerts.WithLabelValues("resolved"),

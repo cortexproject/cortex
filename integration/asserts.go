@@ -32,7 +32,7 @@ var (
 		Querier:       []string{},
 		QueryFrontend: []string{"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  []string{},
-		AlertManager:  []string{},
+		AlertManager:  []string{"cortex_alertmanager"},
 		Ruler:         []string{},
 	}
 

@@ -54,7 +54,7 @@ type ingesterMetrics struct {
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 }
 
-func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool) *ingesterMetrics {
 	m := &ingesterMetrics{
 		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -186,7 +186,7 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 		}),
 	}
 
-	if registerMetricsConflictingWithTSDB {
+	if createMetricsConflictingWithTSDB {
 		m.memSeriesCreatedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: memSeriesCreatedTotalName,
 			Help: memSeriesCreatedTotalHelp,

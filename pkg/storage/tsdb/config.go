@@ -10,10 +10,10 @@ import (
 
 	"github.com/alecthomas/units"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/azure"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/filesystem"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
+	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
+	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
+	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 

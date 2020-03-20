@@ -62,17 +62,18 @@ func init() {
 
 // RunnerConfig is config, for the runner.
 type RunnerConfig struct {
-	testRate         float64
-	testQueryMinSize time.Duration
-	testQueryMaxSize time.Duration
-	testTimeEpsilon  time.Duration
-	testEpsilon      float64
-	prometheusAddr   string
-	userID           string
-	MinTime          TimeValue
-	extraSelectors   string
-	ScrapeInterval   time.Duration
-	samplesEpsilon   float64
+	testRate           float64
+	testQueryMinSize   time.Duration
+	testQueryMaxSize   time.Duration
+	testTimeEpsilon    time.Duration
+	testEpsilon        float64
+	prometheusAddr     string
+	userID             string
+	timeQueryStart     TimeValue
+	durationQuerySince time.Duration
+	extraSelectors     string
+	ScrapeInterval     time.Duration
+	samplesEpsilon     float64
 }
 
 // RegisterFlags does what it says.
@@ -86,12 +87,25 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.userID, "user-id", "", "UserID to send to Cortex.")
 
 	// By default, we only query for values from when this process started
-	cfg.MinTime = NewTimeValue(time.Now())
-	f.Var(&cfg.MinTime, "test-query-start", "Minimum start date for queries")
+	f.Var(&cfg.timeQueryStart, "test-query-start", "Minimum start date for queries")
+	f.DurationVar(&cfg.durationQuerySince, "test-query-since", 0, "Duration in the past to test.  Overrides -test-query-start")
 
 	f.StringVar(&cfg.extraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
 	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")
 	f.Float64Var(&cfg.samplesEpsilon, "test-samples-epsilon", 0.1, "Amount that the number of samples are allowed to be off by")
+}
+
+func (cfg *RunnerConfig) minQueryTime() time.Time {
+	start := time.Now()
+
+	if cfg.timeQueryStart.set {
+		start = cfg.timeQueryStart.Time
+	}
+	if cfg.durationQuerySince != 0 {
+		start = time.Now().Add(-cfg.durationQuerySince)
+	}
+
+	return start
 }
 
 // Runner runs a bunch of test cases, periodically checking their value.
@@ -128,6 +142,7 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 		quit:   make(chan struct{}),
 		client: v1.NewAPI(tracingClient{client}),
 	}
+
 	tc.wg.Add(1)
 	go tc.verifyLoop()
 	return tc, nil
@@ -204,17 +219,18 @@ func (r *Runner) runRandomTest() {
 		trace = fmt.Sprintf("%s", span.Context())
 	}
 
-	level.Info(log).Log("name", tc.Name(), "trace", trace)
+	minQueryTime := r.cfg.minQueryTime()
+	level.Info(log).Log("name", tc.Name(), "trace", trace, "minTime", minQueryTime)
 	defer log.Finish()
 
 	// pick a random time to start testStart and now
 	// pick a random length between minDuration and maxDuration
 	now := time.Now()
-	start := r.cfg.MinTime.Time.Add(time.Duration(rand.Int63n(int64(now.Sub(r.cfg.MinTime.Time)))))
+	start := minQueryTime.Add(time.Duration(rand.Int63n(int64(now.Sub(minQueryTime)))))
 	duration := r.cfg.testQueryMinSize +
 		time.Duration(rand.Int63n(int64(r.cfg.testQueryMaxSize)-int64(r.cfg.testQueryMinSize)))
-	if start.Add(-duration).Before(r.cfg.MinTime.Time) {
-		duration = start.Sub(r.cfg.MinTime.Time)
+	if start.Add(-duration).Before(minQueryTime) {
+		duration = start.Sub(minQueryTime)
 	}
 	if duration < r.cfg.testQueryMinSize {
 		return

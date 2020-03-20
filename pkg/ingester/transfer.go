@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/user"
@@ -661,17 +662,14 @@ func (i *Ingester) transferUser(ctx context.Context, stream client.Ingester_Tran
 				return err
 			}
 
-			bytesSent, err := batchSend(1024*1024, b, stream, &client.TimeSeriesFile{
+			if err := batchSend(1024*1024, b, stream, &client.TimeSeriesFile{
 				FromIngesterId: ingesterID,
 				UserId:         userID,
 				Filename:       p,
-			})
-
-			if err != nil {
+			}, i.metrics.sentBytes); err != nil {
 				return err
 			}
 
-			i.metrics.sentBytes.Add(float64(bytesSent))
 			i.metrics.sentFiles.Add(1)
 			return nil
 		})
@@ -701,17 +699,14 @@ func (i *Ingester) transferUser(ctx context.Context, stream client.Ingester_Tran
 			return err
 		}
 
-		bytesSent, err := batchSend(1024*1024, b, stream, &client.TimeSeriesFile{
+		if err := batchSend(1024*1024, b, stream, &client.TimeSeriesFile{
 			FromIngesterId: ingesterID,
 			UserId:         userID,
 			Filename:       p,
-		})
-
-		if err != nil {
+		}, i.metrics.sentBytes); err != nil {
 			return err
 		}
 
-		i.metrics.sentBytes.Add(float64(bytesSent))
 		i.metrics.sentFiles.Add(1)
 		return nil
 	})
@@ -723,16 +718,16 @@ func (i *Ingester) transferUser(ctx context.Context, stream client.Ingester_Tran
 	level.Info(util.Logger).Log("msg", "user blocks and WAL transfer completed", "user", userID)
 }
 
-func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, tsfile *client.TimeSeriesFile) (bytesSent int64, err error) {
+func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, tsfile *client.TimeSeriesFile, sentBytes prometheus.Counter) error {
 	// Split file into smaller blocks for xfer
 	i := 0
 	for ; i+batch < len(b); i += batch {
 		tsfile.Data = b[i : i+batch]
 		err := client.SendTimeSeriesFile(stream, tsfile)
 		if err != nil {
-			return bytesSent, err
+			return err
 		}
-		bytesSent += int64(len(tsfile.Data))
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
 	// Send final data
@@ -740,12 +735,12 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 		tsfile.Data = b[i:]
 		err := client.SendTimeSeriesFile(stream, tsfile)
 		if err != nil {
-			return bytesSent, err
+			return err
 		}
-		bytesSent += int64(len(tsfile.Data))
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
-	return bytesSent, nil
+	return nil
 }
 
 func removeEmptyDir(dir string) error {

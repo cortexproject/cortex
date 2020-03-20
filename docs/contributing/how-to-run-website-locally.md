@@ -1,7 +1,7 @@
 ---
 title: "How to run the website locally"
 linkTitle: "How to run the website locally"
-weight: 2
+weight: 3
 slug: how-to-run-the-website-locally
 ---
 

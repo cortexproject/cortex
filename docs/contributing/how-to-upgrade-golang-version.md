@@ -1,7 +1,7 @@
 ---
 title: "How to upgrade Golang version"
 linkTitle: "How to upgrade Golang version"
-weight: 3
+weight: 4
 slug: how-to-upgrade-golang-version
 ---
 

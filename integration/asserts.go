@@ -31,7 +31,7 @@ var (
 		Querier:       []string{},
 		QueryFrontend: []string{"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  []string{},
-		AlertManager:  []string{"cortex_alertmanager"},
+		AlertManager:  []string{},
 	}
 
 	// Blacklisted metrics prefixes across any Cortex service.

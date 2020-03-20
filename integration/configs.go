@@ -50,6 +50,16 @@ var (
 		"-alertmanager.web.external-url":   "http://localhost/api/prom",
 	}
 
+	RulerConfigs = map[string]string{
+		"-ruler.enable-sharding":             "false",
+		"-ruler.poll-interval":               "2s",
+		"-experimental.ruler.enable-api":     "true",
+		"-ruler.storage.type":                "s3",
+		"-ruler.storage.s3.buckets":          "cortex-rules",
+		"-ruler.storage.s3.force-path-style": "true",
+		"-ruler.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+	}
+
 	BlocksStorageFlags = map[string]string{
 		"-store.engine":                                 "tsdb",
 		"-experimental.tsdb.backend":                    "s3",

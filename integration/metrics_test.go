@@ -54,7 +54,7 @@ func TestExportedMetrics(t *testing.T) {
 	now := time.Now()
 	series, expectedVector := generateSeries("series_1", now)
 
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)
 
 	res, err := c.Push(series)
@@ -63,7 +63,7 @@ func TestExportedMetrics(t *testing.T) {
 
 	// Query the series both from the querier and query-frontend (to hit the read path).
 	for _, endpoint := range []string{querier.HTTPEndpoint(), queryFrontend.HTTPEndpoint()} {
-		c, err := e2ecortex.NewClient("", endpoint, "", "user-1")
+		c, err := e2ecortex.NewClient("", endpoint, "", "", "user-1")
 		require.NoError(t, err)
 
 		result, err := c.Query("series_1", now)

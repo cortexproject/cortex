@@ -124,7 +124,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	expectedVectors := make([]model.Vector, numUsers)
 
 	for u := 0; u < numUsers; u++ {
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", u))
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", fmt.Sprintf("user-%d", u))
 		require.NoError(t, err)
 
 		var series []prompb.TimeSeries
@@ -142,7 +142,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	for u := 0; u < numUsers; u++ {
 		userID := u
 
-		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", fmt.Sprintf("user-%d", userID))
+		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
 		for q := 0; q < numQueriesPerUser; q++ {

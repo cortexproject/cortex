@@ -210,3 +210,22 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 		grpcPort,
 	)
 }
+
+func NewRuler(name string, flags map[string]string, image string) *CortexService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "ruler",
+			"-log.level": "warn",
+		}, flags))...),
+		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 200
+		e2e.NewReadinessProbe(httpPort, "/", 200),
+		httpPort,
+		grpcPort,
+	)
+}

@@ -83,7 +83,7 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
-	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
 	// Push and Query some series from Cortex for each day starting from oldest start time from configs until now so that we test all the Index Stores

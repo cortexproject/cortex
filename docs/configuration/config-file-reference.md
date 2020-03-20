@@ -708,7 +708,7 @@ The `ruler_config` configures the Cortex ruler.
 [pollinterval: <duration> | default = 1m0s]
 
 storeconfig:
-  # Method to use for backend rule storage (configdb)
+  # Method to use for backend rule storage (configdb, azure, gcs, s3)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = "configdb"]
 
@@ -716,6 +716,79 @@ storeconfig:
   # alerts, and is used by the Cortex alertmanager.
   # The CLI flags prefix for this block config is: ruler
   [configdb: <configstore_config>]
+
+  azure:
+    # Name of the blob container used to store chunks. Defaults to `cortex`.
+    # This container must be created before running cortex.
+    # CLI flag: -ruler.storage.azure.container-name
+    [container_name: <string> | default = "cortex"]
+
+    # The Microsoft Azure account name to be used
+    # CLI flag: -ruler.storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # The Microsoft Azure account key to use.
+    # CLI flag: -ruler.storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Preallocated buffer size for downloads (default is 512KB)
+    # CLI flag: -ruler.storage.azure.download-buffer-size
+    [download_buffer_size: <int> | default = 512000]
+
+    # Preallocated buffer size for up;oads (default is 256KB)
+    # CLI flag: -ruler.storage.azure.upload-buffer-size
+    [upload_buffer_size: <int> | default = 256000]
+
+    # Number of buffers used to used to upload a chunk. (defaults to 1)
+    # CLI flag: -ruler.storage.azure.download-buffer-count
+    [upload_buffer_count: <int> | default = 1]
+
+    # Timeout for requests made against azure blob storage. Defaults to 30
+    # seconds.
+    # CLI flag: -ruler.storage.azure.request-timeout
+    [request_timeout: <duration> | default = 30s]
+
+    # Number of retries for a request which times out.
+    # CLI flag: -ruler.storage.azure.max-retries
+    [max_retries: <int> | default = 5]
+
+    # Minimum time to wait before retrying a request.
+    # CLI flag: -ruler.storage.azure.min-retry-delay
+    [min_retry_delay: <duration> | default = 10ms]
+
+    # Maximum time to wait before retrying a request.
+    # CLI flag: -ruler.storage.azure.max-retry-delay
+    [max_retry_delay: <duration> | default = 500ms]
+
+  gcs:
+    # Name of GCS bucket to put chunks in.
+    # CLI flag: -ruler.storage.gcs.bucketname
+    [bucket_name: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -ruler.storage.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    # The duration after which the requests to GCS should be timed out.
+    # CLI flag: -ruler.storage.gcs.request-timeout
+    [request_timeout: <duration> | default = 0s]
+
+  s3:
+    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+    # specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<bucket-name> to use a mock in-memory implementation.
+    # CLI flag: -ruler.storage.s3.url
+    [s3: <url> | default = ]
+
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -ruler.storage.s3.buckets
+    [bucketnames: <string> | default = ""]
+
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -ruler.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
 
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path

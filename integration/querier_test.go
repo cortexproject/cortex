@@ -86,7 +86,7 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
-			c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
+			c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
 			require.NoError(t, err)
 
 			// Push some series to Cortex.
@@ -202,7 +202,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	// Push some series to Cortex.
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)
 
 	series1Timestamp := time.Now()
@@ -235,7 +235,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	// Query back the series.
-	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "user-1")
+	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
 	result, err := c.Query("series_1", series1Timestamp)

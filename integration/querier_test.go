@@ -36,7 +36,7 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
 			}),
 		},
-		"queintegration/e2e/service.gorier running with memcached index cache": {
+		"querier running with memcached index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
 				// The address will be inject during the test execution because it's dynamic.
 				"-experimental.tsdb.bucket-store.index-cache.backend": "memcached",
@@ -344,4 +344,10 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+	assertServiceMetricsPrefixes(t, Querier, querier)
+	assertServiceMetricsPrefixes(t, TableManager, tableManager)
 }

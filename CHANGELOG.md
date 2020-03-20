@@ -55,6 +55,9 @@
 * [FEATURE] Added experimental storage API to the ruler service that is enabled when the `-experimental.ruler.enable-api` is set to true #2269
   * `-ruler.storage.type` flag now allows `s3`,`gcs`, and `azure` values
   * `-ruler.storage.(s3|gcs|azure)` flags exist to allow the configuration of object clients set for rule storage
+* [CHANGE] Renamed table manager metrics.
+  * `cortex_dynamo_sync_tables_seconds` -> `cortex_table_manager_sync_duration_seconds`
+  * `cortex_dynamo_table_capacity_units` -> `cortex_table_manager_table_capacity_units`
 * [FEATURE] Flusher target to flush the WAL.
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.

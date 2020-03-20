@@ -40,15 +40,15 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m := tableManagerMetrics{}
 	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
-		Name:      "dynamo_sync_tables_seconds",
-		Help:      "Time spent doing SyncTables.",
+		Name:      "table_manager_sync_duration_seconds",
+		Help:      "Time spent doing synching tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
 	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "dynamo_table_capacity_units",
-		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
+		Name:      "table_manager_table_capacity_units",
+		Help:      "Per-table provisioned read and write capacity units.",
 	}, []string{"op", "table"})
 
 	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{

@@ -106,6 +106,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	// Check if we're discovering memcache or not.
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(1), "cortex_memcache_client_servers"))
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Greater(0), "cortex_dns_lookups_total"))
 
 	// Start the querier after the query-frontend otherwise we're not
 	// able to get the query-frontend network endpoint.

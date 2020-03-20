@@ -18,6 +18,14 @@ services:
     volumes:
       - .data-minio:/data:delegated
 
+  prometheus:
+    image: prom/prometheus:v2.16.0
+    command: ["--config.file=/etc/prometheus/prometheus.yaml"]
+    volumes:
+      - ./config:/etc/prometheus
+    ports:
+      - 9090:9090
+
   cortex-1:
     build:
       context:    .

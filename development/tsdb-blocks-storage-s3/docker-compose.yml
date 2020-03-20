@@ -26,6 +26,14 @@ services:
     volumes:
       - .data-configstore:/usr/share/nginx/html/private:ro
 
+  prometheus:
+    image: prom/prometheus:v2.16.0
+    command: ["--config.file=/etc/prometheus/prometheus.yaml"]
+    volumes:
+      - ./config:/etc/prometheus
+    ports:
+      - 9090:9090
+
   distributor:
     build:
       context:    .

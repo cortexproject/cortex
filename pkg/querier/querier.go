@@ -48,9 +48,6 @@ type Config struct {
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
 	// engine.
 	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
-
-	// For testing, to prevent re-registration of metrics in the promql engine.
-	metricsRegisterer prometheus.Registerer `yaml:"-"`
 }
 
 var (
@@ -73,7 +70,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
-	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
 // Validate the config
@@ -103,7 +99,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, tombstonesLoader *purger.TombstonesLoader) (storage.Queryable, *promql.Engine) {
+func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	var queryable storage.Queryable
@@ -121,7 +117,7 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
-		Reg:                cfg.metricsRegisterer,
+		Reg:                reg,
 		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,

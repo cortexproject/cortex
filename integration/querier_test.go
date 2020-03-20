@@ -297,7 +297,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	expectedVectors := make([]model.Vector, numUsers)
 
 	for u := 0; u < numUsers; u++ {
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", u))
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", fmt.Sprintf("user-%d", u))
 		require.NoError(t, err)
 
 		var series []prompb.TimeSeries
@@ -328,7 +328,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	for u := 0; u < numUsers; u++ {
 		userID := u
 
-		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", fmt.Sprintf("user-%d", userID))
+		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
 		for q := 0; q < numQueriesPerUser; q++ {

@@ -21,6 +21,7 @@ const (
 	QueryFrontend
 	TableManager
 	AlertManager
+	Ruler
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 		QueryFrontend: []string{"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  []string{},
 		AlertManager:  []string{},
+		Ruler:         []string{},
 	}
 
 	// Blacklisted metrics prefixes across any Cortex service.

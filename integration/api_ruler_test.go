@@ -70,4 +70,7 @@ func TestRulerAPI(t *testing.T) {
 	// Check to ensure the rule groups are no longer active
 	_, err = c.GetRuleGroups()
 	require.Error(t, err)
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Ruler, ruler)
 }

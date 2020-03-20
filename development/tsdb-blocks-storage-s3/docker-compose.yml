@@ -32,7 +32,7 @@ services:
     volumes:
       - ./config:/etc/prometheus
     ports:
-      - 8010:8010
+      - 9090:9090
 
   distributor:
     build:

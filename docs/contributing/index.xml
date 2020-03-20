@@ -1,4 +1,33 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Contributing</title><link>/docs/contributing/</link><description>Recent content in Contributing on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Contributing</title><link>/docs/contributing/</link><description>Recent content in Contributing on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Design patterns and Code conventions</title><link>/docs/contributing/design-patterns-and-code-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/design-patterns-and-code-conventions/</guid><description>
+&lt;p&gt;Cortex adopts some design patterns and code conventions that we ask you to follow when contributing to the project. These conventions have been adopted based on the experience gained over the time and aim to enforce good coding practices and keep a consistent UX (ie. config).&lt;/p&gt;
+&lt;h2 id=&#34;go-coding-style&#34;&gt;Go coding style&lt;/h2&gt;
+&lt;p&gt;Cortex follows the &lt;a href=&#34;https://github.com/golang/go/wiki/CodeReviewComments&#34;&gt;Go Code Review Comments&lt;/a&gt; styleguide and the &lt;a href=&#34;https://peter.bourgon.org/go-in-production/#formatting-and-style&#34;&gt;Formatting and style&lt;/a&gt; section of Peter Bourgon&amp;rsquo;s &lt;a href=&#34;https://peter.bourgon.org/go-in-production/&#34;&gt;Go: Best Practices for Production Environments&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;no-global-variables&#34;&gt;No global variables&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Do not use global variables&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;prometheus-metrics&#34;&gt;Prometheus metrics&lt;/h2&gt;
+&lt;p&gt;When registering a metric:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Do not use a global variable for the metric&lt;/li&gt;
+&lt;li&gt;Create and register the metric with &lt;code&gt;promauto.With(reg)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;In any internal Cortex component, do not register the metric to the default prometheus registerer, but pick the registerer in input (ie. &lt;code&gt;NewComponent(reg prometheus.Registerer)&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Testing metrics:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;When writing using tests, test exported metrics using &lt;code&gt;testutil.GatherAndCompare()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;config-file-and-cli-flags-conventions&#34;&gt;Config file and CLI flags conventions&lt;/h2&gt;
+&lt;p&gt;Naming:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Config file options should be lowercase with words &lt;code&gt;_&lt;/code&gt; (underscore) separated (ie. &lt;code&gt;memcached_client&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;CLI flags should be lowercase with words &lt;code&gt;-&lt;/code&gt; (dash) separated (ie. &lt;code&gt;memcached-client&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;When adding a new config option, look if a similar one already exists within the &lt;a href=&#34;/docs/configuration/configuration-file/&#34;&gt;config&lt;/a&gt; and keep the same naming (ie. &lt;code&gt;addresses&lt;/code&gt; for a list of network endpoints)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Documentation:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A CLI flag mentioned in the documentation or changelog should be always prefixed with a single &lt;code&gt;-&lt;/code&gt; (dash)&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
 &lt;p&gt;The Cortex documentation is compiled into a website published at &lt;a href=&#34;https://cortexmetrics.io/&#34;&gt;cortexmetrics.io&lt;/a&gt;. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p&gt;
 &lt;h2 id=&#34;initial-setup&#34;&gt;Initial setup&lt;/h2&gt;
 &lt;p&gt;The following initial setup is required only once:&lt;/p&gt;

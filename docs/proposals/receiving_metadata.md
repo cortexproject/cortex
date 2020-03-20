@@ -32,7 +32,7 @@ Since metadata is received all at once, we could directly store into an external
 
 2. Keep metadata in memory within the ingesters
 
-Similarly to what we do with sample data, we can keep the metadata in-memory in the ingestors and apply similar semantics. I propose to use the tenant ID as a hash key, distribute it to the ingesters (taking into account the replication factor), using a hash map to keep a set of the metadata across all instances for a single tenant, and implement a configurable time-based purge process to deal with metadata churn. Given, we need to ensure fair-use we also propose implementing limits for both the number of metadata entries we can receive and the size of entry(s).
+Similarly to what we do with sample data, we can keep the metadata in-memory in the ingesters and apply similar semantics. I propose to use the tenant ID as a hash key, distribute it to the ingesters (taking into account the replication factor), using a hash map to keep a set of the metadata across all instances for a single tenant, and implement a configurable time-based purge process to deal with metadata churn. Given, we need to ensure fair-use we also propose implementing limits for both the number of metadata entries we can receive and the size of a single entry.
 
 ### Read Path
 

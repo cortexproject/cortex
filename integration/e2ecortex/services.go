@@ -224,7 +224,7 @@ func NewRuler(name string, flags map[string]string, image string) *CortexService
 			"-log.level": "warn",
 		}, flags))...),
 		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 200
-		e2e.NewReadinessProbe(httpPort, "/", 200),
+		e2e.NewHTTPReadinessProbe(httpPort, "/", 200),
 		httpPort,
 		grpcPort,
 	)

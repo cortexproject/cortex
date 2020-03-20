@@ -36,7 +36,7 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 				"-experimental.tsdb.bucket-store.index-cache.backend": "inmemory",
 			}),
 		},
-		"queintegration/e2e/service.gorier running with memcached index cache": {
+		"querier running with memcached index cache": {
 			flags: mergeFlags(BlocksStorageFlags, map[string]string{
 				// The address will be inject during the test execution because it's dynamic.
 				"-experimental.tsdb.bucket-store.index-cache.backend": "memcached",
@@ -169,6 +169,11 @@ func TestQuerierWithBlocksStorage(t *testing.T) {
 			} else if indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(11+2), "cortex_querier_blocks_index_cache_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Ensure no service-specific metrics prefix is used by the wrong service.
+			assertServiceMetricsPrefixes(t, Distributor, distributor)
+			assertServiceMetricsPrefixes(t, Ingester, ingester)
+			assertServiceMetricsPrefixes(t, Querier, querier)
 		})
 	}
 }
@@ -292,7 +297,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	expectedVectors := make([]model.Vector, numUsers)
 
 	for u := 0; u < numUsers; u++ {
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", u))
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", fmt.Sprintf("user-%d", u))
 		require.NoError(t, err)
 
 		var series []prompb.TimeSeries
@@ -323,7 +328,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	for u := 0; u < numUsers; u++ {
 		userID := u
 
-		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", fmt.Sprintf("user-%d", userID))
+		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
 		for q := 0; q < numQueriesPerUser; q++ {
@@ -339,4 +344,10 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+	assertServiceMetricsPrefixes(t, Querier, querier)
+	assertServiceMetricsPrefixes(t, TableManager, tableManager)
 }

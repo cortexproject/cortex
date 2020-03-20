@@ -158,4 +158,10 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	}
 
 	wg.Wait()
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+	assertServiceMetricsPrefixes(t, Querier, querier)
+	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
 }

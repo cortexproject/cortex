@@ -140,16 +140,17 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 
 		ingesters = append(ingesters, struct {
-			ID, State, Address, Timestamp string
-			Tokens                        []uint32
-			NumTokens                     int
-			Ownership                     float64
+			ID, State, Address, Timestamp, Zone string
+			Tokens                              []uint32
+			NumTokens                           int
+			Ownership                           float64
 		}{
 			ID:        id,
 			State:     state,
 			Address:   ing.Addr,
 			Timestamp: timestamp.String(),
 			Tokens:    ing.Tokens,
+			Zone:      ing.Zone,
 			NumTokens: len(ing.Tokens),
 			Ownership: (float64(owned[id]) / float64(math.MaxUint32)) * 100,
 		})

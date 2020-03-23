@@ -29,7 +29,9 @@ $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1
 $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
 ```
 
-The two instances should be able to find each other via memberlist configuration:
+## How it works
+
+The two instances we started earlier should be able to find each other via memberlist configuration (already present in the config files):
 
 ```yaml
 memberlist:
@@ -55,8 +57,8 @@ when using gossiped ring (instances may simply not see each other yet), so we us
 If conflict is detected, new tokens are generated instead of conflicting tokens, and observe period is restarted.
 If no conflict is detected within the observe period, ingester switches to ACTIVE state.
 
-We are able to observe ring state on http://localhost:9109/ring and http://localhost:9209/ring. The two instances may
-see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
+We are able to observe ring state on [http://localhost:9109/ring](http://localhost:9109/ring) and [http://localhost:9209/ring](http://localhost:9209/ring).
+The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
 being ACTIVE and ready to receive samples.
 
 Download Prometheus and configure it to use our first Cortex instance for remote writes.
@@ -76,10 +78,60 @@ To query that data, you can configure your Grafana instance to use http://localh
 To add another Cortex to the small cluster, copy `docs/configuration/single-process-config-blocks-gossip-1.yaml` to a new file,
 and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well:
 
-- change `http_listen_port` and `grpc_listen_port` to unique port numbers (eg. 9309 and 9395 respectively)
-- change "Ingester 1" in `ingester.lifecycler.id` and `memberlist.node_name` fields to "Ingester 3". These fields default to hostname, but we run all instances on the single host.
-- change `memberlist.bind_port` to new value, eg. 7948.
-- change directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances writing data to the same directories.
+```diff
+--- docs/configuration/single-process-config-blocks-gossip-1.yaml	2020-03-23 11:10:28.000000000 +0100
++++ instance3.yaml	2020-03-23 12:11:54.000000000 +0100
+@@ -8,8 +8,8 @@
+ auth_enabled: false
+ 
+ server:
+-  http_listen_port: 9109
+-  grpc_listen_port: 9195
++  http_listen_port: 9309
++  grpc_listen_port: 9395
+ 
+   # Configure the server to allow messages up to 100MB.
+   grpc_server_max_recv_msg_size: 104857600
+@@ -37,7 +37,7 @@
+     # looking up address on eth0 or en0; can be specified if this fails.
+     address: 127.0.0.1
+     # Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
+-    id: "Ingester 1"
++    id: "Ingester 3"
+ 
+     # We don't want to join immediately, but wait a bit to see other ingesters and their tokens first.
+     # It can take a while to have the full picture when using gossip
+@@ -61,8 +61,8 @@
+ 
+ memberlist:
+   # defaults to hostname
+-  node_name: "Ingester 1"
+-  bind_port: 7946
++  node_name: "Ingester 3"
++  bind_port: 7948
+   join_members:
+     - localhost:7947
+   abort_if_cluster_join_fails: false
+@@ -71,9 +71,9 @@
+   engine: tsdb
+ 
+ tsdb:
+-  dir: /tmp/cortex/tsdb-ing1
++  dir: /tmp/cortex/tsdb-ing3
+   bucket_store:
+-    sync_dir: /tmp/cortex/tsdb-sync-querier1
++    sync_dir: /tmp/cortex/tsdb-sync-querier3
+ 
+   # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
+   # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
+```
+
+What has changed?
+
+- `http_listen_port` and `grpc_listen_port` need to be unique (eg. 9309 and 9395 respectively)
+- `ingester.lifecycler.id` and `memberlist.node_name` fields need to be unique as well. These fields default to hostname, but we run all instances on the single host, so we use "Ingester 3" instead.
+- `memberlist.bind_port` needs to be unique (7948 here)
+- Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances writing in-progress data to the same directories.
 
 We don't need to change or add `memberlist.join_members` list. This new instance will simply join to the second one (listening on port 7947), and
 will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods

@@ -1,7 +1,7 @@
 # Support /api/v1/metadata in Cortex
 
 - Author: @gotjosh
-- Reviewers: @tomwilkie, @pracucci
+- Reviewers: @gouthamve, @pracucci
 - Date: March 2020
 
 ## Problem Statement
@@ -9,14 +9,16 @@ Prometheus holds metric metadata alongside the contents of a scrape. This metada
 
 At the moment of writing, Cortex does not support the `api/v1/metadata` endpoint that Prometheus implements as metadata was never propagated via remote write. Recent [work is done in Prometheus](https://github.com/prometheus/prometheus/pull/6815/files) enables the propagation of metadata.
 
-With this in place, remote write integrations such as Cortex can now receive this data and implement the API endpoint. This result in Cortex users being able to enjoy a tiny bit more insight on their metrics.
+With this in place, remote write integrations such as Cortex can now receive this data and implement the API endpoint. This results in Cortex users being able to enjoy a tiny bit more insight on their metrics.
 
 ## Potential Solutions
 Before we delve into the solutions, let's set a baseline about how the data is received. This applies almost equally for the two.
 
-Metadata from Prometheus is sent in the same `WriteRequest` proto message that the samples use. It is part of a different field (#3 given #2 is already used), the data is a set identified by the metric name - that means it is aggregated across targets, and finally it is sent all at once. It is also important to note that this current process is an intermediary step. Eventually, metadata in a request will be sent alongside samples and only for those included. The solutions proposed, take this nuance into account to avoid coupling between the current and future state of Prometheus, and hopefully do something now that also works for the future. 
+Metadata from Prometheus is sent in the same [`WriteRequest` proto message](https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto) that the samples use. It is part of a different field (#3 given #2 is already [used interally](https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L36)), the data is a set identified by the metric name - that means it is aggregated across targets, and is sent all at once. Implying, Cortex will receive a single `WriteRequest` containing a set of the metadata for that instance at an specified interval.
 
-As a reference, these are some key numbers regarding the size (and send timings) of the data at hand from our clusters at GL:
+. It is also important to note that this current process is an intermediary step. Eventually, metadata in a request will be sent alongside samples and only for those included. The solutions proposed, take this nuance into account to avoid coupling between the current and future state of Prometheus, and hopefully do something now that also works for the future. 
+
+As a reference, these are some key numbers regarding the size (and send timings) of the data at hand from our clusters at Grafana Labs:
 
 - On average, metadata (a combination of `HELP`, `TYPE`, `UNIT` and `METRIC_NAME`) is ~55 bytes uncompressed.
 - at GL, on an instance with about 2.6M active series, we hold ~1241 unique metrics in total.

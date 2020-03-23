@@ -1,8 +1,16 @@
+---
+title: "Support metadata API"
+linkTitle: "Support metadata API"
+weight: 1
+slug: support-metadata-api
+---
+
 # Support /api/v1/metadata in Cortex
 
 - Author: @gotjosh
 - Reviewers: @gouthamve, @pracucci
 - Date: March 2020
+- Status: Accepted
 
 ## Problem Statement
 Prometheus holds metric metadata alongside the contents of a scrape. This metadata (`HELP`, `TYPE`, `UNIT` and `METRIC_NAME`) enables [some Prometheus API](https://github.com/prometheus/prometheus/issues/6395) endpoints to output the metadata for integrations (e.g. [Grafana](https://github.com/grafana/grafana/pull/21124)) to consume it. 
@@ -44,7 +52,7 @@ In my eyes, the read path seems to only have one option. At the moment of writin
 
 I conclude that solution #2 is ideal for this work on the write path. It allows us to use similar semantics to samples, thus reducing operational complexity, and lays a groundwork for when we start receiving metadata alongside samples.
 
-There's one last piece to address: Allowing metadata to survive rolling restarts. Option #1 handles this well, given the aim would be to use an external cache such as Memcached. Option #2 lacks this, as it does not include any plans to persist this data. I'm open to opinions here, but I can see a world where we allow this data to be flushed/recovered on shutdown/startup.
+There's one last piece to address: Allowing metadata to survive rolling restarts. Option #1 handles this well, given the aim would be to use an external cache such as Memcached. Option #2 lacks this, as it does not include any plans to persist this data. Given Prometheus (by default) sends metadata every minute, and we don't need a high level of consistency. We expect that an eventual consistency of up to 1 minute on the default case is deemed acceptable.
 
 ## References
 - [Prometheus Propagate metadata via Remote Write Design Doc](https://docs.google.com/document/d/1LoCWPAIIbGSq59NG3ZYyvkeNb8Ymz28PUKbg_yhAzvE/edit#)

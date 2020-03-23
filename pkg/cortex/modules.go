@@ -184,7 +184,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 		tombstonesLoader = purger.NewTombstonesLoader(nil)
 	}
 
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -429,7 +429,7 @@ func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {

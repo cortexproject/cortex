@@ -139,12 +139,11 @@ func TestQuerier(t *testing.T) {
 					t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
 						cfg.IngesterStreaming = streaming
 						cfg.Iterators = iterators
-						cfg.metricsRegisterer = nil
 
 						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil))
+						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
 						testQuery(t, queryable, through, query)
 					})
 				}
@@ -217,7 +216,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil))
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -298,7 +297,6 @@ func TestNoFutureQueries(t *testing.T) {
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	cfg.metricsRegisterer = nil
 
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
@@ -308,7 +306,7 @@ func TestNoFutureQueries(t *testing.T) {
 				chunkStore := &errChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, chunkStore, purger.NewTombstonesLoader(nil))
+				queryable, _ := New(cfg, distributor, chunkStore, purger.NewTombstonesLoader(nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -485,7 +483,6 @@ func TestShortTermQueryToLTS(t *testing.T) {
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	cfg.metricsRegisterer = nil
 
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
@@ -496,7 +493,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil))
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 

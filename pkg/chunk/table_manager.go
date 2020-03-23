@@ -47,7 +47,7 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 
 	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "table_manager_table_capacity_units",
+		Name:      "table_manager_table_capacity",
 		Help:      "Per-table provisioned read and write capacity units.",
 	}, []string{"op", "table"})
 

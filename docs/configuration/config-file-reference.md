@@ -485,6 +485,11 @@ lifecycler:
   # CLI flag: -ingester.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
+  # The availability zone of the host, this instance is running on. Default is
+  # the hostname value.
+  # CLI flag: -ingester.availability-zone
+  [availability_zone: <string> | default = _hostname_]
+
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over.
 # CLI flag: -ingester.max-transfer-retries

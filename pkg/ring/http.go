@@ -30,7 +30,7 @@ const pageContent = `
 				<thead>
 					<tr>
 						<th>Instance ID</th>
-						<th>Availabilty Zone</th>
+						<th>Availability Zone</th>
 						<th>State</th>
 						<th>Address</th>
 						<th>Last Heartbeat</th>

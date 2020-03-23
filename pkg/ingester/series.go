@@ -13,17 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-var (
-	createdChunks = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_chunks_created_total",
-		Help: "The total number of chunks the ingester has created.",
-	})
-)
-
-func init() {
-	prometheus.MustRegister(createdChunks)
-}
-
 type memorySeries struct {
 	metric labels.Labels
 
@@ -39,14 +28,18 @@ type memorySeries struct {
 	lastSampleValueSet bool
 	lastTime           model.Time
 	lastSampleValue    model.SampleValue
+
+	// Prometheus metrics.
+	createdChunks prometheus.Counter
 }
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labels.Labels) *memorySeries {
+func newMemorySeries(m labels.Labels, createdChunks prometheus.Counter) *memorySeries {
 	return &memorySeries{
-		metric:   m,
-		lastTime: model.Earliest,
+		metric:        m,
+		lastTime:      model.Earliest,
+		createdChunks: createdChunks,
 	}
 }
 
@@ -78,7 +71,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		newHead := newDesc(encoding.New(), v.Timestamp, v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
-		createdChunks.Inc()
+		s.createdChunks.Inc()
 	}
 
 	newChunk, err := s.head().add(v)
@@ -95,7 +88,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 			return err
 		}
 		s.chunkDescs = append(s.chunkDescs, newDesc(newChunk, first, last))
-		createdChunks.Inc()
+		s.createdChunks.Inc()
 	}
 
 	s.lastTime = v.Timestamp

@@ -8,8 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -21,55 +19,6 @@ const (
 	// Backoff for retrying 'immediate' flushes. Only counts for queue
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
-)
-
-var (
-	chunkUtilization = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_ingester_chunk_utilization",
-		Help:    "Distribution of stored chunk utilization (when stored).",
-		Buckets: prometheus.LinearBuckets(0, 0.2, 6),
-	})
-	chunkLength = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_ingester_chunk_length",
-		Help:    "Distribution of stored chunk lengths (when stored).",
-		Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
-	})
-	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_ingester_chunk_size_bytes",
-		Help:    "Distribution of stored chunk sizes (when stored).",
-		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
-	})
-	chunksPerUser = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_chunks_stored_total",
-		Help: "Total stored chunks per user.",
-	}, []string{"user"})
-	chunkSizePerUser = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_chunk_stored_bytes_total",
-		Help: "Total bytes stored in chunks per user.",
-	}, []string{"user"})
-	chunkAge = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cortex_ingester_chunk_age_seconds",
-		Help: "Distribution of chunk ages (when stored).",
-		// with default settings chunks should flush between 5 min and 12 hours
-		// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
-		Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
-	})
-	memoryChunks = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_memory_chunks",
-		Help: "The total number of chunks in memory.",
-	})
-	flushReasons = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_flush_reasons",
-		Help: "Total number of series scheduled for flushing, with reasons.",
-	}, []string{"reason"})
-	droppedChunks = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_dropped_chunks_total",
-		Help: "Total number of chunks dropped from flushing because they have too few samples.",
-	})
-	oldestUnflushedChunkTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
-		Help: "Unix timestamp of the oldest unflushed chunk in the memory",
-	})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -133,7 +82,7 @@ func (i *Ingester) sweepUsers(immediate bool) {
 		}
 	}
 
-	oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
+	i.metrics.oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
 }
 
 type flushReason int8
@@ -186,7 +135,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
-		flushReasons.WithLabelValues(flush.String()).Inc()
+		i.metrics.flushReasons.WithLabelValues(flush.String()).Inc()
 		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	}
 }
@@ -308,8 +257,8 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 			}
 			if chunkLength < minChunkLength {
 				userState.removeSeries(fp, series.metric)
-				memoryChunks.Sub(float64(len(chunks)))
-				droppedChunks.Add(float64(len(chunks)))
+				i.metrics.memoryChunks.Sub(float64(len(chunks)))
+				i.metrics.droppedChunks.Add(float64(len(chunks)))
 				util.Event().Log(
 					"msg", "dropped chunks",
 					"userID", userID,
@@ -347,7 +296,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	userState.fpLocker.Lock(fp)
 	if immediate {
 		userState.removeSeries(fp, series.metric)
-		memoryChunks.Sub(float64(len(chunks)))
+		i.metrics.memoryChunks.Sub(float64(len(chunks)))
 	} else {
 		for i := 0; i < len(chunks); i++ {
 			// mark the chunks as flushed, so we can remove them after the retention period
@@ -366,7 +315,7 @@ func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprin
 		if series.chunkDescs[0].flushed && now.Sub(series.chunkDescs[0].LastUpdate) > i.cfg.RetainPeriod {
 			series.chunkDescs[0] = nil // erase reference so the chunk can be garbage-collected
 			series.chunkDescs = series.chunkDescs[1:]
-			memoryChunks.Dec()
+			i.metrics.memoryChunks.Dec()
 		} else {
 			break
 		}
@@ -390,18 +339,18 @@ func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fing
 		return err
 	}
 
-	sizePerUser := chunkSizePerUser.WithLabelValues(userID)
-	countPerUser := chunksPerUser.WithLabelValues(userID)
+	sizePerUser := i.metrics.chunkSizePerUser.WithLabelValues(userID)
+	countPerUser := i.metrics.chunksPerUser.WithLabelValues(userID)
 	// Record statistics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
 		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
 		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "nlabels", len(metric), "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
-		chunkUtilization.Observe(utilization)
-		chunkLength.Observe(float64(length))
-		chunkSize.Observe(float64(size))
+		i.metrics.chunkUtilization.Observe(utilization)
+		i.metrics.chunkLength.Observe(float64(length))
+		i.metrics.chunkSize.Observe(float64(size))
 		sizePerUser.Add(float64(size))
 		countPerUser.Inc()
-		chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
+		i.metrics.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
 	}
 
 	return nil

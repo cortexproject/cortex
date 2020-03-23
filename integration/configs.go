@@ -21,6 +21,7 @@ const (
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
+	blocksStorageEngine    = "tsdb"
 	storeConfigTemplate    = `
 - from: {{.From}}
   store: {{.IndexStore}}
@@ -61,7 +62,7 @@ var (
 	}
 
 	BlocksStorageFlags = map[string]string{
-		"-store.engine":                                 "tsdb",
+		"-store.engine":                                 blocksStorageEngine,
 		"-experimental.tsdb.backend":                    "s3",
 		"-experimental.tsdb.block-ranges-period":        "1m",
 		"-experimental.tsdb.bucket-store.sync-interval": "5s",

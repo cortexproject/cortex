@@ -47,6 +47,7 @@ type userState struct {
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
 	discardedSamples      *prometheus.CounterVec
+	createdChunks         prometheus.Counter
 }
 
 const metricCounterShards = 128
@@ -135,6 +136,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			memSeriesCreatedTotal: us.metrics.memSeriesCreatedTotal.WithLabelValues(userID),
 			memSeriesRemovedTotal: us.metrics.memSeriesRemovedTotal.WithLabelValues(userID),
 			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
+			createdChunks:         us.metrics.createdChunks,
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)
@@ -228,7 +230,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	}
 
 	labels := u.index.Add(metric, fp) // Add() returns 'interned' values so the original labels are not retained
-	series := newMemorySeries(labels)
+	series := newMemorySeries(labels, u.createdChunks)
 	u.fpToSeries.put(fp, series)
 
 	return series, nil

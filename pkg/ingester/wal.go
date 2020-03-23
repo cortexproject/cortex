@@ -522,7 +522,7 @@ func processCheckpoint(name string, userStates *userStates, params walRecoveryPa
 	for i := 0; i < params.numWorkers; i++ {
 		inputs[i] = make(chan *Series, 300)
 		go func(input <-chan *Series, stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries) {
-			processCheckpointRecord(userStates, seriesPool, stateCache, seriesCache, input, errChan)
+			processCheckpointRecord(userStates, seriesPool, stateCache, seriesCache, input, errChan, params.ingester.metrics.memoryChunks)
 			wg.Done()
 		}(inputs[i], params.stateCache[i], params.seriesCache[i])
 	}
@@ -587,8 +587,15 @@ func copyLabelAdapters(las []client.LabelAdapter) []client.LabelAdapter {
 	return las
 }
 
-func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, stateCache map[string]*userState,
-	seriesCache map[string]map[uint64]*memorySeries, seriesChan <-chan *Series, errChan chan error) {
+func processCheckpointRecord(
+	userStates *userStates,
+	seriesPool *sync.Pool,
+	stateCache map[string]*userState,
+	seriesCache map[string]map[uint64]*memorySeries,
+	seriesChan <-chan *Series,
+	errChan chan error,
+	memoryChunks prometheus.Counter,
+) {
 	var la []client.LabelAdapter
 	for s := range seriesChan {
 		state, ok := stateCache[s.UserId]

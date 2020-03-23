@@ -28,7 +28,7 @@ var (
 	// Service-specific metrics prefixes which shouldn't be used by any other service.
 	serviceMetricsPrefixes = map[ServiceType][]string{
 		Distributor:   []string{},
-		Ingester:      []string{},
+		Ingester:      []string{"!cortex_ingester_client", "cortex_ingester"}, // The metrics prefix cortex_ingester_client may be used by other components so we ignore it.
 		Querier:       []string{},
 		QueryFrontend: []string{"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  []string{},
@@ -57,6 +57,11 @@ func assertServiceMetricsPrefixes(t *testing.T, serviceType ServiceType, service
 		}
 
 		for _, prefix := range blacklist {
+			// Skip the metric if it matches an ignored prefix.
+			if prefix[0] == '!' && strings.HasPrefix(metricLine, prefix[1:]) {
+				break
+			}
+
 			assert.NotRegexp(t, "^"+prefix, metricLine, "service: %s", service.Name())
 		}
 	}

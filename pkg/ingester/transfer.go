@@ -26,41 +26,8 @@ import (
 )
 
 var (
-	sentChunks = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_sent_chunks",
-		Help: "The total number of chunks sent by this ingester whilst leaving.",
-	})
-	receivedChunks = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_received_chunks",
-		Help: "The total number of chunks received by this ingester whilst joining",
-	})
-	sentFiles = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_sent_files",
-		Help: "The total number of files sent by this ingester whilst leaving.",
-	})
-	receivedFiles = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_received_files",
-		Help: "The total number of files received by this ingester whilst joining",
-	})
-	receivedBytes = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_received_bytes_total",
-		Help: "The total number of bytes received by this ingester whilst joining",
-	})
-	sentBytes = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_sent_bytes_total",
-		Help: "The total number of bytes sent by this ingester whilst leaving",
-	})
 	errTransferNoPendingIngesters = errors.New("no pending ingesters")
 )
-
-func init() {
-	prometheus.MustRegister(sentChunks)
-	prometheus.MustRegister(receivedChunks)
-	prometheus.MustRegister(sentFiles)
-	prometheus.MustRegister(receivedBytes)
-	prometheus.MustRegister(receivedFiles)
-	prometheus.MustRegister(sentBytes)
-}
 
 // TransferChunks receives all the chunks from another ingester.
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
@@ -109,8 +76,8 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			}
 
 			seriesReceived++
-			memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-			receivedChunks.Add(float64(len(descs)))
+			i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+			i.metrics.receivedChunks.Add(float64(len(descs)))
 		}
 
 		if seriesReceived == 0 {
@@ -296,8 +263,8 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			return errors.Wrap(err, "TransferTSDB: ClaimTokensFor")
 		}
 
-		receivedBytes.Add(float64(bytesXfer))
-		receivedFiles.Add(float64(filesXfer))
+		i.metrics.receivedBytes.Add(float64(bytesXfer))
+		i.metrics.receivedFiles.Add(float64(filesXfer))
 		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
 		// Move the tmpdir to the final location
@@ -484,7 +451,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				return errors.Wrap(err, "Send")
 			}
 
-			sentChunks.Add(float64(len(chunks)))
+			i.metrics.sentChunks.Add(float64(len(chunks)))
 		}
 	}
 
@@ -583,7 +550,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	for user, blockIDs := range blocks {
 		// Transfer the users TSDB
 		// TODO(thor) transferring users can be done concurrently
-		transferUser(ctx, stream, i.cfg.TSDBConfig.Dir, i.lifecycler.ID, user, blockIDs)
+		i.transferUser(ctx, stream, i.cfg.TSDBConfig.Dir, i.lifecycler.ID, user, blockIDs)
 	}
 
 	_, err = stream.CloseAndRecv()
@@ -672,7 +639,7 @@ func unshippedBlocks(dir string) (map[string][]string, error) {
 	return blocks, nil
 }
 
-func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient, dir, ingesterID, userID string, blocks []string) {
+func (i *Ingester) transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient, dir, ingesterID, userID string, blocks []string) {
 	level.Info(util.Logger).Log("msg", "transferring user blocks", "user", userID)
 	// Transfer all blocks
 	for _, blk := range blocks {
@@ -699,11 +666,11 @@ func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient
 				FromIngesterId: ingesterID,
 				UserId:         userID,
 				Filename:       p,
-			}); err != nil {
+			}, i.metrics.sentBytes); err != nil {
 				return err
 			}
 
-			sentFiles.Add(1)
+			i.metrics.sentFiles.Add(1)
 			return nil
 		})
 		if err != nil {
@@ -736,11 +703,11 @@ func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient
 			FromIngesterId: ingesterID,
 			UserId:         userID,
 			Filename:       p,
-		}); err != nil {
+		}, i.metrics.sentBytes); err != nil {
 			return err
 		}
 
-		sentFiles.Add(1)
+		i.metrics.sentFiles.Add(1)
 		return nil
 	})
 
@@ -751,7 +718,7 @@ func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient
 	level.Info(util.Logger).Log("msg", "user blocks and WAL transfer completed", "user", userID)
 }
 
-func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, tsfile *client.TimeSeriesFile) error {
+func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, tsfile *client.TimeSeriesFile, sentBytes prometheus.Counter) error {
 	// Split file into smaller blocks for xfer
 	i := 0
 	for ; i+batch < len(b); i += batch {

@@ -75,6 +75,11 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
+	// Ensure 1st ingester metrics are tracked correctly.
+	if flags["-store.engine"] != blocksStorageEngine {
+		require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
+	}
+
 	// Start ingester-2.
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.join-after": "10s",

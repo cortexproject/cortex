@@ -33,7 +33,7 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
-	ingester := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
 		"-ingester.max-transfer-retries": "0",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
@@ -61,6 +61,9 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 200, res.StatusCode)
 	}
+
+	// Ensure ingester metrics are tracked correctly.
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_chunks_created_total"))
 
 	// Query the series.
 	result, err := c.Query("series_1", now)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -60,47 +61,40 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	r := prometheus.NewRegistry()
 
 	// shipper
-	dirSyncs := prometheus.NewCounter(prometheus.CounterOpts{
+	dirSyncs := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_dir_syncs_total",
 		Help: "Total number of dir syncs",
 	})
 	dirSyncs.Add(1 * base)
 
-	dirSyncFailures := prometheus.NewCounter(prometheus.CounterOpts{
+	dirSyncFailures := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_dir_sync_failures_total",
 		Help: "Total number of failed dir syncs",
 	})
 	dirSyncFailures.Add(2 * base)
 
-	uploads := prometheus.NewCounter(prometheus.CounterOpts{
+	uploads := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_uploads_total",
 		Help: "Total number of uploaded blocks",
 	})
 	uploads.Add(3 * base)
 
-	uploadFailures := prometheus.NewCounter(prometheus.CounterOpts{
+	uploadFailures := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_shipper_upload_failures_total",
 		Help: "Total number of block upload failures",
 	})
 	uploadFailures.Add(4 * base)
 
 	// TSDB Head
-	seriesCreated := prometheus.NewCounter(prometheus.CounterOpts{
+	seriesCreated := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_head_series_created_total",
 	})
 	seriesCreated.Add(5 * base)
 
-	seriesRemoved := prometheus.NewCounter(prometheus.CounterOpts{
+	seriesRemoved := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_head_series_removed_total",
 	})
 	seriesRemoved.Add(6 * base)
-
-	r.MustRegister(dirSyncs)
-	r.MustRegister(dirSyncFailures)
-	r.MustRegister(uploads)
-	r.MustRegister(uploadFailures)
-	r.MustRegister(seriesCreated)
-	r.MustRegister(seriesRemoved)
 
 	return r
 }

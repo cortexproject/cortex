@@ -79,59 +79,101 @@ To add another Cortex to the small cluster, copy `docs/configuration/single-proc
 and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well:
 
 ```diff
---- docs/configuration/single-process-config-blocks-gossip-1.yaml	2020-03-23 11:10:28.000000000 +0100
-+++ instance3.yaml	2020-03-23 12:11:54.000000000 +0100
-@@ -8,8 +8,8 @@
+ # Configuration for running Cortex in single-process mode.
+ # This should not be used in production.  It is only for getting started
+ # and development.
+
+ # Disable the requirement that every request to Cortex has a
+ # X-Scope-OrgID header. `fake` will be substituted in instead.
  auth_enabled: false
- 
+
  server:
++  # These ports need to be unique.
 -  http_listen_port: 9109
 -  grpc_listen_port: 9195
 +  http_listen_port: 9309
 +  grpc_listen_port: 9395
- 
+
    # Configure the server to allow messages up to 100MB.
    grpc_server_max_recv_msg_size: 104857600
-@@ -37,7 +37,7 @@
+   grpc_server_max_send_msg_size: 104857600
+   grpc_server_max_concurrent_streams: 1000
+
+ distributor:
+   shard_by_all_labels: true
+   pool:
+     health_check_ingesters: true
+
+ ingester_client:
+   grpc_client_config:
+     # Configure the client to allow messages up to 100MB.
+     max_recv_msg_size: 104857600
+     max_send_msg_size: 104857600
+     use_gzip_compression: true
+
+ ingester:
+   # Disable blocks transfers on ingesters shutdown or rollout.
+   max_transfer_retries: 0
+
+   lifecycler:
+     # The address to advertise for this ingester.  Will be autodiscovered by
      # looking up address on eth0 or en0; can be specified if this fails.
      address: 127.0.0.1
      # Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
 -    id: "Ingester 1"
 +    id: "Ingester 3"
- 
+
      # We don't want to join immediately, but wait a bit to see other ingesters and their tokens first.
      # It can take a while to have the full picture when using gossip
-@@ -61,8 +61,8 @@
- 
+     join_after: 10s
+
+     # To avoid generating same tokens by multiple ingesters, they can "observe" the ring for a while,
+     # after putting their own tokens into it. This is only useful when using gossip, since multiple
+     # ingesters joining at the same time can have conflicting tokens if they don't see each other yet.
+     observe_period: 10s
+     min_ready_duration: 0s
+     claim_on_rollout: false
+     final_sleep: 5s
+     num_tokens: 512
+
+     # Use an in memory ring store, so we don't need to launch a Consul.
+     ring:
+       kvstore:
+         store: memberlist
+
+       replication_factor: 1
+
  memberlist:
-   # defaults to hostname
--  node_name: "Ingester 1"
--  bind_port: 7946
-+  node_name: "Ingester 3"
-+  bind_port: 7948
-   join_members:
-     - localhost:7947
+    # defaults to hostname
+-   node_name: "Ingester 1"
++   node_name: "Ingester 3"
+
+    # bind_port needs to be unique
+-   bind_port: 7946
++   bind_port: 7948 
+    join_members:
+      - localhost:7947
    abort_if_cluster_join_fails: false
-@@ -71,9 +71,9 @@
+
+ storage:
    engine: tsdb
- 
+
++# Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
++# writing in-progress data to the same directories.
  tsdb:
--  dir: /tmp/cortex/tsdb-ing1
-+  dir: /tmp/cortex/tsdb-ing3
-   bucket_store:
--    sync_dir: /tmp/cortex/tsdb-sync-querier1
-+    sync_dir: /tmp/cortex/tsdb-sync-querier3
- 
-   # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
-   # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
+-   dir: /tmp/cortex/tsdb-ing1
++   dir: /tmp/cortex/tsdb-ing3
+    bucket_store:
+-     sync_dir: /tmp/cortex/tsdb-sync-querier1
++     sync_dir: /tmp/cortex/tsdb-sync-querier3
+
+    # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
+    # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
+    # we only use shared directory.
+    backend: filesystem # s3, gcs, azure or filesystem are valid options
+    filesystem:
+      dir: /tmp/cortex/storage
 ```
-
-What has changed?
-
-- `http_listen_port` and `grpc_listen_port` need to be unique (eg. 9309 and 9395 respectively)
-- `ingester.lifecycler.id` and `memberlist.node_name` fields need to be unique as well. These fields default to hostname, but we run all instances on the single host, so we use "Ingester 3" instead.
-- `memberlist.bind_port` needs to be unique (7948 here)
-- Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances writing in-progress data to the same directories.
 
 We don't need to change or add `memberlist.join_members` list. This new instance will simply join to the second one (listening on port 7947), and
 will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods

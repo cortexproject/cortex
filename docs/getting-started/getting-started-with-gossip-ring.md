@@ -5,19 +5,17 @@ weight: 2
 slug: getting-started-with-gossiped-ring
 ---
 
-Cortex requires Key-Value store to store the ring. It can use traditional KV stores like Consul or Etcd,
-but now it can also build its own KV store on top of memberlist library using a gossip algorithm.
+Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
+but it can also build its own KV store on top of memberlist library using a gossip algorithm.
 
 This short guide shows how to start Cortex in [single-binary mode](../architecture.md) with memberlist-based ring.
 To reduce number of required dependencies in this guide, it will use [blocks storage](../operations/blocks-storage.md) with no shipping to external stores.
 Storage engine and external storage configuration are not dependant on the ring configuration.
 
-## Single-binary, two Cortexes
-
-
+## Single-binary, two Cortex instances
 
 For simplicity and to get started, we'll run it as a two instances of Cortex on local computer.
-We will use prepared configuration files ([file 1](../configuration/single-process-config-blocks-gossip-1.yaml), [file 2](../configuration/single-process-config-blocks-gossip-2.yaml)), with no external
+We will use prepared configuration files ([file 1](../../configuration/single-process-config-blocks-gossip-1.yaml), [file 2](../../configuration/single-process-config-blocks-gossip-2.yaml)), with no external
 dependencies.
 
 Build Cortex first:
@@ -25,13 +23,9 @@ Build Cortex first:
 $ go build ./cmd/cortex
 ```
 
-First instance:
+Run two instances of Cortex, each one with its own dedicated config file:
 ```
 $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1.yaml
-```
-
-Second instance is similar, but uses `...-2.yaml` file.
-```
 $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
 ```
 

@@ -54,6 +54,10 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 
+	// We need two "ring members" visible from both Cortex instances
+	require.NoError(t, cortex1.WaitForMetricWithLabels(e2e.EqualsSingle(2), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
+	require.NoError(t, cortex2.WaitForMetricWithLabels(e2e.EqualsSingle(2), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
+
 	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 

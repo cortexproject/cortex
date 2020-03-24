@@ -53,7 +53,7 @@ run `make` into the build container as a Docker volume.)
 
 To run the unit tests suite:
 ```
-make test
+go test ./...
 ```
 
 To run the integration tests suite please see "[How integration tests work](./how-integration-tests-work.md)".

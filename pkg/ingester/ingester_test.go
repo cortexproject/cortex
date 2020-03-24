@@ -168,11 +168,17 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, o
 	}
 
 	// Append samples.
+	var wg sync.WaitGroup
+	wg.Add(len(userIDs))
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), client.API))
-		require.NoError(t, err)
+		go func(uid string, cx context.Context) {
+			defer wg.Done()
+			_, err := ing.Push(cx, client.ToWriteRequest(matrixToLables(testData[uid]), matrixToSamples(testData[uid]), client.API))
+			require.NoError(t, err)
+		}(userID, ctx)
 	}
+	wg.Wait()
 
 	return userIDs, testData
 }

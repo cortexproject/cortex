@@ -51,23 +51,27 @@ type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
 	Log(*Record) error
 	// Stop stops all the WAL operations.
-	Stop()
+	Stop() error
 }
 
 type noopWAL struct{}
 
 func (noopWAL) Log(*Record) error { return nil }
-func (noopWAL) Stop()             {}
+func (noopWAL) Stop() error       { return nil }
 
 type walWrapper struct {
 	cfg  WALConfig
 	quit chan struct{}
 	wait sync.WaitGroup
 
-	wal           *wal.WAL
-	recordChan    chan []byte
-	getUserStates func() map[string]*userState
-	checkpointMtx sync.Mutex
+	wal                   *wal.WAL
+	recordChan            chan []byte
+	getUserStates         func() map[string]*userState
+	checkpointMtx         sync.Mutex
+	recordBufferIdx       int
+	recordBuffer          [][]byte
+	recordBufferErrorChan []chan error
+	recordBufMtx          sync.Mutex
 
 	// Checkpoint metrics.
 	walWritesFailed         prometheus.Counter
@@ -94,11 +98,16 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	}
 
 	w := &walWrapper{
-		cfg:           cfg,
-		quit:          make(chan struct{}),
-		wal:           tsdbWAL,
-		getUserStates: userStatesFunc,
-		recordChan:    make(chan []byte, 10000),
+		cfg:                   cfg,
+		quit:                  make(chan struct{}),
+		wal:                   tsdbWAL,
+		getUserStates:         userStatesFunc,
+		recordBuffer:          make([][]byte, 100),
+		recordBufferErrorChan: make([]chan error, 100),
+	}
+
+	for i := 0; i < 100; i++ {
+		w.recordBufferErrorChan[i] = make(chan error)
 	}
 
 	w.walWritesFailed = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -128,27 +137,62 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	})
 
 	w.wait.Add(2)
-	go w.logLoop()
 	go w.run()
+	go w.flushLoop()
 
 	return w, nil
 }
 
-func (w *walWrapper) Stop() {
+func (w *walWrapper) Stop() error {
 	close(w.quit)
-	close(w.recordChan)
 	w.wait.Wait()
-	w.wal.Close()
+
+	var merr tsdb_errors.MultiError
+	w.wait.Add(1)
+	merr.Add(w.flushWALBuffer(true))
+	merr.Add(w.wal.Close())
+
+	return merr.Err()
 }
 
-func (w *walWrapper) logLoop() {
+// flushLoop periodically flushes the buffer to
+// unblock the writes if there is no more ingestion.
+func (w *walWrapper) flushLoop() {
 	defer w.wait.Done()
-	for rec := range w.recordChan {
-		if err := w.wal.Log(rec); err != nil {
-			w.walWritesFailed.Inc()
-			level.Error(util.Logger).Log("msg", "failed to write to WAL", "err", err)
+	for {
+		select {
+		case <-w.quit:
+			return
+		case <-time.After(50 * time.Millisecond):
+			w.recordBufMtx.Lock()
+			w.wait.Add(1)
+			if err := w.flushWALBuffer(true); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to log to WAL in flushLoop", "err", err)
+			}
+			w.recordBufMtx.Unlock()
 		}
 	}
+}
+
+func (w *walWrapper) flushWALBuffer(sendErrToLast bool) error {
+	defer w.wait.Done()
+
+	err := w.wal.Log(w.recordBuffer[0:w.recordBufferIdx]...)
+	if err != nil {
+		w.walWritesFailed.Inc()
+	}
+
+	chanLen := w.recordBufferIdx
+	if !sendErrToLast {
+		// Don't send it to the last channel to not cause deadlock for this method's caller.
+		chanLen--
+	}
+	for i := 0; i < chanLen; i++ {
+		w.recordBufferErrorChan[i] <- err
+	}
+	w.recordBufferIdx = 0
+
+	return err
 }
 
 func (w *walWrapper) Log(record *Record) error {
@@ -163,8 +207,25 @@ func (w *walWrapper) Log(record *Record) error {
 		if err != nil {
 			return err
 		}
-		w.recordChan <- buf
-		return nil
+		w.recordBufMtx.Lock()
+
+		w.recordBuffer[w.recordBufferIdx] = buf
+		errChan := w.recordBufferErrorChan[w.recordBufferIdx]
+		w.recordBufferIdx++
+		flushCalled := false
+
+		if w.recordBufferIdx == len(w.recordBuffer) {
+			w.wait.Add(1)
+			err = w.flushWALBuffer(false)
+			flushCalled = true
+		}
+
+		w.recordBufMtx.Unlock()
+
+		if flushCalled {
+			return err
+		}
+		return <-errChan
 	}
 }
 

@@ -37,7 +37,6 @@ func TestWAL(t *testing.T) {
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
-
 	for r := 0; r < numRestarts; r++ {
 		if r == numRestarts-1 {
 			cfg.WALConfig.WALEnabled = false

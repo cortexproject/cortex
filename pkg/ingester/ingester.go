@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
@@ -294,7 +295,8 @@ func (i *Ingester) loop(ctx context.Context) error {
 
 // stopping is run when ingester is asked to stop
 func (i *Ingester) stopping(_ error) error {
-	i.wal.Stop()
+	var merr tsdb_errors.MultiError
+	merr.Add(i.wal.Stop())
 
 	// This will prevent us accepting any more samples
 	i.stopIncomingRequests()
@@ -302,10 +304,10 @@ func (i *Ingester) stopping(_ error) error {
 	// Lifecycler can be nil if the ingester is for a flusher.
 	if i.lifecycler != nil {
 		// Next initiate our graceful exit from the ring.
-		return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+		merr.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 	}
 
-	return nil
+	return merr.Err()
 }
 
 // ShutdownHandler triggers the following set of operations in order:

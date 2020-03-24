@@ -26,7 +26,7 @@ go test -v -tags=requires_docker ./integration/...
 If you want to run a single test you can use a filter. For example, to only run `TestChunksStorageAllIndexBackends`:
 
 ```
-go test -v -tags=requires_docker ./integration -run ^(TestChunksStorageAllIndexBackends)$
+go test -v -tags=requires_docker ./integration -run "^TestChunksStorageAllIndexBackends$"
 ```
 
 ### Supported environment variables

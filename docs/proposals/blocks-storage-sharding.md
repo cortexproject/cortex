@@ -66,7 +66,12 @@ There are three possible scenarios:
 2. All the blocks known by the querier are within the list of blocks returned by store-gateway, but the store-gateway also included blocks unknown to the querier: all good (it means the store-gateways have discovered and loaded new blocks before the querier discovered them)
 3. Some blocks known by the querier are **not** within the list of blocks returned by store-gateway: potential consistency issue
 
-We want to protect from a partial results response which may occur in the case #3. However there's one legit case, which would lead to frequent false positives, we want to handle: the querier has discovered new blocks before the store-gateway successfully discovered and loaded them. To protect from this case, we exclude from the consistency check the blocks which have been uploaded in the last X time (same technique already used in other Thanos components). This value X should be greater than the `-experimental.tsdb.bucket-store.consistency-delay`, because we do expect the querier to consider a block for consistency check once it's reasonably safe to assume that its store-gateway already loaded it.
+We want to protect from a partial results response which may occur in the case #3. However there are two legit cases which, if not handled, would lead to frequent false positives:
+
+a. The querier has discovered new blocks before the store-gateway successfully discovered and loaded them
+b. The store-gateway has offloaded blocks "marked for deletion" before the querier
+
+To protect from these two cases, we exclude from the consistency check the blocks which have been uploaded is the last X time or deleted since at least X time (same technique already used in other Thanos components). This value X should be greater than the `-experimental.tsdb.bucket-store.consistency-delay`, because we do expect the querier to consider a block for consistency check once it's reasonably safe to assume that its store-gateway already loaded it.
 
 ## Trade-offs
 

@@ -64,4 +64,27 @@ make web-serve&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;If the minimum support Golang version should be upgraded as well:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
-&lt;/ol&gt;</description></item></channel></rss>
+&lt;/ol&gt;</description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
+&lt;p&gt;Cortex integration tests are written in Go and based on a &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/integration/e2e&#34;&gt;custom framework&lt;/a&gt; running Cortex and its dependencies in Docker containers and using the Go &lt;a href=&#34;https://golang.org/pkg/testing/&#34;&gt;&lt;code&gt;testing&lt;/code&gt;&lt;/a&gt; package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p&gt;
+&lt;h2 id=&#34;how-to-run-integration-tests&#34;&gt;How to run integration tests&lt;/h2&gt;
+&lt;p&gt;When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong&gt;locally&lt;/strong&gt; you should build the Cortex Docker image first:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;make ./cmd/cortex/.uptodate
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;This will locally build the &lt;code&gt;quay.io/cortexproject/cortex:latest&lt;/code&gt; image used by integration tests. Whenever the Cortex code changes (&lt;code&gt;cmd/&lt;/code&gt;, &lt;code&gt;pkg/&lt;/code&gt; or vendors) you should rebuild the Cortex image, while it&amp;rsquo;s &lt;strong&gt;not&lt;/strong&gt; necessary to rebuild it while developing integration tests.&lt;/p&gt;
+&lt;p&gt;Once the Docker image is built, you can run integration tests:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;go test -v -tags=requires_docker ./integration/...
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;If you want to run a single test you can use a filter. For example, to only run &lt;code&gt;TestChunksStorageAllIndexBackends&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;go test -v -tags=requires_docker ./integration -run &amp;quot;^TestChunksStorageAllIndexBackends$&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3 id=&#34;supported-environment-variables&#34;&gt;Supported environment variables&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;CORTEX_IMAGE&lt;/code&gt;&lt;/strong&gt;&lt;br /&gt;
+Docker image used to run Cortex in integration tests (defaults to &lt;code&gt;quay.io/cortexproject/cortex:latest&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;CORTEX_CHECKOUT_DIR&lt;/code&gt;&lt;/strong&gt;&lt;br /&gt;
+The absolute path of the Cortex repository local checkout (defaults to &lt;code&gt;$GOPATH/src/github.com/cortexproject/cortex&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;the-requires-docker-tag&#34;&gt;The &lt;code&gt;requires_docker&lt;/code&gt; tag&lt;/h3&gt;
+&lt;p&gt;Integration tests have &lt;code&gt;requires_docker&lt;/code&gt; tag (&lt;code&gt;// +build requires_docker&lt;/code&gt; line followed by empty line on top of Go files), to avoid running them unintentionally as they require Docker, e.g. by running &lt;code&gt;go test ./...&lt;/code&gt; in main Cortex package.&lt;/p&gt;
+&lt;h2 id=&#34;isolation&#34;&gt;Isolation&lt;/h2&gt;
+&lt;p&gt;Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p&gt;</description></item></channel></rss>

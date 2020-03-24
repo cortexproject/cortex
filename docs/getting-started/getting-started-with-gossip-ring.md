@@ -29,6 +29,18 @@ $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1
 $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
 ```
 
+Download Prometheus and configure it to use our first Cortex instance for remote writes.
+
+```yaml
+remote_write:
+- url: http://localhost:9109/api/prom/push
+```
+
+After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+distribute incoming samples between the two instances.
+
+To query that data, you can configure your Grafana instance to use http://localhost:9109/api/prom (first Cortex) as a Prometheus data source.
+
 ## How it works
 
 The two instances we started earlier should be able to find each other via memberlist configuration (already present in the config files):
@@ -61,31 +73,14 @@ We are able to observe ring state on [http://localhost:9109/ring](http://localho
 The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
 being ACTIVE and ready to receive samples.
 
-Download Prometheus and configure it to use our first Cortex instance for remote writes.
-
-```yaml
-remote_write:
-- url: http://localhost:9109/api/prom/push
-```
-
-After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
-distribute incoming samples between the two instances.
-
-To query that data, you can configure your Grafana instance to use http://localhost:9109/api/prom (first Cortex) as a Prometheus data source.
-
 ## How to add another instance?
 
 To add another Cortex to the small cluster, copy `docs/configuration/single-process-config-blocks-gossip-1.yaml` to a new file,
-and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well:
+and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
+is annotated diff:
 
 ```diff
- # Configuration for running Cortex in single-process mode.
- # This should not be used in production.  It is only for getting started
- # and development.
-
- # Disable the requirement that every request to Cortex has a
- # X-Scope-OrgID header. `fake` will be substituted in instead.
- auth_enabled: false
+...
 
  server:
 +  # These ports need to be unique.
@@ -94,54 +89,15 @@ and make following modifications. We assume that third Cortex will run on the sa
 +  http_listen_port: 9309
 +  grpc_listen_port: 9395
 
-   # Configure the server to allow messages up to 100MB.
-   grpc_server_max_recv_msg_size: 104857600
-   grpc_server_max_send_msg_size: 104857600
-   grpc_server_max_concurrent_streams: 1000
-
- distributor:
-   shard_by_all_labels: true
-   pool:
-     health_check_ingesters: true
-
- ingester_client:
-   grpc_client_config:
-     # Configure the client to allow messages up to 100MB.
-     max_recv_msg_size: 104857600
-     max_send_msg_size: 104857600
-     use_gzip_compression: true
+...
 
  ingester:
-   # Disable blocks transfers on ingesters shutdown or rollout.
-   max_transfer_retries: 0
-
    lifecycler:
-     # The address to advertise for this ingester.  Will be autodiscovered by
-     # looking up address on eth0 or en0; can be specified if this fails.
-     address: 127.0.0.1
      # Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
 -    id: "Ingester 1"
 +    id: "Ingester 3"
 
-     # We don't want to join immediately, but wait a bit to see other ingesters and their tokens first.
-     # It can take a while to have the full picture when using gossip
-     join_after: 10s
-
-     # To avoid generating same tokens by multiple ingesters, they can "observe" the ring for a while,
-     # after putting their own tokens into it. This is only useful when using gossip, since multiple
-     # ingesters joining at the same time can have conflicting tokens if they don't see each other yet.
-     observe_period: 10s
-     min_ready_duration: 0s
-     claim_on_rollout: false
-     final_sleep: 5s
-     num_tokens: 512
-
-     # Use an in memory ring store, so we don't need to launch a Consul.
-     ring:
-       kvstore:
-         store: memberlist
-
-       replication_factor: 1
+...
 
  memberlist:
     # defaults to hostname
@@ -151,12 +107,8 @@ and make following modifications. We assume that third Cortex will run on the sa
     # bind_port needs to be unique
 -   bind_port: 7946
 +   bind_port: 7948 
-    join_members:
-      - localhost:7947
-   abort_if_cluster_join_fails: false
 
- storage:
-   engine: tsdb
+...
 
 +# Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
 +# writing in-progress data to the same directories.
@@ -167,12 +119,7 @@ and make following modifications. We assume that third Cortex will run on the sa
 -     sync_dir: /tmp/cortex/tsdb-sync-querier1
 +     sync_dir: /tmp/cortex/tsdb-sync-querier3
 
-    # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
-    # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
-    # we only use shared directory.
-    backend: filesystem # s3, gcs, azure or filesystem are valid options
-    filesystem:
-      dir: /tmp/cortex/storage
+...
 ```
 
 We don't need to change or add `memberlist.join_members` list. This new instance will simply join to the second one (listening on port 7947), and

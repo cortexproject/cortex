@@ -28,7 +28,7 @@ Cortex incorporates three separate APIs: Alertmanager, Prometheus, and Cortex. E
   - `/user_stats` -- The per user stats endpoint will exist at this endpoint
   - `/chunks` 
   - `/rules/*`
-- `/` -- Endpoints directly exposed under the root `/` path will be maintained as is.
+- `/` -- Endpoints directly exposed under the root path. This is identical to current behaviour.
   - `/config`
   - `/ring`
   - `/ruler_ring`

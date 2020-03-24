@@ -2,9 +2,7 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -22,8 +21,6 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -38,7 +35,6 @@ type UserStore struct {
 	logger             log.Logger
 	cfg                tsdb.Config
 	bucket             objstore.Bucket
-	client             storepb.StoreClient
 	logLevel           logging.Level
 	bucketStoreMetrics *tsdbBucketStoreMetrics
 	indexCacheMetrics  prometheus.Collector
@@ -49,8 +45,6 @@ type UserStore struct {
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
-
-	serv *grpc.Server
 
 	// Metrics.
 	syncTimes prometheus.Histogram
@@ -85,31 +79,11 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		registerer.MustRegister(u.bucketStoreMetrics, u.indexCacheMetrics)
 	}
 
-	u.Service = services.NewBasicService(u.starting, u.syncStoresLoop, u.stopping)
+	u.Service = services.NewBasicService(u.starting, u.syncStoresLoop, nil)
 	return u, nil
 }
 
 func (u *UserStore) starting(ctx context.Context) error {
-	u.serv = grpc.NewServer()
-	storepb.RegisterStoreServer(u.serv, u)
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		return err
-	}
-	go func() {
-		err := u.serv.Serve(l)
-		if err != nil {
-			level.Error(u.logger).Log("msg", "block store grpc server failed", "err", err)
-		}
-	}()
-
-	cc, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
-	if err != nil {
-		return err
-	}
-
-	u.client = storepb.NewStoreClient(cc)
-
 	if u.cfg.BucketStore.SyncInterval > 0 {
 		// Run an initial blocks sync, required in order to be able to serve queries.
 		if err := u.initialSync(ctx); err != nil {
@@ -117,11 +91,6 @@ func (u *UserStore) starting(ctx context.Context) error {
 		}
 	}
 
-	return nil
-}
-
-func (u *UserStore) stopping(_ error) error {
-	u.serv.Stop()
 	return nil
 }
 
@@ -241,96 +210,23 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 	return err
 }
 
-// Info makes an info request to the underlying user store
-func (u *UserStore) Info(ctx context.Context, req *storepb.InfoRequest) (*storepb.InfoResponse, error) {
-	log, ctx := spanlogger.New(ctx, "UserStore.Info")
+// Series makes a series request to the underlying user store.
+func (u *UserStore) Series(ctx context.Context, userID string, req *storepb.SeriesRequest) ([]*storepb.Series, storage.Warnings, error) {
+	log, ctx := spanlogger.New(ctx, "UserStore.Series")
 	defer log.Span.Finish()
 
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no metadata")
-	}
-
-	v := md.Get("user")
-	if len(v) == 0 {
-		return nil, fmt.Errorf("no userID")
-	}
-
-	store := u.getStore(v[0])
+	store := u.getStore(userID)
 	if store == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	return store.Info(ctx, req)
-}
-
-// Series makes a series request to the underlying user store
-func (u *UserStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	log, ctx := spanlogger.New(srv.Context(), "UserStore.Series")
-	defer log.Span.Finish()
-
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return fmt.Errorf("no metadata")
+	srv := newBucketStoreSeriesServer(ctx)
+	err := store.Series(req, srv)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	v := md.Get("user")
-	if len(v) == 0 {
-		return fmt.Errorf("no userID")
-	}
-
-	store := u.getStore(v[0])
-	if store == nil {
-		return nil
-	}
-
-	return store.Series(req, srv)
-}
-
-// LabelNames makes a labelnames request to the underlying user store
-func (u *UserStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	log, ctx := spanlogger.New(ctx, "UserStore.LabelNames")
-	defer log.Span.Finish()
-
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no metadata")
-	}
-
-	v := md.Get("user")
-	if len(v) == 0 {
-		return nil, fmt.Errorf("no userID")
-	}
-
-	store := u.getStore(v[0])
-	if store == nil {
-		return nil, nil
-	}
-
-	return store.LabelNames(ctx, req)
-}
-
-// LabelValues makes a labelvalues request to the underlying user store
-func (u *UserStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	log, ctx := spanlogger.New(ctx, "UserStore.LabelValues")
-	defer log.Span.Finish()
-
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no metadata")
-	}
-
-	v := md.Get("user")
-	if len(v) == 0 {
-		return nil, fmt.Errorf("no userID")
-	}
-
-	store := u.getStore(v[0])
-	if store == nil {
-		return nil, nil
-	}
-
-	return store.LabelValues(ctx, req)
+	return srv.SeriesSet, srv.Warnings, nil
 }
 
 func (u *UserStore) getStore(userID string) *store.BucketStore {

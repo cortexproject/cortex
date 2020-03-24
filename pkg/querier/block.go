@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"io"
 	"math"
 	"sort"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -74,23 +72,19 @@ func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage
 	}
 
 	return &blocksQuerier{
-		ctx:    ctx,
-		client: b.us.client,
-		mint:   mint,
-		maxt:   maxt,
-		userID: userID,
+		ctx:        ctx,
+		mint:       mint,
+		maxt:       maxt,
+		userID:     userID,
+		userStores: b.us,
 	}, nil
 }
 
 type blocksQuerier struct {
 	ctx        context.Context
-	client     storepb.StoreClient
 	mint, maxt int64
 	userID     string
-}
-
-func (b *blocksQuerier) addUserToContext(ctx context.Context) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "user", b.userID)
+	userStores *UserStore
 }
 
 func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
@@ -107,9 +101,10 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 	}
 	converted := convertMatchersToLabelMatcher(matchers)
 
-	ctx = b.addUserToContext(ctx)
-	// returned series are sorted
-	seriesClient, err := b.client.Series(ctx, &storepb.SeriesRequest{
+	// Returned series are sorted.
+	// No processing of responses is done here. Dealing with multiple responses
+	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
+	series, warnings, err := b.userStores.Series(ctx, b.userID, &storepb.SeriesRequest{
 		MinTime:                 mint,
 		MaxTime:                 maxt,
 		Matchers:                converted,
@@ -117,33 +112,6 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 	})
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
-	}
-
-	series := []*storepb.Series(nil)
-	warnings := storage.Warnings(nil)
-
-	// only very basic processing of responses is done here. Dealing with multiple responses
-	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
-	for {
-		resp, err := seriesClient.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, nil, promql.ErrStorage{Err: err}
-		}
-
-		// response may either contain series or warning. If it's warning, we get nil here.
-		s := resp.GetSeries()
-		if s != nil {
-			series = append(series, s)
-		}
-
-		// collect and return warnings too
-		w := resp.GetWarning()
-		if w != "" {
-			warnings = append(warnings, errors.New(w))
-		}
 	}
 
 	return &blockQuerierSeriesSet{

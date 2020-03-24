@@ -40,7 +40,13 @@ Cortex incorporates three separate APIs: Alertmanager, Prometheus, and Cortex. E
 
 ### Path Versioning
 
-Cortex will utilize path based versioning similar to both Prometheus and Alertmanager. This will allow future versions of the API to be released with changes over time. The new API endpoints and the current http prefix endpoints can be maintained concurrently. The original http prefix endpoints can maintained indefinitely or be phased out over time.
+Cortex will utilize path based versioning similar to both Prometheus and Alertmanager. This will allow future versions of the API to be released with changes over time. 
+
+### Backwards-Compatibility
+
+The new API endpoints and the current http prefix endpoints can be maintained concurrently. The original http prefix endpoints can maintained indefinitely or be phased out over time. Deprecation warnings can be added to the current API either when initialized or utilized.
+
+In cases where Cortex is run as a single binary, the Alertmanager module will only be accesible using the new API.
 
 ### Implementation
 

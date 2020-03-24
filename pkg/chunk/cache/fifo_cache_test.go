@@ -16,11 +16,11 @@ func TestFifoCacheEviction(t *testing.T) {
 		cnt       = 10
 		overwrite = 5
 	)
-	entry_template := &cacheEntry{
+	entryTemplate := &cacheEntry{
 		key:   "00",
 		value: 0,
 	}
-	c := NewFifoCache("test1", FifoCacheConfig{MaxSize: cnt * sizeOf(entry_template), Validity: 1 * time.Minute})
+	c := NewFifoCache("test1", FifoCacheConfig{MaxSize: cnt * sizeOf(entryTemplate), Validity: 1 * time.Minute})
 	ctx := context.Background()
 
 	// Check put / get works
@@ -40,7 +40,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entry_template)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
 
 	for i := 0; i < cnt; i++ {
 		value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
@@ -55,7 +55,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entry_template)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
 
 	// Check evictions
 	keys = []string{}
@@ -74,7 +74,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entry_template)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
 
 	for i := 0; i < cnt-overwrite; i++ {
 		_, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
@@ -93,7 +93,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entry_template)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
 
 	// Check updates work
 	keys = []string{}
@@ -118,7 +118,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entry_template)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
 }
 
 func TestFifoCacheExpiry(t *testing.T) {

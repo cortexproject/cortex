@@ -178,7 +178,7 @@ the same data:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt; -ingester.spread-flushes=true
 -ingester.chunk-age-jitter=0
 &lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Add a chunk cache via &lt;code&gt;-memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
+&lt;p&gt;Add a chunk cache via &lt;code&gt;-store.chunks-cache.memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
 &lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
 &lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
@@ -319,9 +319,9 @@ For help provisioning and monitoring memcached clusters using &lt;a href=&#34;ht
 You should ensure your memcached servers are not behind any kind of load balancer.
 If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached &lt;a href=&#34;https://kubernetes.io/docs/concepts/services-networking/service/#headless-services&#34;&gt;headless service&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;The flags used to configure memcached are common for each caching caching opportunity, differentiated by a prefix:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;-&amp;lt;prefix&amp;gt;.memcache.write-back-buffer int
+&lt;pre&gt;&lt;code&gt;-&amp;lt;prefix&amp;gt;.cache.write-back-buffer int
 How many chunks to buffer for background write back. (default 10000)
--&amp;lt;prefix&amp;gt;.memcache.write-back-goroutines int
+-&amp;lt;prefix&amp;gt;.cache.write-back-goroutines int
 How many goroutines to use to write back to memcache. (default 10)
 -&amp;lt;prefix&amp;gt;.memcached.batchsize int
 How many keys to fetch in each batch.
@@ -382,7 +382,7 @@ The cache is used by queries to reduce load on the chunk store.
 These are typically a few KB in size, and depend mostly on the duration and encoding of your chunks.
 The chunk cache is a write-through cache - chunks are written to the cache as they are flushed to the chunk store. This ensures the cache always contains the most recent chunks.
 Items stay in the cache indefinitely.&lt;/p&gt;
-&lt;p&gt;The chunk cache should be configured on the &lt;strong&gt;ingester&lt;/strong&gt;, &lt;strong&gt;querier&lt;/strong&gt; and &lt;strong&gt;ruler&lt;/strong&gt; using the flags without a prefix.&lt;/p&gt;
+&lt;p&gt;The chunk cache should be configured on the &lt;strong&gt;ingester&lt;/strong&gt;, &lt;strong&gt;querier&lt;/strong&gt; and &lt;strong&gt;ruler&lt;/strong&gt; using the flags with the prefix &lt;code&gt;-store.chunks-cache&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
 You can use the following query (from the &lt;a href=&#34;https://github.com/grafana/cortex-jsonnet&#34;&gt;cortex-mixin&lt;/a&gt;) to estimate the required number of memcached replicas:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-promql&#34; data-lang=&#34;promql&#34;&gt;// 4 x in-memory series size = 24hrs of data.

@@ -104,7 +104,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
-	f.StringVar(&cfg.Zone, prefix+"availability-zone", hostname, "The availability zone of the host, this instance is running on. Default is the hostname value.")
+	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone of the host, this instance is running on. Default is the lifecycler ID.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -163,6 +163,11 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		return nil, err
 	}
 
+	zone := cfg.Zone
+	if zone == "" {
+		zone = cfg.ID
+	}
+
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
 	// it's always set, so we use a noop FlushTransferer
 	if flushTransferer == nil {
@@ -179,7 +184,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingName:        ringName,
 		RingKey:         ringKey,
 		flushOnShutdown: flushOnShutdown,
-		Zone:            cfg.Zone,
+		Zone:            zone,
 
 		actorChan: make(chan func()),
 

@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -88,6 +89,7 @@ type Config struct {
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB             tsdb.Config              `yaml:"tsdb"`
 	Compactor        compactor.Config         `yaml:"compactor"`
+	StoreGateway     storegateway.Config      `yaml:"store_gateway"`
 	DataPurgerConfig purger.Config            `yaml:"purger"`
 
 	Ruler         ruler.Config                               `yaml:"ruler"`
@@ -125,6 +127,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Encoding.RegisterFlags(f)
 	c.TSDB.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
+	c.StoreGateway.RegisterFlags(f)
 	c.DataPurgerConfig.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
@@ -197,6 +200,7 @@ type Cortex struct {
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
 	compactor    *compactor.Compactor
+	storeGateway *storegateway.StoreGateway
 	memberlistKV *memberlist.KVInit
 
 	// Queryable that the querier should use to query the long

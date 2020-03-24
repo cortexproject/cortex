@@ -34,6 +34,9 @@ const (
 
 	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
 	CompactorRingKey = "compactor"
+
+	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
+	StoreGatewayRingKey = "store-gateway"
 )
 
 // ReadRing represents the read interface to the ring.

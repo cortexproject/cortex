@@ -37,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/push"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -65,6 +66,7 @@ const (
 	Configs             moduleName = "configs"
 	AlertManager        moduleName = "alertmanager"
 	Compactor           moduleName = "compactor"
+	StoreGateway        moduleName = "store-gateway"
 	MemberlistKV        moduleName = "memberlist-kv"
 	DataPurger          moduleName = "data-purger"
 	All                 moduleName = "all"
@@ -483,9 +485,25 @@ func (t *Cortex) initCompactor(cfg *Config) (serv services.Service, err error) {
 	}
 
 	// Expose HTTP endpoints.
-	t.server.HTTP.HandleFunc("/compactor_ring", t.compactor.RingHandler)
+	t.server.HTTP.HandleFunc("/compactor/ring", t.compactor.RingHandler)
 
 	return t.compactor, nil
+}
+
+func (t *Cortex) initStoreGateway(cfg *Config) (serv services.Service, err error) {
+	if cfg.Storage.Engine != storage.StorageEngineTSDB {
+		return nil, nil
+	}
+
+	cfg.StoreGateway.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
+	cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+
+	t.storeGateway = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
+
+	// Expose HTTP endpoints.
+	t.server.HTTP.HandleFunc("/store-gateway/ring", t.storeGateway.RingHandler)
+
+	return t.storeGateway, nil
 }
 
 func (t *Cortex) initMemberlistKV(cfg *Config) (services.Service, error) {
@@ -631,12 +649,17 @@ var modules = map[moduleName]module{
 		wrappedService: (*Cortex).initCompactor,
 	},
 
+	StoreGateway: {
+		deps:           []moduleName{Server},
+		wrappedService: (*Cortex).initStoreGateway,
+	},
+
 	DataPurger: {
 		deps:           []moduleName{Store, DeleteRequestsStore, Server},
 		wrappedService: (*Cortex).initDataPurger,
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

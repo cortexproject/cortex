@@ -91,7 +91,21 @@ services:
       - 8004:8004
     volumes:
       - ./config:/cortex/config
-    
+
+  store-gateway:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
+    depends_on:
+      - consul
+      - minio
+    ports:
+      - 8008:8008
+    volumes:
+      - ./config:/cortex/config
+
   ruler:
     build:
       context:    .

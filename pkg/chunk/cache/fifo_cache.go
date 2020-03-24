@@ -79,7 +79,7 @@ type FifoCacheConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxSize, prefix+"fifocache.max-size-bytes", 0, description+"The maximal size of the cache.")
+	f.IntVar(&cfg.MaxSize, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 }
 

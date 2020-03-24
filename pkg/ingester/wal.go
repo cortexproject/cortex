@@ -65,10 +65,12 @@ type walWrapper struct {
 	wait sync.WaitGroup
 
 	wal           *wal.WAL
+	recordChan    chan []byte
 	getUserStates func() map[string]*userState
 	checkpointMtx sync.Mutex
 
 	// Checkpoint metrics.
+	walWritesFailed         prometheus.Counter
 	checkpointDeleteFail    prometheus.Counter
 	checkpointDeleteTotal   prometheus.Counter
 	checkpointCreationFail  prometheus.Counter
@@ -96,8 +98,13 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		quit:          make(chan struct{}),
 		wal:           tsdbWAL,
 		getUserStates: userStatesFunc,
+		recordChan:    make(chan []byte, 10000),
 	}
 
+	w.walWritesFailed = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_writes_failed_total",
+		Help: "Total number of WAL writes that failed.",
+	})
 	w.checkpointDeleteFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_deletions_failed_total",
 		Help: "Total number of checkpoint deletions that failed.",
@@ -120,30 +127,44 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
 
-	w.wait.Add(1)
+	w.wait.Add(2)
+	go w.logLoop()
 	go w.run()
+
 	return w, nil
 }
 
 func (w *walWrapper) Stop() {
 	close(w.quit)
+	close(w.recordChan)
 	w.wait.Wait()
 	w.wal.Close()
 }
 
+func (w *walWrapper) logLoop() {
+	defer w.wait.Done()
+	for rec := range w.recordChan {
+		if err := w.wal.Log(rec); err != nil {
+			w.walWritesFailed.Inc()
+			level.Error(util.Logger).Log("msg", "failed to write to WAL", "err", err)
+		}
+	}
+}
+
 func (w *walWrapper) Log(record *Record) error {
+	if record == nil {
+		return nil
+	}
 	select {
 	case <-w.quit:
 		return nil
 	default:
-		if record == nil {
-			return nil
-		}
 		buf, err := proto.Marshal(record)
 		if err != nil {
 			return err
 		}
-		return w.wal.Log(buf)
+		w.recordChan <- buf
+		return nil
 	}
 }
 

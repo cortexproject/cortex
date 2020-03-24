@@ -2271,9 +2271,9 @@ The `fifo_cache_config` configures the local in-memory cache. The supported CLI 
 &nbsp;
 
 ```yaml
-# The number of entries to cache.
-# CLI flag: -<prefix>.fifocache.size
-[size: <int> | default = 0]
+# Maximum memory size of the cache.
+# CLI flag: -<prefix>.fifocache.max-size-bytes
+[max_size_bytes: <int> | default = 0]
 
 # The expiry duration for the cache.
 # CLI flag: -<prefix>.fifocache.duration

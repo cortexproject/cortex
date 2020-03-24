@@ -81,8 +81,8 @@ To enable the FIFO cache, use the following flags:
     Enable in-memory cache.
 -<prefix>.fifocache.duration duration
     The expiry duration for the cache.
--<prefix>.fifocache.size int
-    The number of entries to cache.
+-<prefix>.fifocache.max-size-bytes int
+    Maximum memory size of the cache.
 ```
 
 See [`fifo_cache_config` documentation](../configuration/config-file-reference.md#fifo-cache-config) if you use a config file with Cortex.

@@ -21,22 +21,31 @@ As things currently stand, the majority of HTTP API calls exist under the `/api/
 
 Cortex incorporates three separate APIs: Alertmanager, Prometheus, and Cortex. Each of these APIs should use a separate route prefix that accurately describes the API. Currently, all of the api calls in Cortex reside under the configured http prefix. Instead the following routing tree is proposed:
 
-- `/prometheus/*` -- Under this path prefix, Cortex will act as a Prometheus web server. It will host all of the required Prometheus api endpoints. For example to query cortex the endpoint `/prometheus/api/v1/query_range` will be used.
-- `/alertmanager/*` -- Under this path prefix, Cortex will act as a Alertmanager web server. In this case, it will forward requests to the alertmanager and support the alertmanager API
-- `/api/v1/*` -- The cortex API will exist under this path prefix.
-  - `/push` & `/read` -- The Prometheus remote write endpoints will be fulfilled directly under the `/api/v1/*` path
-  - `/user_stats` -- The per user stats endpoint will exist at this endpoint
-  - `/chunks` 
-  - `/rules/*`
-- `/` -- Endpoints directly exposed under the root path. This is identical to current behaviour.
-  - `/config`
-  - `/ring`
-  - `/ruler_ring`
-  - `/compactor_ring`
-  - `/ha-tracker`
-  - `/all_user_stats`
-  - `/flush`
-  - `/shutdown`
+#### `/prometheus/*`
+
+Under this path prefix, Cortex will act as a Prometheus web server. It will host all of the required Prometheus api endpoints. For example to query cortex the endpoint `/prometheus/api/v1/query_range` will be used.
+
+#### `/alertmanager/*`
+
+Under this path prefix, Cortex will act as a Alertmanager web server. In this case, it will forward requests to the alertmanager and support the alertmanager API
+
+#### `/api/v1/*` -- The cortex API will exist under this path prefix.
+
+- `/push` & `/read` -- The Prometheus remote write endpoints will be fulfilled directly under the `/api/v1/*` path
+- `/user_stats` -- The per user stats endpoint will exist at this endpoint
+- `/chunks` 
+- `/rules/*`
+
+#### `/` -- Endpoints directly exposed under the root path. This is identical to current behaviour.
+
+- `/config`
+- `/ring`
+- `/ruler_ring`
+- `/compactor_ring`
+- `/ha-tracker`
+- `/all_user_stats`
+- `/flush`
+- `/shutdown`
 
 ### Path Versioning
 

@@ -161,7 +161,7 @@ func (w *walWrapper) run() {
 		case <-ticker.C:
 			start := time.Now()
 			level.Info(util.Logger).Log("msg", "starting checkpoint")
-			if err := w.performCheckpoint(); err != nil {
+			if err := w.performCheckpoint(false); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
@@ -170,7 +170,7 @@ func (w *walWrapper) run() {
 			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
 			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
-			if err := w.performCheckpoint(); err != nil {
+			if err := w.performCheckpoint(true); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
 			}
 			return
@@ -180,7 +180,7 @@ func (w *walWrapper) run() {
 
 const checkpointPrefix = "checkpoint."
 
-func (w *walWrapper) performCheckpoint() (err error) {
+func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	if !w.cfg.CheckpointEnabled {
 		return nil
 	}
@@ -241,6 +241,24 @@ func (w *walWrapper) performCheckpoint() (err error) {
 		os.RemoveAll(checkpointDirTemp)
 	}()
 
+	// Count number of series - we'll use this to rate limit checkpoints.
+	numSeries := 0
+	for _, state := range w.getUserStates() {
+		numSeries += state.fpToSeries.length()
+	}
+	if numSeries == 0 {
+		return nil
+	}
+
+	perSeriesDuration := w.cfg.CheckpointDuration / time.Duration(numSeries)
+	ticker := time.NewTicker(perSeriesDuration)
+
+	if immediate {
+		ticker.Stop()
+	} else {
+		defer ticker.Stop()
+	}
+
 	var wireChunkBuf []client.Chunk
 	for userID, state := range w.getUserStates() {
 		for pair := range state.fpToSeries.iter() {
@@ -249,6 +267,13 @@ func (w *walWrapper) performCheckpoint() (err error) {
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
+			}
+
+			if !immediate {
+				select {
+				case <-ticker.C:
+				case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.
+				}
 			}
 		}
 	}

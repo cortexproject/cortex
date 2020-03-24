@@ -74,12 +74,14 @@ var (
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
 	MaxSize  int           `yaml:"max_size_bytes"`
+	MaxCount int           `yaml:"size"`
 	Validity time.Duration `yaml:"validity"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSize, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
+	f.IntVar(&cfg.MaxCount, prefix+"fifocache.size", 0, description+"The number of entries to cache. (Deprecating, use 'fifocache.max-size-bytes' instead)")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 }
 
@@ -87,6 +89,7 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
 	lock     sync.RWMutex
+	maxCount int
 	maxSize  int
 	currSize int
 	validity time.Duration
@@ -118,6 +121,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 	util.WarnExperimentalUse("In-memory (FIFO) cache")
 
 	return &FifoCache{
+		maxCount: cfg.MaxCount,
 		maxSize:  cfg.MaxSize,
 		validity: cfg.Validity,
 		entries:  make(map[string]*cacheEntry),
@@ -170,7 +174,7 @@ func (c *FifoCache) Stop() {
 // Put stores the value against the key.
 func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}) {
 	c.entriesAdded.Inc()
-	if c.maxSize == 0 {
+	if c.maxSize == 0 && c.maxCount == 0 {
 		return
 	}
 
@@ -238,7 +242,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		// New entry size
 		entrySz += (sizeOfInterface(value) - sizeOfInterface(entry.value))
 
-		if c.currSize+entrySz > c.maxSize {
+		if c.maxSize > 0 && c.currSize+entrySz > c.maxSize {
 			// New entry does not fit in the cache. Delete the entry.
 			delete(c.entries, entry.key)
 			c.entriesCurrent.Dec()
@@ -263,7 +267,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	entrySz := sizeOf(entry)
 
 	// Check is the entry fits in the cache
-	if entrySz > c.maxSize {
+	if c.maxSize > 0 && entrySz > c.maxSize {
 		// Cannot keep this entry in the cache
 		return
 	}
@@ -271,7 +275,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	c.entriesAddedNew.Inc()
 
 	// Otherwise, see if we need to evict an entry.
-	for c.currSize+entrySz > c.maxSize {
+	for (c.maxSize > 0 && c.currSize+entrySz > c.maxSize) || (c.maxCount > 0 && len(c.entries) >= c.maxCount) {
 		c.entriesEvicted.Inc()
 		if evicted := c.deleteFromTail(); evicted != nil {
 			delete(c.entries, evicted.key)
@@ -295,7 +299,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 // Get returns the stored value against the key and when the key was last updated.
 func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.totalGets.Inc()
-	if c.maxSize == 0 {
+	if c.maxSize == 0 && c.maxCount == 0 {
 		return nil, false
 	}
 

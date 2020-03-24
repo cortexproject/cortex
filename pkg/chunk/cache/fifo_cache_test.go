@@ -20,7 +20,7 @@ func TestFifoCacheEviction(t *testing.T) {
 		key:   "00",
 		value: 0,
 	}
-	c := NewFifoCache("test1", FifoCacheConfig{MaxSize: cnt * sizeOf(entryTemplate), Validity: 1 * time.Minute})
+	c := NewFifoCache("test1", FifoCacheConfig{MaxCount: cnt, Validity: 1 * time.Minute})
 	ctx := context.Background()
 
 	// Check put / get works

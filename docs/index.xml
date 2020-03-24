@@ -3201,6 +3201,48 @@ store: bigtable-hashed
 &lt;li&gt;&lt;code&gt;dynamodb.v{4,5,6,9}-schema-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date with schema &lt;code&gt;v{4,5,6,9}&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;bigtable.column-key-from&lt;/code&gt;: then set the corresponding &lt;code&gt;from&lt;/code&gt; date and use the &lt;code&gt;store&lt;/code&gt; as &lt;code&gt;bigtable-columnkey&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;dynamodb.use-periodic-tables&lt;/code&gt;: then set the right &lt;code&gt;index&lt;/code&gt; and &lt;code&gt;chunk&lt;/code&gt; fields with corresponding values from &lt;code&gt;dynamodb.periodic-table.{prefix, period, tag}&lt;/code&gt; and &lt;code&gt;dynamodb.chunk-table.{prefix, period, tag}&lt;/code&gt; flags. Note that the default period is 7 days, so please set the &lt;code&gt;period&lt;/code&gt; as &lt;code&gt;168h&lt;/code&gt; in the config file if none is set in the flags.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
+&lt;h1 id=&#34;support-api-v1-metadata-in-cortex&#34;&gt;Support /api/v1/metadata in Cortex&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;Author: @gotjosh&lt;/li&gt;
+&lt;li&gt;Reviewers: @gouthamve, @pracucci&lt;/li&gt;
+&lt;li&gt;Date: March 2020&lt;/li&gt;
+&lt;li&gt;Status: Accepted&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;problem-statement&#34;&gt;Problem Statement&lt;/h2&gt;
+&lt;p&gt;Prometheus holds metric metadata alongside the contents of a scrape. This metadata (&lt;code&gt;HELP&lt;/code&gt;, &lt;code&gt;TYPE&lt;/code&gt;, &lt;code&gt;UNIT&lt;/code&gt; and &lt;code&gt;METRIC_NAME&lt;/code&gt;) enables &lt;a href=&#34;https://github.com/prometheus/prometheus/issues/6395&#34;&gt;some Prometheus API&lt;/a&gt; endpoints to output the metadata for integrations (e.g. &lt;a href=&#34;https://github.com/grafana/grafana/pull/21124&#34;&gt;Grafana&lt;/a&gt;) to consume it.&lt;/p&gt;
+&lt;p&gt;At the moment of writing, Cortex does not support the &lt;code&gt;api/v1/metadata&lt;/code&gt; endpoint that Prometheus implements as metadata was never propagated via remote write. Recent &lt;a href=&#34;https://github.com/prometheus/prometheus/pull/6815/files&#34;&gt;work is done in Prometheus&lt;/a&gt; enables the propagation of metadata.&lt;/p&gt;
+&lt;p&gt;With this in place, remote write integrations such as Cortex can now receive this data and implement the API endpoint. This results in Cortex users being able to enjoy a tiny bit more insight on their metrics.&lt;/p&gt;
+&lt;h2 id=&#34;potential-solutions&#34;&gt;Potential Solutions&lt;/h2&gt;
+&lt;p&gt;Before we delve into the solutions, let&amp;rsquo;s set a baseline about how the data is received. This applies almost equally for the two.&lt;/p&gt;
+&lt;p&gt;Metadata from Prometheus is sent in the same &lt;a href=&#34;https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto&#34;&gt;&lt;code&gt;WriteRequest&lt;/code&gt; proto message&lt;/a&gt; that the samples use. It is part of a different field (#3 given #2 is already &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L36&#34;&gt;used interally&lt;/a&gt;), the data is a set identified by the metric name - that means it is aggregated across targets, and is sent all at once. Implying, Cortex will receive a single &lt;code&gt;WriteRequest&lt;/code&gt; containing a set of the metadata for that instance at an specified interval.&lt;/p&gt;
+&lt;p&gt;. It is also important to note that this current process is an intermediary step. Eventually, metadata in a request will be sent alongside samples and only for those included. The solutions proposed, take this nuance into account to avoid coupling between the current and future state of Prometheus, and hopefully do something now that also works for the future.&lt;/p&gt;
+&lt;p&gt;As a reference, these are some key numbers regarding the size (and send timings) of the data at hand from our clusters at Grafana Labs:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;On average, metadata (a combination of &lt;code&gt;HELP&lt;/code&gt;, &lt;code&gt;TYPE&lt;/code&gt;, &lt;code&gt;UNIT&lt;/code&gt; and &lt;code&gt;METRIC_NAME&lt;/code&gt;) is ~55 bytes uncompressed.&lt;/li&gt;
+&lt;li&gt;at GL, on an instance with about 2.6M active series, we hold ~1241 unique metrics in total.&lt;/li&gt;
+&lt;li&gt;with that, we can assume that on a worst-case scenario the metadata set for that instance is ~68 kilobytes uncompressed.&lt;/li&gt;
+&lt;li&gt;by default, this data is only propagated once every minute (aligning with the default scrape interval), but this can be adjusted.&lt;/li&gt;
+&lt;li&gt;Finally, what this gives us is a baseline worst-case scenario formula for the data to store per tenant: &lt;code&gt;~68KB * Replication Factor * # of Instances&lt;/code&gt;. Keeping in mind that typically, there&amp;rsquo;s a very high overlap of metadata across instances, and we plan to deduplicate in the ingesters.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;write-path&#34;&gt;Write Path&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;Store the metadata directly from the distributors into a cache (e.g. Memcached)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Since metadata is received all at once, we could directly store into an external cache using the tenant ID as a key, and still, avoid a read-modify-write. However, a very common use case of Cortex is to have multiple Prometheus sending data for the same tenant ID. This complicates things, as it adds a need to have an intermediary merging phase and thus making a read-modify-write inevitable.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Keep metadata in memory within the ingesters&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Similarly to what we do with sample data, we can keep the metadata in-memory in the ingesters and apply similar semantics. I propose to use the tenant ID as a hash key, distribute it to the ingesters (taking into account the replication factor), using a hash map to keep a set of the metadata across all instances for a single tenant, and implement a configurable time-based purge process to deal with metadata churn. Given, we need to ensure fair-use we also propose implementing limits for both the number of metadata entries we can receive and the size of a single entry.&lt;/p&gt;
+&lt;h3 id=&#34;read-path&#34;&gt;Read Path&lt;/h3&gt;
+&lt;p&gt;In my eyes, the read path seems to only have one option. At the moment of writing, Cortex uses a &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/pkg/querier/dummy.go#L11-L20&#34;&gt;&lt;code&gt;DummyTargetRetriever&lt;/code&gt;&lt;/a&gt; as a way to signal that these API endpoints are not implemented. We&amp;rsquo;d need to modify the Prometheus interface to support a &lt;code&gt;Context&lt;/code&gt; and extract the tenant ID from there. Then, use the tenant ID to query the ingesters for the data, deduplicate it and serve it.&lt;/p&gt;
+&lt;h2 id=&#34;conclusions&#34;&gt;Conclusions&lt;/h2&gt;
+&lt;p&gt;I conclude that solution #2 is ideal for this work on the write path. It allows us to use similar semantics to samples, thus reducing operational complexity, and lays a groundwork for when we start receiving metadata alongside samples.&lt;/p&gt;
+&lt;p&gt;There&amp;rsquo;s one last piece to address: Allowing metadata to survive rolling restarts. Option #1 handles this well, given the aim would be to use an external cache such as Memcached. Option #2 lacks this, as it does not include any plans to persist this data. Given Prometheus (by default) sends metadata every minute, and we don&amp;rsquo;t need a high level of consistency. We expect that an eventual consistency of up to 1 minute on the default case is deemed acceptable.&lt;/p&gt;
+&lt;h2 id=&#34;references&#34;&gt;References&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://docs.google.com/document/d/1LoCWPAIIbGSq59NG3ZYyvkeNb8Ymz28PUKbg_yhAzvE/edit#&#34;&gt;Prometheus Propagate metadata via Remote Write Design Doc&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/prometheus/prometheus/issues/6395&#34;&gt;Prometheus Propagate metadata via Remote Write Design Issue&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to

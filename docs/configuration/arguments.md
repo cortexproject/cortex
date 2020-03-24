@@ -108,11 +108,11 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    When caching query results, it is desirable to prevent the caching of very recent results that might still be in flux.  Use this parameter to configure the age of results that should be excluded.
 
-- `-memcached.{hostname, service, timeout}`
+- `-frontend.memcached.{hostname, service, timeout}`
 
    Use these flags to specify the location and timeout of the memcached cluster used to cache query results.
 
-- `-redis.{endpoint, timeout}`
+- `-frontend.redis.{endpoint, timeout}`
 
    Use these flags to specify the location and timeout of the Redis service used to cache query results.
 
@@ -288,7 +288,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 - `-ingester.spread-flushes`
 
-  Makes the ingester flush each timeseries at a specific point in the `max-chunk-age` cycle. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. Set `-ingester.chunk-age-jitter` to `0` when using this option. If a chunk cache is configured (via `-memcached.hostname`) then duplicate chunk writes are skipped which cuts write IOPs.
+  Makes the ingester flush each timeseries at a specific point in the `max-chunk-age` cycle. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. Set `-ingester.chunk-age-jitter` to `0` when using this option. If a chunk cache is configured (via `-store.chunks-cache.memcached.hostname`) then duplicate chunk writes are skipped which cuts write IOPs.
 
 - `-ingester.join-after`
 
@@ -329,7 +329,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. The optimum value will depend on how many labels are sent with your timeseries samples.
 
-- `-store.chunk-cache-stubs`
+- `-store.chunk-cache.cache-stubs`
 
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.

@@ -41,9 +41,9 @@ If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached [head
 The flags used to configure memcached are common for each caching caching opportunity, differentiated by a prefix:
 
 ```
--<prefix>.memcache.write-back-buffer int
+-<prefix>.cache.write-back-buffer int
     How many chunks to buffer for background write back. (default 10000)
--<prefix>.memcache.write-back-goroutines int
+-<prefix>.cache.write-back-goroutines int
     How many goroutines to use to write back to memcache. (default 10)
 -<prefix>.memcached.batchsize int
     How many keys to fetch in each batch.
@@ -121,7 +121,7 @@ These are typically a few KB in size, and depend mostly on the duration and enco
 The chunk cache is a write-through cache - chunks are written to the cache as they are flushed to the chunk store.  This ensures the cache always contains the most recent chunks.
 Items stay in the cache indefinitely.
 
-The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags without a prefix.
+The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags with the prefix `-store.chunks-cache`.
 
 It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
 You can use the following query (from the [cortex-mixin](https://github.com/grafana/cortex-jsonnet)) to estimate the required number of memcached replicas:

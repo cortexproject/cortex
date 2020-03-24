@@ -645,11 +645,11 @@ results_cache:
 
     background:
       # At what concurrency to write back to cache.
-      # CLI flag: -frontend.cache.write-back-concurrency
+      # CLI flag: -frontend.background.write-back-concurrency
       [writeback_goroutines: <int> | default = 10]
 
       # How many key batches to buffer for background write-back.
-      # CLI flag: -frontend.cache.write-back-buffer
+      # CLI flag: -frontend.background.write-back-buffer
       [writeback_buffer: <int> | default = 10000]
 
     # The memcached_config block configures how data is stored in Memcached (ie.
@@ -1517,12 +1517,12 @@ index_queries_cache_config:
   background:
     # Cache config for index entry reading. At what concurrency to write back to
     # cache.
-    # CLI flag: -store.index-cache-read.cache.write-back-concurrency
+    # CLI flag: -store.index-cache-read.background.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry reading. How many key batches to buffer for
     # background write-back.
-    # CLI flag: -store.index-cache-read.cache.write-back-buffer
+    # CLI flag: -store.index-cache-read.background.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.
@@ -1570,12 +1570,12 @@ chunk_cache_config:
 
   background:
     # Cache config for chunks. At what concurrency to write back to cache.
-    # CLI flag: -store.chunks-cache.cache.write-back-concurrency
+    # CLI flag: -store.chunks-cache.background.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for chunks. How many key batches to buffer for background
     # write-back.
-    # CLI flag: -store.chunks-cache.cache.write-back-buffer
+    # CLI flag: -store.chunks-cache.background.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.
@@ -1609,12 +1609,12 @@ write_dedupe_cache_config:
   background:
     # Cache config for index entry writing. At what concurrency to write back to
     # cache.
-    # CLI flag: -store.index-cache-write.cache.write-back-concurrency
+    # CLI flag: -store.index-cache-write.background.write-back-concurrency
     [writeback_goroutines: <int> | default = 10]
 
     # Cache config for index entry writing. How many key batches to buffer for
     # background write-back.
-    # CLI flag: -store.index-cache-write.cache.write-back-buffer
+    # CLI flag: -store.index-cache-write.background.write-back-buffer
     [writeback_buffer: <int> | default = 10000]
 
   # The memcached_config block configures how data is stored in Memcached (ie.
@@ -2093,7 +2093,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 &nbsp;
 
 ```yaml
-# Hostname for memcached service to use when caching chunks. If empty, no
+# Hostname for memcached service to use. If empty and if addresses is unset, no
 # memcached will be used.
 # CLI flag: -<prefix>.memcached.hostname
 [host: <string> | default = ""]

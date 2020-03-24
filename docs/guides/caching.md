@@ -121,7 +121,7 @@ These are typically a few KB in size, and depend mostly on the duration and enco
 The chunk cache is a write-through cache - chunks are written to the cache as they are flushed to the chunk store.  This ensures the cache always contains the most recent chunks.
 Items stay in the cache indefinitely.
 
-The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags with a prefix: `-store.chunks-cache`.
+The chunk cache should be configured on the **ingester**, **querier** and **ruler** using the flags with the prefix `-store.chunks-cache`.
 
 It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
 You can use the following query (from the [cortex-mixin](https://github.com/grafana/cortex-jsonnet)) to estimate the required number of memcached replicas:

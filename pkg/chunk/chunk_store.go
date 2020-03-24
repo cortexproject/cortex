@@ -55,7 +55,10 @@ type StoreConfig struct {
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 
-	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
+	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
+	// This exists in case we don't want to cache all the chunks but still want to take advantage of
+	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
+	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 }
 

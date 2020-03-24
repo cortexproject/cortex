@@ -2,23 +2,23 @@
 
 ## master / unreleased
 
-* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `cache.write-back-concurrency` and `cache.write-back-buffer`. This affects the following flags:
-  - `-frontend.memcache.write-back-buffer` --> `-frontend.cache.write-back-buffer` 
-  - `-frontend.memcache.write-back-goroutines` --> `-frontend.cache.write-back-concurrency`
-  - `-store.index-cache-read.memcache.write-back-buffer` --> `-store.index-cache-read.cache.write-back-buffer`
-  - `-store.index-cache-read.memcache.write-back-goroutines` --> `-store.index-cache-read.cache.write-back-concurrency`
-  - `-store.index-cache-write.memcache.write-back-buffer` --> `-store.index-cache-write.cache.write-back-buffer`
-  - `-store.index-cache-write.memcache.write-back-goroutines` --> `-store.index-cache-write.cache.write-back-concurrency`
-  - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the next change log for the difference.
-  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-concurrency`. Note the next change log for the difference.
+* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `background.write-back-concurrency` and `background.write-back-buffer`. This affects the following flags:
+  - `-frontend.memcache.write-back-buffer` --> `-frontend.background.write-back-buffer` 
+  - `-frontend.memcache.write-back-goroutines` --> `-frontend.background.write-back-concurrency`
+  - `-store.index-cache-read.memcache.write-back-buffer` --> `-store.index-cache-read.background.write-back-buffer`
+  - `-store.index-cache-read.memcache.write-back-goroutines` --> `-store.index-cache-read.background.write-back-concurrency`
+  - `-store.index-cache-write.memcache.write-back-buffer` --> `-store.index-cache-write.background.write-back-buffer`
+  - `-store.index-cache-write.memcache.write-back-goroutines` --> `-store.index-cache-write.background.write-back-concurrency`
+  - `-memcache.write-back-buffer` --> `-store.chunks-cache.background.write-back-buffer`. Note the next change log for the difference.
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.background.write-back-concurrency`. Note the next change log for the difference.
 
 * [CHANGE] Renamed the chunk cache flags to have `store.chunks-cache.` as prefix. This means the following flags have been changed:
   - `-cache.enable-fifocache` --> `-store.chunks-cache.cache.enable-fifocache` 
   - `-default-validity` --> `-store.chunks-cache.default-validity` 
   - `-fifocache.duration` --> `-store.chunks-cache.fifocache.duration` 
   - `-fifocache.size` --> `-store.chunks-cache.fifocache.size` 
-  - `-memcache.write-back-buffer` --> `-store.chunks-cache.cache.write-back-buffer`. Note the previous change log for the difference. 
-  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.cache.write-back-concurrency`. Note the previous change log for the difference. 
+  - `-memcache.write-back-buffer` --> `-store.chunks-cache.background.write-back-buffer`. Note the previous change log for the difference. 
+  - `-memcache.write-back-goroutines` --> `-store.chunks-cache.background.write-back-concurrency`. Note the previous change log for the difference. 
   - `-memcached.batchsize` --> `-store.chunks-cache.memcached.batchsize` 
   - `-memcached.consistent-hash` --> `-store.chunks-cache.memcached.consistent-hash` 
   - `-memcached.expiration` --> `-store.chunks-cache.memcached.expiration` 

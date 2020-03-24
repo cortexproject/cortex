@@ -60,16 +60,16 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	// Push some series to Cortex1
+	// Push some series to Cortex2 (Cortex1 may not yet see Cortex2 as ACTIVE due to gossip, so we play it safe by pushing to Cortex2)
 	now := time.Now()
 	series, expectedVector := generateSeries("series_1", now)
 
-	res, err := c1.Push(series)
+	res, err := c2.Push(series)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	// Query the series via Cortex 2
-	result, err := c2.Query("series_1", now)
+	// Query the series via Cortex 1
+	result, err := c1.Query("series_1", now)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))

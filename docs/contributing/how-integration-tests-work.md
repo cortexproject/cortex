@@ -9,7 +9,7 @@ Cortex integration tests are written in Go and based on a [custom framework](htt
 
 ## How to run integration tests
 
-When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. On the contrary, when running tests **locally** you should first build the Cortex Docker image:
+When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests **locally** you should build the Cortex Docker image first:
 
 ```
 make ./cmd/cortex/.uptodate

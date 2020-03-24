@@ -645,7 +645,7 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 }
 
 // WaitForMetricWithLabels waits until given metric with matching labels passes `okFn`. If function returns false,
-// wait continues. If no such matching metric can be found,
+// wait continues. If no such matching metric can be found or wait times out, function returns error.
 func (s *HTTPService) WaitForMetricWithLabels(okFn func(v float64) bool, metricName string, expectedLabels map[string]string) error {
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		metrics, err := s.Metrics()

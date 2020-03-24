@@ -4,6 +4,11 @@ import (
 	"context"
 )
 
+type contextKey int
+
+// cacheGenContextKey is used for setting a Cache Generation number in context
+const cacheGenContextKey contextKey = 0
+
 // GenNumMiddleware adds gen number to keys from context. Expected size of gen numbers is upto 2 digits.
 // If we start seeing problems with keys exceeding length limit, we need to look into resetting gen numbers
 type GenNumMiddleware struct {

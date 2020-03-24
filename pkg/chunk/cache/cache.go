@@ -9,11 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type contextKey int
-
-// cacheGenContextKey is used for setting a Cache Generation number in context
-const cacheGenContextKey contextKey = 0
-
 // Cache byte arrays by key.
 //
 // NB we intentionally do not return errors in this interface - caching is best

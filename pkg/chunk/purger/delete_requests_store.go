@@ -21,6 +21,7 @@ import (
 type (
 	DeleteRequestStatus string
 	CacheKind           string
+	indexType           string
 )
 
 const (
@@ -35,6 +36,10 @@ const (
 	CacheKindStore CacheKind = "store"
 	// CacheKindResults is for cache gen number for results cache
 	CacheKindResults CacheKind = "results"
+
+	deleteRequestID      indexType = "1"
+	deleteRequestDetails indexType = "2"
+	cacheGenNum          indexType = "3"
 )
 
 var (
@@ -43,7 +48,7 @@ var (
 	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 )
 
-// DeleteRequest holds all the details about a delete request
+// DeleteRequest holds all the details about a delete request.
 type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
 	UserID    string              `json:"-"`
@@ -55,32 +60,30 @@ type DeleteRequest struct {
 	CreatedAt model.Time          `json:"created_at"`
 }
 
-// CacheGenNumbers holds store and results cache gen numbers for a user
+// CacheGenNumbers holds store and results cache gen numbers for a user.
 type CacheGenNumbers struct {
 	store, results string
 }
 
-// DeleteStore provides all the methods required to manage lifecycle of delete request and things related to it
+// DeleteStore provides all the methods required to manage lifecycle of delete request and things related to it.
 type DeleteStore struct {
 	cfg         DeleteStoreConfig
 	indexClient chunk.IndexClient
 }
 
-// DeleteStoreConfig holds configuration for delete store
+// DeleteStoreConfig holds configuration for delete store.
 type DeleteStoreConfig struct {
-	Store                    string `yaml:"store"`
-	RequestsTableName        string `yaml:"requests_table_name"`
-	CacheGenNumbersTableName string `yaml:"cache_gen_numbers_table_name"`
+	Store             string `yaml:"store"`
+	RequestsTableName string `yaml:"requests_table_name"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *DeleteStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Store, "deletes.store", "", "Store for keeping delete request")
 	f.StringVar(&cfg.RequestsTableName, "deletes.requests-table-name", "delete_requests", "Name of the table which stores delete requests")
-	f.StringVar(&cfg.CacheGenNumbersTableName, "deletes.cache-gen-numbers-table-name", "cache_gen_numbers", "Name of the table which stores cache generation numbers")
 }
 
-// NewDeleteStore creates a store for managing delete requests
+// NewDeleteStore creates a store for managing delete requests.
 func NewDeleteStore(cfg DeleteStoreConfig, indexClient chunk.IndexClient) (*DeleteStore, error) {
 	ds := DeleteStore{
 		cfg:         cfg,
@@ -90,7 +93,7 @@ func NewDeleteStore(cfg DeleteStoreConfig, indexClient chunk.IndexClient) (*Dele
 	return &ds, nil
 }
 
-// Add creates entries for a new delete request
+// Add creates entries for a new delete request.
 func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
 	requestID := generateUniqueID(userID, selectors)
 
@@ -114,60 +117,63 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 	// Add an entry with userID, requestID as range key and status as value to make it easy to manage and lookup status
 	// We don't want to set anything in hash key here since we would want to find delete requests by just status
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(StatusReceived))
+	writeBatch.Add(ds.cfg.RequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))
-	writeBatch.Add(ds.cfg.RequestsTableName, userIDAndRequestID, []byte(rangeValue), []byte(strings.Join(selectors, separator)))
+	writeBatch.Add(ds.cfg.RequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
+		[]byte(rangeValue), []byte(strings.Join(selectors, separator)))
 
 	// we update only cache gen number because only query responses are changing at this stage.
 	// we still have to query data from store for doing query time filtering and we don't want to invalidate its results now.
-	writeBatch.Add(ds.cfg.CacheGenNumbersTableName, fmt.Sprintf("%s:%s", userID, CacheKindResults), nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
+	writeBatch.Add(ds.cfg.RequestsTableName, fmt.Sprintf("%s:%s:%s", cacheGenNum, userID, CacheKindResults),
+		nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
-// GetDeleteRequestsByStatus returns all delete requests for given status
+// GetDeleteRequestsByStatus returns all delete requests for given status.
 func (ds *DeleteStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, []chunk.IndexQuery{{TableName: ds.cfg.RequestsTableName, ValueEqual: []byte(status)}})
+	return ds.queryDeleteRequests(ctx, []chunk.IndexQuery{
+		{TableName: ds.cfg.RequestsTableName, HashValue: string(deleteRequestID), ValueEqual: []byte(status)}})
 }
 
-// GetDeleteRequestsForUserByStatus returns all delete requests for a user with given status
+// GetDeleteRequestsForUserByStatus returns all delete requests for a user with given status.
 func (ds *DeleteStore) GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status DeleteRequestStatus) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, []chunk.IndexQuery{
-		{TableName: ds.cfg.RequestsTableName, RangeValuePrefix: []byte(userID), ValueEqual: []byte(status)},
+		{TableName: ds.cfg.RequestsTableName, HashValue: string(deleteRequestID), RangeValuePrefix: []byte(userID), ValueEqual: []byte(status)},
 	})
 }
 
-// GetAllDeleteRequestsForUser returns all delete requests for a user
+// GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *DeleteStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, []chunk.IndexQuery{
-		{TableName: ds.cfg.RequestsTableName, RangeValuePrefix: []byte(userID)},
+		{TableName: ds.cfg.RequestsTableName, HashValue: string(deleteRequestID), RangeValuePrefix: []byte(userID)},
 	})
 }
 
-// UpdateStatus updates status of a delete request
+// UpdateStatus updates status of a delete request.
 func (ds *DeleteStore) UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(ds.cfg.RequestsTableName, "", []byte(userIDAndRequestID), []byte(newStatus))
+	writeBatch.Add(ds.cfg.RequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
 
 	if newStatus == StatusProcessed {
 		// we have deleted data from store so invalidate cache only for store since we don't have to do runtime filtering anymore.
 		// we don't have to change cache gen number because we were anyways doing runtime filtering
-		writeBatch.Add(ds.cfg.CacheGenNumbersTableName, fmt.Sprintf("%s:%s", userID, CacheKindStore), nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
+		writeBatch.Add(ds.cfg.RequestsTableName, fmt.Sprintf("%s:%s:%s", cacheGenNum, userID, CacheKindStore), nil, []byte(strconv.FormatInt(time.Now().Unix(), 10)))
 	}
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
-// GetDeleteRequest returns delete request with given requestID
+// GetDeleteRequest returns delete request with given requestID.
 func (ds *DeleteStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	deleteRequests, err := ds.queryDeleteRequests(ctx, []chunk.IndexQuery{
-		{TableName: ds.cfg.RequestsTableName, RangeValuePrefix: []byte(userIDAndRequestID)},
+		{TableName: ds.cfg.RequestsTableName, HashValue: string(deleteRequestID), RangeValuePrefix: []byte(userIDAndRequestID)},
 	})
 
 	if err != nil {
@@ -181,7 +187,7 @@ func (ds *DeleteStore) GetDeleteRequest(ctx context.Context, userID, requestID s
 	return &deleteRequests[0], nil
 }
 
-// GetPendingDeleteRequestsForUser returns all delete requests for a user which are not processed
+// GetPendingDeleteRequestsForUser returns all delete requests for a user which are not processed.
 func (ds *DeleteStore) GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	pendingDeleteRequests := []DeleteRequest{}
 	for _, status := range pendingDeleteRequestStatuses {
@@ -216,7 +222,12 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []ch
 	}
 
 	for i, deleteRequest := range deleteRequests {
-		deleteRequestQuery := []chunk.IndexQuery{{TableName: ds.cfg.RequestsTableName, HashValue: fmt.Sprintf("%s:%s", deleteRequest.UserID, deleteRequest.RequestID)}}
+		deleteRequestQuery := []chunk.IndexQuery{
+			{
+				TableName: ds.cfg.RequestsTableName,
+				HashValue: fmt.Sprintf("%s:%s:%s", deleteRequestDetails, deleteRequest.UserID, deleteRequest.RequestID),
+			},
+		}
 
 		var parseError error
 		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
@@ -247,7 +258,7 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []ch
 	return deleteRequests, nil
 }
 
-// GetCacheGenerationNumbers returns cache gen numbers for a user
+// GetCacheGenerationNumbers returns cache gen numbers for a user.
 func (ds *DeleteStore) GetCacheGenerationNumbers(ctx context.Context, userID string) (*CacheGenNumbers, error) {
 	storeCacheGen, err := ds.queryCacheGenerationNumber(ctx, userID, CacheKindStore)
 	if err != nil {
@@ -263,7 +274,7 @@ func (ds *DeleteStore) GetCacheGenerationNumbers(ctx context.Context, userID str
 }
 
 func (ds *DeleteStore) queryCacheGenerationNumber(ctx context.Context, userID string, kind CacheKind) (string, error) {
-	query := chunk.IndexQuery{TableName: ds.cfg.CacheGenNumbersTableName, HashValue: fmt.Sprintf("%s:%s", userID, kind)}
+	query := chunk.IndexQuery{TableName: ds.cfg.RequestsTableName, HashValue: fmt.Sprintf("%s:%s:%s", cacheGenNum, userID, kind)}
 
 	genNumber := ""
 	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{query}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {

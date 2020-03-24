@@ -17,7 +17,7 @@ a piece of work is finished it should:
 
 * Be organised into one or more commits, each of which has a commit message that describes all changes made in that commit ('why' more than 'what' - we can read the diffs to see the code that changed).
 * Each commit should build towards the whole - don't leave in back-tracks and mistakes that you later corrected.
-* Have tests for new functionality or tests that would have caught the bug being fixed.
+* Have unit and/or [integration](./how-integration-tests-work.md) tests for new functionality or tests that would have caught the bug being fixed.
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
 * If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
@@ -51,10 +51,12 @@ make
 with all the tools required. The source code is mounted from where you
 run `make` into the build container as a Docker volume.)
 
-To run the test suite:
+To run the unit tests suite:
 ```
-make test
+go test ./...
 ```
+
+To run the integration tests suite please see "[How integration tests work](./how-integration-tests-work.md)".
 
 ### Dependency management
 

@@ -1,17 +1,7 @@
 # Cortex integration tests
 
-## Supported environment variables
-
-- `CORTEX_IMAGE`: Docker image used to run Cortex in integration tests (defaults to `quay.io/cortexproject/cortex:latest`)
-- `CORTEX_CHECKOUT_DIR`: The absolute path of the Cortex repository local checkout (defaults to `$GOPATH/src/github.com/cortexproject/cortex`)
-
-## Running
-
-Integration tests have `requires_docker` tag (`// +build requires_docker` line followed by empty line on top of Go files),
-to avoid running them unintentionally as they require docker, e.g. by `go test ./...` in main Cortex package.
-
-To run integration tests, one needs to run `go test -tags=requires_docker ./integration/...` (or just `go test -tags=requires_docker ./...` to run unit tests as well).
+See "[How integration tests work](https://cortexmetrics.io/docs/contributing/how-integration-tests-work/)".
 
 ## Owners
 
-This package is used by other projects than Cortex. When modifying please ask @pracucci @bwplotka for review.
+The `integration/e2e` package is used by other projects than Cortex. When modifying please ask @pracucci @bwplotka for review.

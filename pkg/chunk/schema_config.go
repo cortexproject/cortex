@@ -190,13 +190,12 @@ func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
 }
 
 func (cfg *PeriodConfig) applyDefaults() {
-	// apply default shard values
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
 }
 
-// validate the period config
+// Validate the period config.
 func (cfg PeriodConfig) validate() error {
 	// Ensure the schema version exists
 	schema := cfg.CreateSchema()
@@ -222,7 +221,7 @@ func (cfg PeriodConfig) validate() error {
 			return fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
 	default:
-		// protects us from adding schemas and not updating this block
+		// This generally unreachable path protects us from adding schemas and not handling them in this function.
 		return fmt.Errorf("unexpected schema (%s)", cfg.Schema)
 	}
 

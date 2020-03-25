@@ -13,7 +13,7 @@ import (
 )
 
 type storeConfig struct {
-	From, IndexStore string
+	From, IndexStore, ObjectStore string
 }
 
 const (
@@ -25,6 +25,7 @@ const (
 	storeConfigTemplate    = `
 - from: {{.From}}
   store: {{.IndexStore}}
+  object_store: {{.ObjectStore}}
   schema: v9
   index:
     prefix: cortex_

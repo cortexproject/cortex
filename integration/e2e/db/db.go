@@ -108,3 +108,20 @@ func NewCassandra() *e2e.HTTPService {
 		9042,
 	)
 }
+
+func NewElasticSearch() *e2e.HTTPService {
+	m := e2e.NewHTTPService(
+		"elasticsearch",
+		// If you change the image tag, remember to update it in the preloading done
+		// by CircleCI too (see .circleci/config.yml).
+		"docker.elastic.co/elasticsearch/elasticsearch:6.4.3",
+		nil,
+		e2e.NewHTTPReadinessProbe(9200, "/", 200, 200),
+		9200,
+	)
+	m.SetEnvVars(map[string]string{
+		"discovery.type": "single-node",
+		"network.host":   "0.0.0.0",
+	})
+	return m
+}

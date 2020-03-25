@@ -60,10 +60,8 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
 	// Start other Cortex components (ingester running on previous version).
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
-	// Old ring didn't have /ready probe, use /ring instead.
-	distributor.SetReadinessProbe(e2e.NewHTTPReadinessProbe(distributor.HTTPPort(), "/ring", 200))
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
 	// Wait until the distributor has updated the ring.

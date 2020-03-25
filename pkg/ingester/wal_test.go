@@ -94,7 +94,7 @@ func TestCheckpointRepair(t *testing.T) {
 				// Shutdown creates a checkpoint. This is only for the last checkpoint.
 				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 			} else {
-				require.NoError(t, w.performCheckpoint())
+				require.NoError(t, w.performCheckpoint(true))
 			}
 		}
 

@@ -29,13 +29,22 @@ ingester:
           host: consul:8500
       replication_factor: 1
 
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    replication_factor: 1
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
+
 tsdb:
   dir: /data/cortex-tsdb-ingester
   ship_interval: 1m
   block_ranges_period: [ 2h ]
   retention_period: 3h
   backend: s3
-  
+
   bucket_store:
     sync_dir: /data/cortex-tsdb-querier
 

@@ -20,7 +20,7 @@ func TestFifoCacheEviction(t *testing.T) {
 		key:   "00",
 		value: 0,
 	}
-	c := NewFifoCache("test1", FifoCacheConfig{MaxCount: cnt, Validity: 1 * time.Minute})
+	c := NewFifoCache("test1", FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute})
 	ctx := context.Background()
 
 	// Check put / get works
@@ -134,7 +134,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 		memorySz += sizeOf(entry)
 	}
 
-	c := NewFifoCache("test2", FifoCacheConfig{MaxSize: memorySz, Validity: 5 * time.Millisecond})
+	c := NewFifoCache("test2", FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond})
 	ctx := context.Background()
 
 	c.Put(ctx,

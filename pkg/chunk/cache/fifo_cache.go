@@ -71,29 +71,34 @@ var (
 	}, []string{"cache"})
 )
 
+// This FIFO cache implementation supports two eviction methods - based on number of items in the cache, and based on memory usage.
+// For the memory-based eviction, set FifoCacheConfig.MaxSizeBytes to a positive integer, indicating upper limit of memory allocated by items in the cache.
+// Alternatively, set FifoCacheConfig.MaxSizeItems to a positive integer, indicating maximum number of items in the cache.
+// If both parameters are set, the memory-based eviction method takes precedence.
+
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
-	MaxSize  int           `yaml:"max_size_bytes"`
-	MaxCount int           `yaml:"size"`
-	Validity time.Duration `yaml:"validity"`
+	MaxSizeBytes int           `yaml:"max_size_bytes"`
+	MaxSizeItems int           `yaml:"size"`
+	Validity     time.Duration `yaml:"validity"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxSize, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
-	f.IntVar(&cfg.MaxCount, prefix+"fifocache.size", 0, description+"The number of entries to cache. (Deprecating, use 'fifocache.max-size-bytes' instead)")
+	f.IntVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
+	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.size", 0, description+"The number of entries to cache. Deprecated, use fifocache.max-size-bytes instead.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
-	lock     sync.RWMutex
-	maxCount int
-	maxSize  int
-	currSize int
-	validity time.Duration
-	entries  map[string]*cacheEntry
+	lock         sync.RWMutex
+	maxSizeItems int
+	maxSizeBytes int
+	currSize     int
+	validity     time.Duration
+	entries      map[string]*cacheEntry
 
 	// indexes into entries to identify the most recent and least recent entry.
 	first, last *cacheEntry
@@ -121,10 +126,10 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 	util.WarnExperimentalUse("In-memory (FIFO) cache")
 
 	return &FifoCache{
-		maxCount: cfg.MaxCount,
-		maxSize:  cfg.MaxSize,
-		validity: cfg.Validity,
-		entries:  make(map[string]*cacheEntry),
+		maxSizeItems: cfg.MaxSizeItems,
+		maxSizeBytes: cfg.MaxSizeBytes,
+		validity:     cfg.Validity,
+		entries:      make(map[string]*cacheEntry),
 
 		// TODO(bwplotka): There might be simple cache.Cache wrapper for those.
 		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
@@ -174,7 +179,7 @@ func (c *FifoCache) Stop() {
 // Put stores the value against the key.
 func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}) {
 	c.entriesAdded.Inc()
-	if c.maxSize == 0 && c.maxCount == 0 {
+	if c.maxSizeBytes == 0 && c.maxSizeItems == 0 {
 		return
 	}
 
@@ -242,7 +247,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		// New entry size
 		entrySz += (sizeOfInterface(value) - sizeOfInterface(entry.value))
 
-		if c.maxSize > 0 && c.currSize+entrySz > c.maxSize {
+		if c.maxSizeBytes > 0 && c.currSize+entrySz > c.maxSizeBytes {
 			// New entry does not fit in the cache. Delete the entry.
 			delete(c.entries, entry.key)
 			c.entriesCurrent.Dec()
@@ -267,7 +272,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	entrySz := sizeOf(entry)
 
 	// Check is the entry fits in the cache
-	if c.maxSize > 0 && entrySz > c.maxSize {
+	if c.maxSizeBytes > 0 && entrySz > c.maxSizeBytes {
 		// Cannot keep this entry in the cache
 		return
 	}
@@ -275,7 +280,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	c.entriesAddedNew.Inc()
 
 	// Otherwise, see if we need to evict an entry.
-	for (c.maxSize > 0 && c.currSize+entrySz > c.maxSize) || (c.maxCount > 0 && len(c.entries) >= c.maxCount) {
+	for (c.maxSizeBytes > 0 && c.currSize+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
 		c.entriesEvicted.Inc()
 		if evicted := c.deleteFromTail(); evicted != nil {
 			delete(c.entries, evicted.key)
@@ -299,7 +304,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 // Get returns the stored value against the key and when the key was last updated.
 func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.totalGets.Inc()
-	if c.maxSize == 0 && c.maxCount == 0 {
+	if c.maxSizeBytes == 0 && c.maxSizeItems == 0 {
 		return nil, false
 	}
 

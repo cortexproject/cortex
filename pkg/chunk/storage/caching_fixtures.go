@@ -25,8 +25,8 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, 
 	}
 	indexClient, chunkClient, tableClient, schemaConfig, err := f.fixture.Clients()
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
-		MaxSize:  1024 * 256,
-		Validity: 5 * time.Minute,
+		MaxSizeBytes: 1024 * 256,
+		Validity:     5 * time.Minute,
 	}), 5*time.Minute, limits)
 	return indexClient, chunkClient, tableClient, schemaConfig, err
 }

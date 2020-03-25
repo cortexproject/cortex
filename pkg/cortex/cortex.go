@@ -401,9 +401,11 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 		if t.ingester != nil {
 			if err := t.ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
 			}
 		}
-		w.WriteHeader(http.StatusNoContent)
+
+		http.Error(w, "ready", http.StatusOK)
 	}
 }
 

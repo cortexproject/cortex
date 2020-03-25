@@ -361,16 +361,18 @@ type ReadinessProbe interface {
 
 // HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code
 type HTTPReadinessProbe struct {
-	port           int
-	path           string
-	expectedStatus int
+	port                     int
+	path                     string
+	expectedStatusRangeStart int
+	expectedStatusRangeEnd   int
 }
 
-func NewHTTPReadinessProbe(port int, path string, expectedStatus int) *HTTPReadinessProbe {
+func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
-		port:           port,
-		path:           path,
-		expectedStatus: expectedStatus,
+		port:                     port,
+		path:                     path,
+		expectedStatusRangeStart: expectedStatusRangeStart,
+		expectedStatusRangeEnd:   expectedStatusRangeEnd,
 	}
 }
 
@@ -389,11 +391,11 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "response readiness")
 
-	if res.StatusCode == p.expectedStatus {
+	if p.expectedStatusRangeStart <= res.StatusCode && res.StatusCode <= p.expectedStatusRangeEnd {
 		return nil
 	}
 
-	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
+	return fmt.Errorf("got status code: %v, expected code in range: [%v, %v]", res.StatusCode, p.expectedStatusRangeStart, p.expectedStatusRangeEnd)
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.

@@ -20,7 +20,11 @@ var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
 	previousVersionImages = []string{
+		// 0.6.0 used 204 status code for querier and ingester
+		// distributor didn't have /ready page, and we used check on the /ring page instead
 		"quay.io/cortexproject/cortex:v0.6.0",
+
+		// 0.7.0 used 204 status code for all components
 		"quay.io/cortexproject/cortex:v0.7.0",
 	}
 )
@@ -90,11 +94,14 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Query the new ingester both with the old and the new querier.
 	for _, image := range []string{previousImage, ""} {
-		flags := ChunksStorageFlags
+		var querier *e2ecortex.CortexService
+
 		if image == previousImage {
-			flags = flagsForOldImage
+			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForOldImage, image)
+		} else {
+			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, image)
 		}
-		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image)
+
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.

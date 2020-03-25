@@ -35,7 +35,11 @@ type WALConfig struct {
 	Recover            bool          `yaml:"recover_from_wal"`
 	Dir                string        `yaml:"wal_dir"`
 	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+	BatchSize          int           `yaml:"batch_size"`
+	LogTimeout         time.Duration `yaml:"log_timeout"`
 }
+
+var ()
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
@@ -44,6 +48,8 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing of in-memory chunks.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
+	f.IntVar(&cfg.BatchSize, "ingester.wal-batch-size", 50, "Number of records to flush at a time.")
+	f.DurationVar(&cfg.LogTimeout, "ingester.wal-log-timeout", 100*time.Millisecond, "Timeout after which batch of records to be flushed.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -64,14 +70,21 @@ type walWrapper struct {
 	quit chan struct{}
 	wait sync.WaitGroup
 
-	wal                   *wal.WAL
-	recordChan            chan []byte
-	getUserStates         func() map[string]*userState
-	checkpointMtx         sync.Mutex
-	recordBufferIdx       int
-	recordBuffer          [][]byte
-	recordBufferErrorChan []chan error
-	recordBufMtx          sync.Mutex
+	wal           *wal.WAL
+	getUserStates func() map[string]*userState
+	checkpointMtx sync.Mutex
+
+	currentBatch *recordBatch
+	batchMtx     sync.Mutex
+
+	batchesToLog   chan *recordBatch
+	batchPool      sync.Pool
+	recordsToBatch chan *chanRecord
+	recordPool     sync.Pool
+	logBatchWg     sync.WaitGroup
+	batchRecordsWg sync.WaitGroup
+
+	batchStartTime time.Time
 
 	// Checkpoint metrics.
 	walWritesFailed         prometheus.Counter
@@ -80,6 +93,25 @@ type walWrapper struct {
 	checkpointCreationFail  prometheus.Counter
 	checkpointCreationTotal prometheus.Counter
 	checkpointDuration      prometheus.Summary
+
+	walLogBatchSize          prometheus.Summary
+	walLogBatchSizeBytes     prometheus.Summary
+	walBatchCreated          prometheus.Counter
+	walBatchLogged           prometheus.Counter
+	walBatchCreationDuration prometheus.Summary
+	walBatchLogTimeout       prometheus.Counter
+	walBatchLogDuration      prometheus.Summary
+}
+
+type recordBatch struct {
+	size       uint32
+	records    [][]byte
+	errorChans []chan error
+}
+
+type chanRecord struct {
+	record    []byte
+	errorChan chan error
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -98,16 +130,28 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	}
 
 	w := &walWrapper{
-		cfg:                   cfg,
-		quit:                  make(chan struct{}),
-		wal:                   tsdbWAL,
-		getUserStates:         userStatesFunc,
-		recordBuffer:          make([][]byte, 100),
-		recordBufferErrorChan: make([]chan error, 100),
-	}
-
-	for i := 0; i < 100; i++ {
-		w.recordBufferErrorChan[i] = make(chan error)
+		cfg:            cfg,
+		quit:           make(chan struct{}),
+		wal:            tsdbWAL,
+		getUserStates:  userStatesFunc,
+		batchStartTime: time.Now(),
+		batchPool: sync.Pool{
+			New: func() interface{} {
+				return &recordBatch{
+					records:    make([][]byte, 0, cfg.BatchSize),
+					errorChans: make([]chan error, 0, cfg.BatchSize),
+				}
+			},
+		},
+		recordPool: sync.Pool{
+			New: func() interface{} {
+				return &chanRecord{
+					errorChan: make(chan error),
+				}
+			},
+		},
+		recordsToBatch: make(chan *chanRecord, 1000),
+		batchesToLog:   make(chan *recordBatch, 1000/cfg.BatchSize),
 	}
 
 	w.walWritesFailed = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -135,96 +179,171 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
+	w.walLogBatchSize = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+		Name:       "cortex_ingester_wal_log_batch_size",
+		Help:       "Size of the batch of records logged.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	})
+	w.walLogBatchSizeBytes = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+		Name:       "cortex_ingester_wal_log_batch_size_bytes",
+		Help:       "Size of the batch of records logged.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	})
+	w.walBatchCreated = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_batch_created_total",
+		Help: "Total number of record batches created.",
+	})
+	w.walBatchLogged = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_batch_logged_total",
+		Help: "Total number of record batches logged to the WAL.",
+	})
+	w.walBatchCreationDuration = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+		Name:       "cortex_ingester_wal_batch_creation_duration_seconds",
+		Help:       "Time taken to build a batch.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	})
+	w.walBatchLogTimeout = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_batch_log_timeout_total",
+		Help: "Total number of times the flushing of batch timed out.",
+	})
+	w.walBatchLogDuration = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+		Name:       "cortex_ingester_wal_batch_log_duration_seconds",
+		Help:       "Time taken to log a batch.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	})
+
+	w.walBatchCreated.Inc()
+	w.currentBatch = w.batchPool.Get().(*recordBatch)
 
 	w.wait.Add(2)
 	go w.run()
-	go w.flushLoop()
+	go w.flushTimeoutLoop()
+
+	w.logBatchWg.Add(1)
+	go w.logBatches()
+	w.batchRecordsWg.Add(1)
+	go w.createBatches()
 
 	return w, nil
 }
 
 func (w *walWrapper) Stop() error {
 	close(w.quit)
-	w.wait.Wait()
+	w.wait.Wait() // TODO(codesome): it will block here because of batchesToLog.
 
-	var merr tsdb_errors.MultiError
 	w.wait.Add(1)
-	merr.Add(w.flushWALBuffer(true))
-	merr.Add(w.wal.Close())
+	w.addBatchToFlushQueue()
 
-	return merr.Err()
+	close(w.recordsToBatch)
+	w.batchRecordsWg.Wait()
+
+	close(w.batchesToLog)
+	w.logBatchWg.Wait()
+
+	return w.wal.Close()
 }
 
-// flushLoop periodically flushes the buffer to
+// flushTimeoutLoop periodically flushes the buffer to
 // unblock the writes if there is no more ingestion.
-func (w *walWrapper) flushLoop() {
+func (w *walWrapper) flushTimeoutLoop() {
 	defer w.wait.Done()
+
+	waitTime := w.cfg.LogTimeout - time.Since(w.batchStartTime)
 	for {
 		select {
 		case <-w.quit:
 			return
-		case <-time.After(50 * time.Millisecond):
-			w.recordBufMtx.Lock()
-			w.wait.Add(1)
-			if err := w.flushWALBuffer(true); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to log to WAL in flushLoop", "err", err)
+		case <-time.After(waitTime):
+			if time.Since(w.batchStartTime) >= w.cfg.LogTimeout {
+				w.walBatchLogTimeout.Inc()
+				w.batchMtx.Lock()
+				w.wait.Add(1)
+				w.addBatchToFlushQueue()
+				w.batchMtx.Unlock()
 			}
-			w.recordBufMtx.Unlock()
+			waitTime = w.cfg.LogTimeout - time.Since(w.batchStartTime)
+			if waitTime < 0 {
+				waitTime = 0
+			}
 		}
 	}
 }
 
-func (w *walWrapper) flushWALBuffer(sendErrToLast bool) error {
-	defer w.wait.Done()
+func (w *walWrapper) logBatches() {
+	defer w.logBatchWg.Done()
 
-	err := w.wal.Log(w.recordBuffer[0:w.recordBufferIdx]...)
-	if err != nil {
-		w.walWritesFailed.Inc()
-	}
+	for b := range w.batchesToLog {
+		start := time.Now()
+		err := w.wal.Log(b.records...)
+		if err != nil {
+			w.walWritesFailed.Inc()
+		}
+		w.walBatchLogDuration.Observe(time.Since(start).Seconds())
+		w.walBatchLogged.Inc()
 
-	chanLen := w.recordBufferIdx
-	if !sendErrToLast {
-		// Don't send it to the last channel to not cause deadlock for this method's caller.
-		chanLen--
-	}
-	for i := 0; i < chanLen; i++ {
-		w.recordBufferErrorChan[i] <- err
-	}
-	w.recordBufferIdx = 0
+		chanLen := len(b.errorChans)
+		for i := 0; i < chanLen; i++ {
+			b.errorChans[i] <- err
+		}
 
-	return err
+		w.batchPool.Put(b)
+	}
 }
 
-func (w *walWrapper) Log(record *Record) error {
-	if record == nil {
+func (w *walWrapper) addBatchToFlushQueue() {
+	defer w.wait.Done()
+
+	w.walBatchCreationDuration.Observe(time.Since(w.batchStartTime).Seconds())
+	w.walLogBatchSize.Observe(float64(len(w.currentBatch.records)))
+	w.walLogBatchSizeBytes.Observe(float64(w.currentBatch.size))
+
+	w.batchesToLog <- w.currentBatch
+
+	w.walBatchCreated.Inc()
+	w.currentBatch = w.batchPool.Get().(*recordBatch)
+	w.currentBatch.errorChans = w.currentBatch.errorChans[:0]
+	w.currentBatch.records = w.currentBatch.records[:0]
+	w.currentBatch.size = 0
+	w.batchStartTime = time.Now()
+}
+
+func (w *walWrapper) createBatches() {
+	defer w.batchRecordsWg.Done()
+
+	for r := range w.recordsToBatch {
+		w.batchMtx.Lock()
+
+		w.currentBatch.records = append(w.currentBatch.records, r.record)
+		w.currentBatch.errorChans = append(w.currentBatch.errorChans, r.errorChan)
+		w.currentBatch.size += uint32(len(r.record))
+		if len(w.currentBatch.records) == w.cfg.BatchSize {
+			w.wait.Add(1)
+			w.addBatchToFlushQueue()
+		}
+		w.recordPool.Put(r)
+
+		w.batchMtx.Unlock()
+	}
+}
+
+func (w *walWrapper) Log(rec *Record) error {
+	if rec == nil {
 		return nil
 	}
 	select {
 	case <-w.quit:
 		return nil
 	default:
-		buf, err := proto.Marshal(record)
+		buf, err := proto.Marshal(rec)
 		if err != nil {
 			return err
 		}
-		w.recordBufMtx.Lock()
 
-		w.recordBuffer[w.recordBufferIdx] = buf
-		errChan := w.recordBufferErrorChan[w.recordBufferIdx]
-		w.recordBufferIdx++
-		flushCalled := false
+		rec := w.recordPool.Get().(*chanRecord)
+		errChan := rec.errorChan
+		rec.record = buf
+		w.recordsToBatch <- rec
 
-		if w.recordBufferIdx == len(w.recordBuffer) {
-			w.wait.Add(1)
-			err = w.flushWALBuffer(false)
-			flushCalled = true
-		}
-
-		w.recordBufMtx.Unlock()
-
-		if flushCalled {
-			return err
-		}
 		return <-errChan
 	}
 }

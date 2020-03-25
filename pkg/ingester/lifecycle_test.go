@@ -48,6 +48,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
 	cfg.MaxTransferRetries = 0
+	cfg.WALConfig.BatchSize = 1
 	return cfg
 }
 

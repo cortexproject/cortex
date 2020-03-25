@@ -404,8 +404,8 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 		cfg.TableManager.IndexTables.ReadScale.Enabled ||
 		cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		(cfg.Storage.AWSStorageConfig.ApplicationAutoScaling.URL == nil && cfg.Storage.AWSStorageConfig.Metrics.URL == "") {
-		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
+		cfg.Storage.AWSStorageConfig.Metrics.URL == "" {
+		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 

@@ -25,7 +25,7 @@ func NewMinio(port int, bktName string) *e2e.HTTPService {
 		"minio/minio:RELEASE.2019-12-30T05-45-39Z",
 		// Create the "cortex" bucket before starting minio
 		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf("mkdir -p /data/%s && minio server --address :%v --quiet /data", bktName, port)),
-		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200),
+		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200, 200),
 		port,
 	)
 	m.SetEnvVars(map[string]string{
@@ -78,7 +78,7 @@ func NewDynamoDB() *e2e.HTTPService {
 		"amazon/dynamodb-local:1.11.477",
 		e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
 		// DynamoDB doesn't have a readiness probe, so we check if the / works even if returns 400
-		e2e.NewHTTPReadinessProbe(8000, "/", 400),
+		e2e.NewHTTPReadinessProbe(8000, "/", 400, 400),
 		8000,
 	)
 }

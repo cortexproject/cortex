@@ -66,6 +66,7 @@ type walWrapper struct {
 
 	wal           *wal.WAL
 	getUserStates func() map[string]*userState
+	checkpointMtx sync.Mutex
 
 	// Checkpoint metrics.
 	checkpointDeleteFail    prometheus.Counter
@@ -185,6 +186,11 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 		return nil
 	}
 
+	// This method is called during shutdown which can interfere with ongoing checkpointing.
+	// Hence to avoid any race between file creation and WAL truncation, we hold this lock here.
+	w.checkpointMtx.Lock()
+	defer w.checkpointMtx.Unlock()
+
 	w.checkpointCreationTotal.Inc()
 	defer func() {
 		if err != nil {
@@ -243,24 +249,23 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 
 	// Count number of series - we'll use this to rate limit checkpoints.
 	numSeries := 0
-	for _, state := range w.getUserStates() {
+	us := w.getUserStates()
+	for _, state := range us {
 		numSeries += state.fpToSeries.length()
 	}
 	if numSeries == 0 {
 		return nil
 	}
 
-	perSeriesDuration := w.cfg.CheckpointDuration / time.Duration(numSeries)
-	ticker := time.NewTicker(perSeriesDuration)
-
-	if immediate {
-		ticker.Stop()
-	} else {
+	var ticker *time.Ticker
+	if !immediate {
+		perSeriesDuration := w.cfg.CheckpointDuration / time.Duration(numSeries)
+		ticker = time.NewTicker(perSeriesDuration)
 		defer ticker.Stop()
 	}
 
 	var wireChunkBuf []client.Chunk
-	for userID, state := range w.getUserStates() {
+	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf)

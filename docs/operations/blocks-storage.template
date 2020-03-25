@@ -69,7 +69,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 #### Compactor HTTP endpoints
 
-- `GET /compactor_ring`<br />
+- `GET /compactor/ring`<br />
   Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.
 
 ## Index cache

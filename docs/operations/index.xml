@@ -38,7 +38,7 @@
 &lt;p&gt;Whenever the pool of compactors increase or decrease (ie. following up a scale up/down), tenants are resharded across the available compactor instances without any manual intervention. Compactors coordinate via the Cortex &lt;a href=&#34;/docs/architecture/#the-hash-ring&#34;&gt;hash ring&lt;/a&gt;.&lt;/p&gt;
 &lt;h4 id=&#34;compactor-http-endpoints&#34;&gt;Compactor HTTP endpoints&lt;/h4&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;GET /compactor_ring&lt;/code&gt;&lt;br /&gt;
+&lt;li&gt;&lt;code&gt;GET /compactor/ring&lt;/code&gt;&lt;br /&gt;
 Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;index-cache&#34;&gt;Index cache&lt;/h2&gt;

@@ -393,7 +393,7 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 		return nil
 	}
 
-	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
+	return fmt.Errorf("got status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.

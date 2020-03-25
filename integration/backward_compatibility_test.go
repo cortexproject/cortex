@@ -16,24 +16,34 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
+type serviceSetupFn func(name string, s *e2ecortex.CortexService)
+
 var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
-	previousVersionImages = []string{
-		"quay.io/cortexproject/cortex:v0.6.0",
-		"quay.io/cortexproject/cortex:v0.7.0",
+	previousVersionImages = map[string]serviceSetupFn{
+		"quay.io/cortexproject/cortex:v0.6.0": func(name string, s *e2ecortex.CortexService) {
+			// 0.6.0 used 204 status code for querier and ingester
+			// distributor didn't have /ready page, and we used check on the /ring page instead
+			s.SetReadinessProbe(e2e.NewHTTPReadinessProbe(s.HTTPPort(), "/ready", 204))
+		},
+
+		"quay.io/cortexproject/cortex:v0.7.0": func(name string, s *e2ecortex.CortexService) {
+			// 0.7.0 used 204 status code for all components
+			s.SetReadinessProbe(e2e.NewHTTPReadinessProbe(s.HTTPPort(), "/ready", 204))
+		},
 	}
 )
 
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
-	for _, previousImage := range previousVersionImages {
+	for previousImage, setupFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			runBackwardCompatibilityTestWithChunksStorage(t, previousImage)
+			runBackwardCompatibilityTestWithChunksStorage(t, previousImage, setupFn)
 		})
 	}
 }
 
-func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage string) {
+func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage string, setupFn serviceSetupFn) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -61,6 +71,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
+	setupFn("ingester", ingester1)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
@@ -90,11 +101,15 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Query the new ingester both with the old and the new querier.
 	for _, image := range []string{previousImage, ""} {
-		flags := ChunksStorageFlags
+		var querier *e2ecortex.CortexService
+
 		if image == previousImage {
-			flags = flagsForOldImage
+			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForOldImage, image)
+			setupFn("querier", querier)
+		} else {
+			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, image)
 		}
-		querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, image)
+
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.

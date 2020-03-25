@@ -3267,7 +3267,7 @@ for more information about the blocks storage.&lt;/p&gt;
 &lt;p&gt;Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
 Cortex can also make use of external Memcacheds and Redis for caching but this feature is not (yet) available using blocks storage.&lt;/p&gt;
 &lt;h2 id=&#34;single-instance-single-process&#34;&gt;Single instance, single process&lt;/h2&gt;
-&lt;p&gt;For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href=&#34;../configuration/single-process-config-blocks.yaml&#34;&gt;single process&lt;/a&gt; with no dependencies.
+&lt;p&gt;For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href=&#34;../../configuration/single-process-config-blocks.yaml&#34;&gt;single process&lt;/a&gt; with no dependencies.
 You can reconfigure the config to use GCS, Azure storage or local storage as shown in the file&amp;rsquo;s comments.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ go build ./cmd/cortex
 $ ./cortex -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./docs/configuration/single-process-config-blocks.yaml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
@@ -3802,7 +3802,100 @@ The domain name after the prefix is looked up as a SRV query, with no A/AAAA loo
 &lt;p&gt;Documentation:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;A CLI flag mentioned in the documentation or changelog should be always prefixed with a single &lt;code&gt;-&lt;/code&gt; (dash)&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: How to add a maintainer</title><link>/docs/governance/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/governance/how-to-add-a-maintainer/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Docs: Getting Started with Gossiped Ring (experimental)</title><link>/docs/getting-started/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-with-gossiped-ring/</guid><description>
+&lt;p&gt;Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
+but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p&gt;
+&lt;p&gt;This short guide shows how to start Cortex in &lt;a href=&#34;/docs/architecture/&#34;&gt;single-binary mode&lt;/a&gt; with memberlist-based ring.
+To reduce number of required dependencies in this guide, it will use &lt;a href=&#34;/docs/operations/blocks-storage/&#34;&gt;blocks storage&lt;/a&gt; with no shipping to external stores.
+Storage engine and external storage configuration are not dependant on the ring configuration.&lt;/p&gt;
+&lt;h2 id=&#34;single-binary-two-cortex-instances&#34;&gt;Single-binary, two Cortex instances&lt;/h2&gt;
+&lt;p&gt;For simplicity and to get started, we&amp;rsquo;ll run it as a two instances of Cortex on local computer.
+We will use prepared configuration files (&lt;a href=&#34;../../configuration/single-process-config-blocks-gossip-1.yaml&#34;&gt;file 1&lt;/a&gt;, &lt;a href=&#34;../../configuration/single-process-config-blocks-gossip-2.yaml&#34;&gt;file 2&lt;/a&gt;), with no external
+dependencies.&lt;/p&gt;
+&lt;p&gt;Build Cortex first:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ go build ./cmd/cortex&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Run two instances of Cortex, each one with its own dedicated config file:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1.yaml
+$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Download Prometheus and configure it to use our first Cortex instance for remote writes.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;remote_write&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;-&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;url&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;http&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;//localhost&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9109&lt;/span&gt;/api/prom/push&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+distribute incoming samples between the two instances.&lt;/p&gt;
+&lt;p&gt;To query that data, you can configure your Grafana instance to use &lt;a href=&#34;http://localhost:9109/api/prom&#34;&gt;http://localhost:9109/api/prom&lt;/a&gt; (first Cortex) as a Prometheus data source.&lt;/p&gt;
+&lt;h2 id=&#34;how-it-works&#34;&gt;How it works&lt;/h2&gt;
+&lt;p&gt;The two instances we started earlier should be able to find each other via memberlist configuration (already present in the config files):&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;memberlist&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# defaults to hostname&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;node_name&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;Ingester 1&amp;#34;&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;bind_port&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;7946&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;join_members&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;-&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;localhost&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;7947&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;abort_if_cluster_join_fails&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;false&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
+Port numbers are reversed in the second configuration file.
+We also need to configure &lt;code&gt;node_name&lt;/code&gt; and also ingester ID (&lt;code&gt;ingester.lifecycler.id&lt;/code&gt; field), because default to hostname,
+but we are running both Cortex instances on the same host.&lt;/p&gt;
+&lt;p&gt;To make sure that both ingesters generate unique tokens, we configure &lt;code&gt;join_after&lt;/code&gt; and &lt;code&gt;observe_period&lt;/code&gt; to 10 seconds.
+First option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
+how long to wait for a potential tokens and data transfer from leaving ingester, but we also use it here to increase
+the chance of finding other gossip peers. When Cortex joins the ring, it generates tokens and writes them to the ring.
+If multiple Cortex instances do this at the same time, they can generate conflicting tokens. This can be a problem
+when using gossiped ring (instances may simply not see each other yet), so we use &lt;code&gt;observe_period&lt;/code&gt; to watch the ring for token conflicts.
+If conflict is detected, new tokens are generated instead of conflicting tokens, and observe period is restarted.
+If no conflict is detected within the observe period, ingester switches to ACTIVE state.&lt;/p&gt;
+&lt;p&gt;We are able to observe ring state on &lt;a href=&#34;http://localhost:9109/ring&#34;&gt;http://localhost:9109/ring&lt;/a&gt; and &lt;a href=&#34;http://localhost:9209/ring&#34;&gt;http://localhost:9209/ring&lt;/a&gt;.
+The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
+being ACTIVE and ready to receive samples.&lt;/p&gt;
+&lt;h2 id=&#34;how-to-add-another-instance&#34;&gt;How to add another instance?&lt;/h2&gt;
+&lt;p&gt;To add another Cortex to the small cluster, copy &lt;code&gt;docs/configuration/single-process-config-blocks-gossip-1.yaml&lt;/code&gt; to a new file,
+and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
+is annotated diff:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-diff&#34; data-lang=&#34;diff&#34;&gt;...
+server:
+&lt;span style=&#34;color:#00a000&#34;&gt;+ # These ports need to be unique.
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- http_listen_port: 9109
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- grpc_listen_port: 9195
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ http_listen_port: 9309
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ grpc_listen_port: 9395
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+...
+ingester:
+lifecycler:
+# Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
+&lt;span style=&#34;color:#a40000&#34;&gt;- id: &amp;#34;Ingester 1&amp;#34;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ id: &amp;#34;Ingester 3&amp;#34;
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+...
+memberlist:
+# defaults to hostname
+&lt;span style=&#34;color:#a40000&#34;&gt;- node_name: &amp;#34;Ingester 1&amp;#34;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ node_name: &amp;#34;Ingester 3&amp;#34;
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+# bind_port needs to be unique
+&lt;span style=&#34;color:#a40000&#34;&gt;- bind_port: 7946
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ bind_port: 7948
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+...
+&lt;span style=&#34;color:#00a000&#34;&gt;+# Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# writing in-progress data to the same directories.
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; tsdb:
+&lt;span style=&#34;color:#a40000&#34;&gt;- dir: /tmp/cortex/tsdb-ing1
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ dir: /tmp/cortex/tsdb-ing3
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; bucket_store:
+&lt;span style=&#34;color:#a40000&#34;&gt;- sync_dir: /tmp/cortex/tsdb-sync-querier1
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ sync_dir: /tmp/cortex/tsdb-sync-querier3
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We don&amp;rsquo;t need to change or add &lt;code&gt;memberlist.join_members&lt;/code&gt; list. This new instance will simply join to the second one (listening on port 7947), and
+will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
+that want to be part of gossip cluster, and then point &lt;code&gt;join_members&lt;/code&gt; to this headless service.&lt;/p&gt;
+&lt;p&gt;We also don&amp;rsquo;t need to change &lt;code&gt;/tmp/cortex/storage&lt;/code&gt; directory in &lt;code&gt;tsdb.filesystem.dir&lt;/code&gt; field. This is directory where all ingesters will
+&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p&gt;
+&lt;p&gt;After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
+and will start receiving samples after it enters into ACTIVE state.&lt;/p&gt;</description></item><item><title>Docs: How to add a maintainer</title><link>/docs/governance/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/governance/how-to-add-a-maintainer/</guid><description>
 &lt;p&gt;New maintainers are proposed by an existing maintainer and are elected by &lt;a href=&#34;/docs/governance/#changes-in-maintainership&#34;&gt;majority vote&lt;/a&gt;. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Submit a PR to add the new member to &lt;code&gt;MAINTAINERS&lt;/code&gt;&lt;/li&gt;

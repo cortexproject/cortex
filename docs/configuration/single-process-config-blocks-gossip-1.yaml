@@ -1,0 +1,83 @@
+
+# Configuration for running Cortex in single-process mode.
+# This should not be used in production.  It is only for getting started
+# and development.
+
+# Disable the requirement that every request to Cortex has a
+# X-Scope-OrgID header. `fake` will be substituted in instead.
+auth_enabled: false
+
+server:
+  http_listen_port: 9109
+  grpc_listen_port: 9195
+
+  # Configure the server to allow messages up to 100MB.
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+ingester_client:
+  grpc_client_config:
+    # Configure the client to allow messages up to 100MB.
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    use_gzip_compression: true
+
+ingester:
+  # Disable blocks transfers on ingesters shutdown or rollout.
+  max_transfer_retries: 0
+
+  lifecycler:
+    # The address to advertise for this ingester.  Will be autodiscovered by
+    # looking up address on eth0 or en0; can be specified if this fails.
+    address: 127.0.0.1
+    # Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
+    id: "Ingester 1"
+
+    # We don't want to join immediately, but wait a bit to see other ingesters and their tokens first.
+    # It can take a while to have the full picture when using gossip
+    join_after: 10s
+
+    # To avoid generating same tokens by multiple ingesters, they can "observe" the ring for a while,
+    # after putting their own tokens into it. This is only useful when using gossip, since multiple
+    # ingesters joining at the same time can have conflicting tokens if they don't see each other yet.
+    observe_period: 10s
+    min_ready_duration: 0s
+    claim_on_rollout: false
+    final_sleep: 5s
+    num_tokens: 512
+
+    # Use an in memory ring store, so we don't need to launch a Consul.
+    ring:
+      kvstore:
+        store: memberlist
+
+      replication_factor: 1
+
+memberlist:
+  # defaults to hostname
+  node_name: "Ingester 1"
+  bind_port: 7946
+  join_members:
+    - localhost:7947
+  abort_if_cluster_join_fails: false
+
+storage:
+  engine: tsdb
+
+tsdb:
+  dir: /tmp/cortex/tsdb-ing1
+  bucket_store:
+    sync_dir: /tmp/cortex/tsdb-sync-querier1
+
+  # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
+  # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
+  # we only use shared directory.
+  backend: filesystem # s3, gcs, azure or filesystem are valid options
+  filesystem:
+    dir: /tmp/cortex/storage

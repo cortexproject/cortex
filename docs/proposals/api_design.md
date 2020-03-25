@@ -27,25 +27,37 @@ Under this path prefix, Cortex will act as a Prometheus web server. It will host
 
 #### `/alertmanager/*`
 
-Under this path prefix, Cortex will act as a Alertmanager web server. In this case, it will forward requests to the alertmanager and support the alertmanager API
+Under this path prefix, Cortex will act as a Alertmanager web server. In this case, it will forward requests to the alertmanager and support the alertmanager API. This means for a user to access their Alertmanager UI, they will use the `/alertmanager` path of cortex.
 
 #### `/api/v1/*` -- The cortex API will exist under this path prefix.
 
 - `/push` & `/read` -- The Prometheus remote write endpoints will be fulfilled directly under the `/api/v1/*` path
-- `/user_stats` -- The per user stats endpoint will exist at this endpoint
 - `/chunks` 
 - `/rules/*`
 
-#### `/` -- Endpoints directly exposed under the root path. This is identical to current behaviour.
+| Current             | Proposed          |
+| ------------------- | ----------------- |
+| `/api/prom/push`    | `/api/v1/push`    |
+| `/api/prom/read`    | `/api/v1/read`    |
+| `/api/prom/chunks`  | `/api/v1/chunks`  |
+| `/api/prom/rules/*` | `/api/v1/rules/*` |
 
-- `/config`
-- `/ring`
-- `/ruler_ring`
-- `/compactor_ring`
-- `/ha-tracker`
-- `/all_user_stats`
-- `/flush`
-- `/shutdown`
+
+#### Service Endpoints
+
+A number of endpoints currently exist that are not under the `/api/prom` prefix that provide basic web interfaces and trigger operations for cortex services. These endpoints will all be placed under a url with their service name as a prefix if it is applicable.
+
+| Current           | Proposed                      |
+| ----------------- | ----------------------------- |
+| `/config`         | `/config`                     |
+| `/ring`           | `/distributor/ring`           |
+| `/ruler_ring`     | `/ruler/ring`                 |
+| `/compactor_ring` | `/compactor/ring`             |
+| `/ha-tracker`     | `/distributor/ring`           |
+| `/all_user_stats` | `/distributor/all_user_stats` |
+| `/user_stats`     | `/distributor/user_stats`     |
+| `/flush`          | `/ingester/flush`             |
+| `/shutdown`       | `/ingester/shutdown`          |
 
 ### Path Versioning
 
@@ -53,7 +65,7 @@ Cortex will utilize path based versioning similar to both Prometheus and Alertma
 
 ### Backwards-Compatibility
 
-The new API endpoints and the current http prefix endpoints can be maintained concurrently. The original http prefix endpoints can maintained indefinitely or be phased out over time. Deprecation warnings can be added to the current API either when initialized or utilized.
+The new API endpoints and the current http prefix endpoints can be maintained concurrently. The flag to configure these endpoints will be maintained as `http.prefix`. This will allow us to roll out the new API without disrupting the current routing schema. The original http prefix endpoints can maintained indefinitely or be phased out over time. Deprecation warnings can be added to the current API either when initialized or utilized. This can be accomplished by injecting a middleware that logs a warning whenever a legacy API endpoint is used.
 
 In cases where Cortex is run as a single binary, the Alertmanager module will only be accesible using the new API.
 

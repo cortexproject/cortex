@@ -107,7 +107,7 @@ func (cfg *SchemaConfig) loadFromFile() error {
 // Validate the schema config and returns an error if the validation
 // doesn't pass
 func (cfg *SchemaConfig) Validate() error {
-	for i, _ := range cfg.Configs {
+	for i := range cfg.Configs {
 		periodCfg := &cfg.Configs[i]
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {

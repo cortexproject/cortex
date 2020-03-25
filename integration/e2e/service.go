@@ -518,20 +518,32 @@ func (s *HTTPService) NetworkHTTPEndpointFor(networkName string) string {
 	return s.NetworkEndpointFor(networkName, s.httpPort)
 }
 
+func getValue(m *io_prometheus_client.Metric) float64 {
+	if m.GetGauge() != nil {
+		return m.GetGauge().GetValue()
+	} else if m.GetCounter() != nil {
+		return m.GetCounter().GetValue()
+	} else if m.GetHistogram() != nil {
+		return m.GetHistogram().GetSampleSum()
+	} else if m.GetSummary() != nil {
+		return m.GetSummary().GetSampleSum()
+	} else {
+		return 0
+	}
+}
+
 func sumValues(family *io_prometheus_client.MetricFamily) float64 {
 	sum := 0.0
 	for _, m := range family.Metric {
-		if m.GetGauge() != nil {
-			sum += m.GetGauge().GetValue()
-		} else if m.GetCounter() != nil {
-			sum += m.GetCounter().GetValue()
-		} else if m.GetHistogram() != nil {
-			sum += m.GetHistogram().GetSampleSum()
-		} else if m.GetSummary() != nil {
-			sum += m.GetSummary().GetSampleSum()
-		}
+		sum += getValue(m)
 	}
 	return sum
+}
+
+func EqualsSingle(expected float64) func(float64) bool {
+	return func(v float64) bool {
+		return v == expected || (math.IsNaN(v) && math.IsNaN(expected))
+	}
 }
 
 // Equals is an isExpected function for WaitSumMetrics that returns true if given single sum is equals to given value.
@@ -630,4 +642,50 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 	}
 
 	return fmt.Errorf("unable to find metrics %s with expected values. LastValues: %v", metricNames, sums)
+}
+
+// WaitForMetricWithLabels waits until given metric with matching labels passes `okFn`. If function returns false,
+// wait continues. If no such matching metric can be found or wait times out, function returns error.
+func (s *HTTPService) WaitForMetricWithLabels(okFn func(v float64) bool, metricName string, expectedLabels map[string]string) error {
+	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
+		metrics, err := s.Metrics()
+		if err != nil {
+			return err
+		}
+
+		var tp expfmt.TextParser
+		families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
+		if err != nil {
+			return err
+		}
+
+		mf, ok := families[metricName]
+		if !ok {
+			return errors.Errorf("metric %s not found in %s metric page", metricName, s.name)
+		}
+
+		for _, m := range mf.GetMetric() {
+			// check if some metric has all required labels
+			metricLabels := map[string]string{}
+			for _, lp := range m.GetLabel() {
+				metricLabels[lp.GetName()] = lp.GetValue()
+			}
+
+			matches := true
+			for k, v := range expectedLabels {
+				if mv, ok := metricLabels[k]; !ok || mv != v {
+					matches = false
+					break
+				}
+			}
+
+			if matches && okFn(getValue(m)) {
+				return nil
+			}
+		}
+
+		s.retryBackoff.Wait()
+	}
+
+	return fmt.Errorf("unable to find metric %s with labels %v with expected value", metricName, expectedLabels)
 }

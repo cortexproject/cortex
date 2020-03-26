@@ -66,7 +66,7 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      moduleName `yaml:"target"`
+	Target      ModuleName `yaml:"target"`
 	AuthEnabled bool       `yaml:"auth_enabled"`
 	PrintConfig bool       `yaml:"-"`
 	HTTPPrefix  string     `yaml:"http_prefix"`
@@ -175,11 +175,11 @@ func (c *Config) Validate(log log.Logger) error {
 
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
-	target             moduleName
+	target             ModuleName
 	httpAuthMiddleware middleware.Interface
 
 	// set during initialization
-	serviceMap map[moduleName]services.Service
+	serviceMap map[ModuleName]services.Service
 
 	server        *server.Server
 	ring          *ring.Ring
@@ -265,8 +265,8 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 	}
 }
 
-func (t *Cortex) initModuleServices(cfg *Config, target moduleName) (map[moduleName]services.Service, error) {
-	servicesMap := map[moduleName]services.Service{}
+func (t *Cortex) initModuleServices(cfg *Config, target ModuleName) (map[ModuleName]services.Service, error) {
+	servicesMap := map[ModuleName]services.Service{}
 
 	// initialize all of our dependencies first
 	deps := orderedDeps(target)
@@ -410,7 +410,7 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
-func listDeps(m moduleName) []moduleName {
+func listDeps(m ModuleName) []ModuleName {
 	deps := modules[m].deps
 	for _, d := range modules[m].deps {
 		deps = append(deps, listDeps(d)...)
@@ -419,16 +419,16 @@ func listDeps(m moduleName) []moduleName {
 }
 
 // orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
-func orderedDeps(m moduleName) []moduleName {
+func orderedDeps(m ModuleName) []ModuleName {
 	deps := listDeps(m)
 
 	// get a unique list of moduleNames, with a flag for whether they have been added to our result
-	uniq := map[moduleName]bool{}
+	uniq := map[ModuleName]bool{}
 	for _, dep := range deps {
 		uniq[dep] = false
 	}
 
-	result := make([]moduleName, 0, len(uniq))
+	result := make([]ModuleName, 0, len(uniq))
 
 	// keep looping through all modules until they have all been added to the result.
 
@@ -456,8 +456,8 @@ func orderedDeps(m moduleName) []moduleName {
 }
 
 // find modules in the supplied list, that depend on mod
-func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
-	result := []moduleName(nil)
+func findInverseDependencies(mod ModuleName, mods []ModuleName) []ModuleName {
+	result := []ModuleName(nil)
 
 	for _, n := range mods {
 		for _, d := range modules[n].deps {

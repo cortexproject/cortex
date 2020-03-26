@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,10 +43,20 @@ var (
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples, excluding rejected and deduped samples.",
 	}, []string{"user"})
+	receivedMetadata = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_received_metadata_total",
+		Help:      "The total number of received metadata, excluding rejected.",
+	}, []string{"user"})
 	incomingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_samples_in_total",
 		Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+	}, []string{"user"})
+	incomingMetadata = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_metadata_in_total",
+		Help:      "The total number of metadata the have come in to the distributor, including rejected.",
 	}, []string{"user"})
 	nonHASamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -67,12 +78,12 @@ var (
 		Namespace: "cortex",
 		Name:      "distributor_ingester_appends_total",
 		Help:      "The total number of batch appends sent to ingesters.",
-	}, []string{"ingester"})
+	}, []string{"ingester", "type"})
 	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_ingester_append_failures_total",
 		Help:      "The total number of failed batch appends sent to ingesters.",
-	}, []string{"ingester"})
+	}, []string{"ingester", "type"})
 	ingesterQueries = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_ingester_queries_total",
@@ -93,6 +104,11 @@ var (
 		Help: "Unix timestamp of latest received sample per user.",
 	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
+)
+
+const (
+	typeSamples  = "samples"
+	typeMetadata = "metadata"
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -250,17 +266,29 @@ func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter
 	return shardByMetricName(userID, metricName), nil
 }
 
+func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
+	if d.cfg.ShardByAllLabels {
+		return shardByMetricName(userID, metricName)
+	}
+
+	return shardByUser(userID)
+}
+
 func shardByMetricName(userID string, metricName string) uint32 {
+	h := shardByUser(userID)
+	h = client.HashAdd32(h, metricName)
+	return h
+}
+
+func shardByUser(userID string) uint32 {
 	h := client.HashNew32()
 	h = client.HashAdd32(h, userID)
-	h = client.HashAdd32(h, metricName)
 	return h
 }
 
 // This function generates different values for different order of same labels.
 func shardByAllLabels(userID string, labels []client.LabelAdapter) uint32 {
-	h := client.HashNew32()
-	h = client.HashAdd32(h, userID)
+	h := shardByUser(userID)
 	for _, label := range labels {
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
@@ -326,6 +354,14 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 		nil
 }
 
+func (d *Distributor) validateMetadata(m *ingester_client.MetricMetadata, userID string) error {
+	if err := validation.ValidateMetadata(d.limits, userID, m); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -342,111 +378,122 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	// Count the total number of metadata in.
+	incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
-	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
-		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
-		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
-		if err != nil {
-			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
-				// These samples have been deduped.
-				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
+	// A WriteRequest can now include samples and metadata. However, at the moment of writing,
+	// we can only receive samples and no metadata or metadata and no samples.
+	// For each timeseries or samples, we compute a hash to distribute across ingesters;
+	// check each sample/metadata and discard if outside limits.
+	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
+	validatedMetadata := make([]client.PreallocMetricMetadata, 0, len(req.Metadata))
+	metadataKeys := make([]uint32, 0, len(req.Metadata))
+	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	validatedSamples := 0
+
+	if len(req.Timeseries) > 0 {
+		if d.limits.AcceptHASamples(userID) {
+			cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
+			removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
+			if err != nil {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
+					// These samples have been deduped.
+					dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
+				}
+
+				// Ensure the request slice is reused if the series get deduped.
+				client.ReuseSlice(req.Timeseries, req.Metadata)
+
+				return nil, err
+			}
+			// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
+			if !removeReplica {
+				nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
+			}
+		}
+
+		latestSampleTimestampMs := int64(0)
+		defer func() {
+			// Update this metric even in case of errors.
+			if latestSampleTimestampMs > 0 {
+				latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+			}
+		}()
+
+		// For each timeseries, compute a hash to distribute across ingesters;
+		// check each sample and discard if outside limits.
+		for _, ts := range req.Timeseries {
+			// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+			if len(ts.Samples) > 0 {
+				latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 			}
 
-			// Ensure the request slice is reused if the series get deduped.
-			client.ReuseSlice(req.Timeseries)
+			// If we found both the cluster and replica labels, we only want to include the cluster label when
+			// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+			// series we're trying to dedupe when HA tracking moves over to a different replica.
+			if removeReplica {
+				removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+			}
 
-			return nil, err
-		}
-		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
-		if !removeReplica {
-			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
+			for _, labelName := range d.limits.DropLabels(userID) {
+				removeLabel(labelName, &ts.Labels)
+			}
+
+			if len(ts.Labels) == 0 {
+				continue
+			}
+
+			// We rely on sorted labels in different places:
+			// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
+			// different tokens, which is bad.
+			// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
+			// later in the validation phase, we ignore them here.
+			sortLabelsIfNeeded(ts.Labels)
+
+			// Generate the sharding token based on the series labels without the HA replica
+			// label and dropped labels (if any)
+			key, err := d.tokenForLabels(userID, ts.Labels)
+			if err != nil {
+				return nil, err
+			}
+
+			validatedSeries, err := d.validateSeries(ts, userID)
+
+			// Errors in validation are considered non-fatal, as one series in a request may contain
+			// invalid data but all the remaining series could be perfectly valid.
+			if err != nil && firstPartialErr == nil {
+				firstPartialErr = err
+			}
+
+			// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
+			if validatedSeries == emptyPreallocSeries {
+				continue
+			}
+
+			seriesKeys = append(seriesKeys, key)
+			validatedTimeseries = append(validatedTimeseries, validatedSeries)
+			validatedSamples += len(ts.Samples)
 		}
 	}
 
-	latestSampleTimestampMs := int64(0)
-	defer func() {
-		// Update this metric even in case of errors.
-		if latestSampleTimestampMs > 0 {
-			latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+	if len(req.Metadata) > 0 {
+		for _, m := range req.Metadata {
+			key := d.tokenForMetadata(userID, m.MetricName)
+
+			err := d.validateMetadata(m.MetricMetadata, userID)
+
+			if err != nil {
+				// TODO: save the error to a partial error?
+				continue
+			}
+
+			metadataKeys = append(metadataKeys, key)
+			validatedMetadata = append(validatedMetadata, m)
 		}
-	}()
-
-	// For each timeseries, compute a hash to distribute across ingesters;
-	// check each sample and discard if outside limits.
-	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
-	keys := make([]uint32, 0, len(req.Timeseries))
-	validatedSamples := 0
-	for _, ts := range req.Timeseries {
-		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
-		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
-		}
-
-		// If we found both the cluster and replica labels, we only want to include the cluster label when
-		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-		// series we're trying to dedupe when HA tracking moves over to a different replica.
-		if removeReplica {
-			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-		}
-
-		for _, labelName := range d.limits.DropLabels(userID) {
-			removeLabel(labelName, &ts.Labels)
-		}
-
-		if len(ts.Labels) == 0 {
-			continue
-		}
-
-		// We rely on sorted labels in different places:
-		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
-		// different tokens, which is bad.
-		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
-		// later in the validation phase, we ignore them here.
-		sortLabelsIfNeeded(ts.Labels)
-
-		// Generate the sharding token based on the series labels without the HA replica
-		// label and dropped labels (if any)
-		key, err := d.tokenForLabels(userID, ts.Labels)
-		if err != nil {
-			return nil, err
-		}
-
-		validatedSeries, err := d.validateSeries(ts, userID)
-
-		// Errors in validation are considered non-fatal, as one series in a request may contain
-		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil && firstPartialErr == nil {
-			firstPartialErr = err
-		}
-
-		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
-		if validatedSeries == emptyPreallocSeries {
-			continue
-		}
-
-		keys = append(keys, key)
-		validatedTimeseries = append(validatedTimeseries, validatedSeries)
-		validatedSamples += len(ts.Samples)
 	}
+
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
-
-	if len(keys) == 0 {
-		// Ensure the request slice is reused if there's no series passing the validation.
-		client.ReuseSlice(req.Timeseries)
-
-		return &client.WriteResponse{}, firstPartialErr
-	}
-
-	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamples) {
-		// Ensure the request slice is reused if the request is rate limited.
-		client.ReuseSlice(req.Timeseries)
-
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
-	}
+	receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	var subRing ring.ReadRing
 	subRing = d.ingestersRing
@@ -460,23 +507,70 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
-	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
-		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
-		for _, i := range indexes {
-			timeseries = append(timeseries, validatedTimeseries[i])
-		}
+	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
+		// Ensure the request slice is reused if there's no series or metadata passing the validation.
+		client.ReuseSlice(req.Timeseries, req.Metadata)
 
-		// Use a background context to make sure all ingesters get samples even if we return early
-		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-		defer cancel()
-		localCtx = user.InjectOrgID(localCtx, userID)
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			localCtx = opentracing.ContextWithSpan(localCtx, sp)
+		return &client.WriteResponse{}, firstPartialErr
+	}
+
+	now := time.Now()
+	//TODO: might be a problem for customers over the tipping point. Maybe increase limits by around 5 - 10%?
+	totalN := validatedSamples + len(validatedMetadata)
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
+		// Ensure the request slice is reused if the request is rate limited.
+		client.ReuseSlice(req.Timeseries, req.Metadata)
+
+		// Return a 4xx here to have the client discard the data and not retry. If a client
+		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), numSamples, len(req.Metadata))
+	}
+
+	if len(metadataKeys) > 0 {
+		err = ring.DoBatch(ctx, subRing, metadataKeys, func(ingester ring.IngesterDesc, indexes []int) error {
+			metadata := make([]client.PreallocMetricMetadata, 0, len(indexes))
+			for _, i := range indexes {
+				metadata = append(metadata, req.Metadata[i])
+			}
+
+			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+			defer cancel()
+			localCtx = user.InjectUserID(localCtx, userID)
+
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				localCtx = opentracing.ContextWithSpan(localCtx, sp)
+			}
+
+			return d.sendMetadata(localCtx, ingester, metadata)
+		}, func() { client.ReuseSlice(nil, req.Metadata) })
+		if err != nil {
+			// Metadata is a best-effort approach so we consider failures non-fatal, log them, and move on.
+			logger := util.WithContext(ctx, util.Logger)
+			level.Error(logger).Log("err", err)
 		}
-		return d.sendSamples(localCtx, ingester, timeseries)
-	}, func() { client.ReuseSlice(req.Timeseries) })
-	if err != nil {
-		return nil, err
+	}
+
+	if len(seriesKeys) > 0 {
+		err = ring.DoBatch(ctx, subRing, seriesKeys, func(ingester ring.IngesterDesc, indexes []int) error {
+			timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
+			for _, i := range indexes {
+				timeseries = append(timeseries, validatedTimeseries[i])
+			}
+
+			// Use a background context to make sure all ingesters get samples even if we return early
+			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+			defer cancel()
+			localCtx = user.InjectOrgID(localCtx, userID)
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				localCtx = opentracing.ContextWithSpan(localCtx, sp)
+			}
+			return d.sendSamples(localCtx, ingester, timeseries)
+		}, func() { client.ReuseSlice(req.Timeseries, nil) })
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &client.WriteResponse{}, firstPartialErr
 }
@@ -515,9 +609,28 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 	}
 	_, err = c.Push(ctx, &req)
 
-	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
 	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+	}
+	return err
+}
+
+func (d *Distributor) sendMetadata(ctx context.Context, ingester ring.IngesterDesc, metadata []client.PreallocMetricMetadata) error {
+	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
+	if err != nil {
+		return err
+	}
+	c := h.(ingester_client.IngesterClient)
+
+	req := client.WriteRequest{
+		Metadata: metadata,
+	}
+	_, err = c.Push(ctx, &req)
+
+	ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+	if err != nil {
+		ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
 	}
 	return err
 }

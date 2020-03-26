@@ -61,7 +61,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerpr
 	if ok {
 		// FP exists in memory, but is it for the same metric?
 		if metric.equal(s.metric) {
-			// Yupp. We are done.
+			// Yup. We are done.
 			return fp
 		}
 		// Collision detected!

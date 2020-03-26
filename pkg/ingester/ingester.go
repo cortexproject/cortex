@@ -350,7 +350,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries)
+	defer client.ReuseSlice(req.Timeseries, req.Metadata)
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -370,6 +370,13 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		} else {
 			record.Samples = record.Samples[:0]
 		}
+	}
+
+	if len(req.Metadata) > 0 {
+		// Given requests can only contain either metadata or samples, no-op if there is metadata for now.
+		logger := util.WithContext(ctx, util.Logger)
+		level.Debug(logger).Log("msg", "metadata received in the ingester", "count", len(req.Metadata))
+		return &client.WriteResponse{}, nil
 	}
 
 	for _, ts := range req.Timeseries {

@@ -13,7 +13,7 @@ import (
 const seriesMapShards = 128
 
 // seriesMap maps fingerprints to memory series. All its methods are
-// goroutine-safe. A seriesMap is effectively is a goroutine-safe version of
+// goroutine-safe. A seriesMap is effectively a goroutine-safe version of
 // map[model.Fingerprint]*memorySeries.
 type seriesMap struct {
 	size   int32

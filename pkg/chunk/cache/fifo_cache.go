@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -79,15 +80,17 @@ var (
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
 	MaxSizeBytes int           `yaml:"max_size_bytes"`
-	MaxSizeItems int           `yaml:"size"`
+	MaxSizeItems int           `yaml:"max_size_items"`
 	Validity     time.Duration `yaml:"validity"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
-	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.size", 0, description+"The number of entries to cache. Deprecated, use fifocache.max-size-bytes instead.")
+	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
+
+	flagext.DeprecatedFlag(f, prefix+"fifocache.size", "This flag has been renamed to "+prefix+"fifocache.max-size-items")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to

@@ -45,39 +45,40 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-type moduleName string
+// ModuleName is used to describe a running module
+type ModuleName string
 
 // The various modules that make up Cortex.
 const (
-	Ring                moduleName = "ring"
-	RuntimeConfig       moduleName = "runtime-config"
-	Overrides           moduleName = "overrides"
-	Server              moduleName = "server"
-	Distributor         moduleName = "distributor"
-	Ingester            moduleName = "ingester"
-	Flusher             moduleName = "flusher"
-	Querier             moduleName = "querier"
-	StoreQueryable      moduleName = "store-queryable"
-	QueryFrontend       moduleName = "query-frontend"
-	Store               moduleName = "store"
-	DeleteRequestsStore moduleName = "delete-requests-store"
-	TableManager        moduleName = "table-manager"
-	Ruler               moduleName = "ruler"
-	Configs             moduleName = "configs"
-	AlertManager        moduleName = "alertmanager"
-	Compactor           moduleName = "compactor"
-	StoreGateway        moduleName = "store-gateway"
-	MemberlistKV        moduleName = "memberlist-kv"
-	DataPurger          moduleName = "data-purger"
-	All                 moduleName = "all"
+	Ring                ModuleName = "ring"
+	RuntimeConfig       ModuleName = "runtime-config"
+	Overrides           ModuleName = "overrides"
+	Server              ModuleName = "server"
+	Distributor         ModuleName = "distributor"
+	Ingester            ModuleName = "ingester"
+	Flusher             ModuleName = "flusher"
+	Querier             ModuleName = "querier"
+	StoreQueryable      ModuleName = "store-queryable"
+	QueryFrontend       ModuleName = "query-frontend"
+	Store               ModuleName = "store"
+	DeleteRequestsStore ModuleName = "delete-requests-store"
+	TableManager        ModuleName = "table-manager"
+	Ruler               ModuleName = "ruler"
+	Configs             ModuleName = "configs"
+	AlertManager        ModuleName = "alertmanager"
+	Compactor           ModuleName = "compactor"
+	StoreGateway        ModuleName = "store-gateway"
+	MemberlistKV        ModuleName = "memberlist-kv"
+	DataPurger          ModuleName = "data-purger"
+	All                 ModuleName = "all"
 )
 
-func (m moduleName) String() string {
+func (m ModuleName) String() string {
 	return string(m)
 }
 
-func (m *moduleName) Set(s string) error {
-	l := moduleName(strings.ToLower(s))
+func (m *ModuleName) Set(s string) error {
+	l := ModuleName(strings.ToLower(s))
 	if _, ok := modules[l]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", s)
 	}
@@ -85,11 +86,11 @@ func (m *moduleName) Set(s string) error {
 	return nil
 }
 
-func (m moduleName) MarshalYAML() (interface{}, error) {
+func (m ModuleName) MarshalYAML() (interface{}, error) {
 	return m.String(), nil
 }
 
-func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m *ModuleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -549,7 +550,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 }
 
 type module struct {
-	deps []moduleName
+	deps []ModuleName
 
 	// service for this module (can return nil)
 	service func(t *Cortex, cfg *Config) (services.Service, error)
@@ -559,7 +560,7 @@ type module struct {
 	wrappedService func(t *Cortex, cfg *Config) (services.Service, error)
 }
 
-var modules = map[moduleName]module{
+var modules = map[ModuleName]module{
 	Server: {
 		// we cannot use 'wrappedService', as stopped Server service is currently a signal to Cortex
 		// that it should shutdown. If we used wrappedService, it wouldn't stop until
@@ -576,22 +577,22 @@ var modules = map[moduleName]module{
 	},
 
 	Ring: {
-		deps:           []moduleName{Server, RuntimeConfig, MemberlistKV},
+		deps:           []ModuleName{Server, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initRing,
 	},
 
 	Overrides: {
-		deps:           []moduleName{RuntimeConfig},
+		deps:           []ModuleName{RuntimeConfig},
 		wrappedService: (*Cortex).initOverrides,
 	},
 
 	Distributor: {
-		deps:           []moduleName{Ring, Server, Overrides},
+		deps:           []ModuleName{Ring, Server, Overrides},
 		wrappedService: (*Cortex).initDistributor,
 	},
 
 	Store: {
-		deps:           []moduleName{Overrides},
+		deps:           []ModuleName{Overrides},
 		wrappedService: (*Cortex).initStore,
 	},
 
@@ -600,66 +601,66 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:           []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
+		deps:           []ModuleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initIngester,
 	},
 
 	Flusher: {
-		deps:           []moduleName{Store, Server},
+		deps:           []ModuleName{Store, Server},
 		wrappedService: (*Cortex).initFlusher,
 	},
 
 	Querier: {
-		deps:           []moduleName{Distributor, Store, Ring, Server, StoreQueryable},
+		deps:           []ModuleName{Distributor, Store, Ring, Server, StoreQueryable},
 		wrappedService: (*Cortex).initQuerier,
 	},
 
 	StoreQueryable: {
-		deps:           []moduleName{Store, DeleteRequestsStore},
+		deps:           []ModuleName{Store, DeleteRequestsStore},
 		wrappedService: (*Cortex).initStoreQueryable,
 	},
 
 	QueryFrontend: {
-		deps:           []moduleName{Server, Overrides},
+		deps:           []ModuleName{Server, Overrides},
 		wrappedService: (*Cortex).initQueryFrontend,
 	},
 
 	TableManager: {
-		deps:           []moduleName{Server},
+		deps:           []ModuleName{Server},
 		wrappedService: (*Cortex).initTableManager,
 	},
 
 	Ruler: {
-		deps:           []moduleName{Distributor, Store, StoreQueryable},
+		deps:           []ModuleName{Distributor, Store, StoreQueryable},
 		wrappedService: (*Cortex).initRuler,
 	},
 
 	Configs: {
-		deps:           []moduleName{Server},
+		deps:           []ModuleName{Server},
 		wrappedService: (*Cortex).initConfig,
 	},
 
 	AlertManager: {
-		deps:           []moduleName{Server},
+		deps:           []ModuleName{Server},
 		wrappedService: (*Cortex).initAlertManager,
 	},
 
 	Compactor: {
-		deps:           []moduleName{Server},
+		deps:           []ModuleName{Server},
 		wrappedService: (*Cortex).initCompactor,
 	},
 
 	StoreGateway: {
-		deps:           []moduleName{Server},
+		deps:           []ModuleName{Server},
 		wrappedService: (*Cortex).initStoreGateway,
 	},
 
 	DataPurger: {
-		deps:           []moduleName{Store, DeleteRequestsStore, Server},
+		deps:           []ModuleName{Store, DeleteRequestsStore, Server},
 		wrappedService: (*Cortex).initDataPurger,
 	},
 
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		deps: []ModuleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

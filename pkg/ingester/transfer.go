@@ -36,62 +36,74 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	xfer := func() error {
 		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
 
-		for {
-			wireSeries, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return errors.Wrap(err, "TransferChunks: Recv")
-			}
-
-			// We can't send "extra" fields with a streaming call, so we repeat
-			// wireSeries.FromIngesterId and assume it is the same every time
-			// round this loop.
-			if fromIngesterID == "" {
-				fromIngesterID = wireSeries.FromIngesterId
-				level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
-
-				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
-				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
-				if err != nil {
-					return errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+		// run as an anonymous function so only a single error needs handling if returned
+		err := func() error {
+			for {
+				wireSeries, err := stream.Recv()
+				if err == io.EOF {
+					break
 				}
+				if err != nil {
+					return errors.Wrap(err, "TransferChunks: Recv")
+				}
+
+				// We can't send "extra" fields with a streaming call, so we repeat
+				// wireSeries.FromIngesterId and assume it is the same every time
+				// round this loop.
+				if fromIngesterID == "" {
+					fromIngesterID = wireSeries.FromIngesterId
+					level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+
+					// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
+					err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
+					if err != nil {
+						return errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+					}
+				}
+				descs, err := fromWireChunks(wireSeries.Chunks)
+				if err != nil {
+					return errors.Wrap(err, "TransferChunks: fromWireChunks")
+				}
+
+				state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
+				if err != nil {
+					return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+				}
+				prevNumChunks := len(series.chunkDescs)
+
+				err = series.setChunks(descs)
+				state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
+				if err != nil {
+					return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+				}
+
+				seriesReceived++
+				i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+				i.metrics.receivedChunks.Add(float64(len(descs)))
 			}
-			descs, err := fromWireChunks(wireSeries.Chunks)
-			if err != nil {
-				return errors.Wrap(err, "TransferChunks: fromWireChunks")
+
+			if seriesReceived == 0 {
+				level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
+				return fmt.Errorf("TransferChunks: no series")
 			}
 
-			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
-			if err != nil {
-				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
-			}
-			prevNumChunks := len(series.chunkDescs)
-
-			err = series.setChunks(descs)
-			state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
-			if err != nil {
-				return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+			if fromIngesterID == "" {
+				level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
+				return fmt.Errorf("no ingester id")
 			}
 
-			seriesReceived++
-			i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-			i.metrics.receivedChunks.Add(float64(len(descs)))
-		}
+			if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
+				return errors.Wrap(err, "TransferChunks: ClaimTokensFor")
+			}
 
-		if seriesReceived == 0 {
-			level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
-			return fmt.Errorf("TransferChunks: no series")
-		}
+			return nil
+		}()
 
-		if fromIngesterID == "" {
-			level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
-			return fmt.Errorf("no ingester id")
-		}
-
-		if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
-			return errors.Wrap(err, "TransferChunks: ClaimTokensFor")
+		if err != nil {
+			// If an error occurs during the transfer and the user state is to be discarded,
+			// ensure the metrics it exports reflect this.
+			userStates.teardown()
+			return err
 		}
 
 		i.userStatesMtx.Lock()

@@ -71,7 +71,7 @@ func TestIngesterRestart(t *testing.T) {
 	config.LifecyclerConfig.SkipUnregister = true
 
 	{
-		_, ingester := newTestStore(t, config, clientConfig, limits)
+		_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 		time.Sleep(100 * time.Millisecond)
 		// doesn't actually unregister due to skipUnregister: true
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
@@ -82,7 +82,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		_, ingester := newTestStore(t, config, clientConfig, limits)
+		_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 		time.Sleep(100 * time.Millisecond)
 		// doesn't actually unregister due to skipUnregister: true
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))

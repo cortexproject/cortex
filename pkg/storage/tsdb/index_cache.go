@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
+	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -26,7 +27,7 @@ const (
 	// IndexCacheBackendDefault is the value for the default index cache backend.
 	IndexCacheBackendDefault = IndexCacheBackendInMemory
 
-	defaultMaxItemSize = storecache.Bytes(128 * units.MiB)
+	defaultMaxItemSize = model.Bytes(128 * units.MiB)
 )
 
 var (
@@ -37,9 +38,10 @@ var (
 )
 
 type IndexCacheConfig struct {
-	Backend   string                    `yaml:"backend"`
-	InMemory  InMemoryIndexCacheConfig  `yaml:"inmemory"`
-	Memcached MemcachedIndexCacheConfig `yaml:"memcached"`
+	Backend             string                    `yaml:"backend"`
+	InMemory            InMemoryIndexCacheConfig  `yaml:"inmemory"`
+	Memcached           MemcachedIndexCacheConfig `yaml:"memcached"`
+	PostingsCompression bool                      `yaml:"postings_compression_enabled"`
 }
 
 func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
@@ -48,6 +50,7 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. Supported values: %s.", strings.Join(supportedIndexCacheBackends, ", ")))
+	f.BoolVar(&cfg.PostingsCompression, "postings-compression-enabled", false, "Compress postings before storing them to postings cache.")
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
@@ -126,7 +129,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
-	maxCacheSize := storecache.Bytes(cfg.MaxSizeBytes)
+	maxCacheSize := model.Bytes(cfg.MaxSizeBytes)
 
 	// Calculate the max item size.
 	maxItemSize := defaultMaxItemSize

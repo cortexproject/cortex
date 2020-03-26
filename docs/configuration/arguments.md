@@ -155,7 +155,7 @@ prefix these flags with `distributor.ha-tracker.`
 
 - `consul.hostname`
    Hostname and port of Consul.
-- `consul.acltoken`
+- `consul.acl-token`
    ACL token used to interact with Consul.
 - `consul.client-timeout`
    HTTP timeout when talking to Consul.

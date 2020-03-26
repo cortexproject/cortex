@@ -100,7 +100,7 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store AlertStoreConfig `yaml:"store"`
+	Store AlertStoreConfig `yaml:"storage"`
 }
 
 const defaultClusterAddr = "0.0.0.0:9094"

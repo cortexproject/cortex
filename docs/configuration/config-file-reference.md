@@ -554,13 +554,13 @@ lifecycler:
 
 # Maximum chunk idle time before flushing.
 # CLI flag: -ingester.max-chunk-idle
-[max_chunk_idle: <duration> | default = 5m0s]
+[max_chunk_idle_time: <duration> | default = 5m0s]
 
 # Maximum chunk idle time for chunks terminating in stale markers before
 # flushing. 0 disables it and a stale series is not flushed until the
 # max-chunk-idle timeout is reached.
 # CLI flag: -ingester.max-stale-chunk-idle
-[max_stale_chunk_idle: <duration> | default = 0s]
+[max_stale_chunk_idle_time: <duration> | default = 0s]
 
 # Timeout for individual flush operations.
 # CLI flag: -ingester.flush-op-timeout
@@ -570,7 +570,7 @@ lifecycler:
 # CLI flag: -ingester.max-chunk-age
 [max_chunk_age: <duration> | default = 12h0m0s]
 
-# Range of time to subtract from MaxChunkAge to spread out flushes
+# Range of time to subtract from -ingester.max-chunk-age to spread out flushes
 # CLI flag: -ingester.chunk-age-jitter
 [chunk_age_jitter: <duration> | default = 20m0s]
 
@@ -578,7 +578,8 @@ lifecycler:
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 50]
 
-# If true, spread series flushes across the whole period of MaxChunkAge
+# If true, spread series flushes across the whole period of
+# -ingester.max-chunk-age.
 # CLI flag: -ingester.spread-flushes
 [spread_flushes: <boolean> | default = false]
 
@@ -761,7 +762,7 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m0s]
 
-store_config:
+storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = "configdb"]
@@ -854,7 +855,7 @@ store_config:
 
 # Use DNS SRV records to discover alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
-[alertmanager_discovery: <boolean> | default = false]
+[enable_alertmanager_discovery: <boolean> | default = false]
 
 # How long to wait between refreshing alertmanager hosts.
 # CLI flag: -ruler.alertmanager-refresh-interval
@@ -862,7 +863,7 @@ store_config:
 
 # If enabled requests to alertmanager will utilize the V2 API.
 # CLI flag: -ruler.alertmanager-use-v2
-[alertmanager_use_v2: <boolean> | default = false]
+[enable_alertmanager_v2: <boolean> | default = false]
 
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
@@ -987,7 +988,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.auto-webhook-root
 [auto_webhook_root: <string> | default = ""]
 
-store:
+storage:
   # Type of backend to use to store alertmanager configs. Supported values are:
   # "configdb", "local".
   # CLI flag: -alertmanager.storage.type
@@ -1345,7 +1346,7 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 [engine: <string> | default = "chunks"]
 
 aws:
-  dynamodbconfig:
+  dynamodb:
     # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
     # is specified as a host, proper endpoint will be deduced. Use
     # inmemory:///<table-name> to use a mock in-memory implementation.
@@ -1371,7 +1372,7 @@ aws:
 
       # Queue length above which we will scale up capacity
       # CLI flag: -metrics.target-queue-length
-      [target_queue_len: <int> | default = 100000]
+      [target_queue_length: <int> | default = 100000]
 
       # Scale up capacity by this multiple
       # CLI flag: -metrics.scale-up-factor
@@ -1403,11 +1404,11 @@ aws:
 
     # Number of chunks to group together to parallelise fetches (zero to
     # disable)
-    # CLI flag: -dynamodb.chunk.gang.size
+    # CLI flag: -dynamodb.chunk-gang-size
     [chunk_gang_size: <int> | default = 10]
 
     # Max number of chunk-get operations to start in parallel
-    # CLI flag: -dynamodb.chunk.get.max.parallelism
+    # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
   # S3 endpoint URL with escaped Key and Secret encoded. If only region is
@@ -1820,9 +1821,9 @@ grpc_client_config:
 The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
 
 ```yaml
-# Address of query frontend service.
+# Address of query frontend service, in host:port format.
 # CLI flag: -querier.frontend-address
-[address: <string> | default = ""]
+[frontend_address: <string> | default = ""]
 
 # Number of simultaneous queries to process.
 # CLI flag: -querier.worker-parallelism
@@ -1917,7 +1918,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 [host: <string> | default = "localhost:8500"]
 
 # ACL Token used to interact with Consul.
-# CLI flag: -<prefix>.consul.acltoken
+# CLI flag: -<prefix>.consul.acl-token
 [acl_token: <string> | default = ""]
 
 # HTTP timeout when talking to Consul

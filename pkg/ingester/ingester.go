@@ -50,8 +50,8 @@ type Config struct {
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration `yaml:"flush_period"`
 	RetainPeriod      time.Duration `yaml:"retain_period"`
-	MaxChunkIdle      time.Duration `yaml:"max_chunk_idle"`
-	MaxStaleChunkIdle time.Duration `yaml:"max_stale_chunk_idle"`
+	MaxChunkIdle      time.Duration `yaml:"max_chunk_idle_time"`
+	MaxStaleChunkIdle time.Duration `yaml:"max_stale_chunk_idle_time"`
 	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
 	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
 	ChunkAgeJitter    time.Duration `yaml:"chunk_age_jitter"`
@@ -84,8 +84,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxStaleChunkIdle, "ingester.max-stale-chunk-idle", 0, "Maximum chunk idle time for chunks terminating in stale markers before flushing. 0 disables it and a stale series is not flushed until the max-chunk-idle timeout is reached.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
-	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
-	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
+	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from -ingester.max-chunk-age to spread out flushes")
+	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of -ingester.max-chunk-age.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 }
@@ -806,9 +806,8 @@ func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_heal
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
-// CheckReady is the readiness handler is used to indicate to k8s when the ingesters
-// are ready for the addition removal of another ingester. Returns 204 when the
-// ingester is ready, 500 otherwise.
+// CheckReady is the readiness handler used to indicate to k8s when the ingesters
+// are ready for the addition or removal of another ingester.
 func (i *Ingester) CheckReady(ctx context.Context) error {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return fmt.Errorf("ingester not ready: %v", err)

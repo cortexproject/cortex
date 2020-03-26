@@ -64,18 +64,18 @@ type Config struct {
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"store_config"`
+	StoreConfig RuleStoreConfig `yaml:"storage"`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
 	AlertmanagerURL flagext.URLValue `yaml:"alertmanager_url"`
 	// Whether to use DNS SRV records to discover alertmanagers.
-	AlertmanagerDiscovery bool `yaml:"alertmanager_discovery"`
+	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
 	// How long to wait between refreshing the list of alertmanagers based on DNS service discovery.
 	AlertmanagerRefreshInterval time.Duration `yaml:"alertmanager_refresh_interval"`
 	// Enables the ruler notifier to use the alertmananger V2 API.
-	AlertmanangerEnableV2API bool `yaml:"alertmanager_use_v2"`
+	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.

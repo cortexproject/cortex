@@ -42,7 +42,7 @@ const (
 // MetricsAutoScalingConfig holds parameters to configure how it works
 type MetricsAutoScalingConfig struct {
 	URL              string  `yaml:"url"`                   // URL to contact Prometheus store on
-	TargetQueueLen   int64   `yaml:"target_queue_len"`      // Queue length above which we will scale up capacity
+	TargetQueueLen   int64   `yaml:"target_queue_length"`   // Queue length above which we will scale up capacity
 	ScaleUpFactor    float64 `yaml:"scale_up_factor"`       // Scale up capacity by this multiple
 	MinThrottling    float64 `yaml:"ignore_throttle_below"` // Ignore throttling below this level
 	QueueLengthQuery string  `yaml:"queue_length_query"`    // Promql query to fetch ingester queue length

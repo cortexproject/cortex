@@ -16,11 +16,24 @@ func TestFifoCacheEviction(t *testing.T) {
 		cnt       = 10
 		overwrite = 5
 	)
-	entryTemplate := &cacheEntry{
+	itemTemplate := &cacheEntry{
 		key:   "00",
 		value: 0,
 	}
-	c := NewFifoCache("test1", FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute})
+	testFifoCacheEviction(t, "test-memory-eviction", FifoCacheConfig{MaxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute})
+	testFifoCacheEviction(t, "test-items-eviction", FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute})
+}
+
+func testFifoCacheEviction(t *testing.T, testname string, cfg FifoCacheConfig) {
+	const (
+		cnt       = 10
+		overwrite = 5
+	)
+	itemTemplate := &cacheEntry{
+		key:   "00",
+		value: 0,
+	}
+	c := NewFifoCache(testname, FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute})
 	ctx := context.Background()
 
 	// Check put / get works
@@ -40,7 +53,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 	for i := 0; i < cnt; i++ {
 		value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
@@ -55,7 +68,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 	// Check evictions
 	keys = []string{}
@@ -74,7 +87,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 	for i := 0; i < cnt-overwrite; i++ {
 		_, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
@@ -93,7 +106,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 	// Check updates work
 	keys = []string{}
@@ -118,23 +131,27 @@ func TestFifoCacheEviction(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-overwrite))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(entryTemplate)))
+	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+	c.Stop()
 }
 
 func TestFifoCacheExpiry(t *testing.T) {
-	key1, key2, key3, key4 := "01", "02", "03", "04"
-	data1, data2, data3 := []float64{1.0, 2.0, 3.0}, "testdata", []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	entries := []*cacheEntry{
-		{key: key1, value: data1},
-		{key: key2, value: data2},
-		{key: key3, value: data3},
-	}
+	keys := []string{"01", "02", "03"}
+	data := []interface{}{[]float64{1.0, 2.0, 3.0}, "testdata", []byte{1, 2, 3, 4, 5, 6, 7, 8}}
 	var memorySz int
-	for _, entry := range entries {
-		memorySz += sizeOf(entry)
+	for i := range keys {
+		memorySz += sizeOf(&cacheEntry{key: keys[i], value: data[i]})
 	}
+	testFifoCacheExpiry(t, "test-memory-expiry", FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond}, keys, data, memorySz)
+	testFifoCacheExpiry(t, "test-items-expiry", FifoCacheConfig{MaxSizeItems: 3, Validity: 5 * time.Millisecond}, keys, data, memorySz)
+}
 
-	c := NewFifoCache("test2", FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond})
+func testFifoCacheExpiry(t *testing.T, testname string, cfg FifoCacheConfig, keys []string, data []interface{}, memorySz int) {
+	key1, key2, key3, key4 := keys[0], keys[1], keys[2], "04"
+	data1, data2, data3 := data[0], data[1], data[2]
+
+	c := NewFifoCache(testname, cfg)
 	ctx := context.Background()
 
 	c.Put(ctx,
@@ -157,7 +174,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
 	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
 
-	// Expire the entry.
+	// Expire the item.
 	time.Sleep(5 * time.Millisecond)
 	_, ok = c.Get(ctx, key1)
 	require.False(t, ok)
@@ -170,4 +187,6 @@ func TestFifoCacheExpiry(t *testing.T) {
 	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(2))
 	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(1))
 	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
+
+	c.Stop()
 }

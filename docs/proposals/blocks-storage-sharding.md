@@ -40,7 +40,7 @@ It's important to outline that the sync takes time (typically will have to re-sc
 
 When a querier executes a query, it will need to fetch series both from ingesters and the store-gateway instances.
 
-For a given query, the number of blocks to query is expected to be low, especially if the Cortex cluster is running the `query-frontend` with a `24h` query split interval. In this scenario, whatever is the client's query time range, the `query-frontend` will split the client's query into sub-queries each with up to `24h` time range and the querier will likely hit not more than 1 block per sub-query (except for the last 24h for which blocks may have not been compacted yet).
+For a given query, the number of blocks to query is expected to be low, especially if the Cortex cluster is running the `query-frontend` with a `24h` query split interval. In this scenario, whatever is the client's query time range, the `query-frontend` will split the client's query into partitioned queries each with up to `24h` time range and the querier will likely hit not more than 1 block per partitioned query (except for the last 24h for which blocks may have not been compacted yet).
 
 Given this assumption, we want to avoid sending every query to every store-gateway instance. The querier should be able to take an informed decision about the minimum subset of store-gateway instances which needs to query given a time range.
 

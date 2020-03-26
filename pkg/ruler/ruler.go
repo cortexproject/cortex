@@ -57,23 +57,35 @@ var (
 
 // Config is the configuration for the recording rules server.
 type Config struct {
-	ExternalURL        flagext.URLValue // This is used for template expansion in alerts; must be a valid URL
-	EvaluationInterval time.Duration    // How frequently to evaluate rules by default.
-	PollInterval       time.Duration    // How frequently to poll for updated rules
-	StoreConfig        RuleStoreConfig  // Rule Storage and Polling configuration
-	RulePath           string           // Path to store rule files for prom manager
+	// This is used for template expansion in alerts; must be a valid URL.
+	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// How frequently to evaluate rules by default.
+	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
+	// How frequently to poll for updated rules.
+	PollInterval time.Duration `yaml:"poll_interval"`
+	// Rule Storage and Polling configuration.
+	StoreConfig RuleStoreConfig `yaml:"storage"`
+	// Path to store rule files for prom manager.
+	RulePath string `yaml:"rule_path"`
 
-	AlertmanagerURL             flagext.URLValue // URL of the Alertmanager to send notifications to.
-	AlertmanagerDiscovery       bool             // Whether to use DNS SRV records to discover alertmanagers.
-	AlertmanagerRefreshInterval time.Duration    // How long to wait between refreshing the list of alertmanagers based on DNS service discovery.
-	AlertmanangerEnableV2API    bool             // Enables the ruler notifier to use the alertmananger V2 API
-	NotificationQueueCapacity   int              // Capacity of the queue for notifications to be sent to the Alertmanager.
-	NotificationTimeout         time.Duration    // HTTP timeout duration when sending notifications to the Alertmanager.
+	// URL of the Alertmanager to send notifications to.
+	AlertmanagerURL flagext.URLValue `yaml:"alertmanager_url"`
+	// Whether to use DNS SRV records to discover alertmanagers.
+	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
+	// How long to wait between refreshing the list of alertmanagers based on DNS service discovery.
+	AlertmanagerRefreshInterval time.Duration `yaml:"alertmanager_refresh_interval"`
+	// Enables the ruler notifier to use the alertmananger V2 API.
+	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
+	// Capacity of the queue for notifications to be sent to the Alertmanager.
+	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
+	// HTTP timeout duration when sending notifications to the Alertmanager.
+	NotificationTimeout time.Duration `yaml:"notification_timeout"`
 
-	EnableSharding   bool // Enable sharding rule groups
-	SearchPendingFor time.Duration
-	Ring             RingConfig
-	FlushCheckPeriod time.Duration
+	// Enable sharding rule groups.
+	EnableSharding   bool          `yaml:"enable_sharding"`
+	SearchPendingFor time.Duration `yaml:"search_pending_for"`
+	Ring             RingConfig    `yaml:"ring"`
+	FlushCheckPeriod time.Duration `yaml:"flush_period"`
 
 	EnableAPI bool `yaml:"enable_api"`
 }

@@ -87,20 +87,20 @@ func init() {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir      string
-	Retention    time.Duration
-	ExternalURL  flagext.URLValue
-	PollInterval time.Duration
+	DataDir      string           `yaml:"data_dir"`
+	Retention    time.Duration    `yaml:"retention"`
+	ExternalURL  flagext.URLValue `yaml:"external_url"`
+	PollInterval time.Duration    `yaml:"poll_interval"`
 
-	ClusterBindAddr      string
-	ClusterAdvertiseAddr string
-	Peers                flagext.StringSlice
-	PeerTimeout          time.Duration
+	ClusterBindAddr      string              `yaml:"cluster_bind_address"`
+	ClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
+	Peers                flagext.StringSlice `yaml:"peers"`
+	PeerTimeout          time.Duration       `yaml:"peer_timeout"`
 
-	FallbackConfigFile string
-	AutoWebhookRoot    string
+	FallbackConfigFile string `yaml:"fallback_config_file"`
+	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store AlertStoreConfig
+	Store AlertStoreConfig `yaml:"storage"`
 }
 
 const defaultClusterAddr = "0.0.0.0:9094"

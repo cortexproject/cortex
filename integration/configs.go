@@ -115,8 +115,8 @@ tsdb:
 	ChunksStorageConfig = buildConfigFromTemplate(`
 storage:
   aws:
-    dynamodbconfig:
-      dynamodb: {{.DynamoDBURL}}
+    dynamodb:
+      dynamodb_url: {{.DynamoDBURL}}
 
 table_manager:
   dynamodb_poll_interval: 1m

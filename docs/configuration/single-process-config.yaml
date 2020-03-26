@@ -30,8 +30,8 @@ ingester_client:
 ingester:
   # We want our ingesters to flush chunks at the same time to optimise
   # deduplication opportunities.
-  spreadflushes: true
-  chunkagejitter: 0
+  spread_flushes: true
+  chunk_age_jitter: 0
 
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by

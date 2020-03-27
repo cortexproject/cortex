@@ -3,6 +3,7 @@ package cassandra
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -116,10 +117,23 @@ func (cfg *Config) session() (*gocql.Session, error) {
 func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
+	serverNames := strings.Split(cfg.Addresses, ",")
 	if cfg.SSL {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.CAPath,
-			EnableHostVerification: cfg.HostVerification,
+		if cfg.HostVerification {
+			if len(serverNames) != 1 {
+				return errors.New("host verification is only possible for a single host")
+			}
+			cluster.SslOpts = &gocql.SslOptions{
+				CaPath:                 cfg.CAPath,
+				EnableHostVerification: true,
+				Config: &tls.Config{
+					ServerName: serverNames[0],
+				},
+			}
+		} else {
+			cluster.SslOpts = &gocql.SslOptions{
+				EnableHostVerification: false,
+			}
 		}
 	}
 	if cfg.Auth {

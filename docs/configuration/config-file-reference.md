@@ -312,7 +312,7 @@ pool:
 
   # Run a health check on each ingester client during periodic cleanup.
   # CLI flag: -distributor.health-check-ingesters
-  [health_check_ingesters: <boolean> | default = false]
+  [health_check_ingesters: <boolean> | default = true]
 
 ha_tracker:
   # Enable the distributors HA tracker so that it can accept samples from
@@ -505,7 +505,7 @@ lifecycler:
 
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
-  [num_tokens: <int> | default = 128]
+  [num_tokens: <int> | default = 512]
 
   # Period at which to heartbeat to consul.
   # CLI flag: -ingester.heartbeat-period
@@ -560,7 +560,7 @@ lifecycler:
 # flushing. 0 disables it and a stale series is not flushed until the
 # max-chunk-idle timeout is reached.
 # CLI flag: -ingester.max-stale-chunk-idle
-[max_stale_chunk_idle_time: <duration> | default = 0s]
+[max_stale_chunk_idle_time: <duration> | default = 2m0s]
 
 # Timeout for individual flush operations.
 # CLI flag: -ingester.flush-op-timeout
@@ -609,7 +609,7 @@ The `querier_config` configures the Cortex querier.
 # Use batch iterators to execute query, as opposed to fully materialising the
 # series in memory.  Takes precedent over the -querier.iterators flag.
 # CLI flag: -querier.batch-iterators
-[batch_iterators: <boolean> | default = false]
+[batch_iterators: <boolean> | default = true]
 
 # Use streaming RPCs to query ingester.
 # CLI flag: -querier.ingester-streaming
@@ -1927,7 +1927,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 
 # Enable consistent reads to Consul.
 # CLI flag: -<prefix>.consul.consistent-reads
-[consistent_reads: <boolean> | default = true]
+[consistent_reads: <boolean> | default = false]
 
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
@@ -2251,7 +2251,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
-[consistent_hash: <boolean> | default = false]
+[consistent_hash: <boolean> | default = true]
 ```
 
 ### `fifo_cache_config`

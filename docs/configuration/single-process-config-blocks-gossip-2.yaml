@@ -47,7 +47,6 @@ ingester:
     # ingesters joining at the same time can have conflicting tokens if they don't see each other yet.
     observe_period: 10s
     min_ready_duration: 0s
-    claim_on_rollout: false
     final_sleep: 5s
     num_tokens: 512
 

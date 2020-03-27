@@ -2,6 +2,13 @@
 
 ## master / unreleased
 
+* [CHANGE] Remove the following deprecated flags:
+  - `-metrics.error-rate-query` (use `-metrics.write-throttle-query` instead).
+  - `-store.cardinality-cache-size` (use `-store.index-cache-read.enable-fifocache` and `-store.index-cache-read.fifocache.size` instead).
+  - `-store.cardinality-cache-validity` (use `-store.index-cache-read.enable-fifocache` and `-store.index-cache-read.fifocache.duration` instead).
+  - `-distributor.limiter-reload-period` (flag unused)
+  - `-ingester.claim-on-rollout` (flag unused)
+  - `-ingester.normalise-tokens` (flag unused)
 * [CHANGE] Renamed YAML file options to be more consistent. See full config file changes below. #2273
 * [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `background.write-back-concurrency` and `background.write-back-buffer`. This affects the following flags:
   - `-frontend.memcache.write-back-buffer` --> `-frontend.background.write-back-buffer` 

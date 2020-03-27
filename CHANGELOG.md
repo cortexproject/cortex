@@ -37,6 +37,9 @@
   - `-redis.password` --> `-store.chunks-cache.redis.password` 
   - `-redis.timeout` --> `-store.chunks-cache.redis.timeout` 
 * [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above.
+* [CHANGE] Renamed the following flags: #2273 
+  - `-dynamodb.chunk.gang.size` --> `-dynamodb.chunk-gang-size` 
+  - `-dynamodb.chunk.get.max.parallelism` --> `-dynamodb.chunk-get-max-parallelism`
 * [CHANGE] Don't support mixed time units anymore for duration. For example, 168h5m0s doesn't work anymore, please use just one unit (s|m|h|d|w|y). #2252
 * [CHANGE] Utilize separate protos for rule state and storage. Experimental ruler API will not be functional until the rollout is complete. #2226
 * [CHANGE] Frontend worker in querier now starts after all Querier module dependencies are started. This fixes issue where frontend worker started to send queries to querier before it was ready to serve them (mostly visible when using experimental blocks storage). #2246

@@ -87,6 +87,7 @@ type MemcachedIndexCacheConfig struct {
 	MaxAsyncBufferSize     int           `yaml:"max_async_buffer_size"`
 	MaxGetMultiConcurrency int           `yaml:"max_get_multi_concurrency"`
 	MaxGetMultiBatchSize   int           `yaml:"max_get_multi_batch_size"`
+	MaxItemSize            int           `yaml:"max_item_size"`
 }
 
 func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -97,6 +98,7 @@ func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, p
 	f.IntVar(&cfg.MaxAsyncBufferSize, prefix+"max-async-buffer-size", 10000, "The maximum number of enqueued asynchronous operations allowed.")
 	f.IntVar(&cfg.MaxGetMultiConcurrency, prefix+"max-get-multi-concurrency", 100, "The maximum number of concurrent connections running get operations. If set to 0, concurrency is unlimited.")
 	f.IntVar(&cfg.MaxGetMultiBatchSize, prefix+"max-get-multi-batch-size", 0, "The maximum number of keys a single underlying get operation should run. If more keys are specified, internally keys are splitted into multiple batches and fetched concurrently, honoring the max concurrency. If set to 0, the max batch size is unlimited.")
+	f.IntVar(&cfg.MaxItemSize, prefix+"max-item-size", 1000000, "The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.")
 }
 
 func (cfg *MemcachedIndexCacheConfig) GetAddresses() []string {
@@ -152,6 +154,7 @@ func newMemcachedIndexCache(cfg MemcachedIndexCacheConfig, logger log.Logger, re
 		MaxAsyncBufferSize:        cfg.MaxAsyncBufferSize,
 		MaxGetMultiConcurrency:    cfg.MaxGetMultiConcurrency,
 		MaxGetMultiBatchSize:      cfg.MaxGetMultiBatchSize,
+		MaxItemSize:               model.Bytes(cfg.MaxItemSize),
 		DNSProviderUpdateInterval: 30 * time.Second,
 	}
 

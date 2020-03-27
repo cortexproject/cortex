@@ -61,6 +61,7 @@
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270
 * [BUGFIX] Register the metrics of the WAL. #2295
+* [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109
 
 ### config file breaking changes
 

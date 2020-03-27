@@ -5064,6 +5064,11 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;&lt;code&gt;-redis.timeout&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.redis.timeout&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Rename the &lt;code&gt;-store.chunk-cache-stubs&lt;/code&gt; to &lt;code&gt;-store.chunks-cache.cache-stubs&lt;/code&gt; to be more inline with above.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[CHANGE] Renamed the following flags: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2273&#34;&gt;#2273&lt;/a&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-dynamodb.chunk.gang.size&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-dynamodb.chunk-gang-size&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-dynamodb.chunk.get.max.parallelism&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-dynamodb.chunk-get-max-parallelism&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Don&amp;rsquo;t support mixed time units anymore for duration. For example, 168h5m0s doesn&amp;rsquo;t work anymore, please use just one unit (s|m|h|d|w|y). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2252&#34;&gt;#2252&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Utilize separate protos for rule state and storage. Experimental ruler API will not be functional until the rollout is complete. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2226&#34;&gt;#2226&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Frontend worker in querier now starts after all Querier module dependencies are started. This fixes issue where frontend worker started to send queries to querier before it was ready to serve them (mostly visible when using experimental blocks storage). &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2246&#34;&gt;#2246&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;

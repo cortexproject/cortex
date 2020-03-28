@@ -4515,7 +4515,6 @@ and development.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# We want to start immediately and flush on shutdown.&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;join_after&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;claim_on_rollout&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;false&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;final_sleep&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;0s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;num_tokens&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;512&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
@@ -4980,7 +4979,6 @@ lifecycler:
 address: 127.0.0.1
 # We want to start immediately and flush on shutdown.
 join_after: 0
-claim_on_rollout: false
 final_sleep: 0s
 num_tokens: 512
 # Use an in memory ring store, so we don&#39;t need to launch a Consul.
@@ -5026,6 +5024,15 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;p&gt;Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href=&#34;https://github.com/cortexproject/cortex/tree/master/production/dashboards&#34;&gt;documentation&lt;/a&gt; to do so.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
 &lt;ul&gt;
+&lt;li&gt;[CHANGE] Remove the following deprecated flags:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-metrics.error-rate-query&lt;/code&gt; (use &lt;code&gt;-metrics.write-throttle-query&lt;/code&gt; instead).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-store.cardinality-cache-size&lt;/code&gt; (use &lt;code&gt;-store.index-cache-read.enable-fifocache&lt;/code&gt; and &lt;code&gt;-store.index-cache-read.fifocache.size&lt;/code&gt; instead).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-store.cardinality-cache-validity&lt;/code&gt; (use &lt;code&gt;-store.index-cache-read.enable-fifocache&lt;/code&gt; and &lt;code&gt;-store.index-cache-read.fifocache.duration&lt;/code&gt; instead).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-distributor.limiter-reload-period&lt;/code&gt; (flag unused)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.claim-on-rollout&lt;/code&gt; (flag unused)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.normalise-tokens&lt;/code&gt; (flag unused)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] Renamed YAML file options to be more consistent. See full config file changes below. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2273&#34;&gt;#2273&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Renamed the &lt;code&gt;memcache.write-back-goroutines&lt;/code&gt; and &lt;code&gt;memcache.write-back-buffer&lt;/code&gt; flags to &lt;code&gt;background.write-back-concurrency&lt;/code&gt; and &lt;code&gt;background.write-back-buffer&lt;/code&gt;. This affects the following flags:&lt;/p&gt;
 &lt;ul&gt;

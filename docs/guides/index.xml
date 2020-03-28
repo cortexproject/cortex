@@ -591,7 +591,6 @@ lifecycler:
 address: 127.0.0.1
 # We want to start immediately and flush on shutdown.
 join_after: 0
-claim_on_rollout: false
 final_sleep: 0s
 num_tokens: 512
 # Use an in memory ring store, so we don&#39;t need to launch a Consul.

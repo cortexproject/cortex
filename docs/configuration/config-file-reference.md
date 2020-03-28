@@ -581,7 +581,7 @@ lifecycler:
 # If true, spread series flushes across the whole period of
 # -ingester.max-chunk-age.
 # CLI flag: -ingester.spread-flushes
-[spread_flushes: <boolean> | default = false]
+[spread_flushes: <boolean> | default = true]
 
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period

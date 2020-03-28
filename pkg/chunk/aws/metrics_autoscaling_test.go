@@ -104,26 +104,6 @@ func staticTable(i int, indexRead, indexWrite, chunkRead, chunkWrite int64) []ch
 	}
 }
 
-func autoScaledTable(i int, provisionedRead, provisionedWrite int64, indexOutCooldown int64, chunkTarget float64) []chunk.TableDesc {
-	chunkASC, indexASC := fixtureWriteScale(), fixtureWriteScale()
-	indexASC.OutCooldown = indexOutCooldown
-	chunkASC.TargetValue = chunkTarget
-	return []chunk.TableDesc{
-		{
-			Name:             tablePrefix + fmt.Sprint(i),
-			ProvisionedRead:  provisionedRead,
-			ProvisionedWrite: provisionedWrite,
-			WriteScale:       indexASC,
-		},
-		{
-			Name:             chunkTablePrefix + fmt.Sprint(i),
-			ProvisionedRead:  provisionedRead,
-			ProvisionedWrite: provisionedWrite,
-			WriteScale:       chunkASC,
-		},
-	}
-}
-
 func test(t *testing.T, client dynamoTableClient, tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()

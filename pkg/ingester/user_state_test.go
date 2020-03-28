@@ -76,8 +76,8 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 	}
 }
 
-// TestTeardDown ensures metrics are updated correctly if the userState is discarded
-func TestTeardDown(t *testing.T) {
+// TestTeardown ensures metrics are updated correctly if the userState is discarded
+func TestTeardown(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	_, ing := newTestStore(t,
 		defaultIngesterTestConfig(),

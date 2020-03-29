@@ -51,7 +51,9 @@ Memcached is not essential but highly recommended.
 The standard replication factor is three, so that we can drop one
 replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
-redundancy or less, depending on your risk appetite.
+redundancy or less, depending on your risk appetite. By default
+ingesters are not aware of availability zones. See [zone aware replication](zone-replication.md)
+to change this.
 
 ### Schema
 

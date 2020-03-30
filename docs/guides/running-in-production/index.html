@@ -14,8 +14,8 @@ In addition to the general advice in this document, please see these platform-sp
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-ha-pair-handling href=/docs/guides/ha-pair-handling/>Config for sending HA Pairs data to Cortex</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-caching href=/docs/guides/caching/>Caching in Cortex</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-ingester-handover href=/docs/guides/ingester-handover/>Ingester Hand-over</a>
-<a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-ingester-handover href=/docs/guides/ingester-handover/>Ingester Hand-over</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-ingesters-with-wal href=/docs/guides/ingesters-with-wal/>Ingesters with WAL</a>
+<a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-zone-aware-replication href=/docs/guides/zone-aware-replication/>Zone Aware Replication</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-tracing href=/docs/guides/tracing/>Tracing</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-guides-cassandra href=/docs/guides/cassandra/>Running Cortex with Cassandra</a></li></ul></ul><ul class="td-sidebar-nav__section pr-md-3"><li class=td-sidebar-nav__section-title><a href=/docs/configuration/ class="align-left pl-0 pr-2 collapsed td-sidebar-link td-sidebar-link__section">Configuration</a></li><ul><li class=collapse id=docs-configuration><a class="td-sidebar-link td-sidebar-link__page" id=m-docs-configuration-configuration-file href=/docs/configuration/configuration-file/>Configuration file</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docs-configuration-schema-configuration href=/docs/configuration/schema-configuration/>Schema Configuration</a>
@@ -46,7 +46,7 @@ database is required to store configs.</p><p>Memcached is not essential but high
 replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
 redundancy or less, depending on your risk appetite. By default
-ingesters are not aware of availability zones. See <a href=/docs/guides/ingester-handover/>zone aware replication</a>
+ingesters are not aware of availability zones. See <a href=/docs/guides/zone-aware-replication/>zone aware replication</a>
 to change this.</p><h3 id=schema>Schema</h3><p>See <a href=/docs/configuration/schema-configuration/>schema config file docs</a>.</p><h3 id=chunk-encoding>Chunk encoding</h3><p>Standard choice would be Bigchunk, which is the most flexible chunk
 encoding. You may get better compression from Varbit, if many of your
 timeseries do not change value from one day to the next.</p><h3 id=sizing>Sizing</h3><p>You will want to estimate how many nodes are required, how many of

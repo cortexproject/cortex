@@ -3013,7 +3013,7 @@ database is required to store configs.&lt;/p&gt;
 replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
 redundancy or less, depending on your risk appetite. By default
-ingesters are not aware of availability zones. See &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;zone aware replication&lt;/a&gt;
+ingesters are not aware of availability zones. See &lt;a href=&#34;/docs/guides/zone-aware-replication/&#34;&gt;zone aware replication&lt;/a&gt;
 to change this.&lt;/p&gt;
 &lt;h3 id=&#34;schema&#34;&gt;Schema&lt;/h3&gt;
 &lt;p&gt;See &lt;a href=&#34;/docs/configuration/schema-configuration/&#34;&gt;schema config file docs&lt;/a&gt;.&lt;/p&gt;
@@ -4848,19 +4848,7 @@ complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;You can see the current state of the ring via http browser request to
-&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
-&lt;p&gt;In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p&gt;
-&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
-&lt;p&gt;Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes with in the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code&gt;ingester.availability-zone&lt;/code&gt; flag or using the yaml configuration:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;ingester&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;lifecycler&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;availability_zone&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;zone-3&amp;#34;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;h2 id=&#34;zone-replication-considerations&#34;&gt;Zone Replication Considerations&lt;/h2&gt;
-&lt;p&gt;Enabling availability zone awareness helps mitigate risks regarding data loss within a single zone, some items need consideration by an operator if they are thinking of enabling this feature.&lt;/p&gt;
-&lt;h3 id=&#34;minimum-number-of-zones&#34;&gt;Minimum number of Zones&lt;/h3&gt;
-&lt;p&gt;For cortex to function correctly, there must be at least the same number of availability zones as there is replica count. So by default, a cortex cluster should be spread over 3 zones as the default replica count is 3. It is safe to have more zones than the replica count, but it cannot be less. Having fewer availability zones than replica count causes a replica write to be missed, and in some cases, the write fails if the availability zone count is too low.&lt;/p&gt;
-&lt;h3 id=&#34;cost&#34;&gt;Cost&lt;/h3&gt;
-&lt;p&gt;Depending on the existing cortex infrastructure being used, this may cause an increase in running costs as most cloud providers charge for cross availability zone traffic. The most significant change would be for a cortex cluster currently running in a singular zone.&lt;/p&gt;</description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/guides/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-with-wal/</guid><description>
+&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/guides/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-with-wal/</guid><description>
 &lt;p&gt;Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.&lt;/p&gt;
 &lt;p&gt;To use WAL, there are some changes that needs to be made in the deployment.&lt;/p&gt;
 &lt;h2 id=&#34;changes-to-deployment&#34;&gt;Changes to deployment&lt;/h2&gt;
@@ -4913,7 +4901,19 @@ Consider you have 4 ingesters &lt;code&gt;ingester-0 ingester-1 ingester-2 inges
 * Recover from the WAL
 * And flush all the chunks.&lt;/p&gt;
 &lt;p&gt;This job is to be run for all the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;
-&lt;p&gt;More info about the flusher target will be added once it&amp;rsquo;s upstream.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p&gt;More info about the flusher target will be added once it&amp;rsquo;s upstream.&lt;/p&gt;</description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+&lt;p&gt;In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p&gt;
+&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
+&lt;p&gt;Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes within the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code&gt;ingester.availability-zone&lt;/code&gt; flag or using the yaml configuration:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;ingester&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;lifecycler&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;availability_zone&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;zone-3&amp;#34;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2 id=&#34;zone-replication-considerations&#34;&gt;Zone Replication Considerations&lt;/h2&gt;
+&lt;p&gt;Enabling availability zone awareness helps mitigate risks regarding data loss within a single zone, some items need consideration by an operator if they are thinking of enabling this feature.&lt;/p&gt;
+&lt;h3 id=&#34;minimum-number-of-zones&#34;&gt;Minimum number of Zones&lt;/h3&gt;
+&lt;p&gt;For cortex to function correctly, there must be at least the same number of availability zones as there is replica count. So by default, a cortex cluster should be spread over 3 zones as the default replica count is 3. It is safe to have more zones than the replica count, but it cannot be less. Having fewer availability zones than replica count causes a replica write to be missed, and in some cases, the write fails if the availability zone count is too low.&lt;/p&gt;
+&lt;h3 id=&#34;cost&#34;&gt;Cost&lt;/h3&gt;
+&lt;p&gt;Depending on the existing cortex infrastructure being used, this may cause an increase in running costs as most cloud providers charge for cross availability zone traffic. The most significant change would be for a cortex cluster currently running in a singular zone.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
 &lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p&gt;

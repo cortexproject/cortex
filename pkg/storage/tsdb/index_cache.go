@@ -50,7 +50,7 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. Supported values: %s.", strings.Join(supportedIndexCacheBackends, ", ")))
-	f.BoolVar(&cfg.PostingsCompression, "postings-compression-enabled", false, "Compress postings before storing them to postings cache.")
+	f.BoolVar(&cfg.PostingsCompression, prefix+"postings-compression-enabled", false, "Compress postings before storing them to postings cache.")
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")

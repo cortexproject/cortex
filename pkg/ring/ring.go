@@ -199,7 +199,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
-		if _, ok := distinctZones[token.Zone]; ok {
+		if _, ok := distinctZones[token.Zone]; ok && token.Zone != "" { // Ignore if the ingesters don't have a zone set.
 			continue
 		}
 		distinctHosts[token.Ingester] = struct{}{}

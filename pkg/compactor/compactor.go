@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
@@ -146,36 +147,31 @@ func newCompactor(
 		syncerMetrics:                      newSyncerMetrics(registerer),
 		createBucketClientAndTsdbCompactor: createBucketClientAndTsdbCompactor,
 
-		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
+		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
 		}),
-		compactionRunsCompleted: prometheus.NewCounter(prometheus.CounterOpts{
+		compactionRunsCompleted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_completed_total",
 			Help: "Total number of compaction runs successfully completed.",
 		}),
-		compactionRunsFailed: prometheus.NewCounter(prometheus.CounterOpts{
+		compactionRunsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_failed_total",
 			Help: "Total number of compaction runs failed.",
 		}),
 
-		blocksCleaned: prometheus.NewCounter(prometheus.CounterOpts{
+		blocksCleaned: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_cleaned_total",
 			Help: "Total number of blocks deleted in compactor.",
 		}),
-		blockCleanupFailures: prometheus.NewCounter(prometheus.CounterOpts{
+		blockCleanupFailures: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_failures_total",
 			Help: "Failures encountered while deleting blocks in compactor.",
 		}),
-		blocksMarkedForDeletion: prometheus.NewCounter(prometheus.CounterOpts{
+		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_marked_for_deletion_total",
 			Help: "Total number of blocks marked for deletion in compactor.",
 		}),
-	}
-
-	// Register metrics.
-	if registerer != nil {
-		registerer.MustRegister(c.compactionRunsStarted, c.compactionRunsCompleted, c.compactionRunsFailed, c.blocksCleaned, c.blockCleanupFailures, c.blocksMarkedForDeletion)
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -334,7 +330,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	deduplicateBlocksFilter := block.NewDeduplicateFilter()
 
 	// While fetching blocks, we filter out blocks that were marked for deletion by using IgnoreDeletionMarkFilter.
-	// The delay of  deleteDelay/2 is added to ensure we fetch blocks that are meant to be deleted but do not have a replacement yet.
+	// The delay of deleteDelay/2 is added to ensure we fetch blocks that are meant to be deleted but do not have a replacement yet.
 	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(ulogger, bucket, time.Duration(c.compactorCfg.DeletionDelay.Seconds()/2)*time.Second)
 
 	fetcher, err := block.NewMetaFetcher(

@@ -199,11 +199,13 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
-		if _, ok := distinctZones[token.Zone]; ok {
-			continue
+		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+			if _, ok := distinctZones[token.Zone]; ok {
+				continue
+			}
+			distinctZones[token.Zone] = struct{}{}
 		}
 		distinctHosts[token.Ingester] = struct{}{}
-		distinctZones[token.Zone] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
 		// We do not want to Write to Ingesters that are not ACTIVE, but we do want

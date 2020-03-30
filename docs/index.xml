@@ -376,7 +376,68 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;[&lt;/span&gt;heartbeat_timeout&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&amp;lt;duration&amp;gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;|&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;default&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;=&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1m0s&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;h2 id=&#34;known-issues&#34;&gt;Known issues&lt;/h2&gt;
 &lt;h3 id=&#34;migrating-from-the-chunks-to-the-blocks-storage&#34;&gt;Migrating from the chunks to the blocks storage&lt;/h3&gt;
-&lt;p&gt;Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.&lt;/p&gt;</description></item><item><title>Docs: Getting Started with Chunks Storage</title><link>/docs/getting-started/getting-started-chunks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-chunks-storage/</guid><description>
+&lt;p&gt;Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.&lt;/p&gt;</description></item><item><title>Docs: Blocks storage sharding</title><link>/docs/proposals/blocks-storage-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-sharding/</guid><description>
+&lt;ul&gt;
+&lt;li&gt;Author: &lt;a href=&#34;https://github.com/pracucci&#34;&gt;Marco Pracucci&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Date: March 2020&lt;/li&gt;
+&lt;li&gt;Status: accepted&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;problem&#34;&gt;Problem&lt;/h2&gt;
+&lt;p&gt;In Cortex, when using the experimental blocks storage, each querier internally runs the Thanos &lt;a href=&#34;https://github.com/thanos-io/thanos/blob/master/pkg/store/bucket.go&#34;&gt;&lt;code&gt;BucketStore&lt;/code&gt;&lt;/a&gt;. This means that each querier has a full view over all blocks in the long-term storage and all blocks index headers are loaded in each querier memory. The querier memory usage linearly increase with number and size of all blocks in the storage, imposing a scalability limit to the blocks storage.&lt;/p&gt;
+&lt;p&gt;In this proposal we want to solve this. In particular, we want to:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Shard blocks (index headers) across a pool of nodes&lt;/li&gt;
+&lt;li&gt;Do not compromise HA on the read path (if a node fails, queries should continue to work)&lt;/li&gt;
+&lt;li&gt;Do not compromise correctness (either the query result is correct or it fails)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;proposed-solution&#34;&gt;Proposed solution&lt;/h2&gt;
+&lt;p&gt;The idea is to introduce a new Cortex service - &lt;code&gt;store-gateway&lt;/code&gt; - internally running the Thanos &lt;a href=&#34;https://github.com/thanos-io/thanos/blob/master/pkg/store/bucket.go&#34;&gt;&lt;code&gt;BucketStore&lt;/code&gt;&lt;/a&gt;. At query time, a querier will run a query fetching the matching series both from ingesters and the subset of gateways holding the related blocks (based on the query time range). Blocks are replicated across the gateways in order to guarantee query results consistency and HA even in the case of a gateway instance failure.&lt;/p&gt;
+&lt;h3 id=&#34;ring-based-sharding-and-replication&#34;&gt;Ring-based sharding and replication&lt;/h3&gt;
+&lt;p&gt;In order to build blocks sharding and replication, the &lt;code&gt;store-gateway&lt;/code&gt; instances form a &lt;a href=&#34;/docs/architecture/#the-hash-ring&#34;&gt;ring&lt;/a&gt;. Each gateway instance uses a custom &lt;a href=&#34;https://github.com/thanos-io/thanos/blob/master/pkg/block/fetcher.go#L108&#34;&gt;&lt;code&gt;MetaFetcherFilter&lt;/code&gt;&lt;/a&gt; to filter blocks loaded on the instance itself, keeping only blocks whose &lt;code&gt;hash(block-id)&lt;/code&gt; is within the tokens range assigned to the gateway instance within the ring.&lt;/p&gt;
+&lt;p&gt;Within a gateway, the blocks synchronization is triggered in two cases:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Periodically&lt;/strong&gt;&lt;br /&gt;
+to discover new blocks uploaded by ingesters or compactor, and delete old blocks removed due to retention or by the compactor&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;On-demand&lt;/strong&gt;&lt;br/&gt;
+when the ring topology changes (the tokens ranges assigned to the gateway instance have changed)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;It&amp;rsquo;s important to outline that the sync takes time (typically will have to re-scan the bucket and download new blocks index headers) and Cortex needs to guarantee query results consistency at any given time (&lt;em&gt;see below&lt;/em&gt;).&lt;/p&gt;
+&lt;h3 id=&#34;query-execution&#34;&gt;Query execution&lt;/h3&gt;
+&lt;p&gt;When a querier executes a query, it will need to fetch series both from ingesters and the store-gateway instances.&lt;/p&gt;
+&lt;p&gt;For a given query, the number of blocks to query is expected to be low, especially if the Cortex cluster is running the &lt;code&gt;query-frontend&lt;/code&gt; with a &lt;code&gt;24h&lt;/code&gt; query split interval. In this scenario, whatever is the client&amp;rsquo;s query time range, the &lt;code&gt;query-frontend&lt;/code&gt; will split the client&amp;rsquo;s query into partitioned queries each with up to &lt;code&gt;24h&lt;/code&gt; time range and the querier will likely hit not more than 1 block per partitioned query (except for the last 24h for which blocks may have not been compacted yet).&lt;/p&gt;
+&lt;p&gt;Given this assumption, we want to avoid sending every query to every store-gateway instance. The querier should be able to take an informed decision about the minimum subset of store-gateway instances which needs to query given a time range.&lt;/p&gt;
+&lt;p&gt;The idea is to run the &lt;a href=&#34;https://github.com/thanos-io/thanos/blob/master/pkg/block/fetcher.go#L127&#34;&gt;&lt;code&gt;MetaFetcher&lt;/code&gt;&lt;/a&gt; also within the querier, but without any sharding filter (contrary to the store-gateway). At any given point in time, the querier knows the entire list of blocks in the storage. When the querier executes the &lt;code&gt;Select()&lt;/code&gt; (or &lt;code&gt;SelectSorted()&lt;/code&gt;) it does:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Compute the list of blocks by the query time range&lt;/li&gt;
+&lt;li&gt;Compute the minimum list of store-gateway instances containing the required blocks (using the information from the ring)&lt;/li&gt;
+&lt;li&gt;Fetch series from ingesters and the matching store-gateway instances&lt;/li&gt;
+&lt;li&gt;Merge and deduplicate received series
+&lt;ul&gt;
+&lt;li&gt;Optimization: can be skipped if the querier hits only 1 store-gateway&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id=&#34;query-results-consistency&#34;&gt;Query results consistency&lt;/h3&gt;
+&lt;p&gt;When a querier executes a query, it should guarantee that either all blocks matching the time range are queried or the query fails.&lt;/p&gt;
+&lt;p&gt;However, due to the (intentional) lack of a strong coordination between queriers and store-gateways, and the ring topology which can change any time, there&amp;rsquo;s no guarantee that the blocks assigned to a store-gateway shard are effectively loaded on the store-gateway itself at any given point in time.&lt;/p&gt;
+&lt;p&gt;The idea is introduce a &lt;strong&gt;consistency check in the querier&lt;/strong&gt;. When a store-gateway receives a request from the querier, the store-gateway includes in the response the list of block IDs currently loaded on the store-gateway itself. The querier can then merge the list of block IDs received from all store-gateway hit, and match it against the list of block IDs computed at the beginning of the query execution.&lt;/p&gt;
+&lt;p&gt;There are three possible scenarios:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The list match: all good&lt;/li&gt;
+&lt;li&gt;All the blocks known by the querier are within the list of blocks returned by store-gateway, but the store-gateway also included blocks unknown to the querier: all good (it means the store-gateways have discovered and loaded new blocks before the querier discovered them)&lt;/li&gt;
+&lt;li&gt;Some blocks known by the querier are &lt;strong&gt;not&lt;/strong&gt; within the list of blocks returned by store-gateway: potential consistency issue&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;We want to protect from a partial results response which may occur in the case #3. However, there are some legit cases which, if not handled, would lead to frequent false positives. Given the querier and store-gateway instances independently scan the bucket at a regular interval (to find new blocks or deleted blocks), we may be in one of the following cases:&lt;/p&gt;
+&lt;p&gt;a. The querier has discovered new blocks before the store-gateway successfully discovered and loaded them
+b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdquo; before the querier&lt;/p&gt;
+&lt;p&gt;To protect from case (a), we can exclude the blocks which have been uploaded in the last &lt;code&gt;X&lt;/code&gt; time from the consistency check (same technique already used in other Thanos components). This &lt;code&gt;X&lt;/code&gt; delay time is used to give the store-gateway enough time to discover and load new blocks, before the querier consider them for the consistency check. This value &lt;code&gt;X&lt;/code&gt; should be greater than the &lt;code&gt;-experimental.tsdb.bucket-store.consistency-delay&lt;/code&gt;, because we do expect the querier to consider a block for consistency check once it&amp;rsquo;s reasonably safe to assume that its store-gateway already loaded it.&lt;/p&gt;
+&lt;p&gt;To protect from case (b) we need to understand how blocks are offloaded. The &lt;code&gt;BucketStore&lt;/code&gt; (running within the store-gateway) offloads a block as soon as it&amp;rsquo;s not returned by the &lt;code&gt;MetaFetcher&lt;/code&gt;. This means we can configure the &lt;code&gt;MetaFetcher&lt;/code&gt; with a &lt;a href=&#34;https://github.com/thanos-io/thanos/blob/4bd19b16a752e9ceb1836c21d4156bdeb517fe50/pkg/block/fetcher.go#L648&#34;&gt;&lt;code&gt;IgnoreDeletionMarkFilter&lt;/code&gt;&lt;/a&gt; with a delay of &lt;code&gt;X&lt;/code&gt; (could be the same value used for case (a)) and in the querier exclude the blocks which have been marked for deletion more than &lt;code&gt;X&lt;/code&gt; time ago from the consistency check.&lt;/p&gt;
+&lt;h2 id=&#34;trade-offs&#34;&gt;Trade-offs&lt;/h2&gt;
+&lt;p&gt;The proposed solution comes with the following trade-offs:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A querier is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code&gt;meta.json&lt;/code&gt; file of every block&lt;/li&gt;
+&lt;li&gt;A store-gateway is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code&gt;meta.json&lt;/code&gt; and index header of each block matching its shard&lt;/li&gt;
+&lt;li&gt;If a querier hits 2+ store-gateways it may receive duplicated series if the 2+ store-gateways share some blocks due to the replication factor&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Getting Started with Chunks Storage</title><link>/docs/getting-started/getting-started-chunks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-chunks-storage/</guid><description>
 &lt;p&gt;Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.

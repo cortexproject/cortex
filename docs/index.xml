@@ -5105,6 +5105,10 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;li&gt;&lt;code&gt;-ruler.storage.type&lt;/code&gt; flag now allows &lt;code&gt;s3&lt;/code&gt;,&lt;code&gt;gcs&lt;/code&gt;, and &lt;code&gt;azure&lt;/code&gt; values&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-ruler.storage.(s3|gcs|azure)&lt;/code&gt; flags exist to allow the configuration of object clients set for rule storage&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[CHANGE] Renamed table manager metrics. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2307&#34;&gt;#2307&lt;/a&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cortex_dynamo_sync_tables_seconds&lt;/code&gt; -&amp;gt; &lt;code&gt;cortex_table_manager_sync_duration_seconds&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[FEATURE] Flusher target to flush the WAL.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-flusher.wal-dir&lt;/code&gt; for the WAL directory to recover from.&lt;/li&gt;

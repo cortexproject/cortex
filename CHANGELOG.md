@@ -45,6 +45,11 @@
   - `-redis.password` --> `-store.chunks-cache.redis.password`
   - `-redis.timeout` --> `-store.chunks-cache.redis.timeout`
 * [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above.
+* [CHANGE] Change prefix of flags `-dynamodb.periodic-table.*` to `-table-manager.index-table.*`. #2359
+* [CHANGE] Change prefix of flags `-dynamodb.chunk-table.*` to `-table-manager.chunk-table.*`. #2359
+* [CHANGE] Change the following flags: #2359
+  - `-dynamodb.poll-interval` --> `-table-manager.poll-interval`
+  - `-dynamodb.periodic-table.grace-period` --> `table-manager.periodic-table.grace-period`
 * [CHANGE] Renamed the following flags: #2273
   - `-dynamodb.chunk.gang.size` --> `-dynamodb.chunk-gang-size`
   - `-dynamodb.chunk.get.max.parallelism` --> `-dynamodb.chunk-get-max-parallelism`

@@ -56,8 +56,10 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
 	flagsForOldImage := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-schema-config-file": "",
-		"-config-yaml":        ChunksStorageFlags["-schema-config-file"],
+		"-schema-config-file":          "",
+		"-config-yaml":                 ChunksStorageFlags["-schema-config-file"],
+		"-table-manager.poll-interval": "",
+		"-dynamodb.poll-interval":      ChunksStorageFlags["-table-manager.poll-interval"],
 	})
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
@@ -73,7 +75,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForOldImage, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
 	// Wait until the distributor has updated the ring.
@@ -124,6 +126,8 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	flagsForOldImage := mergeFlags(ChunksStorageFlags, map[string]string{
 		"-schema-config-file":             "",
 		"-config-yaml":                    ChunksStorageFlags["-schema-config-file"],
+		"-table-manager.poll-interval":    "",
+		"-dynamodb.poll-interval":         ChunksStorageFlags["-table-manager.poll-interval"],
 		"-distributor.replication-factor": "3",
 	})
 

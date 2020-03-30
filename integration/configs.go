@@ -107,7 +107,7 @@ tsdb:
 
 	ChunksStorageFlags = map[string]string{
 		"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
-		"-dynamodb.poll-interval":         "1m",
+		"-table-manager.poll-interval":    "1m",
 		"-schema-config-file":             filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
 		"-table-manager.retention-period": "168h",
 	}
@@ -119,8 +119,8 @@ storage:
       dynamodb_url: {{.DynamoDBURL}}
 
 table_manager:
-  dynamodb_poll_interval: 1m
-  retention_period:       168h 
+  poll_interval:    1m
+  retention_period: 168h 
 
 schema:
 {{.SchemaConfig}}

@@ -198,10 +198,6 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.binary-index-header-enabled
     [binary_index_header_enabled: <boolean> | default = true]
 
-    # Compress postings when storing to cache.
-    # CLI flag: -experimental.tsdb.bucket-store.postings-cache-compression-enabled
-    [postings_compression_enabled: <boolean> | default = false]
-
     # Minimum age of a block before it's being read. Set it to safe value (e.g
     # 30m) if your object storage is eventually consistent. GCS and S3 are
     # (roughly) strongly consistent.
@@ -262,7 +258,7 @@ tsdb:
         [max_item_size: <int> | default = 1048576]
 
       # Compress postings before storing them to postings cache.
-      # CLI flag: -postings-compression-enabled
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
       [postings_compression_enabled: <boolean> | default = false]
 
     # Duration after which the blocks marked for deletion will be filtered out

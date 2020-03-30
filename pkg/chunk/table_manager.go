@@ -47,8 +47,8 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 
 	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "table_manager_table_capacity",
-		Help:      "Per-table provisioned read and write capacity units.",
+		Name:      "dynamo_table_capacity_units",
+		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
 	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{

@@ -68,6 +68,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
+	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
+		return errors.Errorf("Host verification is only possible for a single host.")
+	}
 	return nil
 }
 
@@ -117,17 +120,13 @@ func (cfg *Config) session() (*gocql.Session, error) {
 func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
-	serverNames := strings.Split(cfg.Addresses, ",")
 	if cfg.SSL {
 		if cfg.HostVerification {
-			if len(serverNames) != 1 {
-				return errors.New("host verification is only possible for a single host")
-			}
 			cluster.SslOpts = &gocql.SslOptions{
 				CaPath:                 cfg.CAPath,
 				EnableHostVerification: true,
 				Config: &tls.Config{
-					ServerName: serverNames[0],
+					ServerName: strings.Split(cfg.Addresses, ",")[0],
 				},
 			}
 		} else {

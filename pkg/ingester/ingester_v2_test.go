@@ -252,6 +252,61 @@ func TestIngester_v2Push(t *testing.T) {
 	}
 }
 
+func TestIngester_AddFastFail(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	userID := "test"
+
+	registry := prometheus.NewRegistry()
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	db, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+
+	// first request will initialize appender
+	_, err = i.v2Push(ctx, client.ToWriteRequest(
+		[]labels.Labels{metricLabels},
+		[]client.Sample{{Value: 1, TimestampMs: 9}},
+		client.API))
+	assert.NoError(t, err)
+
+	correctRef, ok := db.refCache.Ref(time.Now(), metricLabels)
+	assert.True(t, ok)
+
+	// update ref cache with invalid reference
+	invalidRef := uint64(111111111)
+	require.NotEqual(t, correctRef, invalidRef)
+	db.refCache.SetRef(time.Now(), metricLabels, invalidRef)
+
+	// push again... invalid reference will get updated to correct one
+	_, err = i.v2Push(ctx, client.ToWriteRequest(
+		[]labels.Labels{metricLabels},
+		[]client.Sample{{Value: 2, TimestampMs: 10}},
+		client.API))
+	assert.NoError(t, err)
+
+	// check that ref is now correct again in the cache
+	ref, ok := db.refCache.Ref(time.Now(), metricLabels)
+	assert.True(t, ok)
+	assert.Equal(t, ref, correctRef)
+}
+
 func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)

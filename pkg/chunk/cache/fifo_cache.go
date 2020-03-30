@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -89,19 +88,17 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 	f.IntVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
-
-	flagext.DeprecatedFlag(f, prefix+"fifocache.size", "This flag has been renamed to "+prefix+"fifocache.max-size-items")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
-	lock         sync.RWMutex
-	maxSizeItems int
-	maxSizeBytes int
-	currSize     int
-	validity     time.Duration
-	entries      map[string]*cacheEntry
+	lock          sync.RWMutex
+	maxSizeItems  int
+	maxSizeBytes  int
+	currSizeBytes int
+	validity      time.Duration
+	entries       map[string]*cacheEntry
 
 	// indexes into entries to identify the most recent and least recent entry.
 	first, last *cacheEntry
@@ -175,8 +172,14 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 func (c *FifoCache) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	// update metrics
+	c.entriesEvicted.Add(float64(len(c.entries)))
+	c.entriesCurrent.Set(float64(0))
+	c.memoryBytes.Set(float64(0))
+
 	c.entries = nil
-	c.currSize = 0
+	c.currSizeBytes = 0
 }
 
 // Put stores the value against the key.
@@ -244,27 +247,9 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	if ok {
 		// Remove this entry from the FIFO linked-list.
 		c.deleteFromList(entry)
-		entrySz := sizeOf(entry)
-		c.currSize -= entrySz
-
-		// New entry size
-		entrySz += (sizeOfInterface(value) - sizeOfInterface(entry.value))
-
-		if c.maxSizeBytes > 0 && c.currSize+entrySz > c.maxSizeBytes {
-			// New entry does not fit in the cache. Delete the entry.
-			delete(c.entries, entry.key)
-			c.entriesCurrent.Dec()
-			c.entriesEvicted.Inc()
-			entry = nil
-		} else {
-			// Insert it at the beginning.
-			entry.updated = time.Now()
-			entry.value = value
-			c.addToHead(entry)
-			c.currSize += entrySz
-		}
-		c.memoryBytes.Set(float64(c.currSize))
-		return
+		c.currSizeBytes -= sizeOf(entry)
+		delete(c.entries, key)
+		c.entriesCurrent.Dec()
 	}
 
 	entry = &cacheEntry{
@@ -274,24 +259,30 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	}
 	entrySz := sizeOf(entry)
 
-	// Check is the entry fits in the cache
 	if c.maxSizeBytes > 0 && entrySz > c.maxSizeBytes {
-		// Cannot keep this entry in the cache
+		// Cannot keep this item in the cache
+		if ok {
+			// We do not replace the item
+			c.entriesEvicted.Inc()
+		}
+		c.memoryBytes.Set(float64(c.currSizeBytes))
 		return
 	}
 
-	c.entriesAddedNew.Inc()
+	if !ok {
+		c.entriesAddedNew.Inc()
+	}
 
 	// Otherwise, see if we need to evict an entry.
-	for (c.maxSizeBytes > 0 && c.currSize+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
+	for (c.maxSizeBytes > 0 && c.currSizeBytes+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
 		c.entriesEvicted.Inc()
 		if evicted := c.deleteFromTail(); evicted != nil {
 			delete(c.entries, evicted.key)
-			c.currSize -= sizeOf(evicted)
+			c.currSizeBytes -= sizeOf(evicted)
 			c.entriesCurrent.Dec()
 		} else {
 			c.entries = nil
-			c.currSize = 0
+			c.currSizeBytes = 0
 			c.entriesCurrent.Set(float64(0))
 		}
 	}
@@ -299,8 +290,8 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	// Finally, no hit and we have space.
 	c.addToHead(entry)
 	c.entries[key] = entry
-	c.currSize += entrySz
-	c.memoryBytes.Set(float64(c.currSize))
+	c.currSizeBytes += entrySz
+	c.memoryBytes.Set(float64(c.currSizeBytes))
 	c.entriesCurrent.Inc()
 }
 

@@ -1366,10 +1366,6 @@ aws:
     # CLI flag: -dynamodb.throttle-limit
     [throttle_limit: <float> | default = 10]
 
-    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
-    # CLI flag: -applicationautoscaling.url
-    [application_autoscaling_url: <url> | default = ]
-
     metrics:
       # Use metrics-based autoscaling, via this query URL
       # CLI flag: -metrics.url

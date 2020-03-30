@@ -41,7 +41,7 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_sync_duration_seconds",
-		Help:      "Time spent doing synching tables.",
+		Help:      "Time spent synching tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 

@@ -25,7 +25,7 @@ func TestRuler_rules(t *testing.T) {
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/rules", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")
 	w := httptest.NewRecorder()
-	r.rules(w, req)
+	r.PrometheusRules(w, req)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -81,7 +81,7 @@ func TestRuler_alerts(t *testing.T) {
 	req := httptest.NewRequest("GET", "https://localhost:8080/api/prom/api/v1/alerts", nil)
 	req.Header.Add(user.OrgIDHeaderName, "user1")
 	w := httptest.NewRecorder()
-	r.alerts(w, req)
+	r.PrometheusAlerts(w, req)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)

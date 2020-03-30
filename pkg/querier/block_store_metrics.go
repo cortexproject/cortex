@@ -43,6 +43,7 @@ type tsdbBucketStoreMetrics struct {
 
 	// Ignored:
 	// blocks_meta_synced
+	// blocks_meta_modified
 }
 
 func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {

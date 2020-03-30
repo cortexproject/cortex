@@ -282,10 +282,6 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
   If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush.
 
-- `-ingester.chunk-age-jitter`
-
-  To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. (default 20m)
-
 - `-ingester.spread-flushes`
 
   Makes the ingester flush each timeseries at a specific point in the `max-chunk-age` cycle. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. Set `-ingester.chunk-age-jitter` to `0` when using this option. If a chunk cache is configured (via `-store.chunks-cache.memcached.hostname`) then duplicate chunk writes are skipped which cuts write IOPs.

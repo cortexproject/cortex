@@ -505,7 +505,7 @@ lifecycler:
 
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
-  [num_tokens: <int> | default = 512]
+  [num_tokens: <int> | default = 128]
 
   # Period at which to heartbeat to consul.
   # CLI flag: -ingester.heartbeat-period
@@ -613,7 +613,7 @@ The `querier_config` configures the Cortex querier.
 
 # Use streaming RPCs to query ingester.
 # CLI flag: -querier.ingester-streaming
-[ingester_streaming: <boolean> | default = false]
+[ingester_streaming: <boolean> | default = true]
 
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
@@ -1932,7 +1932,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
 # CLI flag: -<prefix>.consul.watch-rate-limit
-[watch_rate_limit: <float> | default = 0]
+[watch_rate_limit: <float> | default = 1]
 
 # Burst size used in rate limit. Values less than 1 are treated as 1.
 # CLI flag: -<prefix>.consul.watch-burst-size
@@ -2204,7 +2204,7 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 
 # How many keys to fetch in each batch.
 # CLI flag: -<prefix>.memcached.batchsize
-[batch_size: <int> | default = 0]
+[batch_size: <int> | default = 1024]
 
 # Maximum active requests to memcache.
 # CLI flag: -<prefix>.memcached.parallelism

@@ -252,57 +252,6 @@ func TestIngester_v2Push(t *testing.T) {
 	}
 }
 
-func TestIngester_AddFastFail(t *testing.T) {
-	metricLabels := labels.Labels{{Name: labels.MetricName, Value: "test"}}
-	userID := "test"
-
-	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
-	cfg.LifecyclerConfig.JoinAfter = 0
-
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-	defer cleanup()
-
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// first request will initialize appender
-	_, err = i.v2Push(ctx, client.ToWriteRequest(
-		[]labels.Labels{metricLabels},
-		[]client.Sample{{Value: 1, TimestampMs: 9}},
-		client.API))
-	assert.NoError(t, err)
-
-	db := i.getTSDB(userID)
-	require.NotNil(t, db)
-	correctRef, ok := db.refCache.Ref(time.Now(), metricLabels)
-	assert.True(t, ok)
-
-	// update ref cache with invalid reference
-	invalidRef := uint64(111111111)
-	require.NotEqual(t, correctRef, invalidRef)
-	db.refCache.SetRef(time.Now(), metricLabels, invalidRef)
-
-	// push again... verify that it works, and invalid reference gets updated to correct one
-	_, err = i.v2Push(ctx, client.ToWriteRequest(
-		[]labels.Labels{metricLabels},
-		[]client.Sample{{Value: 2, TimestampMs: 10}},
-		client.API))
-	assert.NoError(t, err)
-
-	// check that ref is now correct again in the cache
-	ref, ok := db.refCache.Ref(time.Now(), metricLabels)
-	assert.True(t, ok)
-	assert.Equal(t, ref, correctRef)
-}
-
 func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
@@ -339,6 +288,11 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
+
+		// Invalidate reference between pushes. It triggers different AddFast path.
+		// On first push, "initAppender" is used, on next pushes, "headAppender" is used.
+		// Unfortunately they return ErrNotFound differently.
+		db.refCache.SetRef(time.Now(), metricLabels, 12345)
 	}
 
 	// Read back samples to see what has been really ingested

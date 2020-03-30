@@ -37,10 +37,10 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	}
 }
 
-func TestNewDistributorsCanPushToOldIngesters(t *testing.T) {
+func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	for _, previousImage := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			runNewDistributorsCanPushToOldIngesters(t, previousImage)
+			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage)
 		})
 	}
 }
@@ -100,37 +100,18 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	// stopped, which means the transfer to ingester-2 is completed.
 	require.NoError(t, s.Stop(ingester1))
 
-	// Query the new ingester both with the old and the new querier.
-	for _, image := range []string{previousImage, ""} {
-		var querier *e2ecortex.CortexService
-
-		if image == previousImage {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForOldImage, image)
-		} else {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, image)
-		}
-
-		require.NoError(t, s.StartAndWaitReady(querier))
-
-		// Wait until the querier has updated the ring.
-		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-
-		// Query the series
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
-		require.NoError(t, err)
-
-		result, err := c.Query("series_1", now)
-		require.NoError(t, err)
-		require.Equal(t, model.ValVector, result.Type())
-		assert.Equal(t, expectedVector, result.(model.Vector))
-
-		// Stop the querier, so that the test on the next image will work.
-		require.NoError(t, s.Stop(querier))
-	}
+	checkQueries(t, consul, distributor,
+		expectedVector,
+		previousImage,
+		flagsForOldImage, ChunksStorageFlags,
+		now,
+		s,
+		1,
+	)
 }
 
 // Check for issues like https://github.com/cortexproject/cortex/issues/2356
-func runNewDistributorsCanPushToOldIngesters(t *testing.T, previousImage string) {
+func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previousImage string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -182,6 +163,24 @@ func runNewDistributorsCanPushToOldIngesters(t *testing.T, previousImage string)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
+	checkQueries(t, consul, distributor,
+		expectedVector,
+		previousImage,
+		flagsForOldImage, flagsForNewImage,
+		now,
+		s,
+		3,
+	)
+}
+
+func checkQueries(t *testing.T, consul *e2e.HTTPService, distributor *e2ecortex.CortexService,
+	expectedVector model.Vector,
+	previousImage string,
+	flagsForOldImage, flagsForNewImage map[string]string,
+	now time.Time,
+	s *e2e.Scenario,
+	numIngesters int,
+) {
 	// Query the new ingester both with the old and the new querier.
 	for _, image := range []string{previousImage, ""} {
 		var querier *e2ecortex.CortexService
@@ -195,7 +194,7 @@ func runNewDistributorsCanPushToOldIngesters(t *testing.T, previousImage string)
 		require.NoError(t, s.StartAndWaitReady(querier))
 
 		// Wait until the querier has updated the ring.
-		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1536), "cortex_ring_tokens_total"))
+		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numIngesters*512)), "cortex_ring_tokens_total"))
 
 		// Query the series
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")

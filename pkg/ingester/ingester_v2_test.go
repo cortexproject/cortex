@@ -290,7 +290,7 @@ func TestIngester_AddFastFail(t *testing.T) {
 	require.NotEqual(t, correctRef, invalidRef)
 	db.refCache.SetRef(time.Now(), metricLabels, invalidRef)
 
-	// push again... invalid reference will get updated to correct one
+	// push again... verify that it works, and invalid reference gets updated to correct one
 	_, err = i.v2Push(ctx, client.ToWriteRequest(
 		[]labels.Labels{metricLabels},
 		[]client.Sample{{Value: 2, TimestampMs: 10}},

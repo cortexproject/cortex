@@ -101,7 +101,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(9).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -137,7 +137,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969-(86400*1000)).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -173,7 +173,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -288,6 +288,11 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
+
+		// Invalidate reference between pushes. It triggers different AddFast path.
+		// On first push, "initAppender" is used, on next pushes, "headAppender" is used.
+		// Unfortunately they return ErrNotFound differently.
+		db.refCache.SetRef(time.Now(), metricLabels, 12345)
 	}
 
 	// Read back samples to see what has been really ingested

@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -277,7 +278,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 					continue
 				}
 
-				if err == tsdb.ErrNotFound {
+				if errors.Cause(err) == tsdb.ErrNotFound {
 					cachedRefExists = false
 					err = nil
 				}
@@ -306,9 +307,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
+			cause := errors.Cause(err)
+			if cause == tsdb.ErrOutOfBounds || cause == tsdb.ErrOutOfOrderSample || cause == tsdb.ErrAmendSample {
 				if firstPartialErr == nil {
-					firstPartialErr = errors.Wrapf(err, "series=%s", client.FromLabelAdaptersToLabels(ts.Labels).String())
+					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
 				}
 
 				continue

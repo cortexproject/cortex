@@ -253,17 +253,14 @@ func TestIngester_v2Push(t *testing.T) {
 }
 
 func TestIngester_AddFastFail(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabels := labels.Labels{{Name: labels.MetricName, Value: "test"}}
 	userID := "test"
-
-	registry := prometheus.NewRegistry()
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
 
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -276,9 +273,6 @@ func TestIngester_AddFastFail(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	db, err := i.getOrCreateTSDB(userID, false)
-	require.NoError(t, err)
-
 	// first request will initialize appender
 	_, err = i.v2Push(ctx, client.ToWriteRequest(
 		[]labels.Labels{metricLabels},
@@ -286,6 +280,8 @@ func TestIngester_AddFastFail(t *testing.T) {
 		client.API))
 	assert.NoError(t, err)
 
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
 	correctRef, ok := db.refCache.Ref(time.Now(), metricLabels)
 	assert.True(t, ok)
 

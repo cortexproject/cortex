@@ -59,9 +59,8 @@ func (m *BucketClientMock) Get(ctx context.Context, name string) (io.ReadCloser,
 	val, err := args.Get(0), args.Error(1)
 	if val == nil {
 		return nil, err
-	} else {
-		return val.(io.ReadCloser), err
 	}
+	return val.(io.ReadCloser), err
 }
 
 // MockGet is a convenient method to mock Get() and Exists()

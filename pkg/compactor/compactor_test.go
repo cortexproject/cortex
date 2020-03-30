@@ -737,7 +737,7 @@ func mockBlockMetaJSON(id string) string {
 	return string(content)
 }
 
-func mockDeletionMarkJson(id string, deletionTime time.Time) string {
+func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	meta := metadata.DeletionMark{
 		Version:      metadata.DeletionMarkVersion1,
 		ID:           ulid.MustParse(id),

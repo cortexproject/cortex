@@ -175,15 +175,7 @@ delay with this Prometheus query:&lt;/p&gt;
 &lt;/code&gt;&lt;/pre&gt;
 &lt;h2 id=&#34;optimising&#34;&gt;Optimising&lt;/h2&gt;
 &lt;h3 id=&#34;optimising-storage&#34;&gt;Optimising Storage&lt;/h3&gt;
-&lt;p&gt;These ingester options reduce the chance of storing multiple copies of
-the same data:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; -ingester.spread-flushes=true
--ingester.chunk-age-jitter=0
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Add a chunk cache via &lt;code&gt;-store.chunks-cache.memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
-&lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
+&lt;p&gt;Add a chunk cache via &lt;code&gt;-store.chunks-cache.memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls

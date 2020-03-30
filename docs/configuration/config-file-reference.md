@@ -312,7 +312,7 @@ pool:
 
   # Run a health check on each ingester client during periodic cleanup.
   # CLI flag: -distributor.health-check-ingesters
-  [health_check_ingesters: <boolean> | default = false]
+  [health_check_ingesters: <boolean> | default = true]
 
 ha_tracker:
   # Enable the distributors HA tracker so that it can accept samples from
@@ -565,7 +565,7 @@ lifecycler:
 # flushing. 0 disables it and a stale series is not flushed until the
 # max-chunk-idle timeout is reached.
 # CLI flag: -ingester.max-stale-chunk-idle
-[max_stale_chunk_idle_time: <duration> | default = 0s]
+[max_stale_chunk_idle_time: <duration> | default = 2m0s]
 
 # Timeout for individual flush operations.
 # CLI flag: -ingester.flush-op-timeout
@@ -586,7 +586,7 @@ lifecycler:
 # If true, spread series flushes across the whole period of
 # -ingester.max-chunk-age.
 # CLI flag: -ingester.spread-flushes
-[spread_flushes: <boolean> | default = false]
+[spread_flushes: <boolean> | default = true]
 
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
@@ -614,11 +614,11 @@ The `querier_config` configures the Cortex querier.
 # Use batch iterators to execute query, as opposed to fully materialising the
 # series in memory.  Takes precedent over the -querier.iterators flag.
 # CLI flag: -querier.batch-iterators
-[batch_iterators: <boolean> | default = false]
+[batch_iterators: <boolean> | default = true]
 
 # Use streaming RPCs to query ingester.
 # CLI flag: -querier.ingester-streaming
-[ingester_streaming: <boolean> | default = false]
+[ingester_streaming: <boolean> | default = true]
 
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
@@ -1928,12 +1928,12 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 
 # Enable consistent reads to Consul.
 # CLI flag: -<prefix>.consul.consistent-reads
-[consistent_reads: <boolean> | default = true]
+[consistent_reads: <boolean> | default = false]
 
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
 # CLI flag: -<prefix>.consul.watch-rate-limit
-[watch_rate_limit: <float> | default = 0]
+[watch_rate_limit: <float> | default = 1]
 
 # Burst size used in rate limit. Values less than 1 are treated as 1.
 # CLI flag: -<prefix>.consul.watch-burst-size
@@ -2205,7 +2205,7 @@ The `memcached_config` block configures how data is stored in Memcached (ie. exp
 
 # How many keys to fetch in each batch.
 # CLI flag: -<prefix>.memcached.batchsize
-[batch_size: <int> | default = 0]
+[batch_size: <int> | default = 1024]
 
 # Maximum active requests to memcache.
 # CLI flag: -<prefix>.memcached.parallelism
@@ -2252,7 +2252,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
-[consistent_hash: <boolean> | default = false]
+[consistent_hash: <boolean> | default = true]
 ```
 
 ### `fifo_cache_config`

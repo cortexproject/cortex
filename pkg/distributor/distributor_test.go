@@ -897,6 +897,14 @@ type mockIngester struct {
 	queryDelay time.Duration
 }
 
+func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{}, nil
+}
+
+func (i *mockIngester) Close() error {
+	return nil
+}
+
 func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
 	i.Lock()
 	defer i.Unlock()

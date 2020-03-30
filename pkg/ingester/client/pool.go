@@ -39,7 +39,7 @@ type PoolConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
-	f.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
+	f.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", true, "Run a health check on each ingester client during periodic cleanup.")
 }
 
 // Pool holds a cache of grpc_health_v1 clients.

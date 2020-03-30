@@ -7,7 +7,7 @@ slug: blocks-storage-sharding
 
 - Author: [Marco Pracucci](https://github.com/pracucci)
 - Date: March 2020
-- Status: proposal
+- Status: accepted
 
 ## Problem
 

@@ -35,7 +35,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	seriesReceived := 0
 	xfer := func() error {
 		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
-
+		chunksAdded := 0
 		// run as an anonymous function so only a single error needs handling if returned
 		err := func() error {
 			for {
@@ -78,6 +78,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 				}
 
 				seriesReceived++
+				chunksAdded += float64(len(series.chunkDescs) - prevNumChunks)
 				i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 				i.metrics.receivedChunks.Add(float64(len(descs)))
 			}
@@ -100,6 +101,9 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		}()
 
 		if err != nil {
+			// Ensure the in memory chunks are updated to reflect the number of dropped chunks from the transfer
+			i.metrics.memoryChunks.Dec(chunksAdded)
+
 			// If an error occurs during the transfer and the user state is to be discarded,
 			// ensure the metrics it exports reflect this.
 			userStates.teardown()

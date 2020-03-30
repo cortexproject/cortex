@@ -1,7 +1,7 @@
 ---
 title: "Single-process"
 linkTitle: "Single-process"
-weight: 4
+weight: 5
 slug: single-process-config
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: "Schema Configuration"
 linkTitle: "Schema Configuration"
-weight: 1
+weight: 4
 slug: schema-configuration
 ---
 

@@ -182,8 +182,7 @@ func (c *Config) Validate(log log.Logger) error {
 
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
-	target             ModuleName
-	httpAuthMiddleware middleware.Interface
+	target ModuleName
 
 	// set during initialization
 	serviceMap map[ModuleName]services.Service

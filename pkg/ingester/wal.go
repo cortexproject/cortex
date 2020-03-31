@@ -156,12 +156,21 @@ func (w *walWrapper) run() {
 		return
 	}
 
-	ticker := time.NewTicker(w.cfg.CheckpointDuration)
-	defer ticker.Stop()
-
+	lastCheckpoint := time.Now().Add(-w.cfg.CheckpointDuration)
 	for {
 		select {
-		case <-ticker.C:
+		case <-w.quit:
+			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
+			if err := w.performCheckpoint(true); err != nil {
+				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+			}
+			return
+		default:
+			timeElapsedSinceLastCheckpoint := time.Since(lastCheckpoint)
+			if timeElapsedSinceLastCheckpoint < w.cfg.CheckpointDuration {
+				time.Sleep(w.cfg.CheckpointDuration - timeElapsedSinceLastCheckpoint)
+			}
+
 			start := time.Now()
 			level.Info(util.Logger).Log("msg", "starting checkpoint")
 			if err := w.performCheckpoint(false); err != nil {
@@ -171,12 +180,7 @@ func (w *walWrapper) run() {
 			elapsed := time.Since(start)
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 			w.checkpointDuration.Observe(elapsed.Seconds())
-		case <-w.quit:
-			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
-			if err := w.performCheckpoint(true); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
-			}
-			return
+			lastCheckpoint = time.Now()
 		}
 	}
 }

@@ -108,7 +108,8 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 	}
 
 	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
-		err = errors.Wrap(err, "TransferChunks: ClaimTokensFor")
+		retErr = errors.Wrap(err, "TransferChunks: ClaimTokensFor")
+		return
 	}
 
 	return

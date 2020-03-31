@@ -624,6 +624,6 @@ var modules = map[ModuleName]module{
 	},
 
 	All: {
-		deps: []ModuleName{AlertManager, Ruler, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		deps: []ModuleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

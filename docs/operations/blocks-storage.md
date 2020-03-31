@@ -455,6 +455,20 @@ compactor:
 
 ## Known issues
 
+### Can't ingest samples older than 1h compared to the latest received sample of a tenant
+
+The blocks storage opens a TSDB for each tenant in each ingester receiving samples for that tenant. The received series are kept in the TSDB head and then a new block is cut from the head once the time range period covered by the series in the head reaches the block range period (defaults to 2h).
+
+When a new block is cut from head, the new block contains samples up until -50% of the configured block range period. This means that if you use the default 2h block range period, the head will contain up until 3h series (2h + 50%) and when a new block is cut from head it will contain series up until 1h ago (2h - 50%); technically it's 1h less than the max timestamp in the head.
+
+Given TSDB doesn't allow to append samples out of head bounds, the Cortex blocks storage can't ingest samples older than 1h compared to the latest received sample of a tenant.
+
+The typical case where this issue triggers is after a long outage. Let's consider this scenario:
+
+- Multiple Prometheus servers remote writing to the same Cortex tenant
+- Some Prometheus servers stop remote writing to Cortex (ie. networking issue) and they fall behind more than 1h
+- When the failing Prometheus servers will be back online, Cortex blocks storage will discard any sample whose timestamp is older than 1h because the max timestamp in the TSDB head is close to "now" (due to the working Prometheus servers which never stopped to write samples) while the failing ones are trying to catch up writing samples older than 1h
+
 ### Migrating from the chunks to the blocks storage
 
 Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.

@@ -2,7 +2,11 @@
 
 ## master / unreleased
 
-* [CHANGE] Remove the following deprecated flags:
+## 1.0.0-rc.0 / 2020-03-31
+
+This is the first major release of Cortex. We made a lot of **breaking changes** in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: https://cortexmetrics.io/docs/configuration/v1guarantees/
+
+* [CHANGE] Remove the following deprecated flags: #2339
   - `-metrics.error-rate-query` (use `-metrics.write-throttle-query` instead).
   - `-store.cardinality-cache-size` (use `-store.index-cache-read.enable-fifocache` and `-store.index-cache-read.fifocache.size` instead).
   - `-store.cardinality-cache-validity` (use `-store.index-cache-read.enable-fifocache` and `-store.index-cache-read.fifocache.duration` instead).
@@ -11,7 +15,7 @@
   - `-ingester.normalise-tokens` (flag unused)
 * [CHANGE] Renamed YAML file options to be more consistent. See [full config file changes below](#config-file-breaking-changes). #2273
 * [CHANGE] AWS based autoscaling has been removed. You can only use metrics based autoscaling now. `-applicationautoscaling.url` has been removed. See https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning on how to migrate. #2328
-* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `background.write-back-concurrency` and `background.write-back-buffer`. This affects the following flags:
+* [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `background.write-back-concurrency` and `background.write-back-buffer`. This affects the following flags: #2241
   - `-frontend.memcache.write-back-buffer` --> `-frontend.background.write-back-buffer`
   - `-frontend.memcache.write-back-goroutines` --> `-frontend.background.write-back-concurrency`
   - `-store.index-cache-read.memcache.write-back-buffer` --> `-store.index-cache-read.background.write-back-buffer`
@@ -21,7 +25,7 @@
   - `-memcache.write-back-buffer` --> `-store.chunks-cache.background.write-back-buffer`. Note the next change log for the difference.
   - `-memcache.write-back-goroutines` --> `-store.chunks-cache.background.write-back-concurrency`. Note the next change log for the difference.
 
-* [CHANGE] Renamed the chunk cache flags to have `store.chunks-cache.` as prefix. This means the following flags have been changed:
+* [CHANGE] Renamed the chunk cache flags to have `store.chunks-cache.` as prefix. This means the following flags have been changed: #2241
   - `-cache.enable-fifocache` --> `-store.chunks-cache.cache.enable-fifocache`
   - `-default-validity` --> `-store.chunks-cache.default-validity`
   - `-fifocache.duration` --> `-store.chunks-cache.fifocache.duration`
@@ -44,7 +48,7 @@
   - `-redis.max-idle-conns` --> `-store.chunks-cache.redis.max-idle-conns`
   - `-redis.password` --> `-store.chunks-cache.redis.password`
   - `-redis.timeout` --> `-store.chunks-cache.redis.timeout`
-* [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above.
+* [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above. #2241
 * [CHANGE] Change prefix of flags `-dynamodb.periodic-table.*` to `-table-manager.index-table.*`. #2359
 * [CHANGE] Change prefix of flags `-dynamodb.chunk-table.*` to `-table-manager.chunk-table.*`. #2359
 * [CHANGE] Change the following flags: #2359
@@ -79,7 +83,7 @@
 * [CHANGE] Renamed table manager metrics. #2307 #2359
   * `cortex_dynamo_sync_tables_seconds` -> `cortex_table_manager_sync_duration_seconds`
   * `cortex_dynamo_table_capacity_units` -> `cortex_table_capacity_units`
-* [FEATURE] Flusher target to flush the WAL.
+* [FEATURE] Flusher target to flush the WAL. #2075
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
@@ -87,6 +91,7 @@
 * [ENHANCEMENT] Better re-use of connections to DynamoDB and S3. #2268
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
 * [ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. #2290
+* [ENHANCEMENT] Experimental TSDB: Removed gRPC server to communicate between querier and BucketStore. #2324
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting table period and retention. #2252
 * [ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. #2270
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
@@ -95,6 +100,7 @@
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270
 * [BUGFIX] Register the metrics of the WAL. #2295
+* [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
 
 ### config file breaking changes
 

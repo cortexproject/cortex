@@ -23,6 +23,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -30,7 +31,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/compactor"
-	"github.com/cortexproject/cortex/pkg/configs/api"
+	"github.com/cortexproject/cortex/pkg/configs"
+	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
@@ -43,6 +45,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -73,6 +76,7 @@ type Config struct {
 	PrintConfig bool       `yaml:"-"`
 	HTTPPrefix  string     `yaml:"http_prefix"`
 
+	API              api.Config               `yaml:"api"`
 	Server           server.Config            `yaml:"server"`
 	Distributor      distributor.Config       `yaml:"distributor"`
 	Querier          querier.Config           `yaml:"querier"`
@@ -111,6 +115,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
+	c.API.RegisterFlags(f)
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
@@ -183,6 +188,7 @@ type Cortex struct {
 	// set during initialization
 	serviceMap map[ModuleName]services.Service
 
+	api           *api.API
 	server        *server.Server
 	ring          *ring.Ring
 	overrides     *validation.Overrides
@@ -198,7 +204,7 @@ type Cortex struct {
 	dataPurger    *purger.DataPurger
 
 	ruler        *ruler.Ruler
-	configAPI    *api.API
+	configAPI    *configAPI.API
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
 	compactor    *compactor.Compactor
@@ -231,7 +237,8 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.serviceMap = serviceMap
-	cortex.server.HTTP.Handle("/services", http.HandlerFunc(cortex.servicesHandler))
+	cortex.api.RegisterServiceMapHandler(http.HandlerFunc(cortex.servicesHandler))
+
 	return cortex, nil
 }
 
@@ -255,7 +262,6 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 				}
 			},
 		}
-		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {
 		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 			fakeGRPCAuthUniaryMiddleware,
@@ -263,7 +269,7 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
 			fakeGRPCAuthStreamMiddleware,
 		}
-		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
+		cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 

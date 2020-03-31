@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
@@ -20,11 +19,15 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -32,6 +35,9 @@ type Config struct {
 	AlertmanagerHTTPPrefix string `yaml:"alertmanager_http_prefix"`
 	PrometheusHTTPPrefix   string `yaml:"prometheus_http_prefix"`
 
+	// The following configs are injected by the upstream caller.
+	ServerPrefix       string          `yaml:"-"`
+	LegacyHTTPPrefix   string          `yaml:"-"`
 	HTTPAuthMiddleware middleware.Func `yaml:"-"`
 }
 
@@ -47,30 +53,26 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type API struct {
-	cfg          Config
-	legacyPrefix string
-
-	authMiddleware     middleware.Func
-	server             *server.Server
-	alertmanagerRouter *mux.Router
-	prometheusRouter   *mux.Router
-
-	reg    prometheus.Registerer
-	logger log.Logger
+	cfg              Config
+	authMiddleware   middleware.Func
+	server           *server.Server
+	prometheusRouter *mux.Router
+	logger           log.Logger
 }
 
-func New(cfg Config, s *server.Server, legacyPrefix string, logger log.Logger, reg prometheus.Registerer) (*API, error) {
+func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
+	// Ensure the encoded path is used. Required for the rules API
+	s.HTTP.UseEncodedPath()
+
 	api := &API{
-		cfg:                cfg,
-		legacyPrefix:       legacyPrefix,
-		authMiddleware:     cfg.HTTPAuthMiddleware,
-		alertmanagerRouter: s.HTTP.PathPrefix(cfg.AlertmanagerHTTPPrefix).Subrouter(),
-		prometheusRouter:   s.HTTP.PathPrefix(cfg.PrometheusHTTPPrefix).Subrouter(),
-		server:             s,
-		reg:                reg,
-		logger:             logger,
+		cfg:              cfg,
+		authMiddleware:   cfg.HTTPAuthMiddleware,
+		prometheusRouter: s.HTTP.PathPrefix(cfg.PrometheusHTTPPrefix).Subrouter(),
+		server:           s,
+		logger:           logger,
 	}
 
+	// If no authentication middleware is present in the config, use the middlewar
 	if cfg.HTTPAuthMiddleware == nil {
 		api.authMiddleware = middleware.AuthenticateUser
 	}
@@ -89,20 +91,15 @@ func (a *API) registerRoute(path string, handler http.Handler, auth bool, method
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
 }
 
+// Register the route under the prometheus component path as well as the provided legacy
+// path
 func (a *API) registerPrometheusRoute(path string, handler http.Handler, methods ...string) {
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+path, handler, true, methods...)
 	if len(methods) == 0 {
 		a.prometheusRouter.Path(path).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
 		return
 	}
 	a.prometheusRouter.Path(path).Methods(methods...).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
-}
-
-func (a *API) registerAlertmanagerRoute(path string, handler http.Handler, methods ...string) {
-	if len(methods) == 0 {
-		a.alertmanagerRouter.Path(path).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
-		return
-	}
-	a.alertmanagerRouter.Path(path).Methods(methods...).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
@@ -119,53 +116,112 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 	})
 }
 
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager) {
-	a.RegisterRoute("/alertmanager/status", am.GetStatusHandler(), false)
+// RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
+// serve endpoints using the legacy http-prefix if it is not run as a single binary.
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target bool) {
+	// Ensure this route is registered before the prefixed AM route
+	a.registerRoute("/multitenant-alertmanager/status", am.GetStatusHandler(), false)
 
+	// UI components lead to a large number of routes to support, utilize a path prefix instead
+	a.server.HTTP.PathPrefix(a.cfg.AlertmanagerHTTPPrefix).Handler(a.authMiddleware.Wrap(am))
+
+	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
+	// the component routed API.
+	if target {
+		a.registerRoute("/status", am.GetStatusHandler(), false)
+		a.server.HTTP.PathPrefix(a.cfg.LegacyHTTPPrefix).Handler(a.authMiddleware.Wrap(am))
+	}
 }
 
+// RegisterAPI registers the standard endpoints associated with a running Cortex.
+func (a *API) RegisterAPI(cfg interface{}) {
+	a.registerRoute("/config", configHandler(cfg), false)
+	a.registerRoute("/", http.HandlerFunc(indexHandler), false)
+}
+
+// RegisterDistributor registers the endpoints associated with the distributor.
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
+	a.registerRoute("/api/v1/push", push.Handler(pushConfig, d.Push), true)
+	a.registerRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
+	a.registerRoute("/distributor/ha-tracker", d.Replicas, false)
+
+	// Legacy Routes
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, d.Push), true)
 	a.registerRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
-	a.registerRoute("/push", push.Handler(pushConfig, d.Push), true)
 	a.registerRoute("/ha-tracker", d.Replicas, false)
 }
 
+// RegisterIngester registers the ingesters HTTP and GRPC service
 func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 	grpc_health_v1.RegisterHealthServer(a.server.GRPC, i)
+
+	a.registerRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
+	a.registerRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
+	a.registerRoute("/ingester/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
+
+	// Legacy Routes
 	a.registerRoute("/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.registerRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.registerRoute("/push", push.Handler(pushConfig, i.Push), true)
+	a.registerRoute("/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
 }
 
-func (a *API) RegisterPurger(store *purger.DeleteStore) error {
-	var deleteRequestHandler *purger.DeleteRequestHandler
-	deleteRequestHandler, err := purger.NewDeleteRequestHandler(store)
-	if err != nil {
-		return err
-	}
+// RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exacty
+// match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
+// component/
+func (a *API) RegisterPurger(store *purger.DeleteStore) {
+	deleteRequestHandler := purger.NewDeleteRequestHandler(store)
 
 	a.registerPrometheusRoute("/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), "PUT", "POST")
 	a.registerPrometheusRoute("/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), "GET")
-	return nil
 }
 
-func (a *API) RegisterRing(component string, handler http.Handler) {
-	a.server.HTTP.Handle("/"+component+"/ring", handler)
+// RegisterRuler registers routes associated with the Ruler service. If the
+// API is not enabled only the ring route is registered.
+func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
+	a.registerRoute("/ruler/ring", r, false)
+
+	if apiEnabled {
+		a.registerPrometheusRoute("/api/v1/rules", http.HandlerFunc(r.PrometheusRules), "GET")
+		a.registerPrometheusRoute("/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), "GET")
+
+		ruler.RegisterRulerServer(a.server.GRPC, r)
+
+		a.registerRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
+		a.registerRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+		a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+		a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+		a.registerRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+		a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	}
 }
 
-func (a *API) RegisterRuler(r *ruler.Ruler) {
-	a.registerPrometheusRoute("/api/v1/rules", http.HandlerFunc(r.PrometheusRules), "GET")
-	a.registerPrometheusRoute("/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), "GET")
-	a.registerRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
-	a.registerRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-	a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-	a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-	a.registerRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-	a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+// // RegisterRing registers the ring UI page associated with the distributor for writes.
+func (a *API) RegisterRing(r *ring.Ring) {
+	a.registerRoute("/ring", r, false)
 }
 
-func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor) error {
+// RegisterStoreGateway registers the ring UI page associated with the store-gateway.
+func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
+	a.registerRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false)
+}
+
+// RegisterCompactor registers the ring UI page associated with the compactor.
+func (a *API) RegisterCompactor(c *compactor.Compactor) {
+	a.registerRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false)
+}
+
+// RegisterQuerier registers the Prometheus routes supported by the
+// Cortex querier service. Currently this can not be registered simultaneously
+// with the QueryFrontend.
+func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor) {
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -184,7 +240,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		&v1.PrometheusVersion{},
 	)
 
-	promRouter := route.New().WithPrefix(a.cfg.PrometheusHTTPPrefix + "/api/v1")
+	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
 	api.Register(promRouter)
 
 	a.registerPrometheusRoute("/api/v1/read", querier.RemoteReadHandler(queryable))
@@ -195,8 +251,35 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerPrometheusRoute("/api/v1/series", promRouter)
 	a.registerPrometheusRoute("/api/v1/metadata", promRouter)
 
-	a.registerRoute("/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
+	a.registerRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
 	a.registerRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true)
 
-	return nil
+	// Legacy Routes
+	a.registerRoute("/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
+	a.registerRoute("/chunks", querier.ChunksHandler(queryable), true)
+}
+
+// RegisterQueryFrontend registers the Prometheus routes supported by the
+// Cortex querier service. Currently this can not be registered simultaneously
+// with the Querier.
+func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
+	frontend.RegisterFrontendServer(a.server.GRPC, f)
+
+	// Previously the frontend handled all calls to the provided prefix. Instead explicit
+	// routing is used since it will be required to enable the frontend to be run as part
+	// of a single binary in the future.
+	a.registerPrometheusRoute("/api/v1/read", f.Handler())
+	a.registerPrometheusRoute("/api/v1/query", f.Handler())
+	a.registerPrometheusRoute("/api/v1/query_range", f.Handler())
+	a.registerPrometheusRoute("/api/v1/labels", f.Handler())
+	a.registerPrometheusRoute("/api/v1/label/{name}/values", f.Handler())
+	a.registerPrometheusRoute("/api/v1/series", f.Handler())
+	a.registerPrometheusRoute("/api/v1/metadata", f.Handler())
+}
+
+// RegisterServiceMapHandler registers the Cortex structs service handler
+// TODO: Refactor this code to be accomplished using the services.ServiceManager
+// or a future module manager #2291
+func (a *API) RegisterServiceMapHandler(handler http.Handler) {
+	a.registerRoute("/services", handler, false)
 }

@@ -45,6 +45,11 @@
   - `-redis.password` --> `-store.chunks-cache.redis.password`
   - `-redis.timeout` --> `-store.chunks-cache.redis.timeout`
 * [CHANGE] Rename the `-store.chunk-cache-stubs` to `-store.chunks-cache.cache-stubs` to be more inline with above.
+* [CHANGE] Change prefix of flags `-dynamodb.periodic-table.*` to `-table-manager.index-table.*`. #2359
+* [CHANGE] Change prefix of flags `-dynamodb.chunk-table.*` to `-table-manager.chunk-table.*`. #2359
+* [CHANGE] Change the following flags: #2359
+  - `-dynamodb.poll-interval` --> `-table-manager.poll-interval`
+  - `-dynamodb.periodic-table.grace-period` --> `-table-manager.periodic-table.grace-period`
 * [CHANGE] Renamed the following flags: #2273
   - `-dynamodb.chunk.gang.size` --> `-dynamodb.chunk-gang-size`
   - `-dynamodb.chunk.get.max.parallelism` --> `-dynamodb.chunk-get-max-parallelism`
@@ -71,8 +76,9 @@
 * [FEATURE] Added experimental storage API to the ruler service that is enabled when the `-experimental.ruler.enable-api` is set to true #2269
   * `-ruler.storage.type` flag now allows `s3`,`gcs`, and `azure` values
   * `-ruler.storage.(s3|gcs|azure)` flags exist to allow the configuration of object clients set for rule storage
-* [CHANGE] Renamed table manager metrics. #2307
+* [CHANGE] Renamed table manager metrics. #2307 #2359
   * `cortex_dynamo_sync_tables_seconds` -> `cortex_table_manager_sync_duration_seconds`
+  * `cortex_dynamo_table_capacity_units` -> `cortex_table_capacity_units`
 * [FEATURE] Flusher target to flush the WAL.
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.

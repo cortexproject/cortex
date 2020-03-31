@@ -1028,315 +1028,319 @@ The `table_manager_config` configures the Cortex table-manager.
 # CLI flag: -table-manager.retention-period
 [retention_period: <duration> | default = 0s]
 
-# How frequently to poll DynamoDB to learn our capacity.
-# CLI flag: -dynamodb.poll-interval
-[dynamodb_poll_interval: <duration> | default = 2m0s]
+# How frequently to poll backend to learn our capacity.
+# CLI flag: -table-manager.poll-interval
+[poll_interval: <duration> | default = 2m0s]
 
-# DynamoDB periodic tables grace period (duration which table will be
-# created/deleted before/after it's needed).
-# CLI flag: -dynamodb.periodic-table.grace-period
+# Periodic tables grace period (duration which table will be created/deleted
+# before/after it's needed).
+# CLI flag: -table-manager.periodic-table.grace-period
 [creation_grace_period: <duration> | default = 10m0s]
 
 index_tables_provisioning:
   # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled
-  # CLI flag: -dynamodb.periodic-table.enable-ondemand-throughput-mode
-  [provisioned_throughput_on_demand_mode: <boolean> | default = false]
+  # supported). Applies only to tables which are not autoscaled. Supported by
+  # DynamoDB
+  # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
+  [enable_ondemand_throughput_mode: <boolean> | default = false]
 
-  # DynamoDB table default write throughput.
-  # CLI flag: -dynamodb.periodic-table.write-throughput
+  # Table default write throughput. Supported by DynamoDB
+  # CLI flag: -table-manager.index-table.write-throughput
   [provisioned_write_throughput: <int> | default = 1000]
 
-  # DynamoDB table default read throughput.
-  # CLI flag: -dynamodb.periodic-table.read-throughput
+  # Table default read throughput. Supported by DynamoDB
+  # CLI flag: -table-manager.index-table.read-throughput
   [provisioned_read_throughput: <int> | default = 300]
 
   # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled
-  # CLI flag: -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode
-  [inactive_throughput_on_demand_mode: <boolean> | default = false]
+  # supported). Applies only to tables which are not autoscaled. Supported by
+  # DynamoDB
+  # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
+  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
-  # DynamoDB table write throughput for inactive tables.
-  # CLI flag: -dynamodb.periodic-table.inactive-write-throughput
+  # Table write throughput for inactive tables. Supported by DynamoDB
+  # CLI flag: -table-manager.index-table.inactive-write-throughput
   [inactive_write_throughput: <int> | default = 1]
 
-  # DynamoDB table read throughput for inactive tables.
-  # CLI flag: -dynamodb.periodic-table.inactive-read-throughput
+  # Table read throughput for inactive tables. Supported by DynamoDB
+  # CLI flag: -table-manager.index-table.inactive-read-throughput
   [inactive_read_throughput: <int> | default = 300]
 
   write_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.enabled
+    # CLI flag: -table-manager.index-table.write-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.role-arn
+    # CLI flag: -table-manager.index-table.write-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.min-capacity
+    # CLI flag: -table-manager.index-table.write-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.max-capacity
+    # CLI flag: -table-manager.index-table.write-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.index-table.write-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.index-table.write-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.periodic-table.write-throughput.scale.target-value
+    # CLI flag: -table-manager.index-table.write-throughput.scale.target-value
     [target: <float> | default = 80]
 
   inactive_write_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.enabled
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.role-arn
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.min-capacity
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.max-capacity
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale.target-value
+    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.target-value
     [target: <float> | default = 80]
 
   # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -dynamodb.periodic-table.inactive-write-throughput.scale-last-n
+  # CLI flag: -table-manager.index-table.inactive-write-throughput.scale-last-n
   [inactive_write_scale_lastn: <int> | default = 4]
 
   read_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.enabled
+    # CLI flag: -table-manager.index-table.read-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.role-arn
+    # CLI flag: -table-manager.index-table.read-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.min-capacity
+    # CLI flag: -table-manager.index-table.read-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.max-capacity
+    # CLI flag: -table-manager.index-table.read-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.index-table.read-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.index-table.read-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.periodic-table.read-throughput.scale.target-value
+    # CLI flag: -table-manager.index-table.read-throughput.scale.target-value
     [target: <float> | default = 80]
 
   inactive_read_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.enabled
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.role-arn
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.min-capacity
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.max-capacity
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale.target-value
+    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.target-value
     [target: <float> | default = 80]
 
   # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -dynamodb.periodic-table.inactive-read-throughput.scale-last-n
+  # CLI flag: -table-manager.index-table.inactive-read-throughput.scale-last-n
   [inactive_read_scale_lastn: <int> | default = 4]
 
 chunk_tables_provisioning:
   # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled
-  # CLI flag: -dynamodb.chunk-table.enable-ondemand-throughput-mode
-  [provisioned_throughput_on_demand_mode: <boolean> | default = false]
+  # supported). Applies only to tables which are not autoscaled. Supported by
+  # DynamoDB
+  # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
+  [enable_ondemand_throughput_mode: <boolean> | default = false]
 
-  # DynamoDB table default write throughput.
-  # CLI flag: -dynamodb.chunk-table.write-throughput
+  # Table default write throughput. Supported by DynamoDB
+  # CLI flag: -table-manager.chunk-table.write-throughput
   [provisioned_write_throughput: <int> | default = 1000]
 
-  # DynamoDB table default read throughput.
-  # CLI flag: -dynamodb.chunk-table.read-throughput
+  # Table default read throughput. Supported by DynamoDB
+  # CLI flag: -table-manager.chunk-table.read-throughput
   [provisioned_read_throughput: <int> | default = 300]
 
   # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled
-  # CLI flag: -dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode
-  [inactive_throughput_on_demand_mode: <boolean> | default = false]
+  # supported). Applies only to tables which are not autoscaled. Supported by
+  # DynamoDB
+  # CLI flag: -table-manager.chunk-table.inactive-enable-ondemand-throughput-mode
+  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
-  # DynamoDB table write throughput for inactive tables.
-  # CLI flag: -dynamodb.chunk-table.inactive-write-throughput
+  # Table write throughput for inactive tables. Supported by DynamoDB
+  # CLI flag: -table-manager.chunk-table.inactive-write-throughput
   [inactive_write_throughput: <int> | default = 1]
 
-  # DynamoDB table read throughput for inactive tables.
-  # CLI flag: -dynamodb.chunk-table.inactive-read-throughput
+  # Table read throughput for inactive tables. Supported by DynamoDB
+  # CLI flag: -table-manager.chunk-table.inactive-read-throughput
   [inactive_read_throughput: <int> | default = 300]
 
   write_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.enabled
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.role-arn
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.min-capacity
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.max-capacity
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.chunk-table.write-throughput.scale.target-value
+    # CLI flag: -table-manager.chunk-table.write-throughput.scale.target-value
     [target: <float> | default = 80]
 
   inactive_write_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.enabled
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.role-arn
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.min-capacity
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.max-capacity
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale.target-value
+    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.target-value
     [target: <float> | default = 80]
 
   # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -dynamodb.chunk-table.inactive-write-throughput.scale-last-n
+  # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale-last-n
   [inactive_write_scale_lastn: <int> | default = 4]
 
   read_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.enabled
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.role-arn
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.min-capacity
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.max-capacity
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.chunk-table.read-throughput.scale.target-value
+    # CLI flag: -table-manager.chunk-table.read-throughput.scale.target-value
     [target: <float> | default = 80]
 
   inactive_read_scale:
     # Should we enable autoscale for the table.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.enabled
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.enabled
     [enabled: <boolean> | default = false]
 
     # AWS AutoScaling role ARN
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.role-arn
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.role-arn
     [role_arn: <string> | default = ""]
 
     # DynamoDB minimum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.min-capacity
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.min-capacity
     [min_capacity: <int> | default = 3000]
 
     # DynamoDB maximum provision capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.max-capacity
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.max-capacity
     [max_capacity: <int> | default = 6000]
 
     # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.out-cooldown
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.out-cooldown
     [out_cooldown: <int> | default = 1800]
 
     # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.in-cooldown
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.in-cooldown
     [in_cooldown: <int> | default = 1800]
 
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale.target-value
+    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.target-value
     [target: <float> | default = 80]
 
   # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -dynamodb.chunk-table.inactive-read-throughput.scale-last-n
+  # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
   [inactive_read_scale_lastn: <int> | default = 4]
 ```
 

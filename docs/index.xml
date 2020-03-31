@@ -4941,13 +4941,13 @@ which identify them and confirm they are authorised.&lt;/p&gt;
 add extra headers. The user and password fields of http Basic auth, or
 Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
 &lt;p&gt;For the v1.0 release, we want to provide the following guarantees:&lt;/p&gt;
-&lt;h1 id=&#34;flags-config-and-minor-version-upgrades&#34;&gt;Flags, Config and minor version upgrades&lt;/h1&gt;
+&lt;h2 id=&#34;flags-config-and-minor-version-upgrades&#34;&gt;Flags, Config and minor version upgrades&lt;/h2&gt;
 &lt;p&gt;Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code&gt;cortex_deprecated_flags_inuse_total&lt;/code&gt;) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p&gt;
 &lt;p&gt;Similarly to flags, minor version upgrades using config files should &amp;ldquo;just work&amp;rdquo;. If we do need to change config, we will keep the old way working for two minor version. There will be a metric you can alert on for this too.&lt;/p&gt;
 &lt;p&gt;These guarantees don&amp;rsquo;t apply for &lt;a href=&#34;#experimental-features&#34;&gt;experimental features&lt;/a&gt;.&lt;/p&gt;
-&lt;h1 id=&#34;reading-old-data&#34;&gt;Reading old data&lt;/h1&gt;
+&lt;h2 id=&#34;reading-old-data&#34;&gt;Reading old data&lt;/h2&gt;
 &lt;p&gt;The Cortex maintainers commit to ensuring future version of Cortex can read data written by versions up to two years old. In practice we expect to be able to read more, but this is our guarantee.&lt;/p&gt;
-&lt;h1 id=&#34;api-compatibility&#34;&gt;API Compatibility&lt;/h1&gt;
+&lt;h2 id=&#34;api-compatibility&#34;&gt;API Compatibility&lt;/h2&gt;
 &lt;p&gt;Cortex strives to be 100% API compatible with Prometheus (under &lt;code&gt;/api/prom/*&lt;/code&gt;); any deviation from this is considered a bug, except:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Requiring the &lt;code&gt;__name__&lt;/code&gt; label on queries.&lt;/li&gt;
@@ -4955,7 +4955,7 @@ Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</des
 &lt;li&gt;Additional API around pushing metrics (under &lt;code&gt;/api/push&lt;/code&gt;).&lt;/li&gt;
 &lt;li&gt;Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h1 id=&#34;experimental-features&#34;&gt;Experimental features&lt;/h1&gt;
+&lt;h2 id=&#34;experimental-features&#34;&gt;Experimental features&lt;/h2&gt;
 &lt;p&gt;Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p&gt;
 &lt;p&gt;Currently experimental features are:&lt;/p&gt;
 &lt;ul&gt;

@@ -30,11 +30,11 @@ var (
 )
 
 // returns source ingesterID, number of received series, added chunks and error
-func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream client.Ingester_TransferChunksServer) (fromIngesterID string, seriesReceived int, err error) {
+func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream client.Ingester_TransferChunksServer) (fromIngesterID string, seriesReceived int, retErr error) {
 	chunksAdded := 0.0
 
 	defer func() {
-		if err != nil {
+		if retErr != nil {
 			// Ensure the in memory chunks are updated to reflect the number of dropped chunks from the transfer
 			i.metrics.memoryChunks.Sub(chunksAdded)
 
@@ -45,14 +45,12 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 	}()
 
 	for {
-		var wireSeries *client.TimeSeriesChunk
-
-		wireSeries, err = stream.Recv()
+		wireSeries, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			err = errors.Wrap(err, "TransferChunks: Recv")
+			retErr = errors.Wrap(err, "TransferChunks: Recv")
 			return
 		}
 
@@ -66,19 +64,19 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 			// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
 			err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
 			if err != nil {
-				err = errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+				retErr = errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
 				return
 			}
 		}
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
-			err = errors.Wrap(err, "TransferChunks: fromWireChunks")
+			retErr = errors.Wrap(err, "TransferChunks: fromWireChunks")
 			return
 		}
 
 		state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
 		if err != nil {
-			err = errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+			retErr = errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 			return
 		}
 		prevNumChunks := len(series.chunkDescs)
@@ -86,7 +84,7 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 		err = series.setChunks(descs)
 		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
 		if err != nil {
-			err = errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+			retErr = errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 			return
 		}
 
@@ -99,13 +97,13 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 
 	if seriesReceived == 0 {
 		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
-		err = fmt.Errorf("TransferChunks: no series")
+		retErr = fmt.Errorf("TransferChunks: no series")
 		return
 	}
 
 	if fromIngesterID == "" {
 		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
-		err = fmt.Errorf("no ingester id")
+		retErr = fmt.Errorf("no ingester id")
 		return
 	}
 

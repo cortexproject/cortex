@@ -149,6 +149,15 @@ func (us *userStates) getOrCreate(userID string) *userState {
 	return state
 }
 
+// teardown ensures metrics are accurately updated if a userStates struct is discarded
+func (us *userStates) teardown() {
+	for _, u := range us.cp() {
+		u.memSeriesRemovedTotal.Add(float64(u.fpToSeries.length()))
+		u.memSeries.Sub(float64(u.fpToSeries.length()))
+		us.metrics.memUsers.Dec()
+	}
+}
+
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

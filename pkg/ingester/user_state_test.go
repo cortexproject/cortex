@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 )
@@ -70,4 +74,66 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTeardown ensures metrics are updated correctly if the userState is discarded
+func TestTeardown(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	_, ing := newTestStore(t,
+		defaultIngesterTestConfig(),
+		defaultClientTestConfig(),
+		defaultLimitsTestConfig(),
+		reg)
+
+	pushTestSamples(t, ing, 100, 100, 0)
+
+	// Assert exported metrics (3 blocks, 5 files per block, 2 files WAL).
+	metricNames := []string{
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
+		"cortex_ingester_memory_series",
+		"cortex_ingester_memory_users",
+	}
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+			# TYPE cortex_ingester_memory_series_removed_total counter
+			cortex_ingester_memory_series_removed_total{user="1"} 0
+			cortex_ingester_memory_series_removed_total{user="2"} 0
+			cortex_ingester_memory_series_removed_total{user="3"} 0
+			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+			# TYPE cortex_ingester_memory_series_created_total counter
+			cortex_ingester_memory_series_created_total{user="1"} 100
+			cortex_ingester_memory_series_created_total{user="2"} 100
+			cortex_ingester_memory_series_created_total{user="3"} 100
+			# HELP cortex_ingester_memory_series The current number of series in memory.
+			# TYPE cortex_ingester_memory_series gauge
+			cortex_ingester_memory_series 300
+			# HELP cortex_ingester_memory_users The current number of users in memory.
+			# TYPE cortex_ingester_memory_users gauge
+			cortex_ingester_memory_users 3
+		`), metricNames...))
+
+	ing.userStatesMtx.Lock()
+	defer ing.userStatesMtx.Unlock()
+	ing.userStates.teardown()
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+	# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+	# TYPE cortex_ingester_memory_series_removed_total counter
+	cortex_ingester_memory_series_removed_total{user="1"} 100
+	cortex_ingester_memory_series_removed_total{user="2"} 100
+	cortex_ingester_memory_series_removed_total{user="3"} 100
+	# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+	# TYPE cortex_ingester_memory_series_created_total counter
+	cortex_ingester_memory_series_created_total{user="1"} 100
+	cortex_ingester_memory_series_created_total{user="2"} 100
+	cortex_ingester_memory_series_created_total{user="3"} 100
+	# HELP cortex_ingester_memory_series The current number of series in memory.
+	# TYPE cortex_ingester_memory_series gauge
+	cortex_ingester_memory_series 0
+	# HELP cortex_ingester_memory_users The current number of users in memory.
+	# TYPE cortex_ingester_memory_users gauge
+	cortex_ingester_memory_users 0
+	`), metricNames...))
 }

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -36,14 +37,14 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, limits validation.Limits) (*testStore, *Ingester) {
+func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, limits validation.Limits, reg prometheus.Registerer) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, nil)
+	ing, err := New(cfg, clientConfig, overrides, store, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -54,7 +55,7 @@ func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
 	return newTestStore(t,
 		defaultIngesterTestConfig(),
 		defaultClientTestConfig(),
-		defaultLimitsTestConfig())
+		defaultLimitsTestConfig(), nil)
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -238,7 +239,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
-	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 
 	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
@@ -272,7 +273,7 @@ func TestIngesterSpreadFlush(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.SpreadFlushes = true
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
-	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 
 	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
@@ -365,7 +366,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerUser = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
+	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
@@ -422,7 +423,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerMetric = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
+	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
@@ -573,7 +574,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		b.Run(fmt.Sprintf("encoding=%s", enc.name), func(b *testing.B) {
 			b.ResetTimer()
 			for iter := 0; iter < b.N; iter++ {
-				_, ing := newTestStore(b, cfg, clientCfg, limits)
+				_, ing := newTestStore(b, cfg, clientCfg, limits, nil)
 				// Bump the timestamp on each of our test samples each time round the loop
 				for j := 0; j < samples; j++ {
 					for i := range allSamples {

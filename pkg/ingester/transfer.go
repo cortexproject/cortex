@@ -30,7 +30,20 @@ var (
 )
 
 // returns source ingesterID, number of received series, added chunks and error
-func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream client.Ingester_TransferChunksServer) (fromIngesterID string, seriesReceived int, chunksAdded float64, err error) {
+func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream client.Ingester_TransferChunksServer) (fromIngesterID string, seriesReceived int, err error) {
+	chunksAdded := 0.0
+
+	defer func() {
+		if err != nil {
+			// Ensure the in memory chunks are updated to reflect the number of dropped chunks from the transfer
+			i.metrics.memoryChunks.Sub(chunksAdded)
+
+			// If an error occurs during the transfer and the user state is to be discarded,
+			// ensure the metrics it exports reflect this.
+			userStates.teardown()
+		}
+	}()
+
 	for {
 		var wireSeries *client.TimeSeriesChunk
 
@@ -110,19 +123,11 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 
 	xfer := func() error {
 		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
-		var (
-			chunksAdded float64
-			err         error
-		)
 
-		fromIngesterID, seriesReceived, chunksAdded, err = i.fillUserStatesFromStream(userStates, stream)
+		var err error
+		fromIngesterID, seriesReceived, err = i.fillUserStatesFromStream(userStates, stream)
+
 		if err != nil {
-			// Ensure the in memory chunks are updated to reflect the number of dropped chunks from the transfer
-			i.metrics.memoryChunks.Sub(chunksAdded)
-
-			// If an error occurs during the transfer and the user state is to be discarded,
-			// ensure the metrics it exports reflect this.
-			userStates.teardown()
 			return err
 		}
 

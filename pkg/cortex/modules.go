@@ -10,10 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/server"
-<<<<<<< HEAD
-=======
-	"google.golang.org/grpc"
->>>>>>> 1ce95f0cd... all modules registered using API
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
@@ -96,16 +92,6 @@ func (m *ModuleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (t *Cortex) initAPI(cfg *Config) (services.Service, error) {
 	cfg.API.ServerPrefix = cfg.Server.PathPrefix
-
-	if !cfg.AuthEnabled {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			fakeGRPCAuthUniaryMiddleware,
-		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			fakeGRPCAuthStreamMiddleware,
-		}
-		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
-	}
 
 	a, err := api.New(cfg.API, t.server, util.Logger)
 	if err != nil {

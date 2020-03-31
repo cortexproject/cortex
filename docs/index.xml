@@ -5003,7 +5003,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;-ingester.claim-on-rollout&lt;/code&gt; (flag unused)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-ingester.normalise-tokens&lt;/code&gt; (flag unused)&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;[CHANGE] Renamed YAML file options to be more consistent. See full config file changes below. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2273&#34;&gt;#2273&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] Renamed YAML file options to be more consistent. See &lt;a href=&#34;#config-file-breaking-changes&#34;&gt;full config file changes below&lt;/a&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2273&#34;&gt;#2273&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] AWS based autoscaling has been removed. You can only use metrics based autoscaling now. &lt;code&gt;-applicationautoscaling.url&lt;/code&gt; has been removed. See &lt;a href=&#34;https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning&#34;&gt;https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning&lt;/a&gt; on how to migrate. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2328&#34;&gt;#2328&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Renamed the &lt;code&gt;memcache.write-back-goroutines&lt;/code&gt; and &lt;code&gt;memcache.write-back-buffer&lt;/code&gt; flags to &lt;code&gt;background.write-back-concurrency&lt;/code&gt; and &lt;code&gt;background.write-back-buffer&lt;/code&gt;. This affects the following flags:&lt;/p&gt;
 &lt;ul&gt;
@@ -5128,7 +5128,7 @@ replica: replica2
 # max-chunk-idle timeout is reached.
 # CLI flag: -ingester.max-stale-chunk-idle
 &lt;span style=&#34;color:#a40000&#34;&gt;-[maxstalechunkidle: &amp;lt;duration&amp;gt; | default = 0s]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[max_stale_chunk_idle_time: &amp;lt;duration&amp;gt; | default = 0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[max_stale_chunk_idle_time: &amp;lt;duration&amp;gt; | default = 2m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Timeout for individual flush operations.
 # CLI flag: -ingester.flush-op-timeout
@@ -5144,7 +5144,7 @@ replica: replica2
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# Range of time to subtract from -ingester.max-chunk-age to spread out flushes
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; # CLI flag: -ingester.chunk-age-jitter
 &lt;span style=&#34;color:#a40000&#34;&gt;-[chunkagejitter: &amp;lt;duration&amp;gt; | default = 20m0s]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[chunk_age_jitter: &amp;lt;duration&amp;gt; | default = 20m0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[chunk_age_jitter: &amp;lt;duration&amp;gt; | default = 0]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Number of concurrent goroutines flushing to dynamodb.
 # CLI flag: -ingester.concurrent-flushes
@@ -5156,7 +5156,7 @@ replica: replica2
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# -ingester.max-chunk-age.
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; # CLI flag: -ingester.spread-flushes
 &lt;span style=&#34;color:#a40000&#34;&gt;-[spreadflushes: &amp;lt;boolean&amp;gt; | default = false]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[spread_flushes: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[spread_flushes: &amp;lt;boolean&amp;gt; | default = true]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
@@ -5173,12 +5173,12 @@ replica: replica2
 # series in memory. Takes precedent over the -querier.iterators flag.
 # CLI flag: -querier.batch-iterators
 &lt;span style=&#34;color:#a40000&#34;&gt;-[batchiterators: &amp;lt;boolean&amp;gt; | default = false]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[batch_iterators: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[batch_iterators: &amp;lt;boolean&amp;gt; | default = true]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Use streaming RPCs to query ingester.
 # CLI flag: -querier.ingester-streaming
 &lt;span style=&#34;color:#a40000&#34;&gt;-[ingesterstreaming: &amp;lt;boolean&amp;gt; | default = false]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[ingester_streaming: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[ingester_streaming: &amp;lt;boolean&amp;gt; | default = true]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
@@ -5190,13 +5190,13 @@ replica: replica2
 &lt;span style=&#34;color:#a40000&#34;&gt;-[defaultevaluationinterval: &amp;lt;duration&amp;gt; | default = 1m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[default_evaluation_interval: &amp;lt;duration&amp;gt; | default = 1m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
-### `query_frontend_config`
+### query_frontend_config
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 &lt;span style=&#34;color:#a40000&#34;&gt;-[downstream: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[downstream_url: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
-### `ruler_config`
+### ruler_config
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 &lt;span style=&#34;color:#a40000&#34;&gt;-[externalurl: &amp;lt;url&amp;gt; | default = ]
@@ -5214,8 +5214,7 @@ replica: replica2
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 &lt;span style=&#34;color:#a40000&#34;&gt;-storeconfig:
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+storage:
-&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; # Method to use for backend rule storage (configdb, azure, gcs, s3)
-# CLI flag: -ruler.storage.type
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
 &lt;span style=&#34;color:#a40000&#34;&gt;-[rulepath: &amp;lt;string&amp;gt; | default = &amp;#34;/rules&amp;#34;]
@@ -5266,7 +5265,7 @@ replica: replica2
 &lt;span style=&#34;color:#a40000&#34;&gt;-[flushcheckperiod: &amp;lt;duration&amp;gt; | default = 1m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[flush_period: &amp;lt;duration&amp;gt; | default = 1m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
-### `alertmanager_config`
+### alertmanager_config
 # Base path for data storage.
 # CLI flag: -alertmanager.storage.path
 &lt;span style=&#34;color:#a40000&#34;&gt;-[datadir: &amp;lt;string&amp;gt; | default = &amp;#34;data/&amp;#34;]
@@ -5308,12 +5307,54 @@ replica: replica2
 &lt;span style=&#34;color:#a40000&#34;&gt;-[autowebhookroot: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[auto_webhook_root: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### table_manager_config
 &lt;span style=&#34;color:#a40000&#34;&gt;-store:
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+storage:
-&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; # Type of backend to use to store alertmanager configs. Supported values are:
-# &amp;#34;configdb&amp;#34;, &amp;#34;local&amp;#34;.
-[engine: &amp;lt;string&amp;gt; | default = &amp;#34;chunks&amp;#34;]
-### `storage_config`
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#a40000&#34;&gt;-# How frequently to poll DynamoDB to learn our capacity.
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-# CLI flag: -dynamodb.poll-interval
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-[dynamodb_poll_interval: &amp;lt;duration&amp;gt; | default = 2m0s]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# How frequently to poll backend to learn our capacity.
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# CLI flag: -table-manager.poll-interval
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[poll_interval: &amp;lt;duration&amp;gt; | default = 2m0s]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#a40000&#34;&gt;-# DynamoDB periodic tables grace period (duration which table will be
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-# created/deleted before/after it&amp;#39;s needed).
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-# CLI flag: -dynamodb.periodic-table.grace-period
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# Periodic tables grace period (duration which table will be created/deleted
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# before/after it&amp;#39;s needed).
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+# CLI flag: -table-manager.periodic-table.grace-period
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt; [creation_grace_period: &amp;lt;duration&amp;gt; | default = 10m0s]
+index_tables_provisioning:
+# Enables on demand throughput provisioning for the storage provider (if
+&lt;span style=&#34;color:#a40000&#34;&gt;- # supported). Applies only to tables which are not autoscaled
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- # CLI flag: -dynamodb.periodic-table.enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [provisioned_throughput_on_demand_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # supported). Applies only to tables which are not autoscaled. Supported by
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # DynamoDB
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [enable_ondemand_throughput_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+# Enables on demand throughput provisioning for the storage provider (if
+&lt;span style=&#34;color:#a40000&#34;&gt;- # supported). Applies only to tables which are not autoscaled
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- # CLI flag: -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [inactive_throughput_on_demand_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # supported). Applies only to tables which are not autoscaled. Supported by
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # DynamoDB
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [enable_inactive_throughput_on_demand_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+chunk_tables_provisioning:
+# Enables on demand throughput provisioning for the storage provider (if
+&lt;span style=&#34;color:#a40000&#34;&gt;- # supported). Applies only to tables which are not autoscaled
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- # CLI flag: -dynamodb.chunk-table.enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [provisioned_throughput_on_demand_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # supported). Applies only to tables which are not autoscaled. Supported by
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # DynamoDB
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [enable_ondemand_throughput_mode: &amp;lt;boolean&amp;gt; | default = false]
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+### storage_config
 aws:
 &lt;span style=&#34;color:#a40000&#34;&gt;- dynamodbconfig:
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ dynamodb:
@@ -5333,12 +5374,11 @@ aws:
 # CLI flag: -dynamodb.throttle-limit
 &lt;span style=&#34;color:#a40000&#34;&gt;- [throttlelimit: &amp;lt;float&amp;gt; | default = 10]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [throttle_limit: &amp;lt;float&amp;gt; | default = 10]
-&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
-# ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
-# CLI flag: -applicationautoscaling.url
-&lt;span style=&#34;color:#a40000&#34;&gt;- [applicationautoscaling: &amp;lt;url&amp;gt; | default = ]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+ [application_autoscaling_url: &amp;lt;url&amp;gt; | default = ]
-&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;-
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- # CLI flag: -applicationautoscaling.url
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;- [applicationautoscaling: &amp;lt;url&amp;gt; | default = ]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;
 # Queue length above which we will scale up capacity
 # CLI flag: -metrics.target-queue-length
 &lt;span style=&#34;color:#a40000&#34;&gt;- [targetqueuelen: &amp;lt;int&amp;gt; | default = 100000]
@@ -5425,6 +5465,7 @@ backoff_config:
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[index_cache_validity: &amp;lt;duration&amp;gt; | default = 5m0s]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 ### ingester_client_config
+grpc_client_config:
 backoff_config:
 # Minimum delay when backing off.
 # CLI flag: -ingester.client.backoff-min-period
@@ -5448,8 +5489,6 @@ backoff_config:
 &lt;span style=&#34;color:#a40000&#34;&gt;-[address: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[frontend_address: &amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
-# Number of simultaneous queries to process.
-# CLI flag: -querier.worker-parallelism
 # How often to query DNS.
 # CLI flag: -querier.dns-lookup-period
 &lt;span style=&#34;color:#a40000&#34;&gt;-[dnslookupduration: &amp;lt;duration&amp;gt; | default = 10s]
@@ -5487,13 +5526,13 @@ backoff_config:
 # Enable consistent reads to Consul.
 # CLI flag: -&amp;lt;prefix&amp;gt;.consul.consistent-reads
 &lt;span style=&#34;color:#a40000&#34;&gt;-[consistentreads: &amp;lt;boolean&amp;gt; | default = true]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[consistent_reads: &amp;lt;boolean&amp;gt; | default = true]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[consistent_reads: &amp;lt;boolean&amp;gt; | default = false]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
 # CLI flag: -&amp;lt;prefix&amp;gt;.consul.watch-rate-limit
 &lt;span style=&#34;color:#a40000&#34;&gt;-[watchkeyratelimit: &amp;lt;float&amp;gt; | default = 0]
-&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[watch_rate_limit: &amp;lt;float&amp;gt; | default = 0]
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;+[watch_rate_limit: &amp;lt;float&amp;gt; | default = 1]
 &lt;/span&gt;&lt;span style=&#34;color:#00a000&#34;&gt;&lt;/span&gt;
 # Burst size used in rate limit. Values less than 1 are treated as 1.
 # CLI flag: -&amp;lt;prefix&amp;gt;.consul.watch-burst-size

@@ -1,7 +1,7 @@
 ---
 title: "Config for sending HA Pairs data to Cortex"
 linkTitle: "Config for sending HA Pairs data to Cortex"
-weight: 4
+weight: 10
 slug: ha-pair-handling
 ---
 

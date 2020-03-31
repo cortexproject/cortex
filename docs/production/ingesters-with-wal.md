@@ -9,6 +9,8 @@ Currently the ingesters running in the chunks storage mode, store all their data
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
+_The WAL is currently considered experimental._
+
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [statefulset](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
@@ -66,10 +68,10 @@ PS: Given you have to scale down 1 ingester at a time, you can pipeline the shut
 
 There is a [flush mode ingester](https://github.com/cortexproject/cortex/pull/1747) in progress, and with recent discussions there will be a separate target called flusher in it's place.
 
-You can run it as a kubernetes job which will 
+You can run it as a kubernetes job which will
 * Attach to the volume of the scaled down ingester
 * Recover from the WAL
-* And flush all the chunks. 
+* And flush all the chunks.
 
 This job is to be run for all the ingesters that you missed hitting the shutdown endpoint as a first option.
 

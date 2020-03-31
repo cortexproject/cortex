@@ -7,10 +7,12 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -81,6 +83,8 @@ type FifoCacheConfig struct {
 	MaxSizeBytes int           `yaml:"max_size_bytes"`
 	MaxSizeItems int           `yaml:"max_size_items"`
 	Validity     time.Duration `yaml:"validity"`
+
+	DeprecatedSize int `yaml:"size"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -88,6 +92,8 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 	f.IntVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
+
+	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "DEPRECATED(use "+prefix+"fifocache.max-size-{items|bytes}) "+description+"The number of entries to cache.")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
@@ -125,6 +131,15 @@ type cacheEntry struct {
 func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 	util.WarnExperimentalUse("In-memory (FIFO) cache")
 
+	if cfg.DeprecatedSize > 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-{items|bytes} instead", "cache", name)
+		cfg.MaxSizeItems = cfg.DeprecatedSize
+	}
+	if cfg.MaxSizeBytes > 0 && cfg.MaxSizeItems > 0 {
+		level.Warn(util.Logger).Log("msg", "fifocache.max-size-bytes and fifocache.max-size-items (disregarded) are mutually exclusive", "cache", name)
+		cfg.MaxSizeItems = 0
+	}
 	return &FifoCache{
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: cfg.MaxSizeBytes,
@@ -178,7 +193,9 @@ func (c *FifoCache) Stop() {
 	c.entriesCurrent.Set(float64(0))
 	c.memoryBytes.Set(float64(0))
 
-	c.entries = nil
+	c.entries = make(map[string]*cacheEntry)
+	c.first = nil
+	c.last = nil
 	c.currSizeBytes = 0
 }
 
@@ -269,30 +286,28 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		return
 	}
 
-	if !ok {
-		c.entriesAddedNew.Inc()
-	}
-
 	// Otherwise, see if we need to evict an entry.
 	for (c.maxSizeBytes > 0 && c.currSizeBytes+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
-		c.entriesEvicted.Inc()
-		if evicted := c.deleteFromTail(); evicted != nil {
-			delete(c.entries, evicted.key)
-			c.currSizeBytes -= sizeOf(evicted)
-			c.entriesCurrent.Dec()
-		} else {
-			c.entries = nil
-			c.currSizeBytes = 0
-			c.entriesCurrent.Set(float64(0))
+		evicted := c.deleteFromTail()
+		if evicted == nil {
+			break
 		}
+		delete(c.entries, evicted.key)
+		c.currSizeBytes -= sizeOf(evicted)
+		c.entriesCurrent.Dec()
+		c.entriesEvicted.Inc()
 	}
 
 	// Finally, no hit and we have space.
 	c.addToHead(entry)
 	c.entries[key] = entry
 	c.currSizeBytes += entrySz
-	c.memoryBytes.Set(float64(c.currSizeBytes))
+
+	if !ok {
+		c.entriesAddedNew.Inc()
+	}
 	c.entriesCurrent.Inc()
+	c.memoryBytes.Set(float64(c.currSizeBytes))
 }
 
 // Get returns the stored value against the key and when the key was last updated.

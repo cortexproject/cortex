@@ -29,10 +29,10 @@ func TestFifoCacheEviction(t *testing.T) {
 			name: "test-memory-eviction",
 			cfg:  FifoCacheConfig{MaxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
 		},
-		/*{
+		{
 			name: "test-items-eviction",
 			cfg:  FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute},
-		},*/
+		},
 	}
 
 	for _, test := range tests {
@@ -99,7 +99,7 @@ func TestFifoCacheEviction(t *testing.T) {
 			_, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
 			require.False(t, ok)
 		}
-		for i := cnt; i < cnt+evicted; i++ {
+		for i := cnt - evicted; i < cnt+evicted; i++ {
 			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
 			require.True(t, ok)
 			require.Equal(t, i, value.(int))
@@ -110,7 +110,7 @@ func TestFifoCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
 		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
@@ -136,7 +136,7 @@ func TestFifoCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted*2))
 		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
 		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))

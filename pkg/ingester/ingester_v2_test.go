@@ -166,7 +166,7 @@ func TestIngester_v2Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="out-of-bounds",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {

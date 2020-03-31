@@ -577,7 +577,7 @@ lifecycler:
 
 # Range of time to subtract from -ingester.max-chunk-age to spread out flushes
 # CLI flag: -ingester.chunk-age-jitter
-[chunk_age_jitter: <duration> | default = 20m0s]
+[chunk_age_jitter: <duration> | default = 0s]
 
 # Number of concurrent goroutines flushing to dynamodb.
 # CLI flag: -ingester.concurrent-flushes

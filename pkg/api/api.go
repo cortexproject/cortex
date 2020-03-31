@@ -5,8 +5,10 @@ import (
 	"flag"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
@@ -81,6 +83,7 @@ func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
 }
 
 func (a *API) registerRoute(path string, handler http.Handler, auth bool, methods ...string) {
+	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
 	if auth {
 		handler = a.authMiddleware.Wrap(handler)
 	}
@@ -94,6 +97,7 @@ func (a *API) registerRoute(path string, handler http.Handler, auth bool, method
 // Register the route under the prometheus component path as well as the provided legacy
 // path
 func (a *API) registerPrometheusRoute(path string, handler http.Handler, methods ...string) {
+	level.Debug(a.logger).Log("msg", "api: registering prometheus route", "methods", strings.Join(methods, ","), "path", path)
 	a.registerRoute(a.cfg.LegacyHTTPPrefix+path, handler, true, methods...)
 	if len(methods) == 0 {
 		a.prometheusRouter.Path(path).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
@@ -124,6 +128,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
 	a.server.HTTP.PathPrefix(a.cfg.AlertmanagerHTTPPrefix).Handler(a.authMiddleware.Wrap(am))
+	level.Debug(a.logger).Log("msg", "api: registering alertmanager", "path_prefix", a.cfg.AlertmanagerHTTPPrefix)
 
 	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
 	// the component routed API.

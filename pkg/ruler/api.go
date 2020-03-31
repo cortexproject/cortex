@@ -15,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
@@ -25,28 +24,6 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-// RegisterRoutes registers the ruler API HTTP routes with the provided Router.
-func (r *Ruler) RegisterRoutes(router *mux.Router, middleware middleware.Interface) {
-	// Routes for this API must be encoded to allow for various characters to be
-	// present in the path URL
-	router = router.UseEncodedPath()
-	for _, route := range []struct {
-		name, method, path string
-		handler            http.HandlerFunc
-	}{
-		{"get_rules", "GET", "/api/v1/rules", r.PrometheusRules},
-		{"get_alerts", "GET", "/api/v1/alerts", r.PrometheusAlerts},
-		{"list_rules", "GET", "/rules", r.ListRules},
-		{"list_rules_namespace", "GET", "/rules/{namespace}", r.ListRules},
-		{"get_rulegroup", "GET", "/rules/{namespace}/{groupName}", r.GetRuleGroup},
-		{"set_rulegroup", "POST", "/rules/{namespace}", r.CreateRuleGroup},
-		{"delete_rulegroup", "DELETE", "/rules/{namespace}/{groupName}", r.DeleteRuleGroup},
-	} {
-		level.Debug(util.Logger).Log("msg", "ruler: registering route", "name", route.name, "method", route.method, "path", route.path)
-		router.Handle(route.path, middleware.Wrap(route.handler)).Methods(route.method).Name(route.name)
-	}
-}
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not pass a context to

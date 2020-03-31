@@ -2453,6 +2453,24 @@ bucket_store:
       # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-batch-size
       [max_get_multi_batch_size: <int> | default = 0]
 
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+    # Compress postings before storing them to postings cache.
+    # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
+    [postings_compression_enabled: <boolean> | default = false]
+
+  # Duration after which the blocks marked for deletion will be filtered out
+  # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
+  # blocks that are marked for deletion with some delay. This ensures store can
+  # still serve blocks that are meant to be deleted but do not have a
+  # replacement yet.Default is 24h, half of the default value for
+  # -compactor.deletion-delay.
+  # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
+  [ignore_deletion_mark_delay: <duration> | default = 24h0m0s]
+
 # How frequently does Cortex try to compact TSDB head. Block is only created if
 # data covers smallest block range. Must be greater than 0 and max 5 minutes.
 # CLI flag: -experimental.tsdb.head-compaction-interval
@@ -2570,6 +2588,15 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # interval
 # CLI flag: -compactor.compaction-retries
 [compaction_retries: <int> | default = 3]
+
+# Time before a block marked for deletion is deleted from bucket. If not 0,
+# blocks will be marked for deletion and compactor component will delete blocks
+# marked for deletion from the bucket. If delete-delay is 0, blocks will be
+# deleted straight away. Note that deleting blocks immediately can cause query
+# failures, if store gateway still has the block loaded, or compactor is
+# ignoring the deletion because it's compacting the block at the same time.
+# CLI flag: -compactor.deletion-delay
+[deletion_delay: <duration> | default = 48h0m0s]
 
 # Shard tenants across multiple compactor instances. Sharding is required if you
 # run multiple compactor instances, in order to coordinate compactions and avoid

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -149,6 +150,29 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds TSDB: Configured consistency delay in seconds.
 			# TYPE cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds gauge
 			cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds 300
+
+			# HELP cortex_querier_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
+			# TYPE cortex_querier_bucket_store_cached_postings_compressions_total counter
+			cortex_querier_bucket_store_cached_postings_compressions_total{op="encode"} 1125950
+			cortex_querier_bucket_store_cached_postings_compressions_total{op="decode"} 1148469
+
+			# HELP cortex_querier_bucket_store_cached_postings_compression_errors_total Number of postings compression and decompression errors.
+			# TYPE cortex_querier_bucket_store_cached_postings_compression_errors_total counter
+			cortex_querier_bucket_store_cached_postings_compression_errors_total{op="encode"} 1170988
+			cortex_querier_bucket_store_cached_postings_compression_errors_total{op="decode"} 1193507
+
+			# HELP cortex_querier_bucket_store_cached_postings_compression_time_seconds Time spent compressing and decompressing postings when storing to / reading from postings cache.
+			# TYPE cortex_querier_bucket_store_cached_postings_compression_time_seconds counter
+			cortex_querier_bucket_store_cached_postings_compression_time_seconds{op="encode"} 1216026
+			cortex_querier_bucket_store_cached_postings_compression_time_seconds{op="decode"} 1238545
+
+			# HELP cortex_querier_bucket_store_cached_postings_original_size_bytes_total Original size of postings stored into cache.
+			# TYPE cortex_querier_bucket_store_cached_postings_original_size_bytes_total counter
+			cortex_querier_bucket_store_cached_postings_original_size_bytes_total 1261064
+
+			# HELP cortex_querier_bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
+			# TYPE cortex_querier_bucket_store_cached_postings_compressed_size_bytes_total counter
+			cortex_querier_bucket_store_cached_postings_compressed_size_bytes_total 1283583
 `))
 	require.NoError(t, err)
 }
@@ -236,97 +260,113 @@ func populateTSDBBucketStoreMetrics(base float64) *prometheus.Registry {
 
 	m.metaSyncConsistencyDelay.Set(300)
 
+	m.cachedPostingsCompressions.WithLabelValues("encode").Add(50 * base)
+	m.cachedPostingsCompressions.WithLabelValues("decode").Add(51 * base)
+
+	m.cachedPostingsCompressionErrors.WithLabelValues("encode").Add(52 * base)
+	m.cachedPostingsCompressionErrors.WithLabelValues("decode").Add(53 * base)
+
+	m.cachedPostingsCompressionTimeSeconds.WithLabelValues("encode").Add(54 * base)
+	m.cachedPostingsCompressionTimeSeconds.WithLabelValues("decode").Add(55 * base)
+
+	m.cachedPostingsOriginalSizeBytes.Add(56 * base)
+	m.cachedPostingsCompressedSizeBytes.Add(57 * base)
+
 	return reg
 }
 
 // copied from Thanos, pkg/store/bucket.go
 type bucketStoreMetrics struct {
-	blocksLoaded             prometheus.Gauge
-	blockLoads               prometheus.Counter
-	blockLoadFailures        prometheus.Counter
-	blockDrops               prometheus.Counter
-	blockDropFailures        prometheus.Counter
-	seriesDataTouched        *prometheus.SummaryVec
-	seriesDataFetched        *prometheus.SummaryVec
-	seriesDataSizeTouched    *prometheus.SummaryVec
-	seriesDataSizeFetched    *prometheus.SummaryVec
-	seriesBlocksQueried      prometheus.Summary
-	seriesGetAllDuration     prometheus.Histogram
-	seriesMergeDuration      prometheus.Histogram
-	seriesRefetches          prometheus.Counter
-	resultSeriesCount        prometheus.Summary
-	chunkSizeBytes           prometheus.Histogram
-	queriesDropped           prometheus.Counter
-	queriesLimit             prometheus.Gauge
+	blocksLoaded          prometheus.Gauge
+	blockLoads            prometheus.Counter
+	blockLoadFailures     prometheus.Counter
+	blockDrops            prometheus.Counter
+	blockDropFailures     prometheus.Counter
+	seriesDataTouched     *prometheus.SummaryVec
+	seriesDataFetched     *prometheus.SummaryVec
+	seriesDataSizeTouched *prometheus.SummaryVec
+	seriesDataSizeFetched *prometheus.SummaryVec
+	seriesBlocksQueried   prometheus.Summary
+	seriesGetAllDuration  prometheus.Histogram
+	seriesMergeDuration   prometheus.Histogram
+	seriesRefetches       prometheus.Counter
+	resultSeriesCount     prometheus.Summary
+	chunkSizeBytes        prometheus.Histogram
+	queriesDropped        prometheus.Counter
+	queriesLimit          prometheus.Gauge
+
+	cachedPostingsCompressions           *prometheus.CounterVec
+	cachedPostingsCompressionErrors      *prometheus.CounterVec
+	cachedPostingsCompressionTimeSeconds *prometheus.CounterVec
+	cachedPostingsOriginalSizeBytes      prometheus.Counter
+	cachedPostingsCompressedSizeBytes    prometheus.Counter
+
+	// not part of bucketStoreMetrics, but injected by ConsistencyDelayMetaFilter
 	metaSyncConsistencyDelay prometheus.Gauge
 }
 
 func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	var m bucketStoreMetrics
 
-	m.blockLoads = prometheus.NewCounter(prometheus.CounterOpts{
+	m.blockLoads = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_loads_total",
 		Help: "Total number of remote block loading attempts.",
 	})
-	m.blockLoadFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	m.blockLoadFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_load_failures_total",
 		Help: "Total number of failed remote block loading attempts.",
 	})
-	m.blockDrops = prometheus.NewCounter(prometheus.CounterOpts{
+	m.blockDrops = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_drops_total",
 		Help: "Total number of local blocks that were dropped.",
 	})
-	m.blockDropFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	m.blockDropFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_drop_failures_total",
 		Help: "Total number of local blocks that failed to be dropped.",
 	})
-	m.blocksLoaded = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.blocksLoaded = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "thanos_bucket_store_blocks_loaded",
 		Help: "Number of currently loaded blocks.",
 	})
 
-	m.seriesDataTouched = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+	m.seriesDataTouched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_data_touched",
 		Help: "How many items of a data type in a block were touched for a single series request.",
 	}, []string{"data_type"})
-	m.seriesDataFetched = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+	m.seriesDataFetched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_data_fetched",
 		Help: "How many items of a data type in a block were fetched for a single series request.",
 	}, []string{"data_type"})
 
-	m.seriesDataSizeTouched = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+	m.seriesDataSizeTouched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_data_size_touched_bytes",
 		Help: "Size of all items of a data type in a block were touched for a single series request.",
 	}, []string{"data_type"})
-	m.seriesDataSizeFetched = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+	m.seriesDataSizeFetched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_data_size_fetched_bytes",
 		Help: "Size of all items of a data type in a block were fetched for a single series request.",
 	}, []string{"data_type"})
 
-	m.seriesBlocksQueried = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.seriesBlocksQueried = promauto.With(reg).NewSummary(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_blocks_queried",
 		Help: "Number of blocks in a bucket store that were touched to satisfy a query.",
 	})
-	m.seriesGetAllDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.seriesGetAllDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_series_get_all_duration_seconds",
 		Help:    "Time it takes until all per-block prepares and preloads for a query are finished.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
-	m.seriesMergeDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.seriesMergeDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_series_merge_duration_seconds",
 		Help:    "Time it takes to merge sub-results from all queried blocks into a single result.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
-	m.seriesRefetches = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "thanos_bucket_store_series_refetches_total",
-		Help: "Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
-	})
-	m.resultSeriesCount = prometheus.NewSummary(prometheus.SummaryOpts{
+	m.resultSeriesCount = promauto.With(reg).NewSummary(prometheus.SummaryOpts{
 		Name: "thanos_bucket_store_series_result_series",
 		Help: "Number of series observed in the final result of a query.",
 	})
 
-	m.chunkSizeBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
+	m.chunkSizeBytes = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name: "thanos_bucket_store_sent_chunk_size_bytes",
 		Help: "Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
 		Buckets: []float64{
@@ -334,41 +374,44 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 		},
 	})
 
-	m.queriesDropped = prometheus.NewCounter(prometheus.CounterOpts{
+	m.queriesDropped = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the sample limit.",
 	})
-	m.queriesLimit = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.queriesLimit = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "thanos_bucket_store_queries_concurrent_max",
 		Help: "Number of maximum concurrent queries.",
 	})
+	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_series_refetches_total",
+		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", 64*1024),
+	})
 
-	m.metaSyncConsistencyDelay = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.cachedPostingsCompressions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_cached_postings_compressions_total",
+		Help: "Number of postings compressions before storing to index cache.",
+	}, []string{"op"})
+	m.cachedPostingsCompressionErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_cached_postings_compression_errors_total",
+		Help: "Number of postings compression errors.",
+	}, []string{"op"})
+	m.cachedPostingsCompressionTimeSeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_cached_postings_compression_time_seconds",
+		Help: "Time spent compressing postings before storing them into postings cache.",
+	}, []string{"op"})
+	m.cachedPostingsOriginalSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_cached_postings_original_size_bytes_total",
+		Help: "Original size of postings stored into cache.",
+	})
+	m.cachedPostingsCompressedSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_cached_postings_compressed_size_bytes_total",
+		Help: "Compressed size of postings stored into cache.",
+	})
+
+	m.metaSyncConsistencyDelay = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "consistency_delay_seconds",
 		Help: "Configured consistency delay in seconds.",
 	})
 
-	if reg != nil {
-		reg.MustRegister(
-			m.blockLoads,
-			m.blockLoadFailures,
-			m.blockDrops,
-			m.blockDropFailures,
-			m.blocksLoaded,
-			m.seriesDataTouched,
-			m.seriesDataFetched,
-			m.seriesDataSizeTouched,
-			m.seriesDataSizeFetched,
-			m.seriesBlocksQueried,
-			m.seriesGetAllDuration,
-			m.seriesMergeDuration,
-			m.seriesRefetches,
-			m.resultSeriesCount,
-			m.chunkSizeBytes,
-			m.queriesDropped,
-			m.queriesLimit,
-			m.metaSyncConsistencyDelay,
-		)
-	}
 	return &m
 }

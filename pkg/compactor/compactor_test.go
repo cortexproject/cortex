@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
 
@@ -165,6 +166,18 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
 		# TYPE cortex_compactor_group_vertical_compactions_total counter
 		cortex_compactor_group_vertical_compactions_total 0
+
+		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
+		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		cortex_compactor_block_cleanup_failures_total 0
+
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# TYPE cortex_compactor_blocks_cleaned_total counter
+		cortex_compactor_blocks_cleaned_total 0
+
+		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+		cortex_compactor_blocks_marked_for_deletion_total 0
 	`)))
 }
 
@@ -266,6 +279,18 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
 		# TYPE cortex_compactor_group_vertical_compactions_total counter
 		cortex_compactor_group_vertical_compactions_total 0
+
+		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
+		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		cortex_compactor_block_cleanup_failures_total 0
+
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# TYPE cortex_compactor_blocks_cleaned_total counter
+		cortex_compactor_blocks_cleaned_total 0
+
+		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+		cortex_compactor_blocks_marked_for_deletion_total 0
 	`)))
 }
 
@@ -278,7 +303,9 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 
 	c, tsdbCompactor, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
@@ -308,18 +335,25 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info org_id=user-1 msg="start of GC"`,
 		`level=info org_id=user-1 msg="start of compaction"`,
 		`level=info org_id=user-1 msg="compaction iterations done"`,
+		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
 		`level=info msg="successfully compacted user blocks" user=user-1`,
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info org_id=user-2 msg="start sync of metas"`,
 		`level=info org_id=user-2 msg="start of GC"`,
 		`level=info org_id=user-2 msg="start of compaction"`,
 		`level=info org_id=user-2 msg="compaction iterations done"`,
+		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
+		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
 		`level=info msg="successfully compacted user blocks" user=user-2`,
 	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
 	// Real shipper metrics are too variable to embed into a test.
-	testedMetrics := []string{"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total"}
+	testedMetrics := []string{
+		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
+		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
+	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
 		# HELP cortex_compactor_runs_started_total Total number of compaction runs started.
@@ -332,6 +366,108 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# TYPE cortex_compactor_runs_failed_total counter
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
+
+		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
+		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		cortex_compactor_block_cleanup_failures_total 0
+
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# TYPE cortex_compactor_blocks_cleaned_total counter
+		cortex_compactor_blocks_cleaned_total 0
+	
+		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+		cortex_compactor_blocks_marked_for_deletion_total 0
+	`), testedMetrics...))
+}
+
+func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
+	t.Parallel()
+
+	cfg := prepareConfig()
+	cfg.DeletionDelay = 10 * time.Minute // Delete block after 10 minutes
+
+	// Mock the bucket to contain two users, each one with one block.
+	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient.MockIter("", []string{"user-1"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
+
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
+
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
+	bucketClient.MockIter("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", []string{"user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json"}, nil)
+	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", nil)
+	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", nil)
+	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil)
+
+	c, tsdbCompactor, logs, registry, cleanup := prepare(t, cfg, bucketClient)
+	defer cleanup()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	// Mock the compactor as if there's no compaction to do,
+	// in order to simplify tests (all in all, we just want to
+	// test our logic and not TSDB compactor which we expect to
+	// be already tested).
+	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	// Only one user's block is compacted.
+	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 1)
+
+	assert.Equal(t, []string{
+		`level=info msg="discovering users from bucket"`,
+		`level=info msg="discovered users from bucket" users=1`,
+		`level=info msg="starting compaction of user blocks" user=user-1`,
+		`level=info org_id=user-1 msg="start sync of metas"`,
+		`level=info org_id=user-1 msg="start of GC"`,
+		`level=info org_id=user-1 msg="start of compaction"`,
+		`level=info org_id=user-1 msg="compaction iterations done"`,
+		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=debug org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
+		`level=debug org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
+		`level=info org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
+		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
+		`level=info msg="successfully compacted user blocks" user=user-1`,
+	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
+
+	// Instead of testing for shipper metrics, we only check our metrics here.
+	// Real shipper metrics are too variable to embed into a test.
+	testedMetrics := []string{
+		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
+		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
+	}
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_started_total counter
+		# HELP cortex_compactor_runs_started_total Total number of compaction runs started.
+		cortex_compactor_runs_started_total 1
+
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+
+		# TYPE cortex_compactor_runs_failed_total counter
+		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
+		cortex_compactor_runs_failed_total 0
+
+		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
+		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		cortex_compactor_block_cleanup_failures_total 0
+
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# TYPE cortex_compactor_blocks_cleaned_total counter
+		cortex_compactor_blocks_cleaned_total 1
+
+		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+		cortex_compactor_blocks_marked_for_deletion_total 0
 	`), testedMetrics...))
 }
 
@@ -344,7 +480,9 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
@@ -382,12 +520,16 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info org_id=user-1 msg="start of GC"`,
 		`level=info org_id=user-1 msg="start of compaction"`,
 		`level=info org_id=user-1 msg="compaction iterations done"`,
+		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
 		`level=info msg="successfully compacted user blocks" user=user-1`,
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info org_id=user-2 msg="start sync of metas"`,
 		`level=info org_id=user-2 msg="start of GC"`,
 		`level=info org_id=user-2 msg="start of compaction"`,
 		`level=info org_id=user-2 msg="compaction iterations done"`,
+		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
+		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
 		`level=info msg="successfully compacted user blocks" user=user-2`,
 	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
@@ -409,6 +551,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	for _, userID := range userIDs {
 		bucketClient.MockIter(userID+"/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	}
 
 	// Create a shared KV Store
@@ -584,6 +727,21 @@ func mockBlockMetaJSON(id string) string {
 			Level:   1,
 			Sources: []ulid.ULID{ulid.MustParse(id)},
 		},
+	}
+
+	content, err := json.Marshal(meta)
+	if err != nil {
+		panic("failed to marshal mocked block meta")
+	}
+
+	return string(content)
+}
+
+func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
+	meta := metadata.DeletionMark{
+		Version:      metadata.DeletionMarkVersion1,
+		ID:           ulid.MustParse(id),
+		DeletionTime: deletionTime.Unix(),
 	}
 
 	content, err := json.Marshal(meta)

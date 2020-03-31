@@ -266,11 +266,14 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		userBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 		reg,
-		// List of filters to apply (order matters).
-		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, reg).Filter,
-		// Filters out duplicate blocks that can be formed from two or more overlapping
-		// blocks that fully submatches the source blocks of the older blocks.
-		block.NewDeduplicateFilter().Filter,
+		[]block.MetadataFilter{
+			// List of filters to apply (order matters).
+			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, reg),
+			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
+			// Filters out duplicate blocks that can be formed from two or more overlapping
+			// blocks that fully submatches the source blocks of the older blocks.
+			block.NewDeduplicateFilter(),
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -291,6 +294,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.BinaryIndexHeader,
+		u.cfg.BucketStore.IndexCache.PostingsCompression,
 	)
 	if err != nil {
 		return nil, err

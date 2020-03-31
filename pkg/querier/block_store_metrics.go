@@ -35,8 +35,15 @@ type tsdbBucketStoreMetrics struct {
 	metaSyncDuration         *prometheus.Desc
 	metaSyncConsistencyDelay *prometheus.Desc
 
+	cachedPostingsCompressions           *prometheus.Desc
+	cachedPostingsCompressionErrors      *prometheus.Desc
+	cachedPostingsCompressionTimeSeconds *prometheus.Desc
+	cachedPostingsOriginalSizeBytes      *prometheus.Desc
+	cachedPostingsCompressedSizeBytes    *prometheus.Desc
+
 	// Ignored:
 	// blocks_meta_synced
+	// blocks_meta_modified
 }
 
 func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
@@ -116,6 +123,27 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			"cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds",
 			"TSDB: Configured consistency delay in seconds.",
 			nil, nil),
+
+		cachedPostingsCompressions: prometheus.NewDesc(
+			"cortex_querier_bucket_store_cached_postings_compressions_total",
+			"Number of postings compressions and decompressions when storing to index cache.",
+			[]string{"op"}, nil),
+		cachedPostingsCompressionErrors: prometheus.NewDesc(
+			"cortex_querier_bucket_store_cached_postings_compression_errors_total",
+			"Number of postings compression and decompression errors.",
+			[]string{"op"}, nil),
+		cachedPostingsCompressionTimeSeconds: prometheus.NewDesc(
+			"cortex_querier_bucket_store_cached_postings_compression_time_seconds",
+			"Time spent compressing and decompressing postings when storing to / reading from postings cache.",
+			[]string{"op"}, nil),
+		cachedPostingsOriginalSizeBytes: prometheus.NewDesc(
+			"cortex_querier_bucket_store_cached_postings_original_size_bytes_total",
+			"Original size of postings stored into cache.",
+			nil, nil),
+		cachedPostingsCompressedSizeBytes: prometheus.NewDesc(
+			"cortex_querier_bucket_store_cached_postings_compressed_size_bytes_total",
+			"Compressed size of postings stored into cache.",
+			nil, nil),
 	}
 }
 
@@ -157,6 +185,12 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.metaSyncFailures
 	out <- m.metaSyncDuration
 	out <- m.metaSyncConsistencyDelay
+
+	out <- m.cachedPostingsCompressions
+	out <- m.cachedPostingsCompressionErrors
+	out <- m.cachedPostingsCompressionTimeSeconds
+	out <- m.cachedPostingsOriginalSizeBytes
+	out <- m.cachedPostingsCompressedSizeBytes
 }
 
 func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -184,4 +218,10 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.metaSyncFailures, "blocks_meta_sync_failures_total")
 	data.SendSumOfHistograms(out, m.metaSyncDuration, "blocks_meta_sync_duration_seconds")
 	data.SendMaxOfGauges(out, m.metaSyncConsistencyDelay, "consistency_delay_seconds")
+
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressions, "thanos_bucket_store_cached_postings_compressions_total", "op")
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionErrors, "thanos_bucket_store_cached_postings_compression_errors_total", "op")
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionTimeSeconds, "thanos_bucket_store_cached_postings_compression_time_seconds", "op")
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsOriginalSizeBytes, "thanos_bucket_store_cached_postings_original_size_bytes_total")
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressedSizeBytes, "thanos_bucket_store_cached_postings_compressed_size_bytes_total")
 }

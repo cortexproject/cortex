@@ -19,6 +19,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -63,16 +64,11 @@ type proxyStoreMetrics struct {
 func newProxyStoreMetrics(reg prometheus.Registerer) *proxyStoreMetrics {
 	var m proxyStoreMetrics
 
-	m.emptyStreamResponses = prometheus.NewCounter(prometheus.CounterOpts{
+	m.emptyStreamResponses = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_proxy_store_empty_stream_responses_total",
 		Help: "Total number of empty responses received.",
 	})
 
-	if reg != nil {
-		reg.MustRegister(
-			m.emptyStreamResponses,
-		)
-	}
 	return &m
 }
 
@@ -113,9 +109,9 @@ func (s *ProxyStore) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb
 	maxTime := int64(0)
 	stores := s.stores()
 
-	// Edge case: we have all of the data if there are no stores.
+	// Edge case: we have no data if there are no stores.
 	if len(stores) == 0 {
-		res.MaxTime = math.MaxInt64
+		res.MaxTime = 0
 		res.MinTime = 0
 
 		return res, nil
@@ -249,9 +245,11 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 			// We might be able to skip the store if its meta information indicates
 			// it cannot have series matching our query.
 			// NOTE: all matchers are validated in matchesExternalLabels method so we explicitly ignore error.
-			spanStoreMathes, gctx := tracing.StartSpan(gctx, "store_matches")
-			ok, _ := storeMatches(st, r.MinTime, r.MaxTime, r.Matchers...)
-			spanStoreMathes.Finish()
+			var ok bool
+			tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+				// We can skip error, we already translated matchers once.
+				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, r.Matchers...)
+			})
 			if !ok {
 				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out", st))
 				continue

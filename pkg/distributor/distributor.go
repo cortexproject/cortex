@@ -89,7 +89,7 @@ var (
 		Help:      "The configured replication factor.",
 	})
 	latestSeenSampleTimestampPerUser = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_ingester_latest_seen_sample_timestamp_seconds",
+		Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 		Help: "Unix timestamp of latest received sample per user.",
 	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}

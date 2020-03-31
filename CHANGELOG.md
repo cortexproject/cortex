@@ -79,6 +79,7 @@
 * [CHANGE] Renamed table manager metrics. #2307 #2359
   * `cortex_dynamo_sync_tables_seconds` -> `cortex_table_manager_sync_duration_seconds`
   * `cortex_dynamo_table_capacity_units` -> `cortex_table_capacity_units`
+* [CHANGE] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [FEATURE] Flusher target to flush the WAL.
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.

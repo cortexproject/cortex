@@ -314,6 +314,15 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
 				}
 
+				switch cause {
+				case tsdb.ErrOutOfBounds:
+					validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Inc()
+				case tsdb.ErrOutOfOrderSample:
+					validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Inc()
+				case tsdb.ErrAmendSample:
+					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
+				}
+
 				continue
 			}
 

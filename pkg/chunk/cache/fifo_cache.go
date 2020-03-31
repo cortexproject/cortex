@@ -93,7 +93,7 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 
-	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "DEPRECATED(use "+prefix+"fifocache.max-size-{items|bytes}) "+description+"The number of entries to cache.")
+	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "DEPRECATED(use fifocache.max-size-{items|bytes}) "+description+"The number of entries to cache.")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
@@ -106,7 +106,7 @@ type FifoCache struct {
 	validity      time.Duration
 	entries       map[string]*cacheEntry
 
-	// indexes into entries to identify the most recent and least recent entry.
+	// pointers to the first and last elements of FIFO doubly linked list.
 	first, last *cacheEntry
 
 	entriesAdded    prometheus.Counter
@@ -188,15 +188,14 @@ func (c *FifoCache) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// update metrics
-	c.entriesEvicted.Add(float64(len(c.entries)))
-	c.entriesCurrent.Set(float64(0))
-	c.memoryBytes.Set(float64(0))
-
 	c.entries = make(map[string]*cacheEntry)
 	c.first = nil
 	c.last = nil
 	c.currSizeBytes = 0
+
+	c.entriesEvicted.Add(float64(len(c.entries)))
+	c.entriesCurrent.Set(float64(0))
+	c.memoryBytes.Set(float64(0))
 }
 
 // Put stores the value against the key.
@@ -259,13 +258,13 @@ func (c *FifoCache) deleteFromList(entry *cacheEntry) {
 }
 
 func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
-	// See if we already have the entry
+	// See if we already have the item in the cache.
 	entry, ok := c.entries[key]
 	if ok {
-		// Remove this entry from the FIFO linked-list.
+		// Remove the item from the cache.
 		c.deleteFromList(entry)
-		c.currSizeBytes -= sizeOf(entry)
 		delete(c.entries, key)
+		c.currSizeBytes -= sizeOf(entry)
 		c.entriesCurrent.Dec()
 	}
 
@@ -277,16 +276,16 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	entrySz := sizeOf(entry)
 
 	if c.maxSizeBytes > 0 && entrySz > c.maxSizeBytes {
-		// Cannot keep this item in the cache
+		// Cannot keep this item in the cache.
 		if ok {
-			// We do not replace the item
+			// We do not replace this item.
 			c.entriesEvicted.Inc()
 		}
 		c.memoryBytes.Set(float64(c.currSizeBytes))
 		return
 	}
 
-	// Otherwise, see if we need to evict an entry.
+	// Otherwise, see if we need to evict item(s).
 	for (c.maxSizeBytes > 0 && c.currSizeBytes+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
 		evicted := c.deleteFromTail()
 		if evicted == nil {
@@ -298,7 +297,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.entriesEvicted.Inc()
 	}
 
-	// Finally, no hit and we have space.
+	// Finally, we have space to add the item.
 	c.addToHead(entry)
 	c.entries[key] = entry
 	c.currSizeBytes += entrySz

@@ -16,7 +16,7 @@ import (
 const (
 	sampleOutOfOrder     = "sample-out-of-order"
 	newValueForTimestamp = "new-value-for-timestamp"
-	sampleOutOfBounds    = "out-of-bounds"
+	sampleOutOfBounds    = "sample-out-of-bounds"
 	duplicateSample      = "duplicate-sample"
 	duplicateTimestamp   = "duplicate-timestamp"
 )

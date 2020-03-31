@@ -193,7 +193,7 @@ var (
 // to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
 // client is created.
 func NewKV(cfg KVConfig) (*KV, error) {
-	util.WarnExperimentalUse("gossip ring")
+	util.WarnExperimentalUse("Gossip memberlist ring")
 
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace

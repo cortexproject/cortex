@@ -141,10 +141,10 @@ func (cfg *TableManagerConfig) Validate() error {
 
 // ProvisionConfig holds config for provisioning capacity (on DynamoDB for now)
 type ProvisionConfig struct {
-	ProvisionedThroughputOnDemandMode bool  `yaml:"provisioned_throughput_on_demand_mode"`
+	ProvisionedThroughputOnDemandMode bool  `yaml:"enable_ondemand_throughput_mode"`
 	ProvisionedWriteThroughput        int64 `yaml:"provisioned_write_throughput"`
 	ProvisionedReadThroughput         int64 `yaml:"provisioned_read_throughput"`
-	InactiveThroughputOnDemandMode    bool  `yaml:"inactive_throughput_on_demand_mode"`
+	InactiveThroughputOnDemandMode    bool  `yaml:"enable_inactive_throughput_on_demand_mode"`
 	InactiveWriteThroughput           int64 `yaml:"inactive_write_throughput"`
 	InactiveReadThroughput            int64 `yaml:"inactive_read_throughput"`
 

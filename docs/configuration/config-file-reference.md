@@ -1042,7 +1042,7 @@ index_tables_provisioning:
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
   # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
-  [provisioned_throughput_on_demand_mode: <boolean> | default = false]
+  [enable_ondemand_throughput_mode: <boolean> | default = false]
 
   # Table default write throughput. Supported by DynamoDB
   # CLI flag: -table-manager.index-table.write-throughput
@@ -1056,7 +1056,7 @@ index_tables_provisioning:
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
   # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
-  [inactive_throughput_on_demand_mode: <boolean> | default = false]
+  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
   # Table write throughput for inactive tables. Supported by DynamoDB
   # CLI flag: -table-manager.index-table.inactive-write-throughput
@@ -1195,7 +1195,7 @@ chunk_tables_provisioning:
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
   # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
-  [provisioned_throughput_on_demand_mode: <boolean> | default = false]
+  [enable_ondemand_throughput_mode: <boolean> | default = false]
 
   # Table default write throughput. Supported by DynamoDB
   # CLI flag: -table-manager.chunk-table.write-throughput
@@ -1209,7 +1209,7 @@ chunk_tables_provisioning:
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
   # CLI flag: -table-manager.chunk-table.inactive-enable-ondemand-throughput-mode
-  [inactive_throughput_on_demand_mode: <boolean> | default = false]
+  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
   # Table write throughput for inactive tables. Supported by DynamoDB
   # CLI flag: -table-manager.chunk-table.inactive-write-throughput

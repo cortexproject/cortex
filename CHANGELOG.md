@@ -79,7 +79,6 @@
 * [CHANGE] Renamed table manager metrics. #2307 #2359
   * `cortex_dynamo_sync_tables_seconds` -> `cortex_table_manager_sync_duration_seconds`
   * `cortex_dynamo_table_capacity_units` -> `cortex_table_capacity_units`
-* [CHANGE] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [FEATURE] Flusher target to flush the WAL.
   * `-flusher.wal-dir` for the WAL directory to recover from.
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
@@ -92,6 +91,7 @@
 * [ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. #2270
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
 * [ENHANCEMENT] Add "missing_metric_name" and "metric_name_invalid" reasons to cortex_discarded_samples_total metric. #2346
+* [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [BUGFIX] Ensure user state metrics are updated if a transfer fails. #2338
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270

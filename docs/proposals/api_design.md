@@ -13,7 +13,7 @@ The purpose of this design document is to propose a set of standards that should
 
 ## Current Design
 
-As things currently stand, the majority of HTTP API calls exist under the `/api/prom` path prefix. This prefix is configurable. However, since this prefix is shared between all the modules which leads to conflicts if the Alertmanager is attempted to be run as as part of the single binary.
+As things currently stand, the majority of HTTP API calls exist under the `/api/prom` path prefix. This prefix is configurable. However, since this prefix is shared between all the modules which leads to conflicts if the Alertmanager is attempted to be run as as part of the single binary (#1722). 
 
 ## Proposed Design
 
@@ -31,14 +31,13 @@ Under this path prefix, Cortex will act as a Alertmanager web server. In this ca
 
 #### `/api/v1/*` -- The cortex API will exist under this path prefix.
 
-- `/push` & `/read` -- The Prometheus remote write endpoints will be fulfilled directly under the `/api/v1/*` path
+- `/push`
 - `/chunks` 
 - `/rules/*`
 
 | Current             | Proposed          |
 | ------------------- | ----------------- |
 | `/api/prom/push`    | `/api/v1/push`    |
-| `/api/prom/read`    | `/api/v1/read`    |
 | `/api/prom/chunks`  | `/api/v1/chunks`  |
 | `/api/prom/rules/*` | `/api/v1/rules/*` |
 

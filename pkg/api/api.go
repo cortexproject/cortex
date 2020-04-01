@@ -246,7 +246,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		&v1.PrometheusVersion{},
 	)
 
-	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
+	promRouter := route.New()
 	api.Register(promRouter)
 
 	a.registerPrometheusRoute("/api/v1/read", querier.RemoteReadHandler(queryable))

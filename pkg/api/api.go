@@ -67,11 +67,10 @@ func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
 	s.HTTP.UseEncodedPath()
 
 	api := &API{
-		cfg:              cfg,
-		authMiddleware:   cfg.HTTPAuthMiddleware,
-		prometheusRouter: s.HTTP.PathPrefix(cfg.PrometheusHTTPPrefix).Subrouter(),
-		server:           s,
-		logger:           logger,
+		cfg:            cfg,
+		authMiddleware: cfg.HTTPAuthMiddleware,
+		server:         s,
+		logger:         logger,
 	}
 
 	// If no authentication middleware is present in the config, use the middlewar
@@ -92,19 +91,6 @@ func (a *API) registerRoute(path string, handler http.Handler, auth bool, method
 		return
 	}
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
-}
-
-// Register the route under the prometheus component path as well as the provided legacy
-// path
-func (a *API) registerPrometheusRoute(path string, handler http.Handler, methods ...string) {
-	handler = fakeRemoteAddr(handler)
-	level.Debug(a.logger).Log("msg", "api: registering prometheus route", "methods", strings.Join(methods, ","), "path", path)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+path, handler, true, methods...)
-	if len(methods) == 0 {
-		a.prometheusRouter.Path(path).Handler(a.authMiddleware.Wrap(handler))
-		return
-	}
-	a.prometheusRouter.Path(path).Methods(methods...).Handler(a.authMiddleware.Wrap(handler))
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
@@ -178,8 +164,12 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 func (a *API) RegisterPurger(store *purger.DeleteStore) {
 	deleteRequestHandler := purger.NewDeleteRequestHandler(store)
 
-	a.registerPrometheusRoute("/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), "PUT", "POST")
-	a.registerPrometheusRoute("/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), "GET")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
+
+	// Legacy Routes
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
 }
 
 // RegisterRuler registers routes associated with the Ruler service. If the
@@ -188,8 +178,8 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 	a.registerRoute("/ruler/ring", r, false)
 
 	if apiEnabled {
-		a.registerPrometheusRoute("/api/v1/rules", http.HandlerFunc(r.PrometheusRules), "GET")
-		a.registerPrometheusRoute("/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), "GET")
+		a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+		a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 		ruler.RegisterRulerServer(a.server.GRPC, r)
 
@@ -199,6 +189,9 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 		a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
 		a.registerRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 		a.registerRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
 		a.registerRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
@@ -246,16 +239,17 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		&v1.PrometheusVersion{},
 	)
 
-	promRouter := route.New()
+	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
 	api.Register(promRouter)
+	promHandler := fakeRemoteAddr(promRouter)
 
-	a.registerPrometheusRoute("/api/v1/read", querier.RemoteReadHandler(queryable))
-	a.registerPrometheusRoute("/api/v1/query", promRouter)
-	a.registerPrometheusRoute("/api/v1/query_range", promRouter)
-	a.registerPrometheusRoute("/api/v1/labels", promRouter)
-	a.registerPrometheusRoute("/api/v1/label/{name}/values", promRouter)
-	a.registerPrometheusRoute("/api/v1/series", promRouter)
-	a.registerPrometheusRoute("/api/v1/metadata", promRouter)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", promHandler, true)
 
 	a.registerRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
 	a.registerRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true)
@@ -263,6 +257,18 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	// Legacy Routes
 	a.registerRoute("/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
 	a.registerRoute("/chunks", querier.ChunksHandler(queryable), true)
+
+	legacyPromRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.LegacyHTTPPrefix + "/api/v1")
+	api.Register(legacyPromRouter)
+	legacyPromHandler := fakeRemoteAddr(legacyPromRouter)
+
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true)
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the
@@ -274,13 +280,22 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	// Previously the frontend handled all calls to the provided prefix. Instead explicit
 	// routing is used since it will be required to enable the frontend to be run as part
 	// of a single binary in the future.
-	a.registerPrometheusRoute("/api/v1/read", f.Handler())
-	a.registerPrometheusRoute("/api/v1/query", f.Handler())
-	a.registerPrometheusRoute("/api/v1/query_range", f.Handler())
-	a.registerPrometheusRoute("/api/v1/labels", f.Handler())
-	a.registerPrometheusRoute("/api/v1/label/{name}/values", f.Handler())
-	a.registerPrometheusRoute("/api/v1/series", f.Handler())
-	a.registerPrometheusRoute("/api/v1/metadata", f.Handler())
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", f.Handler(), true)
+
+	// Register Legacy Routers
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", f.Handler(), true)
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

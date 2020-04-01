@@ -75,6 +75,7 @@ type TSDBState struct {
 	// Head compactions metrics.
 	compactionsTriggered prometheus.Counter
 	compactionsFailed    prometheus.Counter
+	walReplayTime        prometheus.Histogram
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -109,6 +110,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			compactionsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_failed_total",
 				Help: "Total number of compactions that failed.",
+			}),
+			walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
+				Help:    "The total time it takes to open and replay a TSDB WAL.",
+				Buckets: prometheus.DefBuckets,
 			}),
 		},
 	}
@@ -857,6 +863,10 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		go func(userID string) {
 			defer wg.Done()
 			defer openGate.Done()
+			defer func(ts time.Time) {
+				i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
+			}(time.Now())
+
 			db, err := i.createTSDB(userID)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)

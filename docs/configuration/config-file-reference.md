@@ -2283,8 +2283,8 @@ The `fifo_cache_config` configures the local in-memory cache. The supported CLI 
 # CLI flag: -<prefix>.fifocache.duration
 [validity: <duration> | default = 0s]
 
-# DEPRECATED(use fifocache.max-size-{items|bytes}) The number of entries to
-# cache.
+# Deprecated (use max-size-items or max-size-bytes instead): The number of
+# entries to cache.
 # CLI flag: -<prefix>.fifocache.size
 [size: <int> | default = 0]
 ```

@@ -93,7 +93,7 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 
-	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "DEPRECATED(use fifocache.max-size-{items|bytes}) "+description+"The number of entries to cache.")
+	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "Deprecated (use max-size-items or max-size-bytes instead): "+description+"The number of entries to cache. ")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
@@ -133,7 +133,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-{items|bytes} instead", "cache", name)
+		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
 		cfg.MaxSizeItems = cfg.DeprecatedSize
 	}
 	if cfg.MaxSizeBytes > 0 && cfg.MaxSizeItems > 0 {
@@ -188,12 +188,13 @@ func (c *FifoCache) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	c.entriesEvicted.Add(float64(len(c.entries)))
+
 	c.entries = make(map[string]*cacheEntry)
 	c.first = nil
 	c.last = nil
 	c.currSizeBytes = 0
 
-	c.entriesEvicted.Add(float64(len(c.entries)))
 	c.entriesCurrent.Set(float64(0))
 	c.memoryBytes.Set(float64(0))
 }
@@ -209,14 +210,11 @@ func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}
 	defer c.lock.Unlock()
 
 	for i := range keys {
-		c.put(ctx, keys[i], values[i])
+		c.put(keys[i], values[i])
 	}
 }
 
 func (c *FifoCache) addToHead(entry *cacheEntry) {
-	if entry == nil {
-		return
-	}
 	entry.prev, entry.next = nil, c.first
 	if c.first != nil {
 		c.first.prev = entry
@@ -257,7 +255,7 @@ func (c *FifoCache) deleteFromList(entry *cacheEntry) {
 	}
 }
 
-func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
+func (c *FifoCache) put(key string, value interface{}) {
 	// See if we already have the item in the cache.
 	entry, ok := c.entries[key]
 	if ok {

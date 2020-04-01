@@ -355,11 +355,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 }
 
 func (d *Distributor) validateMetadata(m *ingester_client.MetricMetadata, userID string) error {
-	if err := validation.ValidateMetadata(d.limits, userID, m); err != nil {
-		return err
-	}
-
-	return nil
+	return validation.ValidateMetadata(d.limits, userID, m)
 }
 
 // Push implements client.IngesterServer

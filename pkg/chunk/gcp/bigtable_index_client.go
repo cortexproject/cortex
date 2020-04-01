@@ -151,18 +151,18 @@ type bigtableWriteBatch struct {
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	b.setMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
 		mutation.Set(columnFamily, columnKey, 0, value)
 	})
 }
 
 func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	b.setMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
 		mutation.DeleteCellsInColumn(columnFamily, columnKey)
 	})
 }
 
-func (b bigtableWriteBatch) setMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
+func (b bigtableWriteBatch) addMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}

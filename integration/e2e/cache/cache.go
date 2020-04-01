@@ -2,7 +2,7 @@ package e2ecache
 
 import (
 	"github.com/cortexproject/cortex/integration/e2e"
-	"github.com/cortexproject/cortex/integration/images"
+	"github.com/cortexproject/cortex/integration/e2e/images"
 )
 
 const (

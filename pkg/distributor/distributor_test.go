@@ -1139,6 +1139,18 @@ func TestDistributorValidation(t *testing.T) {
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
 		},
+		// Test multiple validation fails return the first one.
+		{
+			labels: []labels.Labels{
+				{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}},
+				{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}},
+			},
+			samples: []client.Sample{
+				{TimestampMs: int64(now), Value: 2},
+				{TimestampMs: int64(past), Value: 2},
+			},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var limits validation.Limits

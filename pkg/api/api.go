@@ -97,13 +97,14 @@ func (a *API) registerRoute(path string, handler http.Handler, auth bool, method
 // Register the route under the prometheus component path as well as the provided legacy
 // path
 func (a *API) registerPrometheusRoute(path string, handler http.Handler, methods ...string) {
+	handler = fakeRemoteAddr(handler)
 	level.Debug(a.logger).Log("msg", "api: registering prometheus route", "methods", strings.Join(methods, ","), "path", path)
 	a.registerRoute(a.cfg.LegacyHTTPPrefix+path, handler, true, methods...)
 	if len(methods) == 0 {
-		a.prometheusRouter.Path(path).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
+		a.prometheusRouter.Path(path).Handler(a.authMiddleware.Wrap(handler))
 		return
 	}
-	a.prometheusRouter.Path(path).Methods(methods...).Handler(fakeRemoteAddr(a.authMiddleware.Wrap(handler)))
+	a.prometheusRouter.Path(path).Methods(methods...).Handler(a.authMiddleware.Wrap(handler))
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.

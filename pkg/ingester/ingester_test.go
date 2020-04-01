@@ -484,7 +484,8 @@ func TestIngesterValidation(t *testing.T) {
 	m := labelPairs{{Name: labels.MetricName, Value: "testmetric"}}
 
 	// As a setup, let's append samples.
-	ing.append(context.Background(), userID, m, 1, 0, client.API, nil)
+	err := ing.append(context.Background(), userID, m, 1, 0, client.API, nil)
+	require.NoError(t, err)
 
 	for _, tc := range []struct {
 		desc    string

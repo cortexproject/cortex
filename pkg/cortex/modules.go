@@ -350,6 +350,12 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 	if err != nil {
 		return
 	}
+
+	var tombstonesLoader *purger.TombstonesLoader
+	if cfg.DataPurgerConfig.Enable {
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+	}
+
 	tripperware, cache, err := queryrange.NewTripperware(
 		cfg.QueryRange,
 		util.Logger,
@@ -365,6 +371,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		},
 		cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
+		tombstonesLoader,
 	)
 
 	if err != nil {
@@ -613,7 +620,7 @@ var modules = map[ModuleName]module{
 	},
 
 	QueryFrontend: {
-		deps:           []ModuleName{API, Overrides},
+		deps:           []ModuleName{Server, Overrides, DeleteRequestsStore},
 		wrappedService: (*Cortex).initQueryFrontend,
 	},
 

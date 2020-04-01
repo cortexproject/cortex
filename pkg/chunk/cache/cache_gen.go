@@ -6,40 +6,40 @@ import (
 
 type contextKey int
 
-// cacheGenContextKey is used for setting a Cache Generation number in context
+// cacheGenContextKey is used for setting a Cache Generation number in context.
 const cacheGenContextKey contextKey = 0
 
 // GenNumMiddleware adds gen number to keys from context. Expected size of gen numbers is upto 2 digits.
-// If we start seeing problems with keys exceeding length limit, we need to look into resetting gen numbers
+// If we start seeing problems with keys exceeding length limit, we need to look into resetting gen numbers.
 type GenNumMiddleware struct {
 	downstreamCache Cache
 }
 
-// NewCacheGenNumMiddleware creates a new GenNumMiddleware
+// NewCacheGenNumMiddleware creates a new GenNumMiddleware.
 func NewCacheGenNumMiddleware(downstreamCache Cache) Cache {
 	return &GenNumMiddleware{downstreamCache}
 }
 
-// Store adds cache gen number to keys before calling Store method of downstream cache
+// Store adds cache gen number to keys before calling Store method of downstream cache.
 func (c GenNumMiddleware) Store(ctx context.Context, keys []string, buf [][]byte) {
-	keys = AddCacheGenNumToCacheKeys(ctx, keys)
+	keys = addCacheGenNumToCacheKeys(ctx, keys)
 	c.downstreamCache.Store(ctx, keys, buf)
 }
 
-// Fetch adds cache gen number to keys before calling Fetch method of downstream cache
-// It also removes gen number before responding back with found and missing keys to make sure consumer of response gets to see same keys
+// Fetch adds cache gen number to keys before calling Fetch method of downstream cache.
+// It also removes gen number before responding back with found and missing keys to make sure consumer of response gets to see same keys.
 func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
-	keys = AddCacheGenNumToCacheKeys(ctx, keys)
+	keys = addCacheGenNumToCacheKeys(ctx, keys)
 
 	found, bufs, missing = c.downstreamCache.Fetch(ctx, keys)
 
-	found = RemoveCacheGenNumFromKeys(ctx, found)
-	missing = RemoveCacheGenNumFromKeys(ctx, missing)
+	found = removeCacheGenNumFromKeys(ctx, found)
+	missing = removeCacheGenNumFromKeys(ctx, missing)
 
 	return
 }
 
-// Stop calls Stop method of downstream cache
+// Stop calls Stop method of downstream cache.
 func (c GenNumMiddleware) Stop() {
 	c.downstreamCache.Stop()
 }
@@ -49,7 +49,7 @@ func InjectCacheGenNumber(ctx context.Context, cacheGen string) context.Context 
 	return context.WithValue(ctx, interface{}(cacheGenContextKey), cacheGen)
 }
 
-// ExtractCacheGenNumber gets the cache gen from the context.
+// ExtractCacheGenNumbersFromHeaders gets the cache gen from the context.
 func ExtractCacheGenNumber(ctx context.Context) string {
 	cacheGenNumber, ok := ctx.Value(cacheGenContextKey).(string)
 	if !ok {
@@ -58,8 +58,8 @@ func ExtractCacheGenNumber(ctx context.Context) string {
 	return cacheGenNumber
 }
 
-// AddCacheGenNumToCacheKeys adds gen number to keys as suffix
-func AddCacheGenNumToCacheKeys(ctx context.Context, keys []string) []string {
+// addCacheGenNumToCacheKeys adds gen number to keys as suffix.
+func addCacheGenNumToCacheKeys(ctx context.Context, keys []string) []string {
 	cacheGen := ExtractCacheGenNumber(ctx)
 	if cacheGen == "" {
 		return keys
@@ -72,8 +72,8 @@ func AddCacheGenNumToCacheKeys(ctx context.Context, keys []string) []string {
 	return keys
 }
 
-// RemoveCacheGenNumFromKeys removes suffixed gen number from keys
-func RemoveCacheGenNumFromKeys(ctx context.Context, keys []string) []string {
+// removeCacheGenNumFromKeys removes suffixed gen number from keys.
+func removeCacheGenNumFromKeys(ctx context.Context, keys []string) []string {
 	cacheGen := ExtractCacheGenNumber(ctx)
 	if cacheGen == "" {
 		return keys

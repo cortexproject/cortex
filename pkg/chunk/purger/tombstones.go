@@ -28,7 +28,7 @@ type TombstonesLoader struct {
 	tombstones    map[string]*TombstonesSet
 	tombstonesMtx sync.RWMutex
 
-	cacheGenNumbers    map[string]*CacheGenNumbers
+	cacheGenNumbers    map[string]*cacheGenNumbers
 	cacheGenNumbersMtx sync.RWMutex
 
 	deleteStore *DeleteStore
@@ -39,7 +39,7 @@ type TombstonesLoader struct {
 func NewTombstonesLoader(deleteStore *DeleteStore) *TombstonesLoader {
 	tl := TombstonesLoader{
 		tombstones:      map[string]*TombstonesSet{},
-		cacheGenNumbers: map[string]*CacheGenNumbers{},
+		cacheGenNumbers: map[string]*cacheGenNumbers{},
 		deleteStore:     deleteStore,
 	}
 	go tl.loop()
@@ -72,12 +72,12 @@ func (tl *TombstonesLoader) loop() {
 }
 
 func (tl *TombstonesLoader) reloadTombstones() error {
-	updatedGenNumbers := make(map[string]*CacheGenNumbers)
+	updatedGenNumbers := make(map[string]*cacheGenNumbers)
 	tl.cacheGenNumbersMtx.RLock()
 
 	// check for updates in loaded gen numbers
 	for userID, oldGenNumbers := range tl.cacheGenNumbers {
-		newGenNumbers, err := tl.deleteStore.GetCacheGenerationNumbers(context.Background(), userID)
+		newGenNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
 		if err != nil {
 			return err
 		}
@@ -88,6 +88,15 @@ func (tl *TombstonesLoader) reloadTombstones() error {
 	}
 
 	tl.cacheGenNumbersMtx.RUnlock()
+
+	// in frontend we load only cache gen numbers so short circuit here if there are no loaded deleted requests
+	// first call to GetPendingTombstones would avoid doing this.
+	tl.tombstonesMtx.RLock()
+	if len(tl.tombstones) == 0 {
+		tl.tombstonesMtx.RUnlock()
+		return nil
+	}
+	tl.tombstonesMtx.RUnlock()
 
 	// for all the updated gen numbers, reload delete requests
 	for userID, genNumbers := range updatedGenNumbers {
@@ -220,7 +229,7 @@ func (tl *TombstonesLoader) GetResultsCacheGenNumber(userID string) (string, err
 	return cacheGenNumbers.results, nil
 }
 
-func (tl *TombstonesLoader) getCacheGenNumbers(userID string) (*CacheGenNumbers, error) {
+func (tl *TombstonesLoader) getCacheGenNumbers(userID string) (*cacheGenNumbers, error) {
 	tl.cacheGenNumbersMtx.RLock()
 	if genNumbers, isOK := tl.cacheGenNumbers[userID]; isOK {
 		tl.cacheGenNumbersMtx.RUnlock()
@@ -233,11 +242,11 @@ func (tl *TombstonesLoader) getCacheGenNumbers(userID string) (*CacheGenNumbers,
 		tl.cacheGenNumbersMtx.Lock()
 		defer tl.cacheGenNumbersMtx.Unlock()
 
-		tl.cacheGenNumbers[userID] = &CacheGenNumbers{}
+		tl.cacheGenNumbers[userID] = &cacheGenNumbers{}
 		return tl.cacheGenNumbers[userID], nil
 	}
 
-	genNumbers, err := tl.deleteStore.GetCacheGenerationNumbers(context.Background(), userID)
+	genNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
 	if err != nil {
 		return nil, err
 	}

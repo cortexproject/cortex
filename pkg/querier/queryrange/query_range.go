@@ -135,34 +135,34 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 		}, nil
 	}
 
-	// difference in gen numbers in different responses means not everyone has caught up with changes in delete requests
-	// and there could be a change in results when they catch up
-	// If there is a difference, lets set cache gen to -1 to let the consumer know that
-	// there is an inconsistency in generation number so results could change for same query
-
-	finalCacheGenNumber := responses[0].(*PrometheusResponse).CacheGenNumber
-
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
+	// we need to pass on all the headers for results cache gen numbers.
+	var resultsCacheGenNumberHeaderValues []string
 
 	for _, res := range responses {
 		promResponses = append(promResponses, res.(*PrometheusResponse))
-
-		if finalCacheGenNumber != "-1" && finalCacheGenNumber != responses[0].(*PrometheusResponse).CacheGenNumber {
-			finalCacheGenNumber = "-1"
-		}
+		resultsCacheGenNumberHeaderValues = append(resultsCacheGenNumberHeaderValues, getHeaderValuesWithName(res, ResultsCacheGenNumberHeaderName)...)
 	}
 
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
 
-	return &PrometheusResponse{
+	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
-		CacheGenNumber: finalCacheGenNumber,
-	}, nil
+	}
+
+	if len(resultsCacheGenNumberHeaderValues) != 0 {
+		response.Headers = []*PrometheusResponseHeader{{
+			Name:   ResultsCacheGenNumberHeaderName,
+			Values: resultsCacheGenNumberHeaderValues,
+		}}
+	}
+
+	return &response, nil
 }
 
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
@@ -253,8 +253,6 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	for h, hv := range r.Header {
 		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
-
-	resp.CacheGenNumber = r.Header.Get(ResultsCacheGenNumberHeaderName)
 	return &resp, nil
 }
 

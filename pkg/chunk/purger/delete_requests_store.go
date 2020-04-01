@@ -60,8 +60,8 @@ type DeleteRequest struct {
 	CreatedAt model.Time          `json:"created_at"`
 }
 
-// CacheGenNumbers holds store and results cache gen numbers for a user.
-type CacheGenNumbers struct {
+// cacheGenNumbers holds store and results cache gen numbers for a user.
+type cacheGenNumbers struct {
 	store, results string
 }
 
@@ -258,8 +258,8 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []ch
 	return deleteRequests, nil
 }
 
-// GetCacheGenerationNumbers returns cache gen numbers for a user.
-func (ds *DeleteStore) GetCacheGenerationNumbers(ctx context.Context, userID string) (*CacheGenNumbers, error) {
+// getCacheGenerationNumbers returns cache gen numbers for a user.
+func (ds *DeleteStore) getCacheGenerationNumbers(ctx context.Context, userID string) (*cacheGenNumbers, error) {
 	storeCacheGen, err := ds.queryCacheGenerationNumber(ctx, userID, CacheKindStore)
 	if err != nil {
 		return nil, err
@@ -270,7 +270,7 @@ func (ds *DeleteStore) GetCacheGenerationNumbers(ctx context.Context, userID str
 		return nil, err
 	}
 
-	return &CacheGenNumbers{storeCacheGen, resultsCacheGen}, nil
+	return &cacheGenNumbers{storeCacheGen, resultsCacheGen}, nil
 }
 
 func (ds *DeleteStore) queryCacheGenerationNumber(ctx context.Context, userID string, kind CacheKind) (string, error) {

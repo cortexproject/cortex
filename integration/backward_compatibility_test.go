@@ -14,18 +14,17 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/integration/images"
 )
 
 var (
-	// If you change the image tag, remember to update it in the preloading done
-	// by CircleCI too (see .circleci/config.yml).
 	previousVersionImages = []string{
 		// 0.6.0 used 204 status code for querier and ingester
 		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0",
+		images.Cortex_0_6_0,
 
 		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0",
+		images.Cortex_0_7_0,
 	}
 )
 

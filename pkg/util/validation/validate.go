@@ -21,8 +21,9 @@ const (
 	errMetadataMetricNameTooLong = "metadata metric name too long: %.200q"
 	errMetadataTooLong           = "metadata '%s' value too long: %.200q metric %.200q"
 
-	typeHelp = "HELP"
-	typeUnit = "UNIT"
+	typeMetricName = "METRIC_NAME"
+	typeHelp       = "HELP"
+	typeUnit       = "UNIT"
 
 	metricNameTooLong = "metric_name_too_long"
 	helpTooLong       = "help_too_long"
@@ -177,18 +178,19 @@ type MetadataValidationConfig interface {
 // ValidateMetadata returns an err if a metric metadata is invalid.
 func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *client.MetricMetadata) error {
 	if cfg.EnforceMetadataMetricName(userID) && metadata.MetricName == "" {
+		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
 	}
 
 	maxMetadataValueLength := cfg.MaxMetadataLength(userID)
-	if len(metadata.MetricName) > maxMetadataValueLength {
-		DiscardedMetadata.WithLabelValues(metricNameTooLong, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMetricNameTooLong, metadata.MetricName)
-	}
 	var reason string
 	var cause string
 	var metadataType string
-	if len(metadata.Help) > maxMetadataValueLength {
+	if len(metadata.MetricName) > maxMetadataValueLength {
+		metadataType = typeMetricName
+		reason = metricNameTooLong
+		cause = metadata.MetricName
+	} else if len(metadata.Help) > maxMetadataValueLength {
 		metadataType = typeHelp
 		reason = helpTooLong
 		cause = metadata.Help

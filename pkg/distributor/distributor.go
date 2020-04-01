@@ -382,7 +382,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
-	validatedMetadata := make([]client.PreallocMetricMetadata, 0, len(req.Metadata))
+	validatedMetadata := make([]*client.MetricMetadata, 0, len(req.Metadata))
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
@@ -398,7 +398,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				}
 
 				// Ensure the request slice is reused if the series get deduped.
-				client.ReuseSlice(req.Timeseries, req.Metadata)
+				client.ReuseSlice(req.Timeseries)
 
 				return nil, err
 			}
@@ -474,16 +474,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	if len(req.Metadata) > 0 {
 		for _, m := range req.Metadata {
-			key := d.tokenForMetadata(userID, m.MetricName)
-
-			err := d.validateMetadata(m.MetricMetadata, userID)
+			err := d.validateMetadata(m, userID)
 
 			if err != nil {
 				// TODO: save the error to a partial error?
 				continue
 			}
 
-			metadataKeys = append(metadataKeys, key)
+			metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
 			validatedMetadata = append(validatedMetadata, m)
 		}
 	}
@@ -505,7 +503,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		client.ReuseSlice(req.Timeseries, req.Metadata)
+		client.ReuseSlice(req.Timeseries)
 
 		return &client.WriteResponse{}, firstPartialErr
 	}
@@ -515,7 +513,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	totalN := validatedSamples + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
-		client.ReuseSlice(req.Timeseries, req.Metadata)
+		client.ReuseSlice(req.Timeseries)
 
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
@@ -526,9 +524,9 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	if len(metadataKeys) > 0 {
 		err = ring.DoBatch(ctx, subRing, metadataKeys, func(ingester ring.IngesterDesc, indexes []int) error {
-			metadata := make([]client.PreallocMetricMetadata, 0, len(indexes))
+			metadata := make([]*client.MetricMetadata, 0, len(indexes))
 			for _, i := range indexes {
-				metadata = append(metadata, req.Metadata[i])
+				metadata = append(metadata, validatedMetadata[i])
 			}
 
 			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
@@ -540,7 +538,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			}
 
 			return d.sendMetadata(localCtx, ingester, metadata)
-		}, func() { client.ReuseSlice(nil, req.Metadata) })
+		}, func() {})
 		if err != nil {
 			// Metadata is a best-effort approach so we consider failures non-fatal, log them, and move on.
 			logger := util.WithContext(ctx, util.Logger)
@@ -563,7 +561,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
 			return d.sendSamples(localCtx, ingester, timeseries)
-		}, func() { client.ReuseSlice(req.Timeseries, nil) })
+		}, func() { client.ReuseSlice(req.Timeseries) })
 		if err != nil {
 			return nil, err
 		}
@@ -612,7 +610,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 	return err
 }
 
-func (d *Distributor) sendMetadata(ctx context.Context, ingester ring.IngesterDesc, metadata []client.PreallocMetricMetadata) error {
+func (d *Distributor) sendMetadata(ctx context.Context, ingester ring.IngesterDesc, metadata []*client.MetricMetadata) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err

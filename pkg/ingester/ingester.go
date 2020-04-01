@@ -350,7 +350,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries, req.Metadata)
+	defer client.ReuseSlice(req.Timeseries)
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

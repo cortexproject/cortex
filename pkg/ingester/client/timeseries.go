@@ -15,7 +15,6 @@ var (
 	expectedTimeseries       = 100
 	expectedLabels           = 20
 	expectedSamplesPerSeries = 10
-	expectedMetadata         = 200
 
 	/*
 		We cannot pool these as pointer-to-slice because the place we use them is in WriteRequest which is generated from Protobuf
@@ -28,23 +27,12 @@ var (
 		},
 	}
 
-	sliceMetadataPool = sync.Pool{
-		New: func() interface{} {
-			return make([]PreallocMetricMetadata, 0, expectedMetadata)
-		},
-	}
-
 	timeSeriesPool = sync.Pool{
 		New: func() interface{} {
 			return &TimeSeries{
 				Labels:  make([]LabelAdapter, 0, expectedLabels),
 				Samples: make([]Sample, 0, expectedSamplesPerSeries),
 			}
-		},
-	}
-	metadataPool = sync.Pool{
-		New: func() interface{} {
-			return &MetricMetadata{}
 		},
 	}
 )
@@ -56,7 +44,6 @@ type PreallocConfig struct{}
 // RegisterFlags registers configuration settings.
 func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&expectedTimeseries, "ingester-client.expected-timeseries", expectedTimeseries, "Expected number of timeseries per request, used for preallocations.")
-	f.IntVar(&expectedMetadata, "ingester-client.expected-metadata", expectedMetadata, "Expected number of metadata per request, used for preallocations.")
 	f.IntVar(&expectedLabels, "ingester-client.expected-labels", expectedLabels, "Expected number of labels per timeseries, used for preallocations.")
 	f.IntVar(&expectedSamplesPerSeries, "ingester-client.expected-samples-per-series", expectedSamplesPerSeries, "Expected number of samples per timeseries, used for preallocations.")
 }
@@ -69,7 +56,6 @@ type PreallocWriteRequest struct {
 // Unmarshal implements proto.Message.
 func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
 	p.Timeseries = slicePool.Get().([]PreallocTimeseries)
-	p.Metadata = sliceMetadataPool.Get().([]PreallocMetricMetadata)
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
@@ -82,15 +68,6 @@ type PreallocTimeseries struct {
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
 	p.TimeSeries = timeSeriesPool.Get().(*TimeSeries)
 	return p.TimeSeries.Unmarshal(dAtA)
-}
-
-type PreallocMetricMetadata struct {
-	*MetricMetadata
-}
-
-func (p *PreallocMetricMetadata) Unmarshal(dAtA []byte) error {
-	p.MetricMetadata = metadataPool.Get().(*MetricMetadata)
-	return p.MetricMetadata.Unmarshal(dAtA)
 }
 
 // LabelAdapter is a labels.Label that can be marshalled to/from protos.
@@ -289,17 +266,12 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 }
 
 // ReuseSlice puts the slice back into a sync.Pool for reuse.
-func ReuseSlice(ts []PreallocTimeseries, m []PreallocMetricMetadata) {
+func ReuseSlice(ts []PreallocTimeseries) {
 	for i := range ts {
 		ReuseTimeseries(ts[i].TimeSeries)
 	}
 
-	for i := range m {
-		metadataPool.Put(m[i].MetricMetadata)
-	}
-
 	slicePool.Put(ts[:0]) //nolint:staticcheck //see comment on slicePool for more details
-	sliceMetadataPool.Put(m[:0])
 }
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.

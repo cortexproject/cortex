@@ -119,7 +119,7 @@ func TestValidateMetadata(t *testing.T) {
 		{
 			"with a long metric name",
 			&client.MetricMetadata{MetricName: "go_goroutines_and_routines_and_routines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
-			httpgrpc.Errorf(http.StatusBadRequest, "metadata metric name too long: \"go_goroutines_and_routines_and_routines\""),
+			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'METRIC_NAME' value too long: \"go_goroutines_and_routines_and_routines\" metric \"go_goroutines_and_routines_and_routines\""),
 		},
 		{
 			"with a long help",

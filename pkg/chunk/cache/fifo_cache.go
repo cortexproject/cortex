@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"container/list"
 	"context"
 	"flag"
 	"sync"
@@ -104,10 +105,9 @@ type FifoCache struct {
 	maxSizeBytes  int
 	currSizeBytes int
 	validity      time.Duration
-	entries       map[string]*cacheEntry
 
-	// pointers to the first and last elements of FIFO doubly linked list.
-	first, last *cacheEntry
+	entries map[string]*list.Element
+	lru     *list.List
 
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
@@ -120,10 +120,9 @@ type FifoCache struct {
 }
 
 type cacheEntry struct {
-	updated    time.Time
-	key        string
-	value      interface{}
-	prev, next *cacheEntry
+	updated time.Time
+	key     string
+	value   interface{}
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
@@ -149,7 +148,8 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: cfg.MaxSizeBytes,
 		validity:     cfg.Validity,
-		entries:      make(map[string]*cacheEntry),
+		entries:      make(map[string]*list.Element),
+		lru:          list.New(),
 
 		// TODO(bwplotka): There might be simple cache.Cache wrapper for those.
 		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
@@ -193,11 +193,10 @@ func (c *FifoCache) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.entriesEvicted.Add(float64(len(c.entries)))
+	c.entriesEvicted.Add(float64(c.lru.Len()))
 
-	c.entries = make(map[string]*cacheEntry)
-	c.first = nil
-	c.last = nil
+	c.entries = make(map[string]*list.Element)
+	c.lru.Init()
 	c.currSizeBytes = 0
 
 	c.entriesCurrent.Set(float64(0))
@@ -216,59 +215,18 @@ func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}
 	}
 }
 
-func (c *FifoCache) addToHead(entry *cacheEntry) {
-	entry.prev, entry.next = nil, c.first
-	if c.first != nil {
-		c.first.prev = entry
-	}
-	c.first = entry
-	if c.last == nil {
-		c.last = entry
-	}
-}
-
-func (c *FifoCache) deleteFromTail() *cacheEntry {
-	if c.last == nil {
-		return nil
-	}
-	ret := c.last
-	c.last = ret.prev
-	if c.last == nil {
-		c.first = nil
-	} else {
-		c.last.next = nil
-	}
-	return ret
-}
-
-func (c *FifoCache) deleteFromList(entry *cacheEntry) {
-	if entry == nil {
-		return
-	}
-	if entry.prev == nil {
-		c.first = entry.next
-	} else {
-		entry.prev.next = entry.next
-	}
-	if entry.next == nil {
-		c.last = entry.prev
-	} else {
-		entry.next.prev = entry.prev
-	}
-}
-
 func (c *FifoCache) put(key string, value interface{}) {
 	// See if we already have the item in the cache.
-	entry, ok := c.entries[key]
+	element, ok := c.entries[key]
 	if ok {
 		// Remove the item from the cache.
-		c.deleteFromList(entry)
+		entry := c.lru.Remove(element).(*cacheEntry)
 		delete(c.entries, key)
 		c.currSizeBytes -= sizeOf(entry)
 		c.entriesCurrent.Dec()
 	}
 
-	entry = &cacheEntry{
+	entry := &cacheEntry{
 		updated: time.Now(),
 		key:     key,
 		value:   value,
@@ -287,7 +245,7 @@ func (c *FifoCache) put(key string, value interface{}) {
 
 	// Otherwise, see if we need to evict item(s).
 	for (c.maxSizeBytes > 0 && c.currSizeBytes+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
-		evicted := c.deleteFromTail()
+		evicted := c.lru.Remove(c.lru.Back()).(*cacheEntry)
 		if evicted == nil {
 			break
 		}
@@ -298,10 +256,8 @@ func (c *FifoCache) put(key string, value interface{}) {
 	}
 
 	// Finally, we have space to add the item.
-	c.addToHead(entry)
-	c.entries[key] = entry
+	c.entries[key] = c.lru.PushFront(entry)
 	c.currSizeBytes += entrySz
-
 	if !ok {
 		c.entriesAddedNew.Inc()
 	}
@@ -316,8 +272,9 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	entry, ok := c.entries[key]
+	element, ok := c.entries[key]
 	if ok {
+		entry := element.Value.(*cacheEntry)
 		if c.validity == 0 || time.Since(entry.updated) < c.validity {
 			return entry.value, true
 		}
@@ -331,15 +288,13 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	return nil, false
 }
 
-func sizeOf(entry *cacheEntry) int {
-	return int(unsafe.Sizeof(*entry)) + // size of cacheEntry
-		sizeOfInterface(entry.value) + // size of entry.value
-		(2 * sizeOfInterface(entry.key)) + // counting key twice: in the cacheEntry and in the map
-		int(unsafe.Sizeof(entry)) // size of *cacheEntry in the map
-}
-
-func sizeOfInterface(i interface{}) int {
+func sizeOf(i interface{}) int {
 	switch v := i.(type) {
+	case *cacheEntry:
+		return int(unsafe.Sizeof(*v)) + // size of cacheEntry
+			sizeOf(v.value) + // size of entry.value
+			(2 * sizeOf(v.key)) + // counting key twice: in the cacheEntry and in the map
+			int(unsafe.Sizeof(v)) // size of *cacheEntry in the map
 	case string:
 		return len(v)
 	case []int8:

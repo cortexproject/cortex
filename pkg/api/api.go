@@ -243,13 +243,13 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	api.Register(promRouter)
 	promHandler := fakeRemoteAddr(promRouter)
 
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", promHandler, true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", promHandler, true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", promHandler, true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", promHandler, true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", promHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", promHandler, true, "GET")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", promHandler, true, "GET", "POST", "DELETE")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", promHandler, true, "GET")
 
 	a.registerRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
 	a.registerRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true)
@@ -262,13 +262,13 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	api.Register(legacyPromRouter)
 	legacyPromHandler := fakeRemoteAddr(legacyPromRouter)
 
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", legacyPromHandler, true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", legacyPromHandler, true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", legacyPromHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", legacyPromHandler, true, "GET")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true, "GET", "POST", "DELETE")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true, "GET")
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the
@@ -280,22 +280,22 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	// Previously the frontend handled all calls to the provided prefix. Instead explicit
 	// routing is used since it will be required to enable the frontend to be run as part
 	// of a single binary in the future.
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", f.Handler(), true)
-	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", f.Handler(), true)
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true, "GET")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true, "GET")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", f.Handler(), true, "GET", "POST", "DELETE")
+	a.registerRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", f.Handler(), true, "GET")
 
 	// Register Legacy Routers
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", f.Handler(), true)
-	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", f.Handler(), true)
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true, "GET")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true, "GET")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", f.Handler(), true, "GET", "POST", "DELETE")
+	a.registerRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", f.Handler(), true, "GET")
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

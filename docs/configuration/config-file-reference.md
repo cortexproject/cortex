@@ -540,7 +540,7 @@ lifecycler:
   [tokens_file_path: <string> | default = ""]
 
   # The availability zone of the host, this instance is running on. Default is
-  # the lifecycler ID.
+  # an empty string, which disables zone awareness for writes.
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
 

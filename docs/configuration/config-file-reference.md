@@ -79,7 +79,8 @@ Where default_value is the value to use if the environment variable is undefined
 # The ingester_config configures the Cortex ingester.
 [ingester: <ingester_config>]
 
-# The flusher_config configures how flusher to flush all the chunks.
+# The flusher_config configures the WAL flusher target, used to manually run
+# one-time flushes when scaling down ingesters.
 [flusher: <flusher_config>]
 
 # The storage_config configures where Cortex stores the data (chunks storage
@@ -115,7 +116,8 @@ Where default_value is the value to use if the environment variable is undefined
 # storage.
 [compactor: <compactor_config>]
 
-# The store_gateway_config configures the the read path for blocks sharding.
+# The store_gateway_config configures the store-gateway service used by the
+# experimental blocks storage.
 [store_gateway: <store_gateway_config>]
 
 # The purger_config configures the purger which takes care of delete requests
@@ -1627,7 +1629,7 @@ delete_store:
 
 ### `flusher_config`
 
-The `flusher_config` configures how flusher to flush all the chunks.
+The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
 
 ```yaml
 # Directory to read WAL from.
@@ -2614,7 +2616,7 @@ sharding_ring:
 
 ### `store_gateway_config`
 
-The `store_gateway_config` configures the the read path for blocks sharding.
+The `store_gateway_config` configures the store-gateway service used by the experimental blocks storage.
 
 ```yaml
 # Shard blocks across multiple store gateway instances.

@@ -136,6 +136,11 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
 		cfg.MaxSizeItems = cfg.DeprecatedSize
 	}
+	if cfg.MaxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
+		// zero cache capacity - no need to create cache
+		level.Warn(util.Logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
+		return nil
+	}
 	if cfg.MaxSizeBytes > 0 && cfg.MaxSizeItems > 0 {
 		level.Warn(util.Logger).Log("msg", "fifocache.max-size-bytes and fifocache.max-size-items (disregarded) are mutually exclusive", "cache", name)
 		cfg.MaxSizeItems = 0
@@ -202,9 +207,6 @@ func (c *FifoCache) Stop() {
 // Put stores the value against the key.
 func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}) {
 	c.entriesAdded.Inc()
-	if c.maxSizeBytes == 0 && c.maxSizeItems == 0 {
-		return
-	}
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -310,9 +312,6 @@ func (c *FifoCache) put(key string, value interface{}) {
 // Get returns the stored value against the key and when the key was last updated.
 func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.totalGets.Inc()
-	if c.maxSizeBytes == 0 && c.maxSizeItems == 0 {
-		return nil, false
-	}
 
 	c.lock.RLock()
 	defer c.lock.RUnlock()

@@ -92,6 +92,7 @@ func (m *ModuleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (t *Cortex) initAPI(cfg *Config) (services.Service, error) {
 	cfg.API.ServerPrefix = cfg.Server.PathPrefix
+	cfg.API.LegacyHTTPPrefix = cfg.HTTPPrefix
 
 	a, err := api.New(cfg.API, t.server, util.Logger)
 	if err != nil {

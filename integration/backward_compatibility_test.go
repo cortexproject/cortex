@@ -21,10 +21,10 @@ var (
 	previousVersionImages = []string{
 		// 0.6.0 used 204 status code for querier and ingester
 		// distributor didn't have /ready page, and we used check on the /ring page instead
-		images.Cortex_0_6_0,
+		images.Cortex0_6_0,
 
 		// 0.7.0 used 204 status code for all components
-		images.Cortex_0_7_0,
+		images.Cortex0_7_0,
 	}
 )
 

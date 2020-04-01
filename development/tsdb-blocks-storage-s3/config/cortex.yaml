@@ -37,6 +37,7 @@ tsdb:
   
   bucket_store:
     sync_dir: /tmp/cortex-tsdb-querier
+    consistency_delay: 5s
 
     index_cache:
       backend: memcached
@@ -52,7 +53,7 @@ tsdb:
 
 ruler:
   enable_api: true
-  storeconfig:
+  storage:
     type: configdb
     configdb:
       configs_api_url: http://configstore:80/
@@ -72,4 +73,4 @@ compactor:
         host: consul:8500
 
 frontend_worker:
-  address: "query-frontend:9007"
+  frontend_address: "query-frontend:9007"

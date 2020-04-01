@@ -124,20 +124,6 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
 			cortex_querier_bucket_store_series_merge_duration_seconds_count 9
 
-			# HELP cortex_querier_bucket_store_blocks_meta_sync_duration_seconds TSDB: Duration of the blocks metadata synchronization in seconds
-			# TYPE cortex_querier_bucket_store_blocks_meta_sync_duration_seconds histogram
-			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_bucket{le="+Inf"} 0
-			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_sum 0
-			cortex_querier_bucket_store_blocks_meta_sync_duration_seconds_count 0
-
-			# HELP cortex_querier_bucket_store_blocks_meta_sync_failures_total TSDB: Total blocks metadata synchronization failures
-			# TYPE cortex_querier_bucket_store_blocks_meta_sync_failures_total counter
-			cortex_querier_bucket_store_blocks_meta_sync_failures_total 0
-
-			# HELP cortex_querier_bucket_store_blocks_meta_syncs_total TSDB: Total blocks metadata synchronization attempts
-			# TYPE cortex_querier_bucket_store_blocks_meta_syncs_total counter
-			cortex_querier_bucket_store_blocks_meta_syncs_total 0
-
 			# HELP cortex_querier_bucket_store_series_refetches_total TSDB: Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.
 			# TYPE cortex_querier_bucket_store_series_refetches_total counter
 			cortex_querier_bucket_store_series_refetches_total 743127
@@ -146,10 +132,6 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_querier_bucket_store_series_result_series summary
 			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_querier_bucket_store_series_result_series_count 6
-
-			# HELP cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds TSDB: Configured consistency delay in seconds.
-			# TYPE cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds gauge
-			cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds 300
 
 			# HELP cortex_querier_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
 			# TYPE cortex_querier_bucket_store_cached_postings_compressions_total counter
@@ -258,8 +240,6 @@ func populateTSDBBucketStoreMetrics(base float64) *prometheus.Registry {
 
 	m.seriesRefetches.Add(33 * base)
 
-	m.metaSyncConsistencyDelay.Set(300)
-
 	m.cachedPostingsCompressions.WithLabelValues("encode").Add(50 * base)
 	m.cachedPostingsCompressions.WithLabelValues("decode").Add(51 * base)
 
@@ -300,9 +280,6 @@ type bucketStoreMetrics struct {
 	cachedPostingsCompressionTimeSeconds *prometheus.CounterVec
 	cachedPostingsOriginalSizeBytes      prometheus.Counter
 	cachedPostingsCompressedSizeBytes    prometheus.Counter
-
-	// not part of bucketStoreMetrics, but injected by ConsistencyDelayMetaFilter
-	metaSyncConsistencyDelay prometheus.Gauge
 }
 
 func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
@@ -406,11 +383,6 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	m.cachedPostingsCompressedSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_compressed_size_bytes_total",
 		Help: "Compressed size of postings stored into cache.",
-	})
-
-	m.metaSyncConsistencyDelay = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "consistency_delay_seconds",
-		Help: "Configured consistency delay in seconds.",
 	})
 
 	return &m

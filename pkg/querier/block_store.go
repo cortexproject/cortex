@@ -37,6 +37,7 @@ type UserStore struct {
 	bucket             objstore.Bucket
 	logLevel           logging.Level
 	bucketStoreMetrics *tsdbBucketStoreMetrics
+	metaFetcherMetrics *metaFetcherMetrics
 	indexCacheMetrics  prometheus.Collector
 
 	// Index cache shared across all tenants.
@@ -61,6 +62,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
+		metaFetcherMetrics: newMetaFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
@@ -76,7 +78,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	}
 
 	if registerer != nil {
-		registerer.MustRegister(u.bucketStoreMetrics, u.indexCacheMetrics)
+		registerer.MustRegister(u.bucketStoreMetrics, u.metaFetcherMetrics, u.indexCacheMetrics)
 	}
 
 	u.Service = services.NewBasicService(u.starting, u.syncStoresLoop, nil)
@@ -259,16 +261,16 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 
 	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
 
-	reg := prometheus.NewRegistry()
+	fetcherReg := prometheus.NewRegistry()
 	fetcher, err := block.NewMetaFetcher(
 		userLogger,
 		u.cfg.BucketStore.MetaSyncConcurrency,
 		userBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
-		reg,
+		fetcherReg,
 		[]block.MetadataFilter{
 			// List of filters to apply (order matters).
-			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, reg),
+			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
 			// Filters out duplicate blocks that can be formed from two or more overlapping
 			// blocks that fully submatches the source blocks of the older blocks.
@@ -279,9 +281,10 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 		return nil, err
 	}
 
+	bucketStoreReg := prometheus.NewRegistry()
 	bs, err = store.NewBucketStore(
 		userLogger,
-		reg,
+		bucketStoreReg,
 		userBkt,
 		fetcher,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
@@ -301,7 +304,8 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 	}
 
 	u.stores[userID] = bs
-	u.bucketStoreMetrics.addUserRegistry(userID, reg)
+	u.metaFetcherMetrics.addUserRegistry(userID, fetcherReg)
+	u.bucketStoreMetrics.addUserRegistry(userID, bucketStoreReg)
 
 	return bs, nil
 }

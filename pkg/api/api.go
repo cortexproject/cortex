@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/gorilla/mux"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
@@ -55,11 +54,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type API struct {
-	cfg              Config
-	authMiddleware   middleware.Func
-	server           *server.Server
-	prometheusRouter *mux.Router
-	logger           log.Logger
+	cfg            Config
+	authMiddleware middleware.Func
+	server         *server.Server
+	logger         log.Logger
 }
 
 func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {

@@ -69,7 +69,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 var DiscardedMetadata = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "cortex_discarded_metadata_total",
-		Help: "The total number of metadata that were discarded",
+		Help: "The total number of metadata that were discarded.",
 	},
 	[]string{discardReasonLabel, "user"},
 )

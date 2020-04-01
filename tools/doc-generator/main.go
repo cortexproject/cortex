@@ -98,7 +98,7 @@ var (
 		{
 			name:       "flusher_config",
 			structType: reflect.TypeOf(flusher.Config{}),
-			desc:       "The flusher_config configures how flusher to flush all the chunks.",
+			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
 		},
 		{
 			name:       "chunk_store_config",
@@ -178,7 +178,7 @@ var (
 		{
 			name:       "store_gateway_config",
 			structType: reflect.TypeOf(storegateway.Config{}),
-			desc:       "The store_gateway_config configures the the read path for blocks sharding.",
+			desc:       "The store_gateway_config configures the store-gateway service used by the experimental blocks storage.",
 		},
 		{
 			name:       "purger_config",

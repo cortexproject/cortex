@@ -16,34 +16,26 @@ type tsdbBucketStoreMetrics struct {
 	regs   map[string]*prometheus.Registry
 
 	// exported metrics, gathered from Thanos BucketStore
-	blockLoads               *prometheus.Desc
-	blockLoadFailures        *prometheus.Desc
-	blockDrops               *prometheus.Desc
-	blockDropFailures        *prometheus.Desc
-	blocksLoaded             *prometheus.Desc
-	seriesDataTouched        *prometheus.Desc
-	seriesDataFetched        *prometheus.Desc
-	seriesDataSizeTouched    *prometheus.Desc
-	seriesDataSizeFetched    *prometheus.Desc
-	seriesBlocksQueried      *prometheus.Desc
-	seriesGetAllDuration     *prometheus.Desc
-	seriesMergeDuration      *prometheus.Desc
-	seriesRefetches          *prometheus.Desc
-	resultSeriesCount        *prometheus.Desc
-	metaSyncs                *prometheus.Desc
-	metaSyncFailures         *prometheus.Desc
-	metaSyncDuration         *prometheus.Desc
-	metaSyncConsistencyDelay *prometheus.Desc
+	blockLoads            *prometheus.Desc
+	blockLoadFailures     *prometheus.Desc
+	blockDrops            *prometheus.Desc
+	blockDropFailures     *prometheus.Desc
+	blocksLoaded          *prometheus.Desc
+	seriesDataTouched     *prometheus.Desc
+	seriesDataFetched     *prometheus.Desc
+	seriesDataSizeTouched *prometheus.Desc
+	seriesDataSizeFetched *prometheus.Desc
+	seriesBlocksQueried   *prometheus.Desc
+	seriesGetAllDuration  *prometheus.Desc
+	seriesMergeDuration   *prometheus.Desc
+	seriesRefetches       *prometheus.Desc
+	resultSeriesCount     *prometheus.Desc
 
 	cachedPostingsCompressions           *prometheus.Desc
 	cachedPostingsCompressionErrors      *prometheus.Desc
 	cachedPostingsCompressionTimeSeconds *prometheus.Desc
 	cachedPostingsOriginalSizeBytes      *prometheus.Desc
 	cachedPostingsCompressedSizeBytes    *prometheus.Desc
-
-	// Ignored:
-	// blocks_meta_synced
-	// blocks_meta_modified
 }
 
 func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
@@ -107,22 +99,6 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 			"cortex_querier_bucket_store_series_result_series",
 			"TSDB: Number of series observed in the final result of a query.",
 			nil, nil),
-		metaSyncs: prometheus.NewDesc(
-			"cortex_querier_bucket_store_blocks_meta_syncs_total",
-			"TSDB: Total blocks metadata synchronization attempts",
-			nil, nil),
-		metaSyncFailures: prometheus.NewDesc(
-			"cortex_querier_bucket_store_blocks_meta_sync_failures_total",
-			"TSDB: Total blocks metadata synchronization failures",
-			nil, nil),
-		metaSyncDuration: prometheus.NewDesc(
-			"cortex_querier_bucket_store_blocks_meta_sync_duration_seconds",
-			"TSDB: Duration of the blocks metadata synchronization in seconds",
-			nil, nil),
-		metaSyncConsistencyDelay: prometheus.NewDesc(
-			"cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds",
-			"TSDB: Configured consistency delay in seconds.",
-			nil, nil),
 
 		cachedPostingsCompressions: prometheus.NewDesc(
 			"cortex_querier_bucket_store_cached_postings_compressions_total",
@@ -181,11 +157,6 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesRefetches
 	out <- m.resultSeriesCount
 
-	out <- m.metaSyncs
-	out <- m.metaSyncFailures
-	out <- m.metaSyncDuration
-	out <- m.metaSyncConsistencyDelay
-
 	out <- m.cachedPostingsCompressions
 	out <- m.cachedPostingsCompressionErrors
 	out <- m.cachedPostingsCompressionTimeSeconds
@@ -213,11 +184,6 @@ func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
-
-	data.SendSumOfCounters(out, m.metaSyncs, "blocks_meta_syncs_total")
-	data.SendSumOfCounters(out, m.metaSyncFailures, "blocks_meta_sync_failures_total")
-	data.SendSumOfHistograms(out, m.metaSyncDuration, "blocks_meta_sync_duration_seconds")
-	data.SendMaxOfGauges(out, m.metaSyncConsistencyDelay, "consistency_delay_seconds")
 
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressions, "thanos_bucket_store_cached_postings_compressions_total", "op")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionErrors, "thanos_bucket_store_cached_postings_compression_errors_total", "op")

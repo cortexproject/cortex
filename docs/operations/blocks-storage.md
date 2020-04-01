@@ -455,6 +455,20 @@ compactor:
 
 ## Known issues
 
+### Can't ingest samples older than 1h compared to the latest received sample of a tenant
+
+The blocks storage opens a TSDB for each tenant in each ingester receiving samples for that tenant. The received series are kept in the TSDB head (in-memory + Write Ahead Log) and then persisted to the storage whenever a new block is cut from the head.
+
+A new block is cut from the head when the head (in-memory series) covers more than 1.5x of the block range period. For 2 hours block range (default), it means that the head needs to have 3h of data to cut a block. Block "start time" is always the minimum sample timestamp in the head, while block "end time" is aligned on block range boundary. The data stored into a block is then removed from the head. That means that after cutting the block, the head will already have at least 1h of data.
+
+Given TSDB doesn't allow to append samples out of head bounds, the Cortex blocks storage can't ingest samples older than the minimum timestamp in the head or `(maximum timestamp - 1h)`, whatever is higher. Under normal conditions, the limit is about 1h before the latest received sample of a tenant.
+
+The typical case where this issue triggers is after a long outage. Let's consider this scenario:
+
+- Multiple Prometheus servers remote writing to the same Cortex tenant
+- Some Prometheus servers stop remote writing to Cortex (ie. networking issue) and they fall behind more than 1h
+- When the failing Prometheus servers will be back online, Cortex blocks storage will discard any sample whose timestamp is older than 1h because the max timestamp in the TSDB head is close to "now" (due to the working Prometheus servers which never stopped to write samples) while the failing ones are trying to catch up writing samples older than 1h
+
 ### Migrating from the chunks to the blocks storage
 
 Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.

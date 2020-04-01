@@ -3,9 +3,10 @@ package api
 import (
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // TODO: Update this content to be a template that is dynamic based on how Cortex is run.

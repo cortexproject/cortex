@@ -18,7 +18,6 @@ const (
 	discardReasonLabel = "reason"
 
 	errMetadataMissingMetricName = "metadata missing metric name"
-	errMetadataMetricNameTooLong = "metadata metric name too long: %.200q"
 	errMetadataTooLong           = "metadata '%s' value too long: %.200q metric %.200q"
 
 	typeMetricName = "METRIC_NAME"

@@ -2024,7 +2024,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum length accepted for metric metadata. Metadata refers to Metric Name,
 # HELP and UNIT.
-# CLI flag: -validation.max-length-metadata
+# CLI flag: -validation.max-metadata-length
 [max_metadata_length: <int> | default = 1024]
 
 # Reject old samples.

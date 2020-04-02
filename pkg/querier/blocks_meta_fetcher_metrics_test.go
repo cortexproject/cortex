@@ -44,6 +44,12 @@ func TestMetaFetcherMetrics(t *testing.T) {
 		# HELP cortex_querier_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
 		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
 		cortex_querier_blocks_meta_sync_consistency_delay_seconds 300
+
+		# HELP cortex_querier_blocks_meta_synced Reflects current state of synced blocks (over all tenants).
+		# TYPE cortex_querier_blocks_meta_synced gauge
+		cortex_querier_blocks_meta_synced{state="corrupted-meta-json"} 75
+		cortex_querier_blocks_meta_synced{state="loaded"} 90
+		cortex_querier_blocks_meta_synced{state="too-fresh"} 105
 `))
 	require.NoError(t, err)
 }
@@ -57,6 +63,10 @@ func populateMetaFetcherMetrics(base float64) *prometheus.Registry {
 	m.syncDuration.Observe(3)
 	m.syncConsistencyDelay.Set(300)
 
+	m.synced.WithLabelValues("corrupted-meta-json").Set(base * 5)
+	m.synced.WithLabelValues("loaded").Set(base * 6)
+	m.synced.WithLabelValues("too-fresh").Set(base * 7)
+
 	return reg
 }
 
@@ -65,6 +75,7 @@ type metaFetcherMetricsMock struct {
 	syncFailures         prometheus.Counter
 	syncDuration         prometheus.Histogram
 	syncConsistencyDelay prometheus.Gauge
+	synced               *prometheus.GaugeVec
 }
 
 func newMetaFetcherMetricsMock(reg prometheus.Registerer) *metaFetcherMetricsMock {
@@ -90,6 +101,11 @@ func newMetaFetcherMetricsMock(reg prometheus.Registerer) *metaFetcherMetricsMoc
 		Name: "consistency_delay_seconds",
 		Help: "Configured consistency delay in seconds.",
 	})
+	m.synced = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Subsystem: "blocks_meta",
+		Name:      "synced",
+		Help:      "Number of block metadata synced",
+	}, []string{"state"})
 
 	return &m
 }

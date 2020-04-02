@@ -20,9 +20,9 @@ type metaFetcherMetrics struct {
 	syncFailures         *prometheus.Desc
 	syncDuration         *prometheus.Desc
 	syncConsistencyDelay *prometheus.Desc
+	synced               *prometheus.Desc
 
 	// Ignored:
-	// blocks_meta_synced
 	// blocks_meta_modified
 }
 
@@ -46,6 +46,10 @@ func newMetaFetcherMetrics() *metaFetcherMetrics {
 			"cortex_querier_blocks_meta_sync_consistency_delay_seconds",
 			"Configured consistency delay in seconds.",
 			nil, nil),
+		synced: prometheus.NewDesc(
+			"cortex_querier_blocks_meta_synced",
+			"Reflects current state of synced blocks (over all tenants).",
+			[]string{"state"}, nil),
 	}
 }
 
@@ -73,6 +77,7 @@ func (m *metaFetcherMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.syncFailures
 	out <- m.syncDuration
 	out <- m.syncConsistencyDelay
+	out <- m.synced
 }
 
 func (m *metaFetcherMetrics) Collect(out chan<- prometheus.Metric) {
@@ -82,4 +87,5 @@ func (m *metaFetcherMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.syncFailures, "blocks_meta_sync_failures_total")
 	data.SendSumOfHistograms(out, m.syncDuration, "blocks_meta_sync_duration_seconds")
 	data.SendMaxOfGauges(out, m.syncConsistencyDelay, "consistency_delay_seconds")
+	data.SendSumOfGaugesWithLabels(out, m.synced, "blocks_meta_synced", "state")
 }

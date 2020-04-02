@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.0.0-rc.0 / 2020-03-31
+## 1.0.0 / 2020-04-02
 
 This is the first major release of Cortex. We made a lot of **breaking changes** in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: https://cortexmetrics.io/docs/configuration/v1guarantees/
 

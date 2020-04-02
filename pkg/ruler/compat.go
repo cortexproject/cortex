@@ -36,7 +36,7 @@ func (a *appender) AddFast(l labels.Labels, ref uint64, t int64, v float64) erro
 }
 
 func (a *appender) Commit() error {
-	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, client.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
 	a.labels = nil
 	a.samples = nil
 	return err

@@ -60,10 +60,12 @@ func TestIngester_v2Push(t *testing.T) {
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
 					client.API),
 			},
 			expectedErr: nil,
@@ -96,10 +98,12 @@ func TestIngester_v2Push(t *testing.T) {
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
 					client.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(9).Time().Format(time.RFC3339Nano)), userID).Error()),
@@ -135,10 +139,12 @@ func TestIngester_v2Push(t *testing.T) {
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 1575043969}},
+					nil,
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
+					nil,
 					client.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969-(86400*1000)).Time().Format(time.RFC3339Nano)), userID).Error()),
@@ -174,10 +180,12 @@ func TestIngester_v2Push(t *testing.T) {
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 1575043969}},
+					nil,
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
+					nil,
 					client.API),
 			},
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969).Time().Format(time.RFC3339Nano)), userID).Error()),
@@ -297,6 +305,7 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 		req := client.ToWriteRequest(
 			[]labels.Labels{metricLabels},
 			[]client.Sample{{Value: float64(j), TimestampMs: int64(j)}},
+			nil,
 			client.API)
 
 		_, err := i.v2Push(ctx, req)
@@ -361,10 +370,12 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 			client.ToWriteRequest(
 				[]labels.Labels{metricLabels},
 				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				nil,
 				client.API),
 			client.ToWriteRequest(
 				[]labels.Labels{metricLabels},
 				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				nil,
 				client.API),
 		}
 
@@ -989,7 +1000,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 		},
 	}
 
-	req := client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
+	req := client.ToWriteRequest([]labels.Labels{lbls}, samples, nil, client.API)
 
 	// Generate the expected response
 	expectedQueryRes := &client.QueryResponse{

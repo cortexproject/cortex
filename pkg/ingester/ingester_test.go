@@ -171,7 +171,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, o
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), client.API))
+		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), nil, client.API))
 		require.NoError(t, err)
 	}
 
@@ -387,11 +387,11 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, nil, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
@@ -444,11 +444,11 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, nil, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
@@ -507,7 +507,7 @@ func TestIngesterValidation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			_, err := ing.Push(ctx, client.ToWriteRequest(tc.lbls, tc.samples, client.API))
+			_, err := ing.Push(ctx, client.ToWriteRequest(tc.lbls, tc.samples, nil, client.API))
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -617,7 +617,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 					for i := range allSamples {
 						allSamples[i].TimestampMs = int64(j + 1)
 					}
-					_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, client.API))
+					_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, nil, client.API))
 					if !errorsExpected {
 						require.NoError(b, err)
 					}

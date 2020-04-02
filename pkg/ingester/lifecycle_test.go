@@ -366,7 +366,7 @@ func TestIngesterFlush(t *testing.T) {
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest(lbls, sampleData, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest(lbls, sampleData, nil, client.API))
 	require.NoError(t, err)
 
 	// We add a 100ms sleep into the flush loop, such that we can reliably detect

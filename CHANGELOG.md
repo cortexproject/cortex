@@ -10,6 +10,7 @@
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383 
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
+* [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 
 ## 1.0.0 / 2020-04-02
 
@@ -106,7 +107,6 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
 * [ENHANCEMENT] Add "missing_metric_name" and "metric_name_invalid" reasons to cortex_discarded_samples_total metric. #2346
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
-* [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 * [BUGFIX] Ensure user state metrics are updated if a transfer fails. #2338
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270

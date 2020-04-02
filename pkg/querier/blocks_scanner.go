@@ -177,7 +177,6 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		return nil
 	})
 
 	if err != nil {

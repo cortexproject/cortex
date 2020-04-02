@@ -74,6 +74,11 @@ var (
 	}, []string{"cache"})
 )
 
+const (
+	elementSize    = int(unsafe.Sizeof(list.Element{}))
+	elementPrtSize = int(unsafe.Sizeof(&list.Element{}))
+)
+
 // This FIFO cache implementation supports two eviction methods - based on number of items in the cache, and based on memory usage.
 // For the memory-based eviction, set FifoCacheConfig.MaxSizeBytes to a positive integer, indicating upper limit of memory allocated by items in the cache.
 // Alternatively, set FifoCacheConfig.MaxSizeItems to a positive integer, indicating maximum number of items in the cache.
@@ -278,7 +283,8 @@ func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
 
 func sizeOf(item *cacheEntry) int {
 	return int(unsafe.Sizeof(*item)) + // size of cacheEntry
+		len(item.key) + // size of key
 		cap(item.value) + // size of value
-		(2 * len(item.key)) + // counting key twice: in the cacheEntry and in the map
-		int(unsafe.Sizeof(&list.Element{})) // size of the pointer to an element in the map
+		elementSize + // size of the element in linked list
+		elementPrtSize // size of the pointer to an element in the map
 }

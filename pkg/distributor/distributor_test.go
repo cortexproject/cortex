@@ -143,7 +143,7 @@ func TestDistributor_Push(t *testing.T) {
 				assert.Equal(t, tc.expectedResponse, response)
 				assert.Equal(t, tc.expectedError, err)
 
-				// Check tracked Prometheus metrics
+				// Check tracked Prometheus metrics.
 				if tc.expectedMetrics != "" {
 					err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), metricNames...)
 					assert.NoError(t, err)

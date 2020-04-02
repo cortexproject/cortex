@@ -379,7 +379,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = maxTimestampMs(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
@@ -705,11 +705,4 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	}
 
 	return response, nil
-}
-
-func maxTimestampMs(t1, t2 int64) int64 {
-	if t1 > t2 {
-		return t1
-	}
-	return t2
 }

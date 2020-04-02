@@ -5034,6 +5034,17 @@ replica: replica2
 &lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
 &lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2375&#34;&gt;#2375&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_syncs_total&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_syncs_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_failures_total&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_failures_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_duration_seconds&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_duration_seconds&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_consistency_delay_seconds&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing &lt;code&gt;cortex_discarded_samples_total&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2370&#34;&gt;#2370&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2383&#34;&gt;#2383&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 id=&#34;1-0-0-2020-04-02&#34;&gt;1.0.0 / 2020-04-02&lt;/h2&gt;
 &lt;p&gt;This is the first major release of Cortex. We made a lot of &lt;strong&gt;breaking changes&lt;/strong&gt; in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/v1guarantees/&#34;&gt;https://cortexmetrics.io/docs/configuration/v1guarantees/&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
@@ -5119,13 +5130,6 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[CHANGE] Experimental TSDB: Added &lt;code&gt;-compactor.deletion-delay&lt;/code&gt;, which is time before a block marked for deletion is deleted from bucket. If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, if store gateway / querier still has the block loaded, or compactor is ignoring the deletion because it&amp;rsquo;s compacting the block at the same time. Default value is 48h. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2335&#34;&gt;#2335&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Experimental TSDB: Added &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.postings-compression-enabled&lt;/code&gt;, to set duration after which the blocks marked for deletion will be filtered out while fetching blocks used for querying. This option allows querier to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet. Default is 24h, half of the default value for &lt;code&gt;-compactor.deletion-delay&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2335&#34;&gt;#2335&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Experimental TSDB: Added &lt;code&gt;-experimental.tsdb.bucket-store.index-cache.memcached.max-item-size&lt;/code&gt; to control maximum size of item that is stored to memcached. Defaults to 1 MiB. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2335&#34;&gt;#2335&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2375&#34;&gt;#2375&lt;/a&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_syncs_total&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_syncs_total&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_failures_total&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_failures_total&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_duration_seconds&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_duration_seconds&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds&lt;/code&gt; &amp;gt; &lt;code&gt;cortex_querier_blocks_meta_sync_consistency_delay_seconds&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[FEATURE] Added experimental storage API to the ruler service that is enabled when the &lt;code&gt;-experimental.ruler.enable-api&lt;/code&gt; is set to true &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2269&#34;&gt;#2269&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ruler.storage.type&lt;/code&gt; flag now allows &lt;code&gt;s3&lt;/code&gt;,&lt;code&gt;gcs&lt;/code&gt;, and &lt;code&gt;azure&lt;/code&gt; values&lt;/li&gt;
@@ -5152,7 +5156,6 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Output all config fields to /config API, including those with empty value. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2209&#34;&gt;#2209&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Add &amp;ldquo;missing_metric_name&amp;rdquo; and &amp;ldquo;metric_name_invalid&amp;rdquo; reasons to cortex_discarded_samples_total metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2346&#34;&gt;#2346&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing &lt;code&gt;cortex_discarded_samples_total&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2370&#34;&gt;#2370&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2383&#34;&gt;#2383&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Ensure user state metrics are updated if a transfer fails. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2338&#34;&gt;#2338&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed etcd client keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2278&#34;&gt;#2278&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed bug in updating last element of FIFO cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;

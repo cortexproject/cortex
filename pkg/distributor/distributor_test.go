@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -799,7 +800,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		replicationFactor: 3,
 	}
 
-	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
+	factory := func(addr string) (ring_client.PoolClient, error) {
 		return ingestersByAddr[addr], nil
 	}
 

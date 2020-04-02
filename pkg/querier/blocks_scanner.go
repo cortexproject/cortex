@@ -106,7 +106,7 @@ func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*metadata.
 	var matchingMetas []*metadata.Meta
 	for i := len(userMetas) - 1; i >= 0; i-- {
 		// NOTE: Block intervals are half-open: [MinTime, MaxTime).
-		if minT < userMetas[i].MaxTime && maxT >= userMetas[i].MinTime {
+		if userMetas[i].MinTime <= maxT && minT < userMetas[i].MaxTime {
 			matchingMetas = append(matchingMetas, userMetas[i])
 		}
 

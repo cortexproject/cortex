@@ -1,6 +1,6 @@
 ---
 title: "Proposals"
 linkTitle: "Proposals"
-weight: 11
+weight: 12
 menu:
 ---

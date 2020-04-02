@@ -357,7 +357,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		return nil, fmt.Errorf("no user id")
 	}
 
-	var lastPartialErr *validationError
+	var firstPartialErr *validationError
 	var record *Record
 	if i.cfg.WALConfig.WALEnabled {
 		record = recordPool.Get().(*Record)
@@ -382,7 +382,9 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 			i.metrics.ingestedSamplesFail.Inc()
 			if ve, ok := err.(*validationError); ok {
-				lastPartialErr = ve
+				if firstPartialErr == nil {
+					firstPartialErr = ve
+				}
 				continue
 			}
 
@@ -391,9 +393,9 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
-	if lastPartialErr != nil {
+	if firstPartialErr != nil {
 		// grpcForwardableError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, grpcForwardableError(userID, lastPartialErr.code, lastPartialErr)
+		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
 	}
 
 	if record != nil {

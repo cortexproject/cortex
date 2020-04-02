@@ -329,7 +329,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
-	var lastPartialErr error
+	var firstPartialErr error
 	removeReplica := false
 
 	numSamples := 0
@@ -398,8 +398,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil {
-			lastPartialErr = err
+		if err != nil && firstPartialErr == nil {
+			firstPartialErr = err
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -417,7 +417,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// Ensure the request slice is reused if there's no series passing the validation.
 		client.ReuseSlice(req.Timeseries)
 
-		return &client.WriteResponse{}, lastPartialErr
+		return &client.WriteResponse{}, firstPartialErr
 	}
 
 	now := time.Now()
@@ -461,7 +461,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if err != nil {
 		return nil, err
 	}
-	return &client.WriteResponse{}, lastPartialErr
+	return &client.WriteResponse{}, firstPartialErr
 }
 
 func sortLabelsIfNeeded(labels []client.LabelAdapter) {

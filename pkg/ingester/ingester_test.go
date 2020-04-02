@@ -476,6 +476,43 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	assert.Equal(t, expected, res)
 }
 
+func TestIngesterValidation(t *testing.T) {
+	_, ing := newDefaultTestStore(t)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	userID := "1"
+	ctx := user.InjectOrgID(context.Background(), userID)
+	m := labelPairs{{Name: labels.MetricName, Value: "testmetric"}}
+
+	// As a setup, let's append samples.
+	err := ing.append(context.Background(), userID, m, 1, 0, client.API, nil)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		desc    string
+		lbls    []labels.Labels
+		samples []client.Sample
+		err     error
+	}{
+		{
+			desc: "With multiple append failures, only return the first error.",
+			lbls: []labels.Labels{
+				{{Name: labels.MetricName, Value: "testmetric"}},
+				{{Name: labels.MetricName, Value: "testmetric"}},
+			},
+			samples: []client.Sample{
+				{TimestampMs: 0, Value: 0}, // earlier timestamp, out of order.
+				{TimestampMs: 1, Value: 2}, // same timestamp different value.
+			},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `user=1: sample timestamp out of order; last timestamp: 0.001, incoming timestamp: 0 for series {__name__="testmetric"}`),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			_, err := ing.Push(ctx, client.ToWriteRequest(tc.lbls, tc.samples, client.API))
+			require.Equal(t, tc.err, err)
+		})
+	}
+}
+
 func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 	for i := 1; i <= 32; i++ {
 		b.Run(strconv.Itoa(i), func(b *testing.B) {

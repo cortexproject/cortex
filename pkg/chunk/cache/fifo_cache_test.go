@@ -18,7 +18,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	)
 	itemTemplate := &cacheEntry{
 		key:   "00",
-		value: 0,
+		value: []byte("00"),
 	}
 
 	tests := []struct {
@@ -41,10 +41,13 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		// Check put / get works
 		keys := []string{}
-		values := []interface{}{}
+		values := [][]byte{}
 		for i := 0; i < cnt; i++ {
-			keys = append(keys, fmt.Sprintf("%02d", i))
-			values = append(values, i)
+			key := fmt.Sprintf("%02d", i)
+			value := make([]byte, len(key))
+			copy(value, key)
+			keys = append(keys, key)
+			values = append(values, value)
 		}
 		c.Put(ctx, keys, values)
 		require.Len(t, c.entries, cnt)
@@ -61,9 +64,10 @@ func TestFifoCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		for i := 0; i < cnt; i++ {
-			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
+			key := fmt.Sprintf("%02d", i)
+			value, ok := c.Get(ctx, key)
 			require.True(t, ok)
-			require.Equal(t, i, value.(int))
+			require.Equal(t, []byte(key), value)
 		}
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
@@ -79,10 +83,13 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		// Check evictions
 		keys = []string{}
-		values = []interface{}{}
+		values = [][]byte{}
 		for i := cnt - evicted; i < cnt+evicted; i++ {
-			keys = append(keys, fmt.Sprintf("%02d", i))
-			values = append(values, i)
+			key := fmt.Sprintf("%02d", i)
+			value := make([]byte, len(key))
+			copy(value, key)
+			keys = append(keys, key)
+			values = append(values, value)
 		}
 		c.Put(ctx, keys, values)
 		require.Len(t, c.entries, cnt)
@@ -103,9 +110,10 @@ func TestFifoCacheEviction(t *testing.T) {
 			require.False(t, ok)
 		}
 		for i := cnt - evicted; i < cnt+evicted; i++ {
-			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
+			key := fmt.Sprintf("%02d", i)
+			value, ok := c.Get(ctx, key)
 			require.True(t, ok)
-			require.Equal(t, i, value.(int))
+			require.Equal(t, []byte(key), value)
 		}
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
@@ -121,10 +129,13 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		// Check updates work
 		keys = []string{}
-		values = []interface{}{}
+		values = [][]byte{}
 		for i := cnt; i < cnt+evicted; i++ {
 			keys = append(keys, fmt.Sprintf("%02d", i))
-			values = append(values, i*2)
+			vstr := fmt.Sprintf("%02d", i*2)
+			value := make([]byte, len(vstr))
+			copy(value, vstr)
+			values = append(values, value)
 		}
 		c.Put(ctx, keys, values)
 		require.Len(t, c.entries, cnt)
@@ -132,7 +143,7 @@ func TestFifoCacheEviction(t *testing.T) {
 		for i := cnt; i < cnt+evicted; i++ {
 			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
 			require.True(t, ok)
-			require.Equal(t, i*2, value.(int))
+			require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
 		}
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(3))
@@ -152,7 +163,7 @@ func TestFifoCacheEviction(t *testing.T) {
 
 func TestFifoCacheExpiry(t *testing.T) {
 	key1, key2, key3, key4 := "01", "02", "03", "04"
-	data1, data2, data3 := []float64{1.0, 2.0, 3.0}, "testdata", []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	data1, data2, data3 := genBytes(24), []byte("testdata"), genBytes(8)
 
 	memorySz := sizeOf(&cacheEntry{key: key1, value: data1}) +
 		sizeOf(&cacheEntry{key: key2, value: data2}) +
@@ -178,11 +189,11 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 		c.Put(ctx,
 			[]string{key1, key2, key4, key3, key2, key1},
-			[]interface{}{[]int32{1, 2, 3, 4}, "dummy", []int{5, 4, 3}, data3, data2, data1})
+			[][]byte{genBytes(16), []byte("dummy"), genBytes(20), data3, data2, data1})
 
 		value, ok := c.Get(ctx, key1)
 		require.True(t, ok)
-		require.Equal(t, data1, value.([]float64))
+		require.Equal(t, data1, value)
 
 		_, ok = c.Get(ctx, key4)
 		require.False(t, ok)
@@ -216,4 +227,12 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 		c.Stop()
 	}
+}
+
+func genBytes(n uint8) []byte {
+	arr := make([]byte, n)
+	for i := range arr {
+		arr[i] = byte(i)
+	}
+	return arr
 }

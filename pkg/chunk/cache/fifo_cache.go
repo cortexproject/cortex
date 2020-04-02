@@ -122,7 +122,7 @@ type FifoCache struct {
 type cacheEntry struct {
 	updated time.Time
 	key     string
-	value   interface{}
+	value   []byte
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
@@ -170,18 +170,14 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 		}
 
 		found = append(found, key)
-		bufs = append(bufs, val.([]byte))
+		bufs = append(bufs, val)
 	}
 	return
 }
 
 // Store implements Cache.
 func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	values := make([]interface{}, 0, len(bufs))
-	for _, buf := range bufs {
-		values = append(values, buf)
-	}
-	c.Put(ctx, keys, values)
+	c.Put(ctx, keys, bufs)
 }
 
 // Stop implements Cache.
@@ -200,7 +196,7 @@ func (c *FifoCache) Stop() {
 }
 
 // Put stores the value against the key.
-func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}) {
+func (c *FifoCache) Put(ctx context.Context, keys []string, values [][]byte) {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -211,7 +207,7 @@ func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}
 	}
 }
 
-func (c *FifoCache) put(key string, value interface{}) {
+func (c *FifoCache) put(key string, value []byte) {
 	// See if we already have the item in the cache.
 	element, ok := c.entries[key]
 	if ok {
@@ -263,7 +259,7 @@ func (c *FifoCache) put(key string, value interface{}) {
 }
 
 // Get returns the stored value against the key and when the key was last updated.
-func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
+func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
 	c.totalGets.Inc()
 
 	c.lock.RLock()
@@ -285,43 +281,9 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	return nil, false
 }
 
-func sizeOf(i interface{}) int {
-	switch v := i.(type) {
-	case *cacheEntry:
-		return int(unsafe.Sizeof(*v)) + // size of cacheEntry
-			sizeOf(v.value) + // size of entry.value
-			(2 * sizeOf(v.key)) + // counting key twice: in the cacheEntry and in the map
-			int(unsafe.Sizeof(v)) // size of *cacheEntry in the map
-	case string:
-		return len(v)
-	case []int8:
-		return len(v)
-	case []uint8:
-		return len(v)
-	case []int32:
-		return len(v) * 4
-	case []uint32:
-		return len(v) * 4
-	case []float32:
-		return len(v) * 4
-	case []int64:
-		return len(v) * 8
-	case []uint64:
-		return len(v) * 8
-	case []float64:
-		return len(v) * 8
-	// next 2 cases are machine dependent
-	case []int:
-		if l := len(v); l > 0 {
-			return int(unsafe.Sizeof(v[0])) * l
-		}
-		return 0
-	case []uint:
-		if l := len(v); l > 0 {
-			return int(unsafe.Sizeof(v[0])) * l
-		}
-		return 0
-	default:
-		return int(unsafe.Sizeof(i))
-	}
+func sizeOf(item *cacheEntry) int {
+	return int(unsafe.Sizeof(*item)) + // size of cacheEntry
+		cap(item.value) + // size of value
+		(2 * len(item.key)) + // counting key twice: in the cacheEntry and in the map
+		int(unsafe.Sizeof(&list.Element{})) // size of the pointer to an element in the map
 }

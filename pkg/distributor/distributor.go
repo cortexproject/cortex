@@ -476,8 +476,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		for _, m := range req.Metadata {
 			err := d.validateMetadata(m, userID)
 
-			if err != nil && firstPartialErr == nil {
-				firstPartialErr = err
+			if err != nil {
+				if firstPartialErr == nil {
+					firstPartialErr = err
+				}
+
 				continue
 			}
 
@@ -489,6 +492,26 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 	receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
+	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
+		// Ensure the request slice is reused if there's no series or metadata passing the validation.
+		client.ReuseSlice(req.Timeseries)
+
+		return &client.WriteResponse{}, firstPartialErr
+	}
+
+	now := time.Now()
+	totalN := validatedSamples + len(validatedMetadata)
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
+		// Ensure the request slice is reused if the request is rate limited.
+		client.ReuseSlice(req.Timeseries)
+
+		// Return a 4xx here to have the client discard the data and not retry. If a client
+		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
+	}
+
 	var subRing ring.ReadRing
 	subRing = d.ingestersRing
 
@@ -499,27 +522,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unable to create subring: %v", err)
 		}
-	}
-
-	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
-		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		client.ReuseSlice(req.Timeseries)
-
-		return &client.WriteResponse{}, firstPartialErr
-	}
-
-	now := time.Now()
-	//TODO: might be a problem for customers over the tipping point. Maybe increase limits by around 5 - 10%?
-	totalN := validatedSamples + len(validatedMetadata)
-	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		// Ensure the request slice is reused if the request is rate limited.
-		client.ReuseSlice(req.Timeseries)
-
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), numSamples, len(req.Metadata))
 	}
 
 	if len(metadataKeys) > 0 {
@@ -542,7 +544,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if err != nil {
 			// Metadata is a best-effort approach so we consider failures non-fatal, log them, and move on.
 			logger := util.WithContext(ctx, util.Logger)
-			level.Error(logger).Log("err", err)
+			level.Error(logger).Log("msg", "Failed to send metadata to ingesters", "err", err)
 		}
 	}
 

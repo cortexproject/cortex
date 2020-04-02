@@ -48,12 +48,12 @@ type BlocksScanner struct {
 
 	// We reuse the metadata fetcher instance for a given tenant both because of performance
 	// reasons (the fetcher keeps a in-memory cache) and being able to collect and group metrics.
-	fetchers   map[string]block.MetadataFetcher
 	fetchersMx sync.Mutex
+	fetchers   map[string]block.MetadataFetcher
 
 	// Keep the per-tenant metas found during the last run.
-	metas   map[string][]*metadata.Meta
 	metasMx sync.RWMutex
+	metas   map[string][]*metadata.Meta
 
 	scanDuration prometheus.Histogram
 }

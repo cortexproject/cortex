@@ -2,6 +2,14 @@
 
 ## master / unreleased
 
+* [CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: #2375
+  * `cortex_querier_bucket_store_blocks_meta_syncs_total` > `cortex_querier_blocks_meta_syncs_total`
+  * `cortex_querier_bucket_store_blocks_meta_sync_failures_total` > `cortex_querier_blocks_meta_sync_failures_total`
+  * `cortex_querier_bucket_store_blocks_meta_sync_duration_seconds` > `cortex_querier_blocks_meta_sync_duration_seconds`
+  * `cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds` > `cortex_querier_blocks_meta_sync_consistency_delay_seconds`
+* [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
+* [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383 
+
 ## 1.0.0 / 2020-04-02
 
 This is the first major release of Cortex. We made a lot of **breaking changes** in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: https://cortexmetrics.io/docs/configuration/v1guarantees/
@@ -77,11 +85,6 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [CHANGE] Experimental TSDB: Added `-compactor.deletion-delay`, which is time before a block marked for deletion is deleted from bucket. If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, if store gateway / querier still has the block loaded, or compactor is ignoring the deletion because it's compacting the block at the same time. Default value is 48h. #2335
 * [CHANGE] Experimental TSDB: Added `-experimental.tsdb.bucket-store.index-cache.postings-compression-enabled`, to set duration after which the blocks marked for deletion will be filtered out while fetching blocks used for querying. This option allows querier to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet. Default is 24h, half of the default value for `-compactor.deletion-delay`. #2335
 * [CHANGE] Experimental TSDB: Added `-experimental.tsdb.bucket-store.index-cache.memcached.max-item-size` to control maximum size of item that is stored to memcached. Defaults to 1 MiB. #2335
-* [CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: #2375
-  * `cortex_querier_bucket_store_blocks_meta_syncs_total` > `cortex_querier_blocks_meta_syncs_total`
-  * `cortex_querier_bucket_store_blocks_meta_sync_failures_total` > `cortex_querier_blocks_meta_sync_failures_total`
-  * `cortex_querier_bucket_store_blocks_meta_sync_duration_seconds` > `cortex_querier_blocks_meta_sync_duration_seconds`
-  * `cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds` > `cortex_querier_blocks_meta_sync_consistency_delay_seconds`
 * [FEATURE] Added experimental storage API to the ruler service that is enabled when the `-experimental.ruler.enable-api` is set to true #2269
   * `-ruler.storage.type` flag now allows `s3`,`gcs`, and `azure` values
   * `-ruler.storage.(s3|gcs|azure)` flags exist to allow the configuration of object clients set for rule storage
@@ -102,7 +105,6 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
 * [ENHANCEMENT] Add "missing_metric_name" and "metric_name_invalid" reasons to cortex_discarded_samples_total metric. #2346
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
-* [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383 
 * [BUGFIX] Ensure user state metrics are updated if a transfer fails. #2338
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270

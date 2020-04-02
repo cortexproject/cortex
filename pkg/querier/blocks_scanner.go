@@ -111,7 +111,7 @@ func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*metadata.
 		}
 
 		// We can safely break the loop because metas are sorted by MaxTime.
-		if minT >= userMetas[i].MaxTime {
+		if userMetas[i].MaxTime <= minT {
 			break
 		}
 	}

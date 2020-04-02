@@ -476,8 +476,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		for _, m := range req.Metadata {
 			err := d.validateMetadata(m, userID)
 
-			if err != nil {
-				// TODO: save the error to a partial error?
+			if err != nil && firstPartialErr == nil {
+				firstPartialErr = err
 				continue
 			}
 

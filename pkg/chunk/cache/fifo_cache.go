@@ -176,8 +176,15 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	c.Put(ctx, keys, bufs)
+func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
+	c.entriesAdded.Inc()
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	for i := range keys {
+		c.put(keys[i], values[i])
+	}
 }
 
 // Stop implements Cache.
@@ -193,18 +200,6 @@ func (c *FifoCache) Stop() {
 
 	c.entriesCurrent.Set(float64(0))
 	c.memoryBytes.Set(float64(0))
-}
-
-// Put stores the value against the key.
-func (c *FifoCache) Put(ctx context.Context, keys []string, values [][]byte) {
-	c.entriesAdded.Inc()
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	for i := range keys {
-		c.put(keys[i], values[i])
-	}
 }
 
 func (c *FifoCache) put(key string, value []byte) {

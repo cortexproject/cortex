@@ -4454,9 +4454,9 @@ addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command bellow (currently it is &lt;code&gt;v0.7.0&lt;/code&gt;).&lt;/p&gt;
+to find the latest stable version tag and use it in the command bellow (currently it is &lt;code&gt;v1.0.0&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;Run Cortex using the latest stable version:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v0.7.0 -config.file=/etc/single-process-config.yaml
+&lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.0.0 -config.file=/etc/single-process-config.yaml
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;In case you prefer to run the master version, please follow this &lt;a href=&#34;/docs/getting-started/getting-started-chunks-storage/&#34;&gt;documentation&lt;/a&gt; on how to build Cortex from source.&lt;/p&gt;
 &lt;h2 id=&#34;configure-prometheus-to-send-series-to-cortex&#34;&gt;Configure Prometheus to send series to Cortex&lt;/h2&gt;
@@ -5034,8 +5034,10 @@ replica: replica2
 &lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
 &lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
+&lt;h2 id=&#34;1-0-0-2020-04-02&#34;&gt;1.0.0 / 2020-04-02&lt;/h2&gt;
+&lt;p&gt;This is the first major release of Cortex. We made a lot of &lt;strong&gt;breaking changes&lt;/strong&gt; in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/v1guarantees/&#34;&gt;https://cortexmetrics.io/docs/configuration/v1guarantees/&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;[CHANGE] Remove the following deprecated flags:
+&lt;li&gt;[CHANGE] Remove the following deprecated flags: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2339&#34;&gt;#2339&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-metrics.error-rate-query&lt;/code&gt; (use &lt;code&gt;-metrics.write-throttle-query&lt;/code&gt; instead).&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-store.cardinality-cache-size&lt;/code&gt; (use &lt;code&gt;-store.index-cache-read.enable-fifocache&lt;/code&gt; and &lt;code&gt;-store.index-cache-read.fifocache.size&lt;/code&gt; instead).&lt;/li&gt;
@@ -5046,7 +5048,7 @@ replica: replica2
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] Renamed YAML file options to be more consistent. See &lt;a href=&#34;#config-file-breaking-changes&#34;&gt;full config file changes below&lt;/a&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2273&#34;&gt;#2273&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[CHANGE] AWS based autoscaling has been removed. You can only use metrics based autoscaling now. &lt;code&gt;-applicationautoscaling.url&lt;/code&gt; has been removed. See &lt;a href=&#34;https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning&#34;&gt;https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning&lt;/a&gt; on how to migrate. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2328&#34;&gt;#2328&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[CHANGE] Renamed the &lt;code&gt;memcache.write-back-goroutines&lt;/code&gt; and &lt;code&gt;memcache.write-back-buffer&lt;/code&gt; flags to &lt;code&gt;background.write-back-concurrency&lt;/code&gt; and &lt;code&gt;background.write-back-buffer&lt;/code&gt;. This affects the following flags:&lt;/p&gt;
+&lt;li&gt;&lt;p&gt;[CHANGE] Renamed the &lt;code&gt;memcache.write-back-goroutines&lt;/code&gt; and &lt;code&gt;memcache.write-back-buffer&lt;/code&gt; flags to &lt;code&gt;background.write-back-concurrency&lt;/code&gt; and &lt;code&gt;background.write-back-buffer&lt;/code&gt;. This affects the following flags: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2241&#34;&gt;#2241&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-frontend.memcache.write-back-buffer&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-frontend.background.write-back-buffer&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-frontend.memcache.write-back-goroutines&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-frontend.background.write-back-concurrency&lt;/code&gt;&lt;/li&gt;
@@ -5057,7 +5059,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;-memcache.write-back-buffer&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.background.write-back-buffer&lt;/code&gt;. Note the next change log for the difference.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-memcache.write-back-goroutines&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.background.write-back-concurrency&lt;/code&gt;. Note the next change log for the difference.&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[CHANGE] Renamed the chunk cache flags to have &lt;code&gt;store.chunks-cache.&lt;/code&gt; as prefix. This means the following flags have been changed:&lt;/p&gt;
+&lt;li&gt;&lt;p&gt;[CHANGE] Renamed the chunk cache flags to have &lt;code&gt;store.chunks-cache.&lt;/code&gt; as prefix. This means the following flags have been changed: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2241&#34;&gt;#2241&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-cache.enable-fifocache&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.cache.enable-fifocache&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-default-validity&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.default-validity&lt;/code&gt;&lt;/li&gt;
@@ -5082,7 +5084,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;-redis.password&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.redis.password&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-redis.timeout&lt;/code&gt; &amp;ndash;&amp;gt; &lt;code&gt;-store.chunks-cache.redis.timeout&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[CHANGE] Rename the &lt;code&gt;-store.chunk-cache-stubs&lt;/code&gt; to &lt;code&gt;-store.chunks-cache.cache-stubs&lt;/code&gt; to be more inline with above.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[CHANGE] Rename the &lt;code&gt;-store.chunk-cache-stubs&lt;/code&gt; to &lt;code&gt;-store.chunks-cache.cache-stubs&lt;/code&gt; to be more inline with above. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2241&#34;&gt;#2241&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Change prefix of flags &lt;code&gt;-dynamodb.periodic-table.*&lt;/code&gt; to &lt;code&gt;-table-manager.index-table.*&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2359&#34;&gt;#2359&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Change prefix of flags &lt;code&gt;-dynamodb.chunk-table.*&lt;/code&gt; to &lt;code&gt;-table-manager.chunk-table.*&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2359&#34;&gt;#2359&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[CHANGE] Change the following flags: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2359&#34;&gt;#2359&lt;/a&gt;&lt;/p&gt;
@@ -5134,7 +5136,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_dynamo_sync_tables_seconds&lt;/code&gt; -&amp;gt; &lt;code&gt;cortex_table_manager_sync_duration_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_dynamo_table_capacity_units&lt;/code&gt; -&amp;gt; &lt;code&gt;cortex_table_capacity_units&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;&lt;p&gt;[FEATURE] Flusher target to flush the WAL.&lt;/p&gt;
+&lt;li&gt;&lt;p&gt;[FEATURE] Flusher target to flush the WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2075&#34;&gt;#2075&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-flusher.wal-dir&lt;/code&gt; for the WAL directory to recover from.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;-flusher.concurrent-flushes&lt;/code&gt; for number of concurrent flushes.&lt;/li&gt;
@@ -5144,6 +5146,7 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Better re-use of connections to DynamoDB and S3. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2268&#34;&gt;#2268&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Add support for local &lt;code&gt;filesystem&lt;/code&gt; backend. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2245&#34;&gt;#2245&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2290&#34;&gt;#2290&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Removed gRPC server to communicate between querier and BucketStore. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2324&#34;&gt;#2324&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting table period and retention. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2252&#34;&gt;#2252&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Added FIFO cache metrics for current number of entries and memory usage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Output all config fields to /config API, including those with empty value. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2209&#34;&gt;#2209&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
@@ -5153,6 +5156,7 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed etcd client keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2278&#34;&gt;#2278&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed bug in updating last element of FIFO cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2270&#34;&gt;#2270&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Register the metrics of the WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2295&#34;&gt;#2295&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2342&#34;&gt;#2342&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;config-file-breaking-changes&#34;&gt;config file breaking changes&lt;/h3&gt;
 &lt;p&gt;In this section you can find a config file diff showing the breaking changes introduced in Cortex. You can also find the &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/configuration-file/&#34;&gt;full configuration file reference doc&lt;/a&gt; in the website.&lt;/p&gt;

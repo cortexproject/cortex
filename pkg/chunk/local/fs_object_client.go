@@ -76,8 +76,11 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 
 	defer fl.Close()
 
-	_, err = io.Copy(fl, object)
-	return err
+	if _, err := io.Copy(fl, object); err != nil {
+		return err
+	}
+
+	return fl.Sync()
 }
 
 // List only objects from the store non-recursively

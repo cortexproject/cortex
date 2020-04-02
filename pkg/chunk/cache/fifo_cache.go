@@ -77,7 +77,7 @@ var (
 // This FIFO cache implementation supports two eviction methods - based on number of items in the cache, and based on memory usage.
 // For the memory-based eviction, set FifoCacheConfig.MaxSizeBytes to a positive integer, indicating upper limit of memory allocated by items in the cache.
 // Alternatively, set FifoCacheConfig.MaxSizeItems to a positive integer, indicating maximum number of items in the cache.
-// If both parameters are set, the memory-based eviction method takes precedence.
+// If both parameters are set, both methods are enforced, whichever hits first.
 
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
@@ -139,10 +139,6 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		// zero cache capacity - no need to create cache
 		level.Warn(util.Logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
 		return nil
-	}
-	if cfg.MaxSizeBytes > 0 && cfg.MaxSizeItems > 0 {
-		level.Warn(util.Logger).Log("msg", "fifocache.max-size-bytes and fifocache.max-size-items (disregarded) are mutually exclusive", "cache", name)
-		cfg.MaxSizeItems = 0
 	}
 	return &FifoCache{
 		maxSizeItems: cfg.MaxSizeItems,
@@ -245,10 +241,11 @@ func (c *FifoCache) put(key string, value interface{}) {
 
 	// Otherwise, see if we need to evict item(s).
 	for (c.maxSizeBytes > 0 && c.currSizeBytes+entrySz > c.maxSizeBytes) || (c.maxSizeItems > 0 && len(c.entries) >= c.maxSizeItems) {
-		evicted := c.lru.Remove(c.lru.Back()).(*cacheEntry)
-		if evicted == nil {
+		lastElement := c.lru.Back()
+		if lastElement == nil {
 			break
 		}
+		evicted := c.lru.Remove(lastElement).(*cacheEntry)
 		delete(c.entries, evicted.key)
 		c.currSizeBytes -= sizeOf(evicted)
 		c.entriesCurrent.Dec()

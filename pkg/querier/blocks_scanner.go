@@ -83,7 +83,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 }
 
 // GetBlocks returns known blocks for userID containing samples within the range minT
-// and maxT (both included).
+// and maxT (both included). Returned blocks are sorted by MaxTime descending.
 func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, error) {
 	// We need to ensure the initial full bucket scan succeeded.
 	if d.State() != services.Running {

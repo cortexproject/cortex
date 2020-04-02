@@ -23,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestBlocksScanner_InitialScan(t *testing.T) {
@@ -34,8 +35,7 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 	user1Block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 	user2Block1 := mockStorageBlock(t, bucket, "user-2", 10, 20)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 30)
 	require.NoError(t, err)
@@ -121,8 +121,7 @@ func TestBlocksScanner_PeriodicScanFindsNewUser(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 30)
 	require.NoError(t, err)
@@ -148,8 +147,7 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 
 	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 30)
 	require.NoError(t, err)
@@ -176,8 +174,7 @@ func TestBlocksScanner_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 30)
 	require.NoError(t, err)
@@ -204,8 +201,7 @@ func TestBlocksScanner_PeriodicScanFindsDeletedUser(t *testing.T) {
 	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 30)
 	require.NoError(t, err)
@@ -231,8 +227,7 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	blocks, err := s.GetBlocks("user-1", 0, 40)
 	require.NoError(t, err)
@@ -270,8 +265,7 @@ func TestBlocksScanner_GetBlocks(t *testing.T) {
 	block3 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 	block4 := mockStorageBlock(t, bucket, "user-1", 30, 40)
 
-	require.NoError(t, s.StartAsync(ctx))
-	require.NoError(t, s.AwaitRunning(ctx))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	tests := map[string]struct {
 		minT     int64

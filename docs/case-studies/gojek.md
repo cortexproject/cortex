@@ -1,10 +1,9 @@
 ---
+title: "How Gojek Is Leveraging Cortex to Keep Up with Its Ever-Growing Scale"
 linkTitle: "Gojek"
 weight: 1
 slug: gojek 
 ---
-
-## How Gojek Is Leveraging Cortex to Keep Up with Its Ever-Growing Scale 
 
 [Gojek](https://www.gojek.com/) launched in 2010 as a call center for booking motorcycle taxi rides in Indonesia. Today, the startup is a decacorn serving  millions of users across Southeast Asia with its mobile wallet, GoPay, and 20+ products on its super app. Want to order dinner? Book a massage? Buy movie tickets? You can do all of that with the Gojek app.
 

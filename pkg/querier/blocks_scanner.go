@@ -171,7 +171,12 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) error {
 	// Iterate the bucket to discover users.
 	err := d.bucketClient.Iter(ctx, "", func(s string) error {
 		userID := strings.TrimSuffix(s, "/")
-		jobsChan <- userID
+                select {
+                case jobsChan <- userID:
+                    return nil
+                case <-ctx.Done():
+                    return ctx.Err()
+                }
 		return nil
 	})
 

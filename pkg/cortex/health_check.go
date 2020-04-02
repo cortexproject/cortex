@@ -1,0 +1,35 @@
+package cortex
+
+import (
+	"context"
+
+	"github.com/gogo/status"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+type healthCheck struct {
+	sm *services.Manager
+}
+
+func newHealthCheck(sm *services.Manager) *healthCheck {
+	return &healthCheck{
+		sm: sm,
+	}
+}
+
+// Check implements the grpc healthcheck.
+func (h *healthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	if !h.sm.IsHealthy() {
+		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
+	}
+
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+// Watch implements the grpc healthcheck.
+func (h *healthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_v1.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "Watching is not supported")
+}

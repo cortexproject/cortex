@@ -213,7 +213,7 @@ func (d *BlocksScanner) scanUserBlocksWithRetries(ctx context.Context, userID st
 	for retries.Ongoing() {
 		metas, err = d.scanUserBlocks(ctx, userID)
 		if err == nil {
-			break
+			return
 		}
 
 		retries.Wait()

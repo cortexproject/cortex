@@ -61,7 +61,7 @@ func TestHealthCheck_isHealthy(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			var svcs []services.Service
-			for _ = range testData.states {
+			for range testData.states {
 				svcs = append(svcs, &mockService{})
 			}
 

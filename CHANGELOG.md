@@ -106,9 +106,9 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [ENHANCEMENT] Output all config fields to /config API, including those with empty value. #2209
 * [ENHANCEMENT] Add "missing_metric_name" and "metric_name_invalid" reasons to cortex_discarded_samples_total metric. #2346
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
+* [ENHANCEMENT] FIFO cache to support eviction based on memory usage. The `-<prefix>.fifocache.size` CLI flag has been renamed to `-<prefix>.fifocache.max-size-items` as well as its YAML config option `size` renamed to `max_size_items`. Added `-<prefix>.fifocache.max-size-bytes` CLI flag and YAML config option `max_size_bytes` to specify memory limit of the cache. #2319
 * [BUGFIX] Ensure user state metrics are updated if a transfer fails. #2338
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
-* [BUGFIX] Fixed bug in updating last element of FIFO cache. #2270
 * [BUGFIX] Register the metrics of the WAL. #2295
 * [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
 

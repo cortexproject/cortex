@@ -34,7 +34,7 @@ func TestWAL(t *testing.T) {
 	numRestarts := 3
 
 	// Build an ingester, add some samples, then shut it down.
-	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
@@ -44,7 +44,7 @@ func TestWAL(t *testing.T) {
 			cfg.WALConfig.CheckpointEnabled = false
 		}
 		// Start a new ingester and recover the WAL.
-		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 
 		for i, userID := range userIDs {
 			testData[userID] = buildTestMatrix(numSeries, (r+1)*numSamplesPerSeriesPerPush, i)
@@ -78,7 +78,7 @@ func TestCheckpointRepair(t *testing.T) {
 		cfg.WALConfig.Dir = dirname
 
 		// Build an ingester, add some samples, then shut it down.
-		_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+		_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 
 		w, ok := ing.wal.(*walWrapper)
 		require.True(t, ok)
@@ -132,7 +132,7 @@ func TestCheckpointRepair(t *testing.T) {
 		}
 
 		// Open an ingester for the repair.
-		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 		w, ok = ing.wal.(*walWrapper)
 		require.True(t, ok)
 		// defer in case we hit an error though we explicitly close it later.

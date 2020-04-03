@@ -156,17 +156,18 @@ func (cfg *Config) Validate() error {
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier
 type BucketStoreConfig struct {
-	SyncDir               string           `yaml:"sync_dir"`
-	SyncInterval          time.Duration    `yaml:"sync_interval"`
-	MaxChunkPoolBytes     uint64           `yaml:"max_chunk_pool_bytes"`
-	MaxSampleCount        uint64           `yaml:"max_sample_count"`
-	MaxConcurrent         int              `yaml:"max_concurrent"`
-	TenantSyncConcurrency int              `yaml:"tenant_sync_concurrency"`
-	BlockSyncConcurrency  int              `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency   int              `yaml:"meta_sync_concurrency"`
-	BinaryIndexHeader     bool             `yaml:"binary_index_header_enabled"`
-	ConsistencyDelay      time.Duration    `yaml:"consistency_delay"`
-	IndexCache            IndexCacheConfig `yaml:"index_cache"`
+	SyncDir                  string           `yaml:"sync_dir"`
+	SyncInterval             time.Duration    `yaml:"sync_interval"`
+	MaxChunkPoolBytes        uint64           `yaml:"max_chunk_pool_bytes"`
+	MaxSampleCount           uint64           `yaml:"max_sample_count"`
+	MaxConcurrent            int              `yaml:"max_concurrent"`
+	TenantSyncConcurrency    int              `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency     int              `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency      int              `yaml:"meta_sync_concurrency"`
+	BinaryIndexHeader        bool             `yaml:"binary_index_header_enabled"`
+	ConsistencyDelay         time.Duration    `yaml:"consistency_delay"`
+	IndexCache               IndexCacheConfig `yaml:"index_cache"`
+	IgnoreDeletionMarksDelay time.Duration    `yaml:"ignore_deletion_mark_delay"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -183,6 +184,9 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MetaSyncConcurrency, "experimental.tsdb.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
 	f.BoolVar(&cfg.BinaryIndexHeader, "experimental.tsdb.bucket-store.binary-index-header-enabled", true, "Whether the bucket store should use the binary index header. If false, it uses the JSON index header.")
 	f.DurationVar(&cfg.ConsistencyDelay, "experimental.tsdb.bucket-store.consistency-delay", 0, "Minimum age of a block before it's being read. Set it to safe value (e.g 30m) if your object storage is eventually consistent. GCS and S3 are (roughly) strongly consistent.")
+	f.DurationVar(&cfg.IgnoreDeletionMarksDelay, "experimental.tsdb.bucket-store.ignore-deletion-marks-delay", time.Hour*24, "Duration after which the blocks marked for deletion will be filtered out while fetching blocks. "+
+		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet."+
+		"Default is 24h, half of the default value for -compactor.deletion-delay.")
 }
 
 // Validate the config.

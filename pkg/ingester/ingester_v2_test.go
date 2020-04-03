@@ -45,6 +45,7 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
+		"cortex_discarded_samples_total",
 	}
 	userID := "test"
 
@@ -101,7 +102,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(9).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -124,6 +125,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -137,7 +141,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969-(86400*1000)).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -160,6 +164,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -173,7 +180,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s", metricLabels.String()), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -196,6 +203,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="new-value-for-timestamp",user="test"} 1
 			`,
 		},
 	}
@@ -203,6 +213,9 @@ func TestIngester_v2Push(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			registry := prometheus.NewRegistry()
+
+			registry.MustRegister(validation.DiscardedSamples)
+			validation.DiscardedSamples.Reset()
 
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
@@ -288,6 +301,11 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
+
+		// Invalidate reference between pushes. It triggers different AddFast path.
+		// On first push, "initAppender" is used, on next pushes, "headAppender" is used.
+		// Unfortunately they return ErrNotFound differently.
+		db.refCache.SetRef(time.Now(), metricLabels, 12345)
 	}
 
 	// Read back samples to see what has been really ingested

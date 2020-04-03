@@ -284,7 +284,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 - `-ingester.chunk-age-jitter`
 
-  To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. (default 20m)
+  To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. Don't enable this along with `-ingester.spread-flushes` (default 0m)
 
 - `-ingester.spread-flushes`
 

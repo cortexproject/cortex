@@ -2,6 +2,7 @@ package e2ecache
 
 import (
 	"github.com/cortexproject/cortex/integration/e2e"
+	"github.com/cortexproject/cortex/integration/e2e/images"
 )
 
 const (
@@ -11,9 +12,7 @@ const (
 func NewMemcached() *e2e.ConcreteService {
 	return e2e.NewConcreteService(
 		"memcached",
-		// If you change the image tag, remember to update it in the preloading done
-		// by CircleCI too (see .circleci/config.yml).
-		"memcached:1.6.1",
+		images.Memcached,
 		nil,
 		e2e.NewTCPReadinessProbe(MemcachedPort),
 		MemcachedPort,

@@ -82,6 +82,8 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		return &noopWAL{}, nil
 	}
 
+	util.WarnExperimentalUse("Chunks WAL")
+
 	var walRegistry prometheus.Registerer
 	if registerer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)

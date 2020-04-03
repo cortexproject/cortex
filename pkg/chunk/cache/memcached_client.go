@@ -75,7 +75,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
-	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", false, description+"Use consistent hashing to distribute to memcache servers.")
+	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", true, description+"Use consistent hashing to distribute to memcache servers.")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
@@ -108,6 +108,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	if len(cfg.Addresses) > 0 {
+		util.WarnExperimentalUse("DNS-based memcached service discovery")
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 

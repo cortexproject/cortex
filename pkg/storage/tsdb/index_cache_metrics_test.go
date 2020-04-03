@@ -221,6 +221,11 @@ func TestMemcachedIndexCacheMetrics(t *testing.T) {
 			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="+Inf"} 1
 			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_sum{operation="getmulti"} 0.025
 			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_count{operation="getmulti"} 1
+
+			# HELP cortex_querier_blocks_index_cache_memcached_operation_skipped_total Total number of operations against memcached that have been skipped.
+			# TYPE cortex_querier_blocks_index_cache_memcached_operation_skipped_total counter
+			cortex_querier_blocks_index_cache_memcached_operation_skipped_total{operation="getmulti",reason="spoiled"} 10
+			cortex_querier_blocks_index_cache_memcached_operation_skipped_total{operation="set",reason="too_big"} 9
 `))
 	require.NoError(t, err)
 }
@@ -230,6 +235,7 @@ type memcachedIndexStoreCacheMetrics struct {
 	hits       *prometheus.CounterVec
 	operations *prometheus.CounterVec
 	failures   *prometheus.CounterVec
+	skipped    *prometheus.CounterVec
 	duration   *prometheus.HistogramVec
 }
 
@@ -260,6 +266,11 @@ func newMemcachedIndexStoreCacheMetrics(reg prometheus.Registerer) *memcachedInd
 		Help: "Total number of operations against memcached that failed.",
 	}, []string{"operation"})
 
+	c.skipped = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "thanos_memcached_operation_skipped_total",
+		Help: "Total number of operations against memcached that have been skipped.",
+	}, []string{"operation", "reason"})
+
 	c.duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "thanos_memcached_operation_duration_seconds",
 		Help:    "Duration of operations against memcached.",
@@ -267,7 +278,7 @@ func newMemcachedIndexStoreCacheMetrics(reg prometheus.Registerer) *memcachedInd
 	}, []string{"operation"})
 
 	if reg != nil {
-		reg.MustRegister(c.requests, c.hits, c.operations, c.failures, c.duration)
+		reg.MustRegister(c.requests, c.hits, c.operations, c.failures, c.skipped, c.duration)
 	}
 
 	return &c
@@ -288,6 +299,8 @@ func populateMemcachedIndexCacheMetrics(base float64) *prometheus.Registry {
 	c.failures.WithLabelValues(cacheOpGetMulti).Add(base * 8)
 	c.duration.WithLabelValues(cacheOpSet).Observe(0.1)
 	c.duration.WithLabelValues(cacheOpGetMulti).Observe(0.025)
+	c.skipped.WithLabelValues(cacheOpSet, "too_big").Add(base * 9)
+	c.skipped.WithLabelValues(cacheOpGetMulti, "spoiled").Add(base * 10)
 
 	return reg
 }

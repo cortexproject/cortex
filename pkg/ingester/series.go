@@ -13,6 +13,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
+const (
+	sampleOutOfOrder     = "sample-out-of-order"
+	newValueForTimestamp = "new-value-for-timestamp"
+	sampleOutOfBounds    = "sample-out-of-bounds"
+	duplicateSample      = "duplicate-sample"
+	duplicateTimestamp   = "duplicate-timestamp"
+)
+
 type memorySeries struct {
 	metric labels.Labels
 
@@ -51,19 +59,19 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		// If we don't know what the last sample value is, silently discard.
 		// This will mask some errors but better than complaining when we don't really know.
 		if !s.lastSampleValueSet {
-			return makeNoReportError("duplicate-timestamp")
+			return makeNoReportError(duplicateTimestamp)
 		}
 		// If both timestamp and sample value are the same as for the last append,
 		// ignore as they are a common occurrence when using client-side timestamps
 		// (e.g. Pushgateway or federation).
 		if v.Value.Equal(s.lastSampleValue) {
-			return makeNoReportError("duplicate-sample")
+			return makeNoReportError(duplicateSample)
 		}
-		return makeMetricValidationError("new-value-for-timestamp", s.metric,
+		return makeMetricValidationError(newValueForTimestamp, s.metric,
 			fmt.Errorf("sample with repeated timestamp but different value; last value: %v, incoming value: %v", s.lastSampleValue, v.Value))
 	}
 	if v.Timestamp < s.lastTime {
-		return makeMetricValidationError("sample-out-of-order", s.metric,
+		return makeMetricValidationError(sampleOutOfOrder, s.metric,
 			fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", s.lastTime, v.Timestamp))
 	}
 

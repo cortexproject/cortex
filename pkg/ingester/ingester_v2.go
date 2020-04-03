@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -74,10 +75,12 @@ type TSDBState struct {
 	// Head compactions metrics.
 	compactionsTriggered prometheus.Counter
 	compactionsFailed    prometheus.Counter
+	walReplayTime        prometheus.Histogram
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -107,6 +110,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			compactionsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_failed_total",
 				Help: "Total number of compactions that failed.",
+			}),
+			walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
+				Help:    "The total time it takes to open and replay a TSDB WAL.",
+				Buckets: prometheus.DefBuckets,
 			}),
 		},
 	}
@@ -277,7 +285,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 					continue
 				}
 
-				if err == tsdb.ErrNotFound {
+				if errors.Cause(err) == tsdb.ErrNotFound {
 					cachedRefExists = false
 					err = nil
 				}
@@ -306,9 +314,19 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
+			cause := errors.Cause(err)
+			if cause == tsdb.ErrOutOfBounds || cause == tsdb.ErrOutOfOrderSample || cause == tsdb.ErrAmendSample {
 				if firstPartialErr == nil {
-					firstPartialErr = errors.Wrapf(err, "series=%s", client.FromLabelAdaptersToLabels(ts.Labels).String())
+					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
+				}
+
+				switch cause {
+				case tsdb.ErrOutOfBounds:
+					validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Inc()
+				case tsdb.ErrOutOfOrderSample:
+					validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Inc()
+				case tsdb.ErrAmendSample:
+					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
 				}
 
 				continue
@@ -845,6 +863,10 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		go func(userID string) {
 			defer wg.Done()
 			defer openGate.Done()
+			defer func(ts time.Time) {
+				i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
+			}(time.Now())
+
 			db, err := i.createTSDB(userID)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)

@@ -1,7 +1,7 @@
 ---
 title: "Single-process"
 linkTitle: "Single-process"
-weight: 4
+weight: 5
 slug: single-process-config
 ---
 
@@ -44,7 +44,6 @@ ingester:
 
     # We want to start immediately and flush on shutdown.
     join_after: 0
-    claim_on_rollout: false
     final_sleep: 0s
     num_tokens: 512
 

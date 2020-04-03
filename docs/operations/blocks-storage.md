@@ -252,6 +252,24 @@ tsdb:
         # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-batch-size
         [max_get_multi_batch_size: <int> | default = 0]
 
+        # The maximum size of an item stored in memcached. Bigger items are not
+        # stored. If set to 0, no maximum size is enforced.
+        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-item-size
+        [max_item_size: <int> | default = 1048576]
+
+      # Compress postings before storing them to postings cache.
+      # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
+      [postings_compression_enabled: <boolean> | default = false]
+
+    # Duration after which the blocks marked for deletion will be filtered out
+    # while fetching blocks. The idea of ignore-deletion-marks-delay is to
+    # ignore blocks that are marked for deletion with some delay. This ensures
+    # store can still serve blocks that are meant to be deleted but do not have
+    # a replacement yet.Default is 24h, half of the default value for
+    # -compactor.deletion-delay.
+    # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
+    [ignore_deletion_mark_delay: <duration> | default = 24h0m0s]
+
   # How frequently does Cortex try to compact TSDB head. Block is only created
   # if data covers smallest block range. Must be greater than 0 and max 5
   # minutes.
@@ -372,6 +390,16 @@ compactor:
   # CLI flag: -compactor.compaction-retries
   [compaction_retries: <int> | default = 3]
 
+  # Time before a block marked for deletion is deleted from bucket. If not 0,
+  # blocks will be marked for deletion and compactor component will delete
+  # blocks marked for deletion from the bucket. If delete-delay is 0, blocks
+  # will be deleted straight away. Note that deleting blocks immediately can
+  # cause query failures, if store gateway still has the block loaded, or
+  # compactor is ignoring the deletion because it's compacting the block at the
+  # same time.
+  # CLI flag: -compactor.deletion-delay
+  [deletion_delay: <duration> | default = 48h0m0s]
+
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and
   # avoid race conditions leading to the same tenant blocks simultaneously
@@ -426,6 +454,20 @@ compactor:
 ```
 
 ## Known issues
+
+### Can't ingest samples older than 1h compared to the latest received sample of a tenant
+
+The blocks storage opens a TSDB for each tenant in each ingester receiving samples for that tenant. The received series are kept in the TSDB head (in-memory + Write Ahead Log) and then persisted to the storage whenever a new block is cut from the head.
+
+A new block is cut from the head when the head (in-memory series) covers more than 1.5x of the block range period. For 2 hours block range (default), it means that the head needs to have 3h of data to cut a block. Block "start time" is always the minimum sample timestamp in the head, while block "end time" is aligned on block range boundary. The data stored into a block is then removed from the head. That means that after cutting the block, the head will already have at least 1h of data.
+
+Given TSDB doesn't allow to append samples out of head bounds, the Cortex blocks storage can't ingest samples older than the minimum timestamp in the head or `(maximum timestamp - 1h)`, whatever is higher. Under normal conditions, the limit is about 1h before the latest received sample of a tenant.
+
+The typical case where this issue triggers is after a long outage. Let's consider this scenario:
+
+- Multiple Prometheus servers remote writing to the same Cortex tenant
+- Some Prometheus servers stop remote writing to Cortex (ie. networking issue) and they fall behind more than 1h
+- When the failing Prometheus servers will be back online, Cortex blocks storage will discard any sample whose timestamp is older than 1h because the max timestamp in the TSDB head is close to "now" (due to the working Prometheus servers which never stopped to write samples) while the failing ones are trying to catch up writing samples older than 1h
 
 ### Migrating from the chunks to the blocks storage
 

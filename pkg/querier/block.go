@@ -32,6 +32,7 @@ type BlockQueryable struct {
 
 // NewBlockQueryable returns a client to query a block store
 func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
+	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", util.Logger)
 	if err != nil {
 		return nil, err

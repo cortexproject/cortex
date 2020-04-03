@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -89,6 +88,10 @@ var (
 		Name:      "distributor_replication_factor",
 		Help:      "The configured replication factor.",
 	})
+	latestSeenSampleTimestampPerUser = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
+		Help: "Unix timestamp of latest received sample per user.",
+	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 )
 
@@ -146,7 +149,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	flagext.DeprecatedFlag(f, "distributor.limiter-reload-period", "DEPRECATED. No more required because the local limiter is reconfigured as soon as the overrides change.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -331,7 +333,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
-	var lastPartialErr error
+	var firstPartialErr error
 	removeReplica := false
 
 	numSamples := 0
@@ -361,12 +363,25 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
+	latestSampleTimestampMs := int64(0)
+	defer func() {
+		// Update this metric even in case of errors.
+		if latestSampleTimestampMs > 0 {
+			latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+		}
+	}()
+
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 	for _, ts := range req.Timeseries {
+		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+		if len(ts.Samples) > 0 {
+			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+		}
+
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
@@ -400,8 +415,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil {
-			lastPartialErr = err
+		if err != nil && firstPartialErr == nil {
+			firstPartialErr = err
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -419,7 +434,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// Ensure the request slice is reused if there's no series passing the validation.
 		client.ReuseSlice(req.Timeseries)
 
-		return &client.WriteResponse{}, lastPartialErr
+		return &client.WriteResponse{}, firstPartialErr
 	}
 
 	now := time.Now()
@@ -463,7 +478,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if err != nil {
 		return nil, err
 	}
-	return &client.WriteResponse{}, lastPartialErr
+	return &client.WriteResponse{}, firstPartialErr
 }
 
 func sortLabelsIfNeeded(labels []client.LabelAdapter) {

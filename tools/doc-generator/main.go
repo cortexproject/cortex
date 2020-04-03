@@ -21,6 +21,7 @@ import (
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -31,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -92,6 +94,11 @@ var (
 			name:       "storage_config",
 			structType: reflect.TypeOf(storage.Config{}),
 			desc:       "The storage_config configures where Cortex stores the data (chunks storage engine).",
+		},
+		{
+			name:       "flusher_config",
+			structType: reflect.TypeOf(flusher.Config{}),
+			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
 		},
 		{
 			name:       "chunk_store_config",
@@ -167,6 +174,11 @@ var (
 			name:       "compactor_config",
 			structType: reflect.TypeOf(compactor.Config{}),
 			desc:       "The compactor_config configures the compactor for the experimental blocks storage.",
+		},
+		{
+			name:       "store_gateway_config",
+			structType: reflect.TypeOf(storegateway.Config{}),
+			desc:       "The store_gateway_config configures the store-gateway service used by the experimental blocks storage.",
 		},
 		{
 			name:       "purger_config",

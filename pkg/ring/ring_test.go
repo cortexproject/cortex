@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	strconv "strconv"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), strconv.Itoa(i), tokens, ACTIVE)
 	}
 
 	cfg := Config{}
@@ -97,7 +98,7 @@ func TestAddIngester(t *testing.T) {
 
 	ing1Tokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ingName, "addr", ing1Tokens, ACTIVE)
+	r.AddIngester(ingName, "addr", "1", ing1Tokens, ACTIVE)
 
 	require.Equal(t, "addr", r.Ingesters[ingName].Addr)
 	require.Equal(t, ing1Tokens, r.Ingesters[ingName].Tokens)
@@ -115,7 +116,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 
 	newTokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
+	r.AddIngester(ing1Name, "addr", "1", newTokens, ACTIVE)
 
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
@@ -129,7 +130,7 @@ func TestSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}
@@ -183,7 +184,7 @@ func TestStableSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}
@@ -222,4 +223,121 @@ func TestStableSubring(t *testing.T) {
 		}
 		require.Equal(t, subrings[i], subrings[next])
 	}
+}
+
+func TestZoneAwareIngesterAssignmentSucccess(t *testing.T) {
+
+	// runs a series of Get calls on the ring to ensure Ingesters' zone values are taken into
+	// consideration when assigning a set for a given token.
+
+	r := NewDesc()
+
+	n := 16 // number of ingesters in ring
+	z := 3  // number of availability zones.
+
+	testCount := 1000000 // number of key tests to run.
+
+	var prevTokens []uint32
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("ing%v", i)
+		ingTokens := GenerateTokens(128, prevTokens)
+
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), fmt.Sprintf("zone-%v", i%z), ingTokens, ACTIVE)
+
+		prevTokens = append(prevTokens, ingTokens...)
+	}
+
+	// Create a ring with the ingesters
+	ring := Ring{
+		name: "main ring",
+		cfg: Config{
+			HeartbeatTimeout:  time.Hour,
+			ReplicationFactor: 3,
+		},
+		ringDesc:   r,
+		ringTokens: r.getTokens(),
+	}
+	// use the GenerateTokens to get an array of random uint32 values
+	testValues := make([]uint32, testCount)
+	testValues = GenerateTokens(testCount, testValues)
+	ing := r.GetIngesters()
+	ingesters := make([]IngesterDesc, 0, len(ing))
+	for _, v := range ing {
+		ingesters = append(ingesters, v)
+	}
+	var set ReplicationSet
+	var e error
+	for i := 0; i < testCount; i++ {
+		set, e = ring.Get(testValues[i], Write, ingesters)
+		if e != nil {
+			t.Fail()
+			return
+		}
+
+		// check that we have the expected number of ingesters for replication.
+		require.Equal(t, 3, len(set.Ingesters))
+
+		// ensure all ingesters are in a different zone.
+		zones := make(map[string]struct{})
+		for i := 0; i < len(set.Ingesters); i++ {
+			if _, ok := zones[set.Ingesters[i].Zone]; ok {
+				t.Fail()
+			}
+			zones[set.Ingesters[i].Zone] = struct{}{}
+		}
+	}
+
+}
+
+func TestZoneAwareIngesterAssignmentFailure(t *testing.T) {
+
+	// This test ensures that when there are not ingesters in enough distinct zones
+	// an error will occur when attempting to get a replication set for a token.
+
+	r := NewDesc()
+
+	n := 16 // number of ingesters in ring
+	z := 1  // number of availability zones.
+
+	testCount := 10 // number of key tests to run.
+
+	var prevTokens []uint32
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("ing%v", i)
+		ingTokens := GenerateTokens(128, prevTokens)
+
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), fmt.Sprintf("zone-%v", i%z), ingTokens, ACTIVE)
+
+		prevTokens = append(prevTokens, ingTokens...)
+	}
+
+	// Create a ring with the ingesters
+	ring := Ring{
+		name: "main ring",
+		cfg: Config{
+			HeartbeatTimeout:  time.Hour,
+			ReplicationFactor: 3,
+		},
+		ringDesc:   r,
+		ringTokens: r.getTokens(),
+	}
+	// use the GenerateTokens to get an array of random uint32 values
+	testValues := make([]uint32, testCount)
+	testValues = GenerateTokens(testCount, testValues)
+	ing := r.GetIngesters()
+	ingesters := make([]IngesterDesc, 0, len(ing))
+	for _, v := range ing {
+		ingesters = append(ingesters, v)
+	}
+
+	for i := 0; i < testCount; i++ {
+		// Since there is only 1 zone assigned, we are expecting an error here.
+		_, e := ring.Get(testValues[i], Write, ingesters)
+		if e != nil {
+			require.Equal(t, "at least 2 live replicas required, could only find 1", e.Error())
+			continue
+		}
+		t.Fail()
+	}
+
 }

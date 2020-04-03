@@ -185,6 +185,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		n             = r.cfg.ReplicationFactor
 		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
+		distinctZones = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
 	)
@@ -193,10 +194,16 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		// Wrap i around in the ring.
 		i %= len(r.ringTokens)
 
-		// We want n *distinct* ingesters.
+		// We want n *distinct* ingesters && distinct zones.
 		token := r.ringTokens[i]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
+		}
+		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+			if _, ok := distinctZones[token.Zone]; ok {
+				continue
+			}
+			distinctZones[token.Zone] = struct{}{}
 		}
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]

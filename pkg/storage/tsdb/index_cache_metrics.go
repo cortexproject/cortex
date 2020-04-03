@@ -116,6 +116,7 @@ type MemcachedIndexCacheMetrics struct {
 	memcachedOperations *prometheus.Desc
 	memcachedFailures   *prometheus.Desc
 	memcachedDuration   *prometheus.Desc
+	memcachedSkipped    *prometheus.Desc
 }
 
 // NewMemcachedIndexCacheMetrics makes MemcachedIndexCacheMetrics.
@@ -143,6 +144,10 @@ func NewMemcachedIndexCacheMetrics(reg *prometheus.Registry) *MemcachedIndexCach
 			"cortex_querier_blocks_index_cache_memcached_operation_duration_seconds",
 			"Duration of operations against memcached.",
 			[]string{"operation"}, nil),
+		memcachedSkipped: prometheus.NewDesc(
+			"cortex_querier_blocks_index_cache_memcached_operation_skipped_total",
+			"Total number of operations against memcached that have been skipped.",
+			[]string{"operation", "reason"}, nil),
 	}
 }
 
@@ -152,6 +157,7 @@ func (m *MemcachedIndexCacheMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.memcachedOperations
 	out <- m.memcachedFailures
 	out <- m.memcachedDuration
+	out <- m.memcachedSkipped
 }
 
 func (m *MemcachedIndexCacheMetrics) Collect(out chan<- prometheus.Metric) {
@@ -165,4 +171,5 @@ func (m *MemcachedIndexCacheMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersWithLabels(out, m.memcachedOperations, "thanos_memcached_operations_total", "operation")
 	data.SendSumOfCountersWithLabels(out, m.memcachedFailures, "thanos_memcached_operation_failures_total", "operation")
 	data.SendSumOfHistogramsWithLabels(out, m.memcachedDuration, "thanos_memcached_operation_duration_seconds", "operation")
+	data.SendSumOfCountersWithLabels(out, m.memcachedSkipped, "thanos_memcached_operation_skipped_total", "operation", "reason")
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -96,6 +97,7 @@ func mkExtent(start, end int64) Extent {
 }
 
 func TestShouldCache(t *testing.T) {
+	c := &resultsCache{logger: util.Logger}
 	for i, tc := range []struct {
 		input    Response
 		expected bool
@@ -139,7 +141,7 @@ func TestShouldCache(t *testing.T) {
 	} {
 		{
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
-				ret := shouldCacheResponse(tc.input)
+				ret := c.shouldCacheResponse(tc.input)
 				require.Equal(t, tc.expected, ret)
 			})
 		}

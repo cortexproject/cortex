@@ -168,7 +168,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func shouldCacheResponse(r Response) bool {
+func (s resultsCache) shouldCacheResponse(r Response) bool {
 	if promResp, ok := r.(*PrometheusResponse); ok {
 		shouldCache := true
 	outer:
@@ -182,6 +182,7 @@ func shouldCacheResponse(r Response) bool {
 			for _, v := range hv.Values {
 				if v == noCacheValue {
 					shouldCache = false
+					level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
 					break outer
 				}
 			}
@@ -197,8 +198,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !shouldCacheResponse(response) {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+	if !s.shouldCacheResponse(response) {
 		return response, []Extent{}, nil
 	}
 
@@ -238,6 +238,9 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
+		if !s.shouldCacheResponse(reqResp.Response) {
+			continue
+		}
 		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
 		if err != nil {
 			return nil, nil, err

@@ -15,6 +15,7 @@
 * [ENHANCEMENT] FIFO cache to support eviction based on memory usage. The `-<prefix>.fifocache.size` CLI flag has been renamed to `-<prefix>.fifocache.max-size-items` as well as its YAML config option `size` renamed to `max_size_items`. Added `-<prefix>.fifocache.max-size-bytes` CLI flag and YAML config option `max_size_bytes` to specify memory limit of the cache. #2319
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109
+* [BUGFIX] Experimental TSDB: fixed response status code from `422` to `500` when an error occurs while iterating chunks with the experimental blocks storage. #2402
 
 ## 1.0.0 / 2020-04-02
 

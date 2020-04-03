@@ -5004,6 +5004,7 @@ replica: replica2
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing &lt;code&gt;cortex_discarded_samples_total&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2370&#34;&gt;#2370&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2383&#34;&gt;#2383&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Added &lt;code&gt;cortex_querier_blocks_meta_synced&lt;/code&gt;, which reflects current state of synced blocks over all tenants. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2392&#34;&gt;#2392&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Added &lt;code&gt;cortex_distributor_latest_seen_sample_timestamp_seconds&lt;/code&gt; metric to see how far behind Prometheus servers are in sending data. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2371&#34;&gt;#2371&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;1-0-0-2020-04-02&#34;&gt;1.0.0 / 2020-04-02&lt;/h2&gt;
 &lt;p&gt;This is the first major release of Cortex. We made a lot of &lt;strong&gt;breaking changes&lt;/strong&gt; in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/v1guarantees/&#34;&gt;https://cortexmetrics.io/docs/configuration/v1guarantees/&lt;/a&gt;&lt;/p&gt;

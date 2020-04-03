@@ -335,7 +335,7 @@ func (it *blockQuerierSeriesIterator) Err() error {
 
 	err := it.iterators[it.i].Err()
 	if err != nil {
-		return errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)
+		return promql.ErrStorage{Err: errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)}
 	}
 	return nil
 }

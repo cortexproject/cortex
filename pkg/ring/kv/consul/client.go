@@ -47,6 +47,7 @@ type kv interface {
 	CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
 	List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
+	DeleteCAS(key *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
@@ -283,6 +284,24 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	}
 }
 
+// List implements kv.List.
+func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	options := &consul.QueryOptions{
+		AllowStale:        !c.cfg.ConsistentReads,
+		RequireConsistent: c.cfg.ConsistentReads,
+	}
+	pairs, _, err := c.kv.List(prefix, options.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(pairs))
+	for _, kvp := range pairs {
+		keys = append(keys, kvp.Key)
+	}
+	return keys, nil
+}
+
 // Get implements kv.Get.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	options := &consul.QueryOptions{
@@ -293,9 +312,29 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	} else if kvp == nil {
-		return nil, nil
+		return nil, codec.ErrNotFound
 	}
 	return c.codec.Decode(kvp.Value)
+}
+
+// Delete implements kv.Delete.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	options := &consul.QueryOptions{
+		AllowStale:        !c.cfg.ConsistentReads,
+		RequireConsistent: c.cfg.ConsistentReads,
+	}
+	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
+	if err != nil {
+		return err
+	} else if kvp == nil {
+		return codec.ErrNotFound
+	}
+
+	_, _, err = c.kv.DeleteCAS(kvp, writeOptions.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {

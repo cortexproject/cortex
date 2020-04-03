@@ -1,8 +1,15 @@
 package codec
 
 import (
+	"errors"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+)
+
+// Errors shared between implementations of the kv.Client interface.
+var (
+	ErrNotFound = errors.New("Not found")
 )
 
 // Codec allows KV clients to serialise and deserialise values.

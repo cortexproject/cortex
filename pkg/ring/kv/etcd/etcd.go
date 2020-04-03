@@ -212,14 +212,41 @@ outer:
 	}
 }
 
+// List implements kv.Client.
+func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	resp, err := c.cli.Get(ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		keys = append(keys, string(kv.Key))
+	}
+	return keys, nil
+}
+
 // Get implements kv.Client.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	resp, err := c.cli.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.Kvs) != 1 {
+	if len(resp.Kvs) == 0 {
+		return nil, codec.ErrNotFound
+	} else if len(resp.Kvs) != 1 {
 		return nil, fmt.Errorf("got %d kvs, expected 1", len(resp.Kvs))
 	}
 	return c.codec.Decode(resp.Kvs[0].Value)
+}
+
+// Delete implements kv.Client.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	resp, err := c.cli.Delete(ctx, key)
+	if err != nil {
+		return err
+	}
+	if resp.Deleted != 1 {
+		return codec.ErrNotFound
+	}
+	return nil
 }

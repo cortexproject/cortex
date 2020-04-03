@@ -377,8 +377,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// Count the total number of metadata in.
 	incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
-	// A WriteRequest can now include samples and metadata. However, at the moment of writing,
-	// we can only receive samples and no metadata or metadata and no samples.
+	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
@@ -387,106 +386,102 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 
-	if len(req.Timeseries) > 0 {
-		if d.limits.AcceptHASamples(userID) {
-			cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
-			removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
-			if err != nil {
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
-					// These samples have been deduped.
-					dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
-				}
-
-				// Ensure the request slice is reused if the series get deduped.
-				client.ReuseSlice(req.Timeseries)
-
-				return nil, err
+	if len(req.Timeseries) > 0 && d.limits.AcceptHASamples(userID) {
+		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
+		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
+		if err != nil {
+			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
+				// These samples have been deduped.
+				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
-			// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
-			if !removeReplica {
-				nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
-			}
+
+			// Ensure the request slice is reused if the series get deduped.
+			client.ReuseSlice(req.Timeseries)
+
+			return nil, err
 		}
-
-		latestSampleTimestampMs := int64(0)
-		defer func() {
-			// Update this metric even in case of errors.
-			if latestSampleTimestampMs > 0 {
-				latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
-			}
-		}()
-
-		// For each timeseries, compute a hash to distribute across ingesters;
-		// check each sample and discard if outside limits.
-		for _, ts := range req.Timeseries {
-			// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
-			if len(ts.Samples) > 0 {
-				latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
-			}
-
-			// If we found both the cluster and replica labels, we only want to include the cluster label when
-			// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-			// series we're trying to dedupe when HA tracking moves over to a different replica.
-			if removeReplica {
-				removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-			}
-
-			for _, labelName := range d.limits.DropLabels(userID) {
-				removeLabel(labelName, &ts.Labels)
-			}
-
-			if len(ts.Labels) == 0 {
-				continue
-			}
-
-			// We rely on sorted labels in different places:
-			// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
-			// different tokens, which is bad.
-			// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
-			// later in the validation phase, we ignore them here.
-			sortLabelsIfNeeded(ts.Labels)
-
-			// Generate the sharding token based on the series labels without the HA replica
-			// label and dropped labels (if any)
-			key, err := d.tokenForLabels(userID, ts.Labels)
-			if err != nil {
-				return nil, err
-			}
-
-			validatedSeries, err := d.validateSeries(ts, userID)
-
-			// Errors in validation are considered non-fatal, as one series in a request may contain
-			// invalid data but all the remaining series could be perfectly valid.
-			if err != nil && firstPartialErr == nil {
-				firstPartialErr = err
-			}
-
-			// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
-			if validatedSeries == emptyPreallocSeries {
-				continue
-			}
-
-			seriesKeys = append(seriesKeys, key)
-			validatedTimeseries = append(validatedTimeseries, validatedSeries)
-			validatedSamples += len(ts.Samples)
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
+		if !removeReplica {
+			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
 		}
 	}
 
-	if len(req.Metadata) > 0 {
-		for _, m := range req.Metadata {
-			err := d.validateMetadata(m, userID)
+	latestSampleTimestampMs := int64(0)
+	defer func() {
+		// Update this metric even in case of errors.
+		if latestSampleTimestampMs > 0 {
+			latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+		}
+	}()
 
-			if err != nil {
-				if firstPartialErr == nil {
-					firstPartialErr = err
-				}
+	// For each timeseries, compute a hash to distribute across ingesters;
+	// check each sample and discard if outside limits.
+	for _, ts := range req.Timeseries {
+		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+		if len(ts.Samples) > 0 {
+			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+		}
 
-				continue
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+		}
+
+		for _, labelName := range d.limits.DropLabels(userID) {
+			removeLabel(labelName, &ts.Labels)
+		}
+
+		if len(ts.Labels) == 0 {
+			continue
+		}
+
+		// We rely on sorted labels in different places:
+		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
+		// different tokens, which is bad.
+		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
+		// later in the validation phase, we ignore them here.
+		sortLabelsIfNeeded(ts.Labels)
+
+		// Generate the sharding token based on the series labels without the HA replica
+		// label and dropped labels (if any)
+		key, err := d.tokenForLabels(userID, ts.Labels)
+		if err != nil {
+			return nil, err
+		}
+
+		validatedSeries, err := d.validateSeries(ts, userID)
+
+		// Errors in validation are considered non-fatal, as one series in a request may contain
+		// invalid data but all the remaining series could be perfectly valid.
+		if err != nil && firstPartialErr == nil {
+			firstPartialErr = err
+		}
+
+		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
+		if validatedSeries == emptyPreallocSeries {
+			continue
+		}
+
+		seriesKeys = append(seriesKeys, key)
+		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		validatedSamples += len(ts.Samples)
+	}
+
+	for _, m := range req.Metadata {
+		err := d.validateMetadata(m, userID)
+
+		if err != nil {
+			if firstPartialErr == nil {
+				firstPartialErr = err
 			}
 
-			metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
-			validatedMetadata = append(validatedMetadata, m)
+			continue
 		}
+
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
+		validatedMetadata = append(validatedMetadata, m)
 	}
 
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))

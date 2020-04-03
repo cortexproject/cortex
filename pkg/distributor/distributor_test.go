@@ -83,6 +83,7 @@ func TestDistributor_Push(t *testing.T) {
 			numIngesters:     3,
 			happyIngesters:   2,
 			samples:          5,
+			metadata:         5,
 			expectedResponse: success,
 			startTimestampMs: 123456789000,
 			expectedMetrics: `

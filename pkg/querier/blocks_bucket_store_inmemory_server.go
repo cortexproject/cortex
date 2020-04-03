@@ -30,8 +30,22 @@ func (s *bucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
 		s.Warnings = append(s.Warnings, errors.New(r.GetWarning()))
 	}
 
-	if r.GetSeries() != nil {
-		s.SeriesSet = append(s.SeriesSet, r.GetSeries())
+	if recvSeries := r.GetSeries(); recvSeries != nil {
+		// Thanos uses a pool for the chunks and may use other pools in the future.
+		// Given we need to retain the reference after the pooled slices are recycled,
+		// we need to do a copy here. We prefer to stay on the safest side at this stage
+		// so we do a marshal+unmarshal to copy the whole series.
+		recvSeriesData, err := recvSeries.Marshal()
+		if err != nil {
+			return errors.Wrap(err, "marshal received series")
+		}
+
+		copiedSeries := &storepb.Series{}
+		if err = copiedSeries.Unmarshal(recvSeriesData); err != nil {
+			return errors.Wrap(err, "unmarshal received series")
+		}
+
+		s.SeriesSet = append(s.SeriesSet, copiedSeries)
 	}
 
 	return nil

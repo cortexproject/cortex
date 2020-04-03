@@ -274,8 +274,10 @@ The FIFO cache stores a fixed number of entries, and therefore it’s memory usa
 Enable in-memory cache.
 -&amp;lt;prefix&amp;gt;.fifocache.duration duration
 The expiry duration for the cache.
--&amp;lt;prefix&amp;gt;.fifocache.size int
-The number of entries to cache.
+-&amp;lt;prefix&amp;gt;.fifocache.max-size-bytes int
+Maximum memory size of the cache.
+-&amp;lt;prefix&amp;gt;.fifocache.max-size-items int
+Maximum number of entries in the cache.
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;See &lt;a href=&#34;/docs/configuration/configuration-file/#fifo-cache-config&#34;&gt;&lt;code&gt;fifo_cache_config&lt;/code&gt; documentation&lt;/a&gt; if you use a config file with Cortex.&lt;/p&gt;
 &lt;h3 id=&#34;redis-experimental&#34;&gt;Redis (Experimental)&lt;/h3&gt;

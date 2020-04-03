@@ -386,7 +386,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 
-	if len(req.Timeseries) > 0 && d.limits.AcceptHASamples(userID) {
+	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {

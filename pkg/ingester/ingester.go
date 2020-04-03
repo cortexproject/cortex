@@ -372,6 +372,13 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
+	if len(req.Metadata) > 0 {
+		// Given requests can only contain either metadata or samples, no-op if there is metadata for now.
+		logger := util.WithContext(ctx, util.Logger)
+		level.Debug(logger).Log("msg", "metadata received in the ingester", "count", len(req.Metadata))
+		return &client.WriteResponse{}, nil
+	}
+
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			// append() copies the memory in `ts.Labels` except on the error path

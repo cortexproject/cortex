@@ -56,6 +56,7 @@ func TestDistributor_Push(t *testing.T) {
 		happyIngesters   int
 		samples          int
 		startTimestampMs int64
+		metadata         int
 		expectedResponse *client.WriteResponse
 		expectedError    error
 		expectedMetrics  string
@@ -68,25 +69,27 @@ func TestDistributor_Push(t *testing.T) {
 		"A push to 3 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   3,
-			samples:          10,
+			samples:          5,
+			metadata:         5,
 			expectedResponse: success,
 			startTimestampMs: 123456789000,
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
 			`,
 		},
 		"A push to 2 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   2,
-			samples:          10,
+			samples:          5,
+			metadata:         5,
 			expectedResponse: success,
 			startTimestampMs: 123456789000,
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
 			`,
 		},
 		"A push to 1 happy ingesters should fail": {
@@ -116,13 +119,14 @@ func TestDistributor_Push(t *testing.T) {
 		"A push exceeding burst size should fail": {
 			numIngesters:     3,
 			happyIngesters:   3,
-			samples:          30,
-			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 30 samples"),
+			samples:          25,
+			metadata:         5,
+			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 25 samples and 5 metadata"),
 			startTimestampMs: 123456789000,
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.029
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.024
 			`,
 		},
 	} {
@@ -138,7 +142,7 @@ func TestDistributor_Push(t *testing.T) {
 				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
 				defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-				request := makeWriteRequest(tc.startTimestampMs, tc.samples)
+				request := makeWriteRequest(tc.startTimestampMs, tc.samples, tc.metadata)
 				response, err := d.Push(ctx, request)
 				assert.Equal(t, tc.expectedResponse, response)
 				assert.Equal(t, tc.expectedError, err)
@@ -156,6 +160,7 @@ func TestDistributor_Push(t *testing.T) {
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		samples       int
+		metadata      int
 		expectedError error
 	}
 
@@ -172,10 +177,12 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionRate:         10,
 			ingestionBurstSize:    10,
 			pushes: []testPush{
-				{samples: 5, expectedError: nil},
-				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples")},
-				{samples: 5, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples")},
+				{samples: 4, expectedError: nil},
+				{metadata: 1, expectedError: nil},
+				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples and 0 metadata")},
+				{samples: 4, metadata: 1, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples and 0 metadata")},
+				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata")},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -184,10 +191,12 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionRate:         10,
 			ingestionBurstSize:    5,
 			pushes: []testPush{
-				{samples: 3, expectedError: nil},
-				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 3 samples")},
 				{samples: 2, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+				{samples: 1, expectedError: nil},
+				{samples: 2, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 2 samples and 1 metadata")},
+				{samples: 2, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
+				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
@@ -196,10 +205,12 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionRate:         10,
 			ingestionBurstSize:    20,
 			pushes: []testPush{
-				{samples: 15, expectedError: nil},
-				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 6 samples")},
+				{samples: 10, expectedError: nil},
 				{samples: 5, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+				{samples: 5, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 5 samples and 1 metadata")},
+				{samples: 5, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
+				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
 			},
 		},
 	}
@@ -234,7 +245,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 			// Push samples in multiple requests to the first distributor
 			for _, push := range testData.pushes {
-				request := makeWriteRequest(0, push.samples)
+				request := makeWriteRequest(0, push.samples, push.metadata)
 				response, err := distributors[0].Push(ctx, request)
 
 				if push.expectedError == nil {
@@ -337,6 +348,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 		numIngesters     int
 		happyIngesters   int
 		samples          int
+		metadata         int
 		matchers         []*labels.Matcher
 		expectedResponse model.Matrix
 		expectedError    error
@@ -420,7 +432,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil, nil)
 			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-			request := makeWriteRequest(0, tc.samples)
+			request := makeWriteRequest(0, tc.samples, tc.metadata)
 			writeResponse, err := d.Push(ctx, request)
 			assert.Equal(t, &client.WriteResponse{}, writeResponse)
 			assert.Nil(t, err)
@@ -750,7 +762,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *cli
 		},
 	}
 
-	return client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
+	return client.ToWriteRequest([]labels.Labels{lbls}, samples, nil, client.API)
 }
 
 func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits, kvStore kv.Client) (*Distributor, []mockIngester) {
@@ -817,7 +829,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	return d, ingesters
 }
 
-func makeWriteRequest(startTimestampMs int64, samples int) *client.WriteRequest {
+func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *client.WriteRequest {
 	request := &client.WriteRequest{}
 	for i := 0; i < samples; i++ {
 		ts := client.PreallocTimeseries{
@@ -837,6 +849,16 @@ func makeWriteRequest(startTimestampMs int64, samples int) *client.WriteRequest 
 		}
 		request.Timeseries = append(request.Timeseries, ts)
 	}
+
+	for i := 0; i < metadata; i++ {
+		m := &client.MetricMetadata{
+			MetricName: fmt.Sprintf("metric_%d", i),
+			Type:       client.COUNTER,
+			Help:       fmt.Sprintf("a help for metric_%d", i),
+		}
+		request.Metadata = append(request.Metadata, m)
+	}
+
 	return request
 }
 
@@ -1142,19 +1164,20 @@ func TestDistributorValidation(t *testing.T) {
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
 
 	for i, tc := range []struct {
-		labels  []labels.Labels
-		samples []client.Sample
-		err     error
+		metadata []*client.MetricMetadata
+		labels   []labels.Labels
+		samples  []client.Sample
+		err      error
 	}{
 		// Test validation passes.
 		{
-			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			metadata: []*client.MetricMetadata{{MetricName: "testmetric", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
+			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
 			samples: []client.Sample{{
 				TimestampMs: int64(now),
 				Value:       1,
 			}},
 		},
-
 		// Test validation fails for very old samples.
 		{
 			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
@@ -1196,6 +1219,16 @@ func TestDistributorValidation(t *testing.T) {
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
 		},
+		// Test metadata validation fails
+		{
+			metadata: []*client.MetricMetadata{{MetricName: "", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
+			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var limits validation.Limits
@@ -1209,7 +1242,7 @@ func TestDistributorValidation(t *testing.T) {
 			d, _ := prepare(t, 3, 3, 0, true, &limits, nil)
 			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))
+			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, tc.metadata, client.API))
 			require.Equal(t, tc.err, err)
 		})
 	}

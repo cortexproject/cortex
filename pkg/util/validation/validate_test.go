@@ -34,6 +34,19 @@ func (v validateLabelsCfg) MaxLabelValueLength(userID string) int {
 	return v.maxLabelValueLength
 }
 
+type validateMetadataCfg struct {
+	enforceMetadataMetricName bool
+	maxMetadataLength         int
+}
+
+func (vm validateMetadataCfg) EnforceMetadataMetricName(userID string) bool {
+	return vm.enforceMetadataMetricName
+}
+
+func (vm validateMetadataCfg) MaxMetadataLength(userID string) int {
+	return vm.maxMetadataLength
+}
+
 func TestValidateLabels(t *testing.T) {
 	var cfg validateLabelsCfg
 	userID := "testUser"
@@ -79,6 +92,50 @@ func TestValidateLabels(t *testing.T) {
 
 		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
+	}
+}
+
+func TestValidateMetadata(t *testing.T) {
+	userID := "testUser"
+	var cfg validateMetadataCfg
+	cfg.enforceMetadataMetricName = true
+	cfg.maxMetadataLength = 22
+
+	for _, c := range []struct {
+		desc     string
+		metadata *client.MetricMetadata
+		err      error
+	}{
+		{
+			"with a valid config",
+			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			nil,
+		},
+		{
+			"with no metric name",
+			&client.MetricMetadata{MetricName: "", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			httpgrpc.Errorf(http.StatusBadRequest, "metadata missing metric name"),
+		},
+		{
+			"with a long metric name",
+			&client.MetricMetadata{MetricName: "go_goroutines_and_routines_and_routines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'METRIC_NAME' value too long: \"go_goroutines_and_routines_and_routines\" metric \"go_goroutines_and_routines_and_routines\""),
+		},
+		{
+			"with a long help",
+			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines that currently exist.", Unit: ""},
+			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'HELP' value too long: \"Number of goroutines that currently exist.\" metric \"go_goroutines\""),
+		},
+		{
+			"with a long unit",
+			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: "a_made_up_unit_that_is_really_long"},
+			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'UNIT' value too long: \"a_made_up_unit_that_is_really_long\" metric \"go_goroutines\""),
+		},
+	} {
+		t.Run(c.desc, func(t *testing.T) {
+			err := ValidateMetadata(cfg, userID, c.metadata)
+			assert.Equal(t, c.err, err, "wrong error")
+		})
 	}
 }
 

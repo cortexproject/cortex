@@ -2022,6 +2022,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.max-label-names-per-series
 [max_label_names_per_series: <int> | default = 30]
 
+# Maximum length accepted for metric metadata. Metadata refers to Metric Name,
+# HELP and UNIT.
+# CLI flag: -validation.max-metadata-length
+[max_metadata_length: <int> | default = 1024]
+
 # Reject old samples.
 # CLI flag: -validation.reject-old-samples
 [reject_old_samples: <boolean> | default = false]
@@ -2034,6 +2039,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # won't accept sample from before this time.
 # CLI flag: -validation.create-grace-period
 [creation_grace_period: <duration> | default = 10m0s]
+
+# Enforce every metadata has a metric name.
+# CLI flag: -validation.enforce-metadata-metric-name
+[enforce_metadata_metric_name: <boolean> | default = true]
 
 # Enforce every sample has a metric name.
 # CLI flag: -validation.enforce-metric-name

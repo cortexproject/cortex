@@ -10,6 +10,7 @@
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383 
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
+* [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 
 ## 1.0.0 / 2020-04-02
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -46,12 +47,18 @@ var (
 )
 
 func TestDistributor_Push(t *testing.T) {
+	metricNames := []string{
+		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+	}
+
 	for name, tc := range map[string]struct {
 		numIngesters     int
 		happyIngesters   int
 		samples          int
+		startTimestampMs int64
 		expectedResponse *client.WriteResponse
 		expectedError    error
+		expectedMetrics  string
 	}{
 		"A push of no samples shouldn't block or return error, even if ingesters are sad": {
 			numIngesters:     3,
@@ -63,34 +70,66 @@ func TestDistributor_Push(t *testing.T) {
 			happyIngesters:   3,
 			samples:          10,
 			expectedResponse: success,
+			startTimestampMs: 123456789000,
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
 		},
 		"A push to 2 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   2,
 			samples:          10,
 			expectedResponse: success,
+			startTimestampMs: 123456789000,
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
 		},
 		"A push to 1 happy ingesters should fail": {
-			numIngesters:   3,
-			happyIngesters: 1,
-			samples:        10,
-			expectedError:  errFail,
+			numIngesters:     3,
+			happyIngesters:   1,
+			samples:          10,
+			expectedError:    errFail,
+			startTimestampMs: 123456789000,
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
 		},
 		"A push to 0 happy ingesters should fail": {
-			numIngesters:   3,
-			happyIngesters: 0,
-			samples:        10,
-			expectedError:  errFail,
+			numIngesters:     3,
+			happyIngesters:   0,
+			samples:          10,
+			expectedError:    errFail,
+			startTimestampMs: 123456789000,
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
 		},
 		"A push exceeding burst size should fail": {
-			numIngesters:   3,
-			happyIngesters: 3,
-			samples:        30,
-			expectedError:  httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 30 samples"),
+			numIngesters:     3,
+			happyIngesters:   3,
+			samples:          30,
+			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 30 samples"),
+			startTimestampMs: 123456789000,
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.029
+			`,
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
+				latestSeenSampleTimestampPerUser.Reset()
+
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
 				limits.IngestionRate = 20
@@ -99,10 +138,16 @@ func TestDistributor_Push(t *testing.T) {
 				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
 				defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-				request := makeWriteRequest(tc.samples)
+				request := makeWriteRequest(tc.startTimestampMs, tc.samples)
 				response, err := d.Push(ctx, request)
 				assert.Equal(t, tc.expectedResponse, response)
 				assert.Equal(t, tc.expectedError, err)
+
+				// Check tracked Prometheus metrics.
+				if tc.expectedMetrics != "" {
+					err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), metricNames...)
+					assert.NoError(t, err)
+				}
 			})
 		}
 	}
@@ -189,7 +234,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 			// Push samples in multiple requests to the first distributor
 			for _, push := range testData.pushes {
-				request := makeWriteRequest(push.samples)
+				request := makeWriteRequest(0, push.samples)
 				response, err := distributors[0].Push(ctx, request)
 
 				if push.expectedError == nil {
@@ -375,7 +420,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil, nil)
 			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-			request := makeWriteRequest(tc.samples)
+			request := makeWriteRequest(0, tc.samples)
 			writeResponse, err := d.Push(ctx, request)
 			assert.Equal(t, &client.WriteResponse{}, writeResponse)
 			assert.Nil(t, err)
@@ -772,7 +817,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	return d, ingesters
 }
 
-func makeWriteRequest(samples int) *client.WriteRequest {
+func makeWriteRequest(startTimestampMs int64, samples int) *client.WriteRequest {
 	request := &client.WriteRequest{}
 	for i := 0; i < samples; i++ {
 		ts := client.PreallocTimeseries{
@@ -787,7 +832,7 @@ func makeWriteRequest(samples int) *client.WriteRequest {
 		ts.Samples = []client.Sample{
 			{
 				Value:       float64(i),
-				TimestampMs: int64(i),
+				TimestampMs: startTimestampMs + int64(i),
 			},
 		}
 		request.Timeseries = append(request.Timeseries, ts)

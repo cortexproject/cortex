@@ -79,18 +79,9 @@ Where default_value is the value to use if the environment variable is undefined
 # The ingester_config configures the Cortex ingester.
 [ingester: <ingester_config>]
 
-flusher:
-  # Directory to read WAL from.
-  # CLI flag: -flusher.wal-dir
-  [wal_dir: <string> | default = "wal"]
-
-  # Number of concurrent goroutines flushing to dynamodb.
-  # CLI flag: -flusher.concurrent-flushes
-  [concurrent_flushes: <int> | default = 50]
-
-  # Timeout for individual flush operations.
-  # CLI flag: -flusher.flush-op-timeout
-  [flush_op_timeout: <duration> | default = 2m0s]
+# The flusher_config configures the WAL flusher target, used to manually run
+# one-time flushes when scaling down ingesters.
+[flusher: <flusher_config>]
 
 # The storage_config configures where Cortex stores the data (chunks storage
 # engine).
@@ -124,60 +115,6 @@ flusher:
 # The compactor_config configures the compactor for the experimental blocks
 # storage.
 [compactor: <compactor_config>]
-
-store_gateway:
-  # Shard blocks across multiple store gateway instances.
-  # CLI flag: -store-gateway.sharding-enabled
-  [sharding_enabled: <boolean> | default = false]
-
-  sharding_ring:
-    kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, multi, memberlist (experimental).
-      # CLI flag: -store-gateway.ring.store
-      [store: <string> | default = "consul"]
-
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -store-gateway.ring.prefix
-      [prefix: <string> | default = "collectors/"]
-
-      # The consul_config configures the consul client.
-      # The CLI flags prefix for this block config is: store-gateway.ring
-      [consul: <consul_config>]
-
-      # The etcd_config configures the etcd client.
-      # The CLI flags prefix for this block config is: store-gateway.ring
-      [etcd: <etcd_config>]
-
-      multi:
-        # Primary backend storage used by multi-client.
-        # CLI flag: -store-gateway.ring.multi.primary
-        [primary: <string> | default = ""]
-
-        # Secondary backend storage used by multi-client.
-        # CLI flag: -store-gateway.ring.multi.secondary
-        [secondary: <string> | default = ""]
-
-        # Mirror writes to secondary store.
-        # CLI flag: -store-gateway.ring.multi.mirror-enabled
-        [mirror_enabled: <boolean> | default = false]
-
-        # Timeout for storing value to secondary store.
-        # CLI flag: -store-gateway.ring.multi.mirror-timeout
-        [mirror_timeout: <duration> | default = 2s]
-
-    # Period at which to heartbeat to the ring.
-    # CLI flag: -store-gateway.ring.heartbeat-period
-    [heartbeat_period: <duration> | default = 5s]
-
-    # The heartbeat timeout after which store gateways are considered unhealthy
-    # within the ring.
-    # CLI flag: -store-gateway.ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m0s]
-
-    # The replication factor to use when sharding blocks.
-    # CLI flag: -store-gateway.replication-factor
-    [replication_factor: <int> | default = 2]
 
 # The purger_config configures the purger which takes care of delete requests
 [purger: <purger_config>]
@@ -1686,6 +1623,24 @@ delete_store:
   [requests_table_name: <string> | default = "delete_requests"]
 ```
 
+### `flusher_config`
+
+The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
+
+```yaml
+# Directory to read WAL from.
+# CLI flag: -flusher.wal-dir
+[wal_dir: <string> | default = "wal"]
+
+# Number of concurrent goroutines flushing to dynamodb.
+# CLI flag: -flusher.concurrent-flushes
+[concurrent_flushes: <int> | default = 50]
+
+# Timeout for individual flush operations.
+# CLI flag: -flusher.flush-op-timeout
+[flush_op_timeout: <duration> | default = 2m0s]
+```
+
 ### `chunk_store_config`
 
 The `chunk_store_config` configures how Cortex stores the data (chunks storage engine).
@@ -1886,7 +1841,6 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `ruler.ring`
-- `store-gateway.ring`
 
 &nbsp;
 
@@ -1913,7 +1867,6 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `ruler.ring`
-- `store-gateway.ring`
 
 &nbsp;
 

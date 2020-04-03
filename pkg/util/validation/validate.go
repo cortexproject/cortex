@@ -76,6 +76,7 @@ var DiscardedMetadata = prometheus.NewCounterVec(
 
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(DiscardedMetadata)
 }
 
 // SampleValidationConfig helps with getting required config to validate sample.

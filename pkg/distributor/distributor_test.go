@@ -76,7 +76,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
 			`,
 		},
 		"A push to 2 happy ingesters should succeed": {
@@ -89,7 +89,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
 			`,
 		},
 		"A push to 1 happy ingesters should fail": {
@@ -126,7 +126,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.029
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.024
 			`,
 		},
 	} {

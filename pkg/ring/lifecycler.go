@@ -667,6 +667,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
 			ingesterDesc.Addr = i.Addr
+			ingesterDesc.Zone = i.Zone
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 

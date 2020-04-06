@@ -62,22 +62,31 @@ func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 }
 
 // PutObject into the store
-func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) (err error) {
 	fullPath := path.Join(f.cfg.Directory, objectKey)
-	err := util.EnsureDirectory(path.Dir(fullPath))
+	err = util.EnsureDirectory(path.Dir(fullPath))
 	if err != nil {
-		return err
+		return
 	}
 
 	fl, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return
 	}
 
-	defer fl.Close()
+	defer func() {
+		if fcErr := fl.Close(); fcErr != nil {
+			if err == nil {
+				err = fcErr
+				return
+			}
+			level.Error(pkgUtil.Logger).Log("msg", "error closing file", "filepath", fullPath, "err", fcErr)
+		}
+	}()
 
-	if _, err := io.Copy(fl, object); err != nil {
-		return err
+	_, err = io.Copy(fl, object)
+	if err != nil {
+		return
 	}
 
 	return fl.Sync()

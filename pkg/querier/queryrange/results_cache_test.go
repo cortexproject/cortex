@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -96,6 +97,7 @@ func mkExtent(start, end int64) Extent {
 }
 
 func TestShouldCache(t *testing.T) {
+	c := &resultsCache{logger: util.Logger}
 	for i, tc := range []struct {
 		input    Response
 		expected bool
@@ -136,10 +138,27 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: false,
 		},
+		// some broken responses
+		{
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{nil},
+			}),
+			expected: true,
+		},
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{{Name: cachecontrolHeader}},
+			}),
+			expected: true,
+		},
 	} {
 		{
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
-				ret := shouldCacheResponse(tc.input)
+				ret := c.shouldCacheResponse(tc.input)
 				require.Equal(t, tc.expected, ret)
 			})
 		}

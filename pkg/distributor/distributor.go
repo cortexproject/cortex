@@ -18,12 +18,12 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -118,7 +118,7 @@ type Distributor struct {
 
 	cfg           Config
 	ingestersRing ring.ReadRing
-	ingesterPool  *ingester_client.Pool
+	ingesterPool  *ring_client.Pool
 	limits        *validation.Overrides
 
 	// The global rate limiter requires a distributors ring to count
@@ -139,7 +139,7 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	PoolConfig ingester_client.PoolConfig `yaml:"pool"`
+	PoolConfig PoolConfig `yaml:"pool"`
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
@@ -153,7 +153,7 @@ type Config struct {
 	DistributorRing RingConfig `yaml:"ring"`
 
 	// for testing
-	ingesterClientFactory client.Factory `yaml:"-"`
+	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -176,7 +176,7 @@ func (cfg *Config) Validate() error {
 // New constructs a new Distributor
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
-		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
+		cfg.ingesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
 		}
 	}
@@ -216,7 +216,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	d := &Distributor{
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),

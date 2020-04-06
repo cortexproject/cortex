@@ -17,24 +17,23 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type mockIngester struct {
-	IngesterClient
+type mockClient struct {
 	happy  bool
 	status grpc_health_v1.HealthCheckResponse_ServingStatus
 }
 
-func (i mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+func (i mockClient) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
 	if !i.happy {
 		return nil, fmt.Errorf("Fail")
 	}
 	return &grpc_health_v1.HealthCheckResponse{Status: i.status}, nil
 }
 
-func (i mockIngester) Close() error {
+func (i mockClient) Close() error {
 	return nil
 }
 
-func (i mockIngester) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
+func (i mockClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
 	return nil, status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
@@ -48,18 +47,18 @@ func (mockReadRing) GetAll() (ring.ReplicationSet, error) {
 
 func TestHealthCheck(t *testing.T) {
 	tcs := []struct {
-		ingester mockIngester
+		client   mockClient
 		hasError bool
 	}{
-		{mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_UNKNOWN}, true},
-		{mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, false},
-		{mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, true},
-		{mockIngester{happy: false, status: grpc_health_v1.HealthCheckResponse_UNKNOWN}, true},
-		{mockIngester{happy: false, status: grpc_health_v1.HealthCheckResponse_SERVING}, true},
-		{mockIngester{happy: false, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, true},
+		{mockClient{happy: true, status: grpc_health_v1.HealthCheckResponse_UNKNOWN}, true},
+		{mockClient{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, false},
+		{mockClient{happy: true, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, true},
+		{mockClient{happy: false, status: grpc_health_v1.HealthCheckResponse_UNKNOWN}, true},
+		{mockClient{happy: false, status: grpc_health_v1.HealthCheckResponse_SERVING}, true},
+		{mockClient{happy: false, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, true},
 	}
 	for _, tc := range tcs {
-		err := healthCheck(tc.ingester, 50*time.Millisecond)
+		err := healthCheck(tc.client, 50*time.Millisecond)
 		hasError := err != nil
 		if hasError != tc.hasError {
 			t.Errorf("Expected error: %t, error: %v", tc.hasError, err)
@@ -67,20 +66,22 @@ func TestHealthCheck(t *testing.T) {
 	}
 }
 
-func TestIngesterCache(t *testing.T) {
+func TestPoolCache(t *testing.T) {
 	buildCount := 0
-	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
+	factory := func(addr string) (PoolClient, error) {
 		if addr == "bad" {
 			return nil, fmt.Errorf("Fail")
 		}
 		buildCount++
-		return mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+		return mockClient{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 	}
 
-	pool := NewPool(PoolConfig{
-		RemoteTimeout:       50 * time.Millisecond,
-		ClientCleanupPeriod: 10 * time.Second,
-	}, mockReadRing{}, factory, log.NewNopLogger())
+	cfg := PoolConfig{
+		HealthCheckTimeout: 50 * time.Millisecond,
+		CheckInterval:      10 * time.Second,
+	}
+
+	pool := NewPool("test", cfg, mockReadRing{}, factory, nil, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
 	defer services.StopAndAwaitTerminated(context.Background(), pool) //nolint:errcheck
 
@@ -130,12 +131,12 @@ func TestIngesterCache(t *testing.T) {
 func TestCleanUnhealthy(t *testing.T) {
 	goodAddrs := []string{"good1", "good2"}
 	badAddrs := []string{"bad1", "bad2"}
-	clients := map[string]grpc_health_v1.HealthClient{}
+	clients := map[string]PoolClient{}
 	for _, addr := range goodAddrs {
-		clients[addr] = mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}
+		clients[addr] = mockClient{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}
 	}
 	for _, addr := range badAddrs {
-		clients[addr] = mockIngester{happy: false, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
+		clients[addr] = mockClient{happy: false, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
 	}
 	pool := &Pool{
 		clients: clients,
@@ -144,12 +145,12 @@ func TestCleanUnhealthy(t *testing.T) {
 	pool.cleanUnhealthy()
 	for _, addr := range badAddrs {
 		if _, ok := pool.clients[addr]; ok {
-			t.Errorf("Found bad ingester after clean: %s\n", addr)
+			t.Errorf("Found bad client after clean: %s\n", addr)
 		}
 	}
 	for _, addr := range goodAddrs {
 		if _, ok := pool.clients[addr]; !ok {
-			t.Errorf("Could not find good ingester after clean: %s\n", addr)
+			t.Errorf("Could not find good client after clean: %s\n", addr)
 		}
 	}
 }

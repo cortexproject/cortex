@@ -162,10 +162,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		util.WarnExperimentalUse("Zone aware replication")
 	}
 
-	if zone == "" {
-		zone = cfg.ID
-	}
-
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
 	// it's always set, so we use a noop FlushTransferer
 	if flushTransferer == nil {

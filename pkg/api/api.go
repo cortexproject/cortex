@@ -16,7 +16,6 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -156,7 +155,6 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 // RegisterIngester registers the ingesters HTTP and GRPC service
 func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
-	grpc_health_v1.RegisterHealthServer(a.server.GRPC, i)
 
 	a.registerRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.registerRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)

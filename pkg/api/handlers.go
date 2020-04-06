@@ -21,21 +21,21 @@ const indexPageContent = `
 		<h1>Cortex</h1>
 		<p>Admin Endpoints:</p>
 		<ul>
-			<li><a href="/compactor/ring">Compactor Ring Status</a></li>
 			<li><a href="/config">Current Config</a></li>
 			<li><a href="/distributor/all_user_stats">Usage Statistics</a></li>
-			<li><a href="/distributor/ha-tracker">HA Tracking Status</a></li>
-			<li><a href="/multitenant-alertmanager/status">Alertmanager Status</a></li>
-			<li><a href="/ring">Ring Status</a></li>
+			<li><a href="/distributor/ha_tracker">HA Tracking Status</a></li>
+			<li><a href="/multitenant_alertmanager/status">Alertmanager Status</a></li>
+			<li><a href="/ingester/ring">Ingester Ring Status</a></li>
 			<li><a href="/ruler/ring">Ruler Ring Status</a></li>
 			<li><a href="/services">Service Status</a></li>
-			<li><a href="/store-gateway/ring">Ruler Ring Status</a></li>
+			<li><a href="/compactor/ring">Compactor Ring Status (experimental blocks storage)</a></li
+			<li><a href="/store-gateway/ring">Store Gateway Ring (experimental blocks storage)</a></li>
 		</ul>
 
 		<p>Dangerous:</p>
 		<ul>
-			<li><a href="/flush">Trigger a Flush</a></li>
-			<li><a href="/shutdown">Trigger Ingester Shutdown</a></li>
+			<li><a href="/ingester/flush">Trigger a Flush</a></li>
+			<li><a href="/ingester/shutdown">Trigger Ingester Shutdown</a></li>
 		</ul>
 	</body>
 </html>`

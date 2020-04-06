@@ -170,24 +170,17 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(r Response) bool {
 	if promResp, ok := r.(*PrometheusResponse); ok {
-		shouldCache := true
-	outer:
 		for _, hv := range promResp.Headers {
-			if hv == nil {
+			if hv.GetName() != cachecontrolHeader {
 				continue
 			}
-			if hv.Name != cachecontrolHeader {
-				continue
-			}
-			for _, v := range hv.Values {
+			for _, v := range hv.GetValues() {
 				if v == noCacheValue {
-					shouldCache = false
 					level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
-					break outer
+					return false
 				}
 			}
 		}
-		return shouldCache
 	}
 	return true
 }

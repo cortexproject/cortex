@@ -138,6 +138,23 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: false,
 		},
+		// some broken responses
+		{
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{nil},
+			}),
+			expected: true,
+		},
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{{Name: cachecontrolHeader}},
+			}),
+			expected: true,
+		},
 	} {
 		{
 			t.Run(strconv.Itoa(i), func(t *testing.T) {

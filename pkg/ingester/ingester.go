@@ -17,7 +17,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -799,20 +798,6 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 		})
 	}
 	return response, nil
-}
-
-// Check implements the grpc healthcheck
-func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
-	}
-
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
-}
-
-// Watch implements the grpc healthcheck.
-func (i *Ingester) Watch(in *grpc_health_v1.HealthCheckRequest, stream grpc_health_v1.Health_WatchServer) error {
-	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
 // CheckReady is the readiness handler used to indicate to k8s when the ingesters

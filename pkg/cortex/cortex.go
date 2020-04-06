@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 
@@ -316,8 +318,10 @@ func (t *Cortex) Run() error {
 		return err
 	}
 
-	// before starting servers, register /ready handler. It should reflect entire Cortex.
+	// before starting servers, register /ready handler and gRPC health check service.
+	// It should reflect entire Cortex.
 	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+	grpc_health_v1.RegisterHealthServer(t.server.GRPC, newHealthCheck(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }

@@ -71,7 +71,7 @@ func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
 		logger:         logger,
 	}
 
-	// If no authentication middleware is present in the config, use the middlewar
+	// If no authentication middleware is present in the config, use the default authentication middleware.
 	if cfg.HTTPAuthMiddleware == nil {
 		api.authMiddleware = middleware.AuthenticateUser
 	}

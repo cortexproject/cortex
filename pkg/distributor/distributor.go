@@ -139,7 +139,7 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	PoolConfig ingester_client.PoolConfig `yaml:"pool"`
+	PoolConfig PoolConfig `yaml:"pool"`
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
@@ -216,7 +216,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	d := &Distributor{
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),

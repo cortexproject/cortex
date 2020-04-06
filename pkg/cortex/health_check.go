@@ -39,9 +39,9 @@ func (h *healthCheck) isHealthy() bool {
 	states := h.sm.ServicesByState()
 
 	// Given this is an health check endpoint for the whole instance, we should consider
-	// it healthy after all services have been started (running) and until there's
-	// still a service stopping (because some services, like ingesters, are still
-	// fully functioning while stopping).
+	// it healthy after all services have been started (running) and until all
+	// services are terminated. Some services, like ingesters, are still
+	// fully functioning while stopping.
 	if len(states[services.New]) > 0 || len(states[services.Starting]) > 0 || len(states[services.Failed]) > 0 {
 		return false
 	}

@@ -39,11 +39,11 @@ type PoolConfig struct {
 type Pool struct {
 	services.Service
 
-	cfg         PoolConfig
-	ring        ring.ReadRing
-	factory     PoolFactory
-	logger      log.Logger
-	serviceName string
+	cfg        PoolConfig
+	ring       ring.ReadRing
+	factory    PoolFactory
+	logger     log.Logger
+	clientName string
 
 	sync.RWMutex
 	clients map[string]PoolClient
@@ -52,13 +52,13 @@ type Pool struct {
 }
 
 // NewPool creates a new Pool.
-func NewPool(serviceName string, cfg PoolConfig, ring ring.ReadRing, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
+func NewPool(clientName string, cfg PoolConfig, ring ring.ReadRing, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
 	p := &Pool{
 		cfg:           cfg,
 		ring:          ring,
 		factory:       factory,
 		logger:        logger,
-		serviceName:   serviceName,
+		clientName:    clientName,
 		clients:       map[string]PoolClient{},
 		clientsMetric: clientsMetric,
 	}
@@ -121,7 +121,7 @@ func (p *Pool) RemoveClientFor(addr string) {
 		// Close in the background since this operation may take awhile and we have a mutex
 		go func(addr string, closer PoolClient) {
 			if err := closer.Close(); err != nil {
-				level.Error(p.logger).Log("msg", fmt.Sprintf("error closing connection to %s", p.serviceName), "addr", addr, "err", err)
+				level.Error(p.logger).Log("msg", fmt.Sprintf("error closing connection to %s", p.clientName), "addr", addr, "err", err)
 			}
 		}(addr, client)
 	}
@@ -174,7 +174,7 @@ func (p *Pool) cleanUnhealthy() {
 		if ok {
 			err := healthCheck(client, p.cfg.HealthCheckTimeout)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.serviceName), "addr", addr, "reason", err)
+				level.Warn(util.Logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.clientName), "addr", addr, "reason", err)
 				p.RemoveClientFor(addr)
 			}
 		}

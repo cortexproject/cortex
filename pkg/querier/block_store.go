@@ -36,7 +36,7 @@ type UserStore struct {
 	cfg                tsdb.Config
 	bucket             objstore.Bucket
 	logLevel           logging.Level
-	bucketStoreMetrics *tsdbBucketStoreMetrics
+	bucketStoreMetrics *BucketStoreMetrics
 	metaFetcherMetrics *metaFetcherMetrics
 	indexCacheMetrics  prometheus.Collector
 
@@ -61,7 +61,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 		bucket:             bucketClient,
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
-		bucketStoreMetrics: newTSDBBucketStoreMetrics(),
+		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: newMetaFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -305,7 +305,7 @@ func (u *UserStore) getOrCreateStore(userID string) (*store.BucketStore, error) 
 
 	u.stores[userID] = bs
 	u.metaFetcherMetrics.addUserRegistry(userID, fetcherReg)
-	u.bucketStoreMetrics.addUserRegistry(userID, bucketStoreReg)
+	u.bucketStoreMetrics.AddUserRegistry(userID, bucketStoreReg)
 
 	return bs, nil
 }

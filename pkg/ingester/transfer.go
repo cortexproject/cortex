@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -159,7 +160,9 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
 	v, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
-	if err != nil {
+	if err == codec.ErrNotFound {
+		return errors.New("ring not found")
+	} else if err != nil {
 		return errors.Wrap(err, "get ring")
 	}
 	if v == nil {

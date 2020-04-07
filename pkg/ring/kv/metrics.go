@@ -57,9 +57,7 @@ func (m metrics) Get(ctx context.Context, key string) (interface{}, error) {
 
 func (m metrics) Delete(ctx context.Context, key string) error {
 	err := instrument.CollectedRequest(ctx, "Delete", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		var err error
-		err = m.c.Delete(ctx, key)
-		return err
+		return m.c.Delete(ctx, key)
 	})
 	return err
 }

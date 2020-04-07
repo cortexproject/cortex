@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -161,8 +162,8 @@ func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 func TestRingRestart(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -178,6 +179,9 @@ func TestRingRestart(t *testing.T) {
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		if err == codec.ErrNotFound {
+			return false
+		}
 		require.NoError(t, err)
 		return checkNormalised(d, "ing1")
 	})
@@ -192,6 +196,9 @@ func TestRingRestart(t *testing.T) {
 	// Check the new ingester picked up the same token
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		if err == codec.ErrNotFound {
+			return false
+		}
 		require.NoError(t, err)
 		l2Tokens := l2.getTokens()
 		return checkNormalised(d, "ing1") &&
@@ -315,7 +322,13 @@ func TestTokensOnDisk(t *testing.T) {
 	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+
+		// If the ring doesn't exist yet, wait until it does.
+		if err == codec.ErrNotFound {
+			return false
+		}
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		if ok {
 			expTokens = desc.Ingesters["ing1"].Tokens
@@ -339,6 +352,9 @@ func TestTokensOnDisk(t *testing.T) {
 	var actTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		if err == codec.ErrNotFound {
+			return false
+		}
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
@@ -362,8 +378,8 @@ func TestTokensOnDisk(t *testing.T) {
 func TestJoinInLeavingState(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -399,7 +415,11 @@ func TestJoinInLeavingState(t *testing.T) {
 	// Check that the lifecycler was able to join after coming up in LEAVING
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		if err == codec.ErrNotFound {
+			return false
+		}
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		return ok &&
 			len(desc.Ingesters) == 2 &&

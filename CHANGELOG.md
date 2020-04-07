@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+* [CHANGE] Added v1 API routes documented in #2327. #2372
+  * Added `-http.alertmanager-http-prefix` and `http.prometheus-http-prefix` flags.
+  * Updated the index hosted at the root prefix to point to the updated routes.
 * [CHANGE] The metrics `cortex_distributor_ingester_appends_total` and `distributor_ingester_append_failures_total` now includes a `type` label to differentiate between `samples` and `metadata`. #2336
 * [CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: #2375
   * `cortex_querier_bucket_store_blocks_meta_syncs_total` > `cortex_querier_blocks_meta_syncs_total`

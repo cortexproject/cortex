@@ -67,7 +67,7 @@ api:
   # CLI flag: -http.alertmanager-http-prefix
   [alertmanager_http_prefix: <string> | default = "/alertmanager"]
 
-  # TTP URL path under which the Prometheus api will be served.
+  # HTTP URL path under which the Prometheus api will be served.
   # CLI flag: -http.prometheus-http-prefix
   [prometheus_http_prefix: <string> | default = "/prometheus"]
 

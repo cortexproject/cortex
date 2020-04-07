@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -62,34 +63,31 @@ func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 }
 
 // PutObject into the store
-func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) (err error) {
+func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	fullPath := path.Join(f.cfg.Directory, objectKey)
-	err = util.EnsureDirectory(path.Dir(fullPath))
+	err := util.EnsureDirectory(path.Dir(fullPath))
 	if err != nil {
-		return
+		return err
 	}
 
 	fl, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return
+		return err
 	}
 
-	defer func() {
-		if fcErr := fl.Close(); fcErr != nil {
-			if err == nil {
-				err = fcErr
-				return
-			}
-			level.Error(pkgUtil.Logger).Log("msg", "error closing file", "filepath", fullPath, "err", fcErr)
-		}
-	}()
+	defer runutil.CloseWithLogOnErr(pkgUtil.Logger, fl, "fullPath: %s", fullPath)
 
 	_, err = io.Copy(fl, object)
 	if err != nil {
-		return
+		return err
 	}
 
-	return fl.Sync()
+	err = fl.Sync()
+	if err != nil {
+		return err
+	}
+
+	return fl.Close()
 }
 
 // List only objects from the store non-recursively

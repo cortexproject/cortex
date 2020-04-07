@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -358,7 +359,17 @@ FindQueue:
 		return nil, err
 	}
 
-	for userID, queue := range f.queues {
+	keys := make([]string, 0, len(f.queues))
+	for k := range f.queues {
+		keys = append(keys, k)
+	}
+	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
+
+	for _, userID := range keys {
+		queue, ok := f.queues[userID]
+		if !ok {
+			continue
+		}
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
 		  The chance of choosing a particular tenant for dequeueing is (1/active_tenants).

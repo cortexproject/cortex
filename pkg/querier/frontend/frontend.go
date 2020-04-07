@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -359,13 +358,7 @@ FindQueue:
 		return nil, err
 	}
 
-	i, n := 0, rand.Intn(len(f.queues))
 	for userID, queue := range f.queues {
-		if i < n {
-			i++
-			continue
-		}
-
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
 		  The chance of choosing a particular tenant for dequeueing is (1/active_tenants).

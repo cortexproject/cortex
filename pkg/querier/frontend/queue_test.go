@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -11,13 +12,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-func setupFrontend(t *testing.T, config Config) *Frontend {
+func setupFrontend(config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
 	frontend, err := New(config, logger, nil)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
+
 	defer frontend.Close()
-	return frontend
+	return frontend, nil
 }
 
 func testReq(ctx context.Context) *request {
@@ -35,7 +39,8 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	userID := "1"
 	userID2 := "2"
 
-	f := setupFrontend(t, config)
+	f, err := setupFrontend(config)
+	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	expired, cancel := context.WithCancel(ctx)
@@ -83,4 +88,32 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	}
 	_, ok = f.queues[userID2]
 	require.Equal(t, false, ok)
+}
+
+func BenchmarkGetNextRequest(b *testing.B) {
+	var config Config
+	flagext.DefaultValues(&config)
+	config.MaxOutstandingPerTenant = 1
+
+	const numTenants = 2
+
+	f, _ := setupFrontend(config)
+
+	for i := 0; i < config.MaxOutstandingPerTenant; i++ {
+		for j := 0; j < numTenants; j++ {
+			userID := strconv.Itoa(j)
+			ctx := user.InjectOrgID(context.Background(), userID)
+
+			_ = f.queueRequest(ctx, testReq(ctx))
+		}
+	}
+
+	ctx := context.Background()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < config.MaxOutstandingPerTenant*numTenants-1; j++ {
+			_, _ = f.getNextRequest(ctx)
+		}
+	}
 }

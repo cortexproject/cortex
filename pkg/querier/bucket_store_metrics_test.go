@@ -11,44 +11,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTSDBBucketStoreMetrics(t *testing.T) {
+func TestBucketStoreMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	tsdbMetrics := newTSDBBucketStoreMetrics()
+	tsdbMetrics := NewBucketStoreMetrics()
 	mainReg.MustRegister(tsdbMetrics)
 
-	tsdbMetrics.addUserRegistry("user1", populateTSDBBucketStoreMetrics(5328))
-	tsdbMetrics.addUserRegistry("user2", populateTSDBBucketStoreMetrics(6908))
-	tsdbMetrics.addUserRegistry("user3", populateTSDBBucketStoreMetrics(10283))
+	tsdbMetrics.AddUserRegistry("user1", populateMockedBucketStoreMetrics(5328))
+	tsdbMetrics.AddUserRegistry("user2", populateMockedBucketStoreMetrics(6908))
+	tsdbMetrics.AddUserRegistry("user3", populateMockedBucketStoreMetrics(10283))
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_querier_bucket_store_blocks_loaded TSDB: Number of currently loaded blocks.
+			# HELP cortex_querier_bucket_store_blocks_loaded Number of currently loaded blocks.
 			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
 			cortex_querier_bucket_store_blocks_loaded 22519
 
-			# HELP cortex_querier_bucket_store_block_loads_total TSDB: Total number of remote block loading attempts.
+			# HELP cortex_querier_bucket_store_block_loads_total Total number of remote block loading attempts.
 			# TYPE cortex_querier_bucket_store_block_loads_total counter
 			cortex_querier_bucket_store_block_loads_total 45038
 
-			# HELP cortex_querier_bucket_store_block_load_failures_total TSDB: Total number of failed remote block loading attempts.
+			# HELP cortex_querier_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
 			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
 			cortex_querier_bucket_store_block_load_failures_total 67557
 
-			# HELP cortex_querier_bucket_store_block_drops_total TSDB: Total number of local blocks that were dropped.
+			# HELP cortex_querier_bucket_store_block_drops_total Total number of local blocks that were dropped.
 			# TYPE cortex_querier_bucket_store_block_drops_total counter
 			cortex_querier_bucket_store_block_drops_total 90076
 
-			# HELP cortex_querier_bucket_store_block_drop_failures_total TSDB: Total number of local blocks that failed to be dropped.
+			# HELP cortex_querier_bucket_store_block_drop_failures_total Total number of local blocks that failed to be dropped.
 			# TYPE cortex_querier_bucket_store_block_drop_failures_total counter
 			cortex_querier_bucket_store_block_drop_failures_total 112595
 
-			# HELP cortex_querier_bucket_store_series_blocks_queried TSDB: Number of blocks in a bucket store that were touched to satisfy a query.
+			# HELP cortex_querier_bucket_store_series_blocks_queried Number of blocks in a bucket store that were touched to satisfy a query.
 			# TYPE cortex_querier_bucket_store_series_blocks_queried summary
 			cortex_querier_bucket_store_series_blocks_queried_sum 1.283583e+06
 			cortex_querier_bucket_store_series_blocks_queried_count 9
 
-			# HELP cortex_querier_bucket_store_series_data_fetched TSDB: How many items of a data type in a block were fetched for a single series request.
+			# HELP cortex_querier_bucket_store_series_data_fetched How many items of a data type in a block were fetched for a single series request.
 			# TYPE cortex_querier_bucket_store_series_data_fetched summary
 			cortex_querier_bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
 			cortex_querier_bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
@@ -57,7 +57,7 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
 			cortex_querier_bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
 
-			# HELP cortex_querier_bucket_store_series_data_size_fetched_bytes TSDB: Size of all items of a data type in a block were fetched for a single series request.
+			# HELP cortex_querier_bucket_store_series_data_size_fetched_bytes Size of all items of a data type in a block were fetched for a single series request.
 			# TYPE cortex_querier_bucket_store_series_data_size_fetched_bytes summary
 			cortex_querier_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
 			cortex_querier_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
@@ -66,7 +66,7 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
 			cortex_querier_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
 
-			# HELP cortex_querier_bucket_store_series_data_size_touched_bytes TSDB: Size of all items of a data type in a block were touched for a single series request.
+			# HELP cortex_querier_bucket_store_series_data_size_touched_bytes Size of all items of a data type in a block were touched for a single series request.
 			# TYPE cortex_querier_bucket_store_series_data_size_touched_bytes summary
 			cortex_querier_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
 			cortex_querier_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
@@ -75,7 +75,7 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
 			cortex_querier_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
 
-			# HELP cortex_querier_bucket_store_series_data_touched TSDB: How many items of a data type in a block were touched for a single series request.
+			# HELP cortex_querier_bucket_store_series_data_touched How many items of a data type in a block were touched for a single series request.
 			# TYPE cortex_querier_bucket_store_series_data_touched summary
 			cortex_querier_bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
 			cortex_querier_bucket_store_series_data_touched_count{data_type="touched-a"} 3
@@ -84,7 +84,7 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
 			cortex_querier_bucket_store_series_data_touched_count{data_type="touched-c"} 3
 
-			# HELP cortex_querier_bucket_store_series_get_all_duration_seconds TSDB: Time it takes until all per-block prepares and preloads for a query are finished.
+			# HELP cortex_querier_bucket_store_series_get_all_duration_seconds Time it takes until all per-block prepares and preloads for a query are finished.
 			# TYPE cortex_querier_bucket_store_series_get_all_duration_seconds histogram
 			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.001"} 0
 			cortex_querier_bucket_store_series_get_all_duration_seconds_bucket{le="0.01"} 0
@@ -104,7 +104,7 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_get_all_duration_seconds_sum 1.486254e+06
 			cortex_querier_bucket_store_series_get_all_duration_seconds_count 9
 
-			# HELP cortex_querier_bucket_store_series_merge_duration_seconds TSDB: Time it takes to merge sub-results from all queried blocks into a single result.
+			# HELP cortex_querier_bucket_store_series_merge_duration_seconds Time it takes to merge sub-results from all queried blocks into a single result.
 			# TYPE cortex_querier_bucket_store_series_merge_duration_seconds histogram
 			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.001"} 0
 			cortex_querier_bucket_store_series_merge_duration_seconds_bucket{le="0.01"} 0
@@ -124,11 +124,11 @@ func TestTSDBBucketStoreMetrics(t *testing.T) {
 			cortex_querier_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
 			cortex_querier_bucket_store_series_merge_duration_seconds_count 9
 
-			# HELP cortex_querier_bucket_store_series_refetches_total TSDB: Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.
+			# HELP cortex_querier_bucket_store_series_refetches_total Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.
 			# TYPE cortex_querier_bucket_store_series_refetches_total counter
 			cortex_querier_bucket_store_series_refetches_total 743127
 
-			# HELP cortex_querier_bucket_store_series_result_series TSDB: Number of series observed in the final result of a query.
+			# HELP cortex_querier_bucket_store_series_result_series Number of series observed in the final result of a query.
 			# TYPE cortex_querier_bucket_store_series_result_series summary
 			cortex_querier_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_querier_bucket_store_series_result_series_count 6
@@ -178,12 +178,12 @@ func BenchmarkMetricsCollections10000(b *testing.B) {
 func benchmarkMetricsCollection(b *testing.B, users int) {
 	mainReg := prometheus.NewRegistry()
 
-	tsdbMetrics := newTSDBBucketStoreMetrics()
+	tsdbMetrics := NewBucketStoreMetrics()
 	mainReg.MustRegister(tsdbMetrics)
 
 	base := 123456.0
 	for i := 0; i < users; i++ {
-		tsdbMetrics.addUserRegistry(fmt.Sprintf("user-%d", i), populateTSDBBucketStoreMetrics(base*float64(i)))
+		tsdbMetrics.AddUserRegistry(fmt.Sprintf("user-%d", i), populateMockedBucketStoreMetrics(base*float64(i)))
 	}
 
 	b.ResetTimer()
@@ -192,9 +192,9 @@ func benchmarkMetricsCollection(b *testing.B, users int) {
 	}
 }
 
-func populateTSDBBucketStoreMetrics(base float64) *prometheus.Registry {
+func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	reg := prometheus.NewRegistry()
-	m := newBucketStoreMetrics(reg)
+	m := newMockedBucketStoreMetrics(reg)
 
 	m.blocksLoaded.Add(1 * base)
 	m.blockLoads.Add(2 * base)
@@ -256,7 +256,7 @@ func populateTSDBBucketStoreMetrics(base float64) *prometheus.Registry {
 }
 
 // copied from Thanos, pkg/store/bucket.go
-type bucketStoreMetrics struct {
+type mockedBucketStoreMetrics struct {
 	blocksLoaded          prometheus.Gauge
 	blockLoads            prometheus.Counter
 	blockLoadFailures     prometheus.Counter
@@ -282,8 +282,8 @@ type bucketStoreMetrics struct {
 	cachedPostingsCompressedSizeBytes    prometheus.Counter
 }
 
-func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
-	var m bucketStoreMetrics
+func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMetrics {
+	var m mockedBucketStoreMetrics
 
 	m.blockLoads = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_loads_total",

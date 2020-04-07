@@ -8,9 +8,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// This struct aggregates metrics exported by Thanos Bucket Store
+// BucketStoreMetrics aggregates metrics exported by Thanos Bucket Store
 // and re-exports those aggregates as Cortex metrics.
-type tsdbBucketStoreMetrics struct {
+type BucketStoreMetrics struct {
 	// Maps userID -> registry
 	regsMu sync.Mutex
 	regs   map[string]*prometheus.Registry
@@ -38,66 +38,66 @@ type tsdbBucketStoreMetrics struct {
 	cachedPostingsCompressedSizeBytes    *prometheus.Desc
 }
 
-func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
-	return &tsdbBucketStoreMetrics{
+func NewBucketStoreMetrics() *BucketStoreMetrics {
+	return &BucketStoreMetrics{
 		regs: map[string]*prometheus.Registry{},
 
 		blockLoads: prometheus.NewDesc(
 			"cortex_querier_bucket_store_block_loads_total",
-			"TSDB: Total number of remote block loading attempts.",
+			"Total number of remote block loading attempts.",
 			nil, nil),
 		blockLoadFailures: prometheus.NewDesc(
 			"cortex_querier_bucket_store_block_load_failures_total",
-			"TSDB: Total number of failed remote block loading attempts.",
+			"Total number of failed remote block loading attempts.",
 			nil, nil),
 		blockDrops: prometheus.NewDesc(
 			"cortex_querier_bucket_store_block_drops_total",
-			"TSDB: Total number of local blocks that were dropped.",
+			"Total number of local blocks that were dropped.",
 			nil, nil),
 		blockDropFailures: prometheus.NewDesc(
 			"cortex_querier_bucket_store_block_drop_failures_total",
-			"TSDB: Total number of local blocks that failed to be dropped.",
+			"Total number of local blocks that failed to be dropped.",
 			nil, nil),
 		blocksLoaded: prometheus.NewDesc(
 			"cortex_querier_bucket_store_blocks_loaded",
-			"TSDB: Number of currently loaded blocks.",
+			"Number of currently loaded blocks.",
 			nil, nil),
 		seriesDataTouched: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_data_touched",
-			"TSDB: How many items of a data type in a block were touched for a single series request.",
+			"How many items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataFetched: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_data_fetched",
-			"TSDB: How many items of a data type in a block were fetched for a single series request.",
+			"How many items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeTouched: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_data_size_touched_bytes",
-			"TSDB: Size of all items of a data type in a block were touched for a single series request.",
+			"Size of all items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeFetched: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_data_size_fetched_bytes",
-			"TSDB: Size of all items of a data type in a block were fetched for a single series request.",
+			"Size of all items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesBlocksQueried: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_blocks_queried",
-			"TSDB: Number of blocks in a bucket store that were touched to satisfy a query.",
+			"Number of blocks in a bucket store that were touched to satisfy a query.",
 			nil, nil),
 
 		seriesGetAllDuration: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_get_all_duration_seconds",
-			"TSDB: Time it takes until all per-block prepares and preloads for a query are finished.",
+			"Time it takes until all per-block prepares and preloads for a query are finished.",
 			nil, nil),
 		seriesMergeDuration: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_merge_duration_seconds",
-			"TSDB: Time it takes to merge sub-results from all queried blocks into a single result.",
+			"Time it takes to merge sub-results from all queried blocks into a single result.",
 			nil, nil),
 		seriesRefetches: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_refetches_total",
-			"TSDB: Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
+			"Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
 			"cortex_querier_bucket_store_series_result_series",
-			"TSDB: Number of series observed in the final result of a query.",
+			"Number of series observed in the final result of a query.",
 			nil, nil),
 
 		cachedPostingsCompressions: prometheus.NewDesc(
@@ -123,13 +123,13 @@ func newTSDBBucketStoreMetrics() *tsdbBucketStoreMetrics {
 	}
 }
 
-func (m *tsdbBucketStoreMetrics) addUserRegistry(user string, reg *prometheus.Registry) {
+func (m *BucketStoreMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
 	m.regsMu.Lock()
 	m.regs[user] = reg
 	m.regsMu.Unlock()
 }
 
-func (m *tsdbBucketStoreMetrics) registries() map[string]*prometheus.Registry {
+func (m *BucketStoreMetrics) registries() map[string]*prometheus.Registry {
 	regs := map[string]*prometheus.Registry{}
 
 	m.regsMu.Lock()
@@ -141,7 +141,7 @@ func (m *tsdbBucketStoreMetrics) registries() map[string]*prometheus.Registry {
 	return regs
 }
 
-func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
+func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.blockLoads
 	out <- m.blockLoadFailures
 	out <- m.blockDrops
@@ -164,7 +164,7 @@ func (m *tsdbBucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.cachedPostingsCompressedSizeBytes
 }
 
-func (m *tsdbBucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
+func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
 
 	data.SendSumOfCounters(out, m.blockLoads, "thanos_bucket_store_block_loads_total")

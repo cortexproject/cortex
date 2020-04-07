@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: {{ include "cortex.tableManager.name" . }}
+    labels:
+        {{- include "cortex.labels" . | nindent 4 }}
+spec:
+    replicas: {{ .Values.tableManager.replicas }}
+    selector:
+        matchLabels:
+        {{- include "cortex.tableManager.selectorLabels" . | nindent 6 }}
+    template:
+        metadata:
+            labels:
+            {{- include "cortex.tableManager.selectorLabels" . | nindent 8 }}
+        spec:
+                {{- with .Values.imagePullSecrets }}
+            imagePullSecrets:
+                {{- toYaml . | nindent 8 }}
+                {{- end }}
+            serviceAccountName: {{ include "cortex.serviceAccountName" . }}
+            securityContext:
+                {{- toYaml .Values.podSecurityContext | nindent 8 }}
+                {{- with .Values.tableManager.nodeSelector }}
+            nodeSelector:
+                {{- toYaml . | nindent 8 }}
+                {{- end }}
+                {{- with .Values.tableManager.affinity }}
+            affinity:
+                {{- toYaml . | nindent 8 }}
+                {{- end }}
+                {{- with .Values.tableManager.tolerations }}
+            tolerations:
+                {{- toYaml . | nindent 8 }}
+                {{- end }}
+            volumes:
+                - name: config
+                  secret:
+                      secretName: {{ include "cortex.configSecret.name" . }}
+            containers:
+                - name: {{ include "cortex.tableManager.name" . }}
+                  securityContext:
+                        {{- toYaml .Values.securityContext | nindent 12 }}
+                  image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+                  imagePullPolicy: {{ .Values.image.pullPolicy }}
+                  args:
+                      - "-target=table-manager"
+                        {{- include "cortex.common.containerArgs" . | nindent 12 }}
+                  ports:
+                      - containerPort: {{ include "cortex.config.httpListenPort" . }}
+                        name: http
+                        protocol: TCP
+                      - containerPort: {{ include "cortex.config.grpcListenPort" . }}
+                        name: grpc
+                        protocol: TCP
+                  volumeMounts:
+                      - name: config
+                        readOnly: true
+                        mountPath: "/etc/cortex/"
+                  readinessProbe:
+                      httpGet:
+                          path: /ready
+                          port: {{ include "cortex.config.httpListenPort" . }}
+                      initialDelaySeconds: 15
+                      timeoutSeconds: 1
+                  resources:
+        {{- toYaml .Values.tableManager.resources | nindent 12 }}

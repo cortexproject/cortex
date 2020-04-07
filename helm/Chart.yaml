@@ -1,0 +1,7 @@
+apiVersion: v2
+name: cortex
+description: "Cortex: horizontally scalable, highly available, multi-tenant, long term Prometheus."
+icon: https://cortexmetrics.io/images/cortex-horizontal.svg
+type: application
+version: 0.1.0
+appVersion: v1.0.0

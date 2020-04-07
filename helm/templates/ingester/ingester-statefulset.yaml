@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "cortex.ingester.name" . }}
+  labels:
+  {{- include "cortex.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "cortex.ingester.name" . }}
+  replicas: {{ .Values.ingester.replicas }}
+  selector:
+    matchLabels:
+  {{- include "cortex.ingester.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+    {{- include "cortex.ingester.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cortex.serviceAccountName" . }}
+      securityContext:
+      {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.ingester.nodeSelector }}
+      nodeSelector:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ingester.affinity }}
+      affinity:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ingester.tolerations }}
+      tolerations:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "cortex.configSecret.name" . }}
+      containers:
+        - name: {{ include "cortex.ingester.name" . }}
+          securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "-target=ingester"
+          {{- include "cortex.common.containerArgs" . | nindent 12 }}
+          ports:
+            - containerPort: {{ include "cortex.config.httpListenPort" . }}
+              name: http
+              protocol: TCP
+            - containerPort: {{ include "cortex.config.grpcListenPort" . }}
+              name: grpc
+              protocol: TCP
+            - containerPort: {{ .Values.config.memberlist.bind_port }}
+              name: gossip
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              readOnly: true
+              mountPath: "/etc/cortex/"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ include "cortex.config.httpListenPort" . }}
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
+          resources:
+  {{- toYaml .Values.ingester.resources | nindent 12 }}

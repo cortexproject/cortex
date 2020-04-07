@@ -1,0 +1,112 @@
+image:
+  repository: quay.io/cortexproject/cortex
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name:
+
+podSecurityContext: {}
+# fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+#   - ALL
+# readOnlyRootFilesystem: true
+# runAsNonRoot: true
+# runAsUser: 1000
+
+distributor:
+  replicas: 2
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ingester:
+  replicas: 3
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+querier:
+  replicas: 2
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+queryFrontend:
+  replicas: 2
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+tableManager:
+  replicas: 1
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# https://cortexmetrics.io/docs/configuration/configuration-file/
+config:
+  auth_enabled: false
+  server:
+    http_listen_port: 80
+    grpc_listen_port: 9095
+    log_level: "info"
+  schema:
+    configs:
+      - from: "2020-03-01"
+        store: cassandra
+        object_store: cassandra
+        schema: v9
+        index:
+          prefix: "index_"
+          period: 168h
+        chunks:
+          prefix: "chunk_"
+          period: 168h
+  storage:
+    cassandra:
+      addresses: "cassandra"
+      keyspace: "cortex"
+      replication_factor: 1
+      auth: true
+      username: "cassandra"
+      password: "cassandra"
+  ingester:
+    lifecycler:
+      join_after: 0s
+      min_ready_duration: "30s"
+      ring:
+        replication_factor: 3
+        kvstore:
+          store: "memberlist"
+  distributor:
+    ring:
+      kvstore:
+        store: "memberlist"
+  memberlist:
+    bind_port: 7946
+  table_manager:
+    retention_deletes_enabled: false
+    retention_period: 0s
+
+
+
+

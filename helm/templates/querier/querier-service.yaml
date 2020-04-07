@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cortex.querier.name" . }}
+  labels:
+  {{- include "cortex.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ include "cortex.config.httpListenPort" . }}
+      protocol: TCP
+      name: http
+    - port: {{ include "cortex.config.grpcListenPort" . }}
+      protocol: TCP
+      name: grpc
+  selector:
+  {{- include "cortex.querier.selectorLabels" . | nindent 4 }}

@@ -90,16 +90,16 @@ func (a *API) registerRoute(path string, handler http.Handler, auth bool, method
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
 }
 
-func (a *API) registerRoutesWithPrefix(path string, handler http.Handler, auth bool, methods ...string) {
-	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
+func (a *API) registerRoutesWithPrefix(prefix string, handler http.Handler, auth bool, methods ...string) {
+	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "prefix", prefix, "auth", auth)
 	if auth {
 		handler = a.authMiddleware.Wrap(handler)
 	}
 	if len(methods) == 0 {
-		a.server.HTTP.Path(path).Handler(handler)
+		a.server.HTTP.PathPrefix(prefix).Handler(handler)
 		return
 	}
-	a.server.HTTP.PathPrefix(path).Methods(methods...).Handler(handler)
+	a.server.HTTP.PathPrefix(prefix).Methods(methods...).Handler(handler)
 }
 
 // Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.

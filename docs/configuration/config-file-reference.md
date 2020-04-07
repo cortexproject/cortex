@@ -700,6 +700,11 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m0s]
 
+# Set interval to delay the evaluation of rules to ensure they underlying
+# metrics have been pushed to cortex. Default
+# CLI flag: -ruler.evaluation-delay
+[evaluation_delay: <duration> | default = 0s]
+
 # How frequently to poll for rule changes
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m0s]

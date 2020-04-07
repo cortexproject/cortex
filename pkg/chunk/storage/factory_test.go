@@ -81,7 +81,7 @@ func TestCustomIndexClient(t *testing.T) {
 
 	for _, tc := range []struct {
 		indexClientName         string
-		indexClientFactories    indexClientFactories
+		indexClientFactories    indexStoreFactories
 		errorExpected           bool
 		expectedIndexClientType reflect.Type
 		expectedTableClientType reflect.Type
@@ -93,7 +93,7 @@ func TestCustomIndexClient(t *testing.T) {
 		},
 		{
 			indexClientName: "boltdb",
-			indexClientFactories: indexClientFactories{
+			indexClientFactories: indexStoreFactories{
 				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
 					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
 				},
@@ -103,7 +103,7 @@ func TestCustomIndexClient(t *testing.T) {
 		},
 		{
 			indexClientName: "boltdb",
-			indexClientFactories: indexClientFactories{
+			indexClientFactories: indexStoreFactories{
 				tableClientFactoryFunc: func() (client chunk.TableClient, e error) {
 					return newBoltDBCustomTableClient(cfg.BoltDBConfig.Directory)
 				},
@@ -113,7 +113,7 @@ func TestCustomIndexClient(t *testing.T) {
 		},
 		{
 			indexClientName: "boltdb",
-			indexClientFactories: indexClientFactories{
+			indexClientFactories: indexStoreFactories{
 				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
 					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
 				},
@@ -130,7 +130,7 @@ func TestCustomIndexClient(t *testing.T) {
 		},
 	} {
 		if tc.indexClientFactories.indexClientFactoryFunc != nil || tc.indexClientFactories.tableClientFactoryFunc != nil {
-			RegisterIndexType(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
+			RegisterIndexStore(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
 		}
 
 		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg)
@@ -148,7 +148,7 @@ func TestCustomIndexClient(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedTableClientType, reflect.TypeOf(tableClient))
 		}
-		unregisterAllCustomIndexClients()
+		unregisterAllCustomIndexStores()
 	}
 }
 

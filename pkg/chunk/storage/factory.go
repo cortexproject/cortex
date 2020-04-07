@@ -28,7 +28,7 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
-type indexClientFactories struct {
+type indexStoreFactories struct {
 	indexClientFactoryFunc IndexClientFactoryFunc
 	tableClientFactoryFunc TableClientFactoryFunc
 }
@@ -39,17 +39,17 @@ type IndexClientFactoryFunc func() (chunk.IndexClient, error)
 // TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
 type TableClientFactoryFunc func() (chunk.TableClient, error)
 
-var customIndexClients = map[string]indexClientFactories{}
+var customIndexStores = map[string]indexStoreFactories{}
 
-// RegisterIndexType is used for registering a custom index type.
+// RegisterIndexStore is used for registering a custom index type.
 // When an index type is registered here with same name as existing types, the registered one takes the precedence.
-func RegisterIndexType(name string, indexClientFactory IndexClientFactoryFunc, tableClientFactory TableClientFactoryFunc) {
-	customIndexClients[name] = indexClientFactories{indexClientFactory, tableClientFactory}
+func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, tableClientFactory TableClientFactoryFunc) {
+	customIndexStores[name] = indexStoreFactories{indexClientFactory, tableClientFactory}
 }
 
 // useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]indexClientFactories{}
+func unregisterAllCustomIndexStores() {
+	customIndexStores = map[string]indexStoreFactories{}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -162,7 +162,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	if indexClientFactory, ok := customIndexClients[name]; ok {
+	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
 			return indexClientFactory.indexClientFactoryFunc()
 		}
@@ -243,7 +243,7 @@ func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client,
 
 // NewTableClient makes a new table client based on the configuration.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-	if indexClientFactory, ok := customIndexClients[name]; ok {
+	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.tableClientFactoryFunc != nil {
 			return indexClientFactory.tableClientFactoryFunc()
 		}

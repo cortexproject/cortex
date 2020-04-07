@@ -232,21 +232,21 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, err
 	}
 	if len(resp.Kvs) == 0 {
-		return nil, codec.ErrNotFound
+		return nil, nil
 	} else if len(resp.Kvs) != 1 {
-		return nil, fmt.Errorf("got %d kvs, expected 1", len(resp.Kvs))
+		return nil, fmt.Errorf("got %d kvs, expected 1 or 0", len(resp.Kvs))
 	}
 	return c.codec.Decode(resp.Kvs[0].Value)
 }
 
 // Delete implements kv.Client.
-func (c *Client) Delete(ctx context.Context, key string) error {
+func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
 	resp, err := c.cli.Delete(ctx, key)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if resp.Deleted != 1 {
-		return codec.ErrNotFound
+	if resp.Deleted == 0 {
+		return false, nil
 	}
-	return nil
+	return true, nil
 }

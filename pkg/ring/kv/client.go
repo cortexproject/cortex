@@ -72,10 +72,11 @@ type Client interface {
 	List(ctx context.Context, prefix string) ([]string, error)
 
 	// Get a specific key.  Will use a codec to deserialise key to appropriate type.
+	// If the key does not exist, Get will return nil and no error.
 	Get(ctx context.Context, key string) (interface{}, error)
 
-	// Delete a specific key.
-	Delete(ctx context.Context, key string) error
+	// Delete a specific key. Returns true if an object was deleted.
+	Delete(ctx context.Context, key string) (bool, error)
 
 	// CAS stands for Compare-And-Swap.  Will call provided callback f with the
 	// current value of the key and allow callback to return a different value.

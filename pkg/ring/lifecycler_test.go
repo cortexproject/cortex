@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -179,9 +178,6 @@ func TestRingRestart(t *testing.T) {
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		if err == codec.ErrNotFound {
-			return false
-		}
 		require.NoError(t, err)
 		return checkNormalised(d, "ing1")
 	})
@@ -196,9 +192,6 @@ func TestRingRestart(t *testing.T) {
 	// Check the new ingester picked up the same token
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		if err == codec.ErrNotFound {
-			return false
-		}
 		require.NoError(t, err)
 		l2Tokens := l2.getTokens()
 		return checkNormalised(d, "ing1") &&
@@ -210,7 +203,7 @@ func TestRingRestart(t *testing.T) {
 type MockClient struct {
 	ListFunc        func(ctx context.Context, prefix string) ([]string, error)
 	GetFunc         func(ctx context.Context, key string) (interface{}, error)
-	DeleteFunc      func(ctx context.Context, key string) error
+	DeleteFunc      func(ctx context.Context, key string) (bool, error)
 	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
 	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
@@ -232,12 +225,12 @@ func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
 	return nil, nil
 }
 
-func (m *MockClient) Delete(ctx context.Context, key string) error {
+func (m *MockClient) Delete(ctx context.Context, key string) (bool, error) {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(ctx, key)
 	}
 
-	return nil
+	return false, nil
 }
 
 func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
@@ -322,11 +315,6 @@ func TestTokensOnDisk(t *testing.T) {
 	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-
-		// If the ring doesn't exist yet, wait until it does.
-		if err == codec.ErrNotFound {
-			return false
-		}
 		require.NoError(t, err)
 
 		desc, ok := d.(*Desc)
@@ -352,9 +340,6 @@ func TestTokensOnDisk(t *testing.T) {
 	var actTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		if err == codec.ErrNotFound {
-			return false
-		}
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
@@ -415,9 +400,6 @@ func TestJoinInLeavingState(t *testing.T) {
 	// Check that the lifecycler was able to join after coming up in LEAVING
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
-		if err == codec.ErrNotFound {
-			return false
-		}
 		require.NoError(t, err)
 
 		desc, ok := d.(*Desc)

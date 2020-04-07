@@ -55,11 +55,14 @@ func (m metrics) Get(ctx context.Context, key string) (interface{}, error) {
 	return result, err
 }
 
-func (m metrics) Delete(ctx context.Context, key string) error {
+func (m metrics) Delete(ctx context.Context, key string) (bool, error) {
+	var result bool
 	err := instrument.CollectedRequest(ctx, "Delete", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		return m.c.Delete(ctx, key)
+		var err error
+		result, err = m.c.Delete(ctx, key)
+		return err
 	})
-	return err
+	return result, err
 }
 
 func (m metrics) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {

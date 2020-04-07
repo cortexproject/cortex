@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -216,9 +215,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	}
 
 	desc, err := i.KVStore.Get(ctx, i.RingKey)
-	if err == codec.ErrNotFound {
-		return fmt.Errorf("no ring returned from the KV store")
-	} else if err != nil {
+	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to the KV store", "ring", i.RingName, "err", err)
 		return fmt.Errorf("error talking to the KV store: %s", err)
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/stretchr/testify/require"
@@ -71,20 +70,21 @@ func TestKV_List_Delete(t *testing.T) {
 				err := kv.kv.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return key, false, nil
 				})
-				require.NoError(t, err)
+				require.NoError(t, err, "could not create key")
 			}
 
 			// Get list of keys and sort them
 			keys, err := kv.kv.List(context.Background(), "")
-			require.NoError(t, err)
+			require.NoError(t, err, "could not list keys")
 			sort.Strings(keys)
-			require.Equal(t, keysToCreate, keys)
+			require.Equal(t, keysToCreate, keys, "returned key paths did not match created paths")
 		})
 
 		t.Run(kv.name+"_delete", func(t *testing.T) {
 			// Delete key before we create it
-			err = kv.kv.Delete(context.Background(), "key-to-delete")
-			require.Equal(t, codec.ErrNotFound, err, "unxpected error")
+			ok, err := kv.kv.Delete(context.Background(), "key-to-delete")
+			require.NoError(t, err)
+			require.False(t, ok)
 
 			// Create that key
 			err = kv.kv.CAS(context.Background(), "key-to-delete", func(in interface{}) (out interface{}, retry bool, err error) {
@@ -93,13 +93,14 @@ func TestKV_List_Delete(t *testing.T) {
 			require.NoError(t, err, "object could not be created")
 
 			// Now delete it
-			err = kv.kv.Delete(context.Background(), "key-to-delete")
-			require.NoError(t, err, "object failed to be deleted")
+			ok, err = kv.kv.Delete(context.Background(), "key-to-delete")
+			require.NoError(t, err)
+			require.True(t, ok)
 
 			// Get it back
 			v, err := kv.kv.Get(context.Background(), "key-to-delete")
 			require.Nil(t, v, "object was not deleted")
-			require.Equal(t, codec.ErrNotFound, err, "unexpected error")
+			require.NoError(t, err, "unexpected error")
 		})
 	}
 }

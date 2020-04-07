@@ -312,29 +312,26 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	} else if kvp == nil {
-		return nil, codec.ErrNotFound
+		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
 }
 
 // Delete implements kv.Delete.
-func (c *Client) Delete(ctx context.Context, key string) error {
+func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
 	options := &consul.QueryOptions{
 		AllowStale:        !c.cfg.ConsistentReads,
 		RequireConsistent: c.cfg.ConsistentReads,
 	}
 	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 	if err != nil {
-		return err
+		return false, err
 	} else if kvp == nil {
-		return codec.ErrNotFound
+		return false, nil
 	}
 
-	_, _, err = c.kv.DeleteCAS(kvp, writeOptions.WithContext(ctx))
-	if err != nil {
-		return err
-	}
-	return nil
+	ok, _, err := c.kv.DeleteCAS(kvp, writeOptions.WithContext(ctx))
+	return ok, err
 }
 
 func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {

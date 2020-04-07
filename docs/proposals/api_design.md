@@ -46,17 +46,19 @@ Under this path prefix, Cortex will act as a Alertmanager web server. In this ca
 
 A number of endpoints currently exist that are not under the `/api/prom` prefix that provide basic web interfaces and trigger operations for cortex services. These endpoints will all be placed under a url with their service name as a prefix if it is applicable.
 
-| Current           | Proposed                      |
-| ----------------- | ----------------------------- |
-| `/config`         | `/config`                     |
-| `/ring`           | `/distributor/ring`           |
-| `/ruler_ring`     | `/ruler/ring`                 |
-| `/compactor_ring` | `/compactor/ring`             |
-| `/ha-tracker`     | `/distributor/ring`           |
-| `/all_user_stats` | `/distributor/all_user_stats` |
-| `/user_stats`     | `/distributor/user_stats`     |
-| `/flush`          | `/ingester/flush`             |
-| `/shutdown`       | `/ingester/shutdown`          |
+| Current               | Proposed                           |
+| --------------------- | ---------------------------------- |
+| `/status`             | `/multitenant-alertmanager/status` |
+| `/config`             | `/config`                          |
+| `/ring`               | `/ingester/ring`                   |
+| `/ruler_ring`         | `/ruler/ring`                      |
+| `/compactor/ring`     | `/compactor/ring`                  |
+| `/store-gateway/ring` | `/store-gateway/ring`              |
+| `/ha-tracker`         | `/distributor/ha_tracker`          |
+| `/all_user_stats`     | `/distributor/all_user_stats`      |
+| `/user_stats`         | `/distributor/user_stats`          |
+| `/flush`              | `/ingester/flush`                  |
+| `/shutdown`           | `/ingester/shutdown`               |
 
 ### Path Versioning
 
@@ -71,3 +73,7 @@ In cases where Cortex is run as a single binary, the Alertmanager module will on
 ### Implementation
 
 This will be implemented by adding an API module to the Cortex service. This module will handle setting up all the required HTTP routes with Cortex. It will be designed around a set of interfaces required to fulfill the API. This is similar to how the `v1` Prometheus API is implemented.
+
+### Style
+
+* All new paths will utilize `_` instead of `-` for their url to conform with Prometheus and its use of the underscore in the `query_range` endpoint. This applies to all operations endpoints. Component names in the path can still contain dashes. For example: `/store-gateway/ring`.

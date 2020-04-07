@@ -2,8 +2,12 @@ package ruler
 
 import (
 	"context"
+	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
@@ -77,4 +81,33 @@ func (t *tsdb) StartTime() (int64, error) {
 // Close closes the storage and all its underlying resources.
 func (t *tsdb) Close() error {
 	return nil
+}
+
+// engineQueryFunc returns a new query function that executes instant queries against
+// the given engine, after subtracting the provided delay from the instant query timestamp.
+// It converts scalar into vector results.
+// Based on https://github.com/prometheus/prometheus/blob/ecda6013edf58bf645c6661b9f78ccce03b1f315/rules/manager.go#L162-L187
+func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		t = t.Add(-delay)
+		q, err := engine.NewInstantQuery(q, qs, t)
+		if err != nil {
+			return nil, err
+		}
+		res := q.Exec(ctx)
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		switch v := res.Value.(type) {
+		case promql.Vector:
+			return v, nil
+		case promql.Scalar:
+			return promql.Vector{promql.Sample{
+				Point:  promql.Point(v),
+				Metric: labels.Labels{},
+			}}, nil
+		default:
+			return nil, errors.New("rule result is not a vector or scalar")
+		}
+	}
 }

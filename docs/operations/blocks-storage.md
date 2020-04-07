@@ -265,10 +265,10 @@ tsdb:
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
     # ignore blocks that are marked for deletion with some delay. This ensures
     # store can still serve blocks that are meant to be deleted but do not have
-    # a replacement yet.Default is 24h, half of the default value for
+    # a replacement yet.Default is 6h, half of the default value for
     # -compactor.deletion-delay.
     # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
-    [ignore_deletion_mark_delay: <duration> | default = 24h0m0s]
+    [ignore_deletion_mark_delay: <duration> | default = 6h0m0s]
 
   # How frequently does Cortex try to compact TSDB head. Block is only created
   # if data covers smallest block range. Must be greater than 0 and max 5
@@ -398,7 +398,7 @@ compactor:
   # compactor is ignoring the deletion because it's compacting the block at the
   # same time.
   # CLI flag: -compactor.deletion-delay
-  [deletion_delay: <duration> | default = 48h0m0s]
+  [deletion_delay: <duration> | default = 12h0m0s]
 
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and

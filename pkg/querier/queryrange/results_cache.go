@@ -123,13 +123,13 @@ func NewResultsCacheMiddleware(
 			logger:    logger,
 			cfg:       cfg,
 			next:      next,
-			cache:     c,
+			cache:     cache.NewSnappy(c),
 			limits:    limits,
 			merger:    merger,
 			extractor: extractor,
 			splitter:  splitter,
 		}
-	}), c, nil
+	}), cache.NewSnappy(c), nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {

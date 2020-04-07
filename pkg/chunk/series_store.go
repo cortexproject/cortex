@@ -90,7 +90,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Cl
 			limits:  limits,
 			Fetcher: fetcher,
 		},
-		writeDedupeCache: writeDedupeCache,
+		writeDedupeCache: cache.NewSnappy(writeDedupeCache),
 	}, nil
 }
 

@@ -102,7 +102,7 @@ type decodeResponse struct {
 func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetcher, error) {
 	c := &Fetcher{
 		storage:        storage,
-		cache:          cacher,
+		cache:          cache.NewSnappy(cacher),
 		cacheStubs:     cacheStubs,
 		decodeRequests: make(chan decodeRequest),
 	}

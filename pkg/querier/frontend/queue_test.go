@@ -93,27 +93,32 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 func BenchmarkGetNextRequest(b *testing.B) {
 	var config Config
 	flagext.DefaultValues(&config)
-	config.MaxOutstandingPerTenant = 1
+	config.MaxOutstandingPerTenant = 2
 
-	const numTenants = 2
+	const numTenants = 50
 
-	f, _ := setupFrontend(config)
+	frontends := make([]*Frontend, 0, b.N)
 
-	for i := 0; i < config.MaxOutstandingPerTenant; i++ {
-		for j := 0; j < numTenants; j++ {
-			userID := strconv.Itoa(j)
-			ctx := user.InjectOrgID(context.Background(), userID)
+	for n := 0; n < b.N; n++ {
+		f, _ := setupFrontend(config)
 
-			_ = f.queueRequest(ctx, testReq(ctx))
+		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
+			for j := 0; j < numTenants; j++ {
+				userID := strconv.Itoa(j)
+				ctx := user.InjectOrgID(context.Background(), userID)
+
+				_ = f.queueRequest(ctx, testReq(ctx))
+			}
 		}
+
+		frontends = append(frontends, f)
 	}
 
 	ctx := context.Background()
 	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
-		for j := 0; j < config.MaxOutstandingPerTenant*numTenants-1; j++ {
-			_, _ = f.getNextRequest(ctx)
+		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
+			_, _ = frontends[i].getNextRequest(ctx)
 		}
 	}
 }

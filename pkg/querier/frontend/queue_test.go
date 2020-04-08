@@ -100,14 +100,20 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	frontends := make([]*Frontend, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		f, _ := setupFrontend(config)
+		f, err := setupFrontend(config)
+		if err != nil {
+			b.Fatal(err)
+		}
 
 		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
 				userID := strconv.Itoa(j)
 				ctx := user.InjectOrgID(context.Background(), userID)
 
-				_ = f.queueRequest(ctx, testReq(ctx))
+				err = f.queueRequest(ctx, testReq(ctx))
+				if err != nil {
+					b.Fatal(err)
+				}
 			}
 		}
 
@@ -118,7 +124,10 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
-			_, _ = frontends[i].getNextRequest(ctx)
+			_, err := frontends[i].getNextRequest(ctx)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	}
 }

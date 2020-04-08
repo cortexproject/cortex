@@ -147,12 +147,12 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 			return err
 		}
 
-		jobs <- job{
-			userID: user,
-			store:  bs,
+		select {
+		case jobs <- job{userID: user, store: bs}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-
-		return nil
 	})
 
 	// Wait until all workers completed.

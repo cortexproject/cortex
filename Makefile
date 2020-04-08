@@ -119,7 +119,9 @@ $(EXES):
 protos: $(PROTO_GOS)
 
 %.pb.go:
-	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
+	@# to configure all such relative paths.
+	protoc -I $(GOPATH)/src:./vendor/github.com/thanos-io/thanos/pkg/store:./vendor/github.com/thanos-io/thanos/pkg/store/storepb:./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
 	misspell -error docs

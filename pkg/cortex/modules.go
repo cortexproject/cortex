@@ -483,7 +483,8 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Target == AlertManager)
+
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Target == AlertManager, t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 

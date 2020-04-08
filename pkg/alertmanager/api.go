@@ -7,7 +7,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/gorilla/mux"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 )
@@ -18,21 +17,7 @@ type UserConfig struct {
 	AlertmanagerConfig string            `yaml:"alertmanager_config"`
 }
 
-// RegisterRoutes registers the configs API HTTP routes with the provided Router.
-func (am *MultitenantAlertmanager) RegisterRoutes(r *mux.Router) {
-	for _, route := range []struct {
-		name, method, path string
-		handler            http.HandlerFunc
-	}{
-		{"get_config", "GET", "/alerts", am.getUserConfig},
-		{"set_config", "POST", "/alerts", am.setUserConfig},
-		{"delete_config", "DELETE", "/alerts", am.deleteUserConfig},
-	} {
-		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
-	}
-}
-
-func (am *MultitenantAlertmanager) getUserConfig(w http.ResponseWriter, r *http.Request) {
+func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -80,7 +65,7 @@ func (am *MultitenantAlertmanager) getUserConfig(w http.ResponseWriter, r *http.
 	}
 }
 
-func (am *MultitenantAlertmanager) setUserConfig(w http.ResponseWriter, r *http.Request) {
+func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -127,7 +112,7 @@ func (am *MultitenantAlertmanager) setUserConfig(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusOK)
 }
 
-func (am *MultitenantAlertmanager) deleteUserConfig(w http.ResponseWriter, r *http.Request) {
+func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)

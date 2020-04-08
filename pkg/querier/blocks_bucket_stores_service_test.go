@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func TestUserStore_InitialSync(t *testing.T) {
+func TestBucketStoresService_InitialSync(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -62,7 +62,7 @@ func TestUserStore_InitialSync(t *testing.T) {
 			bucketClient := &tsdb.BucketClientMock{}
 			testData.setup(bucketClient)
 
-			us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+			us, err := NewBucketStoresService(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 			if err == nil {
 				err = services.StartAndAwaitRunning(context.Background(), us)
 				defer services.StopAndAwaitTerminated(context.Background(), us) //nolint:errcheck
@@ -74,7 +74,7 @@ func TestUserStore_InitialSync(t *testing.T) {
 	}
 }
 
-func TestUserStore_syncUserStores(t *testing.T) {
+func TestBucketStoresService_syncUsersBlocks(t *testing.T) {
 	cfg, cleanup := prepareStorageConfig(t)
 	cfg.BucketStore.TenantSyncConcurrency = 2
 	defer cleanup()
@@ -85,7 +85,7 @@ func TestUserStore_syncUserStores(t *testing.T) {
 	bucketClient := &tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
 
-	us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+	us, err := NewBucketStoresService(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), us))
 	defer services.StopAndAwaitTerminated(context.Background(), us) //nolint:errcheck

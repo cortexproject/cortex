@@ -20,7 +20,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type UserStore struct {
+// BucketStoresService wraps BucketStores into a service which triggers both the initial
+// sync at startup and a periodic sync honoring configured the sync interval.
+type BucketStoresService struct {
 	services.Service
 
 	cfg    tsdb.Config
@@ -28,13 +30,13 @@ type UserStore struct {
 	stores *BucketStores
 }
 
-func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*UserStore, error) {
+func NewBucketStoresService(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*BucketStoresService, error) {
 	stores, err := NewBucketStores(cfg, nil, bucketClient, logLevel, logger, registerer)
 	if err != nil {
 		return nil, err
 	}
 
-	s := &UserStore{
+	s := &BucketStoresService{
 		cfg:    cfg,
 		stores: stores,
 		logger: logger,
@@ -45,7 +47,7 @@ func NewUserStore(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel loggin
 	return s, nil
 }
 
-func (s *UserStore) starting(ctx context.Context) error {
+func (s *BucketStoresService) starting(ctx context.Context) error {
 	if s.cfg.BucketStore.SyncInterval > 0 {
 		// Run an initial blocks sync, required in order to be able to serve queries.
 		if err := s.stores.InitialSync(ctx); err != nil {
@@ -57,7 +59,7 @@ func (s *UserStore) starting(ctx context.Context) error {
 }
 
 // syncStoresLoop periodically calls SyncBlocks() to synchronize the blocks for all tenants.
-func (s *UserStore) syncStoresLoop(ctx context.Context) error {
+func (s *BucketStoresService) syncStoresLoop(ctx context.Context) error {
 	// If the sync is disabled we never sync blocks, which means the bucket store
 	// will be empty and no series will be returned once queried.
 	if s.cfg.BucketStore.SyncInterval <= 0 {
@@ -93,7 +95,7 @@ func (s *UserStore) syncStoresLoop(ctx context.Context) error {
 }
 
 // Series makes a series request to the underlying user bucket store.
-func (s *UserStore) Series(ctx context.Context, userID string, req *storepb.SeriesRequest) ([]*storepb.Series, storage.Warnings, error) {
+func (s *BucketStoresService) Series(ctx context.Context, userID string, req *storepb.SeriesRequest) ([]*storepb.Series, storage.Warnings, error) {
 	// Inject the user ID into the context metadata, as expected by BucketStores.
 	ctx = setUserIDToGRPCContext(ctx, userID)
 

@@ -5,7 +5,10 @@ weight: 1
 slug: http-api-design
 ---
 
-# HTTP API Design
+- Author: @jtlisi
+- Reviewers: @pracucci, @pstibrany, @khaines, @gouthamve
+- Date: March 2020
+- Status: Accepted
 
 ## Overview
 

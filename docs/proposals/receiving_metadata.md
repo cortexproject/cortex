@@ -5,8 +5,6 @@ weight: 1
 slug: support-metadata-api
 ---
 
-# Support /api/v1/metadata in Cortex
-
 - Author: @gotjosh
 - Reviewers: @gouthamve, @pracucci
 - Date: March 2020

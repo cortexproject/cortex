@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -115,10 +114,10 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 			// Assert on the instance registered within the ring.
 			instanceDesc, ok := getInstanceFromStore(t, store, testInstanceID)
 			assert.True(t, ok)
-			assert.Equal(t, fmt.Sprintf("%s:%d", cfg.InstanceAddr, cfg.InstancePort), instanceDesc.GetAddr())
+			assert.Equal(t, cfg.Addr, instanceDesc.GetAddr())
 			assert.Equal(t, testData.registerState, instanceDesc.GetState())
 			assert.Equal(t, testData.registerTokens, Tokens(instanceDesc.GetTokens()))
-			assert.Equal(t, cfg.InstanceZone, instanceDesc.GetZone())
+			assert.Equal(t, cfg.Zone, instanceDesc.GetZone())
 		})
 	}
 }
@@ -275,10 +274,9 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 
 func prepareBasicLifecyclerConfig() BasicLifecyclerConfig {
 	return BasicLifecyclerConfig{
-		InstanceID:          testInstanceID,
-		InstanceAddr:        "127.0.0.1",
-		InstancePort:        12345,
-		InstanceZone:        "test-zone",
+		ID:                  testInstanceID,
+		Addr:                "127.0.0.1:12345",
+		Zone:                "test-zone",
 		HeartbeatPeriod:     time.Minute,
 		TokensObservePeriod: 0,
 		NumTokens:           5,

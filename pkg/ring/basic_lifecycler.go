@@ -34,10 +34,16 @@ type BasicLifecyclerDelegate interface {
 }
 
 type BasicLifecyclerConfig struct {
-	InstanceID          string
-	InstanceAddr        string
-	InstancePort        int
-	InstanceZone        string
+	// ID is the instance unique ID.
+	ID string
+
+	// Addr is the instance address, in the form "address:port".
+	Addr string
+
+	// Zone is the instance availability zone. Can be an empty string
+	// if zone awareness is unused.
+	Zone string
+
 	KVStore             kv.Config
 	HeartbeatPeriod     time.Duration
 	TokensObservePeriod time.Duration
@@ -87,13 +93,11 @@ func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, del
 
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecyclerWithStoreClient(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
-	instanceAddr := fmt.Sprintf("%s:%d", cfg.InstanceAddr, cfg.InstancePort)
-
 	l := &BasicLifecycler{
 		cfg:          cfg,
-		instanceID:   cfg.InstanceID,
-		instanceAddr: instanceAddr,
-		instanceZone: cfg.InstanceZone,
+		instanceID:   cfg.ID,
+		instanceAddr: cfg.Addr,
+		instanceZone: cfg.Zone,
 		ringName:     ringName,
 		ringKey:      ringKey,
 		logger:       logger,

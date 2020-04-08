@@ -519,7 +519,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
-		metadata := make([]*client.MetricMetadata, 0, len(indexes))
+		var metadata []*client.MetricMetadata
 
 		for _, i := range indexes {
 			if i >= initialMetadataIndex {
@@ -580,16 +580,16 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 	_, err = c.Push(ctx, &req)
 
 	if len(metadata) > 0 {
+		ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		if err != nil {
+			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		}
+	}
+	if len(timeseries) > 0 {
 		ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
 		if err != nil {
 			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
 		}
-	}
-	if len(timeseries) > 0 {
-		if err != nil {
-			ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
-		}
-		ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
 	}
 
 	return err

@@ -48,11 +48,11 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 		},
 	}
 
-	leaveDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
+	persistencyDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, leaveDelegate)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -88,11 +88,11 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 		},
 	}
 
-	leaveDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
+	persistencyDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, leaveDelegate)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
@@ -106,6 +106,67 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 	actualTokens, err := LoadTokensFromFile(tokensFile.Name())
 	require.NoError(t, err)
 	assert.Equal(t, storedTokens, actualTokens)
+}
+
+func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheRing(t *testing.T) {
+	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	require.NoError(t, err)
+	defer os.Remove(tokensFile.Name()) //nolint:errcheck
+
+	// Store some tokens to the file.
+	storedTokens := Tokens{6, 7, 8, 9, 10}
+	differentTokens := Tokens{1, 2, 3, 4, 5}
+	require.NoError(t, storedTokens.StoreToFile(tokensFile.Name()))
+
+	tests := map[string]struct {
+		initialState   IngesterState
+		initialTokens  Tokens
+		expectedState  IngesterState
+		expectedTokens Tokens
+	}{
+		"instance already registered in the ring without tokens": {
+			initialState:   PENDING,
+			initialTokens:  nil,
+			expectedState:  ACTIVE,
+			expectedTokens: storedTokens,
+		},
+		"instance already registered in the ring with tokens": {
+			initialState:   JOINING,
+			initialTokens:  differentTokens,
+			expectedState:  JOINING,
+			expectedTokens: differentTokens,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			testDelegate := &mockDelegate{
+				onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+					return instanceDesc.GetState(), instanceDesc.GetTokens()
+				},
+			}
+
+			persistencyDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
+
+			ctx := context.Background()
+			cfg := prepareBasicLifecyclerConfig()
+			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
+			require.NoError(t, err)
+			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
+
+			// Add the instance to the ring.
+			require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				ringDesc := NewDesc()
+				ringDesc.AddIngester(cfg.ID, cfg.Addr, cfg.Zone, testData.initialTokens, testData.initialState)
+				return ringDesc, true, nil
+			}))
+
+			require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
+			assert.Equal(t, testData.expectedState, lifecycler.GetState())
+			assert.Equal(t, testData.expectedTokens, lifecycler.GetTokens())
+			assert.True(t, lifecycler.IsRegistered())
+		})
+	}
 }
 
 // TestDelegatesChain tests chaining all provided delegates together.

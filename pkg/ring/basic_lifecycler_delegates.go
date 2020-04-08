@@ -59,8 +59,8 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}
 
-	// Do not load tokens from disk if the instance is already in the ring.
-	if instanceExists {
+	// Do not load tokens from disk if the instance is already in the ring and has some tokens.
+	if instanceExists && len(instanceDesc.GetTokens()) > 0 {
 		level.Info(d.logger).Log("msg", "not loading tokens from file, instance already in the ring")
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}

@@ -207,6 +207,35 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 	assert.True(t, onStoppingCalled)
 }
 
+func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
+	ctx := context.Background()
+	cfg := prepareBasicLifecyclerConfig()
+	cfg.HeartbeatPeriod = 10 * time.Millisecond
+
+	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
+
+	registerTokens := Tokens{1, 2, 3, 4, 5}
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (state IngesterState, tokens Tokens) {
+		return ACTIVE, registerTokens
+	}
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
+
+	// At this point the instance has been registered to the ring. Now we delete it
+	// from the ring to simulate a ring storage reset and we expect the next heartbeat
+	// will restore it.
+	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		return NewDesc(), true, nil
+	}))
+
+	test.Poll(t, time.Second, true, func() interface{} {
+		desc, ok := getInstanceFromStore(t, store, testInstanceID)
+		return ok && desc.GetTimestamp() > 0 && desc.GetState() == ACTIVE && Tokens(desc.GetTokens()).Equals(registerTokens) && desc.GetAddr() == cfg.Addr
+	})
+}
+
 func TestBasicLifecycler_ChangeState(t *testing.T) {
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
@@ -270,6 +299,41 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 	assert.NotContains(t, lifecycler.GetTokens(), uint32(1))
 	assert.NotContains(t, lifecycler.GetTokens(), uint32(2))
 	assert.NotContains(t, lifecycler.GetTokens(), uint32(3))
+}
+
+func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExistEvenIfNotChanged(t *testing.T) {
+	ctx := context.Background()
+	cfg := prepareBasicLifecyclerConfig()
+	cfg.HeartbeatPeriod = time.Hour // No heartbeat during the test.
+
+	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
+
+	registerTokens := Tokens{1, 2, 3, 4, 5}
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (state IngesterState, tokens Tokens) {
+		return ACTIVE, registerTokens
+	}
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
+
+	// At this point the instance has been registered to the ring. Now we delete it
+	// from the ring to simulate a ring storage reset.
+	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		return NewDesc(), true, nil
+	}))
+
+	// Run a noop update instance, but since the instance is not in the ring we do expect
+	// it will added back anyway.
+	require.NoError(t, lifecycler.updateInstance(ctx, func(_ Desc, desc *IngesterDesc) bool {
+		return false
+	}))
+
+	desc, ok := getInstanceFromStore(t, store, testInstanceID)
+	require.True(t, ok)
+	assert.Equal(t, ACTIVE, desc.GetState())
+	assert.Equal(t, registerTokens, Tokens(desc.GetTokens()))
+	assert.Equal(t, cfg.Addr, desc.GetAddr())
 }
 
 func prepareBasicLifecyclerConfig() BasicLifecyclerConfig {

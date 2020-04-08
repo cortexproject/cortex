@@ -380,7 +380,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 		}
 
 		changed := update(*ringDesc, &instanceDesc)
-		if !changed {
+		if ok && !changed {
 			return nil, false, nil
 		}
 

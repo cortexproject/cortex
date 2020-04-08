@@ -194,18 +194,6 @@ func (m *mockKV) Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, 
 	return nil, nil
 }
 
-func (m *mockKV) DeleteCAS(key *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if _, ok := m.kvps[key.Key]; !ok {
-		return false, nil, nil
-	}
-
-	delete(m.kvps, key.Key)
-	return true, nil, nil
-}
-
 func (m *mockKV) ResetIndex() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

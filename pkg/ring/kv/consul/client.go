@@ -48,7 +48,6 @@ type kv interface {
 	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
 	List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
 	Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error)
-	DeleteCAS(key *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 

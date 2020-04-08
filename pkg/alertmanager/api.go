@@ -54,7 +54,11 @@ func (am *MultitenantAlertmanager) getUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if err == alerts.ErrNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 

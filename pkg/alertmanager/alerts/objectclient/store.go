@@ -72,7 +72,12 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.Ale
 
 // GetAlertConfig returns a specified users alertmanager configuration
 func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
-	return a.getAlertConfig(ctx, alertPrefix+user)
+	cfg, err := a.getAlertConfig(ctx, alertPrefix+user)
+	if err == chunk.ErrStorageObjectNotFound {
+		return cfg, alerts.ErrNotFound
+	}
+
+	return cfg, err
 }
 
 // SetAlertConfig sets a specified users alertmanager configuration

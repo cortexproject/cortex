@@ -27,13 +27,13 @@ import (
 type BlockQueryable struct {
 	services.Service
 
-	us *UserStore
+	us *BucketStoresService
 }
 
 // NewBlockQueryable returns a client to query a block store
 func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", util.Logger)
+	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer))
 	}
 
-	us, err := NewUserStore(cfg, bucketClient, logLevel, util.Logger, registerer)
+	us, err := NewBucketStoresService(cfg, bucketClient, logLevel, util.Logger, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +54,11 @@ func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prome
 }
 
 func (b *BlockQueryable) starting(ctx context.Context) error {
-	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start UserStore")
+	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start BucketStoresService")
 }
 
 func (b *BlockQueryable) stopping(_ error) error {
-	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping UserStore")
+	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping BucketStoresService")
 }
 
 // Querier returns a new Querier on the storage.
@@ -85,7 +85,7 @@ type blocksQuerier struct {
 	ctx        context.Context
 	mint, maxt int64
 	userID     string
-	userStores *UserStore
+	userStores *BucketStoresService
 }
 
 func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

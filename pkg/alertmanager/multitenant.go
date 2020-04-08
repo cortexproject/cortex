@@ -313,11 +313,8 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for _, cfg := range cfgs {
 		err := am.setConfig(cfg)
 		if err != nil {
-			userInvalidConfig.WithLabelValues(cfg.User).Set(1)
 			invalid++
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
-		} else {
-			userInvalidConfig.WithLabelValues(cfg.User).Set(0)
 		}
 	}
 
@@ -331,7 +328,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
 			userAM.Pause()
 			delete(am.cfgs, user)
-			userInvalidConfig.WithLabelValues(user).Set(0)
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}

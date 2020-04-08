@@ -240,13 +240,7 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 // Delete implements kv.Client.
-func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
-	resp, err := c.cli.Delete(ctx, key)
-	if err != nil {
-		return false, err
-	}
-	if resp.Deleted == 0 {
-		return false, nil
-	}
-	return true, nil
+func (c *Client) Delete(ctx context.Context, key string) error {
+	_, err := c.cli.Delete(ctx, key)
+	return err
 }

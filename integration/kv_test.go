@@ -81,26 +81,20 @@ func TestKV_List_Delete(t *testing.T) {
 		})
 
 		t.Run(kv.name+"_delete", func(t *testing.T) {
-			// Delete key before we create it
-			ok, err := kv.kv.Delete(context.Background(), "key-to-delete")
-			require.NoError(t, err)
-			require.False(t, ok)
-
-			// Create that key
+			// Create a key
 			err = kv.kv.CAS(context.Background(), "key-to-delete", func(in interface{}) (out interface{}, retry bool, err error) {
 				return "key-to-delete", false, nil
 			})
 			require.NoError(t, err, "object could not be created")
 
 			// Now delete it
-			ok, err = kv.kv.Delete(context.Background(), "key-to-delete")
+			err = kv.kv.Delete(context.Background(), "key-to-delete")
 			require.NoError(t, err)
-			require.True(t, ok)
 
 			// Get it back
 			v, err := kv.kv.Get(context.Background(), "key-to-delete")
-			require.Nil(t, v, "object was not deleted")
 			require.NoError(t, err, "unexpected error")
+			require.Nil(t, v, "object was not deleted")
 		})
 	}
 }

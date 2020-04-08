@@ -58,6 +58,6 @@ func (c *prefixedKVClient) Get(ctx context.Context, key string) (interface{}, er
 }
 
 // Delete removes a given object from its key.
-func (c *prefixedKVClient) Delete(ctx context.Context, key string) (bool, error) {
+func (c *prefixedKVClient) Delete(ctx context.Context, key string) error {
 	return c.client.Delete(ctx, c.prefix+key)
 }

@@ -57,8 +57,8 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 // Delete is part of kv.Client interface.
-func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
-	return false, errors.New("memberlist does not support Delete")
+func (c *Client) Delete(ctx context.Context, key string) error {
+	return errors.New("memberlist does not support Delete")
 }
 
 // CAS is part of kv.Client interface

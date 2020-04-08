@@ -203,7 +203,7 @@ func TestRingRestart(t *testing.T) {
 type MockClient struct {
 	ListFunc        func(ctx context.Context, prefix string) ([]string, error)
 	GetFunc         func(ctx context.Context, key string) (interface{}, error)
-	DeleteFunc      func(ctx context.Context, key string) (bool, error)
+	DeleteFunc      func(ctx context.Context, key string) error
 	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
 	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
@@ -225,12 +225,12 @@ func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
 	return nil, nil
 }
 
-func (m *MockClient) Delete(ctx context.Context, key string) (bool, error) {
+func (m *MockClient) Delete(ctx context.Context, key string) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(ctx, key)
 	}
 
-	return false, nil
+	return nil
 }
 
 func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {

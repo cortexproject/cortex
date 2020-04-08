@@ -47,6 +47,7 @@ type kv interface {
 	CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
 	List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
+	Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error)
 	DeleteCAS(key *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
@@ -318,20 +319,9 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 // Delete implements kv.Delete.
-func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
-	options := &consul.QueryOptions{
-		AllowStale:        !c.cfg.ConsistentReads,
-		RequireConsistent: c.cfg.ConsistentReads,
-	}
-	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
-	if err != nil {
-		return false, err
-	} else if kvp == nil {
-		return false, nil
-	}
-
-	ok, _, err := c.kv.DeleteCAS(kvp, writeOptions.WithContext(ctx))
-	return ok, err
+func (c *Client) Delete(ctx context.Context, key string) error {
+	_, err := c.kv.Delete(key, writeOptions.WithContext(ctx))
+	return err
 }
 
 func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {

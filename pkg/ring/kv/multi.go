@@ -296,7 +296,7 @@ func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) 
 }
 
 // Delete is a part of the kv.Client interface.
-func (m *MultiClient) Delete(ctx context.Context, key string) (bool, error) {
+func (m *MultiClient) Delete(ctx context.Context, key string) error {
 	_, kv := m.getPrimaryClient()
 	return kv.client.Delete(ctx, key)
 }

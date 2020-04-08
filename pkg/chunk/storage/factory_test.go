@@ -153,6 +153,6 @@ func TestCustomIndexClient(t *testing.T) {
 }
 
 // useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]IndexClientFactoryFunc{}
+func unregisterAllCustomIndexStores() {
+	customIndexStores = map[string]indexStoreFactories{}
 }

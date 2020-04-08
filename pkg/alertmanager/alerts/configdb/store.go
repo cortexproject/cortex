@@ -65,12 +65,7 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 }
 
 func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
-	cfgs, err := c.ListAlertConfigs(ctx)
-	if err != nil {
-		return alerts.AlertConfigDesc{}, err
-	}
-
-	cfg, exists := cfgs[user]
+	cfg, exists := c.alertConfigs[user]
 
 	if !exists {
 		return alerts.AlertConfigDesc{}, alerts.ErrNotFound

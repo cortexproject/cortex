@@ -69,11 +69,8 @@ type BasicLifecycler struct {
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
-	instanceID   string
-	instanceAddr string
-	instanceZone string
-	ringName     string
-	ringKey      string
+	ringName string
+	ringKey  string
 
 	// The current instance state.
 	currState        sync.RWMutex
@@ -93,17 +90,14 @@ func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, del
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecyclerWithStoreClient(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
 	l := &BasicLifecycler{
-		cfg:          cfg,
-		instanceID:   cfg.ID,
-		instanceAddr: cfg.Addr,
-		instanceZone: cfg.Zone,
-		ringName:     ringName,
-		ringKey:      ringKey,
-		logger:       logger,
-		store:        store,
-		delegate:     delegate,
-		metrics:      NewBasicLifecyclerMetrics(ringName, reg),
-		actorChan:    make(chan func()),
+		cfg:       cfg,
+		ringName:  ringName,
+		ringKey:   ringKey,
+		logger:    logger,
+		store:     store,
+		delegate:  delegate,
+		metrics:   NewBasicLifecyclerMetrics(ringName, reg),
+		actorChan: make(chan func()),
 	}
 
 	l.metrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -113,15 +107,15 @@ func NewBasicLifecyclerWithStoreClient(cfg BasicLifecyclerConfig, ringName, ring
 }
 
 func (l *BasicLifecycler) GetInstanceID() string {
-	return l.instanceID
+	return l.cfg.ID
 }
 
 func (l *BasicLifecycler) GetInstanceAddr() string {
-	return l.instanceAddr
+	return l.cfg.Addr
 }
 
 func (l *BasicLifecycler) GetInstanceZone() string {
-	return l.instanceZone
+	return l.cfg.Zone
 }
 
 func (l *BasicLifecycler) GetState() IngesterState {
@@ -248,26 +242,26 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		ringDesc := getOrCreateRingDesc(in)
 
 		var exists bool
-		instanceDesc, exists = ringDesc.Ingesters[l.instanceID]
+		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
 		if exists {
-			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.instanceID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()))
+			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()))
 		} else {
-			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.instanceID, "ring", l.ringName)
+			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ring", l.ringName)
 		}
 
 		// We call the delegate to get the desired state right after the initialization.
-		state, tokens := l.delegate.OnRingInstanceRegister(l, *ringDesc, exists, l.instanceID, instanceDesc)
+		state, tokens := l.delegate.OnRingInstanceRegister(l, *ringDesc, exists, l.cfg.ID, instanceDesc)
 
 		// Ensure tokens are sorted.
 		sort.Sort(tokens)
 
 		if !exists {
-			instanceDesc = ringDesc.AddIngester(l.instanceID, l.instanceAddr, l.instanceZone, tokens, state)
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
 			return ringDesc, true, nil
 		}
 
 		if instanceDesc.State != state || !tokens.Equals(instanceDesc.Tokens) {
-			instanceDesc = ringDesc.AddIngester(l.instanceID, l.instanceAddr, l.instanceZone, tokens, state)
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
 			return ringDesc, true, nil
 		}
 
@@ -324,7 +318,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 
 	err := l.updateInstance(ctx, func(r Desc, i *IngesterDesc) bool {
 		// At this point, we should have the same tokens as we have registered before.
-		actualTokens, takenTokens := r.TokensFor(l.instanceID)
+		actualTokens, takenTokens := r.TokensFor(l.cfg.ID)
 
 		if actualTokens.Equals(l.GetTokens()) {
 			// Tokens have been verified. No need to change them.
@@ -363,7 +357,7 @@ func (l *BasicLifecycler) unregisterInstance(ctx context.Context) error {
 		}
 
 		ringDesc := in.(*Desc)
-		ringDesc.RemoveIngester(l.instanceID)
+		ringDesc.RemoveIngester(l.cfg.ID)
 		return ringDesc, true, nil
 	})
 
@@ -387,13 +381,13 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 		ringDesc := getOrCreateRingDesc(in)
 
 		var ok bool
-		instanceDesc, ok = ringDesc.Ingesters[l.instanceID]
+		instanceDesc, ok = ringDesc.Ingesters[l.cfg.ID]
 
 		// This could happen if the backend store restarted (and content deleted)
 		// or the instance has been forgotten. In this case, we do re-insert it.
 		if !ok {
 			level.Warn(l.logger).Log("msg", "instance missing in the ring, adding it back", "ring", l.ringName)
-			instanceDesc = ringDesc.AddIngester(l.instanceID, l.instanceAddr, l.instanceZone, l.GetTokens(), l.GetState())
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState())
 		}
 
 		changed := update(*ringDesc, &instanceDesc)
@@ -401,7 +395,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 			return nil, false, nil
 		}
 
-		ringDesc.Ingesters[l.instanceID] = instanceDesc
+		ringDesc.Ingesters[l.cfg.ID] = instanceDesc
 		return ringDesc, true, nil
 	})
 

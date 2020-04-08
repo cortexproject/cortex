@@ -54,9 +54,8 @@ type BasicLifecyclerConfig struct {
 // logic at different stages of the lifecycle. This lifecycler should be
 // used to build higher level lifecyclers.
 //
-// Contract:
-// 1. This lifecycler never change the instance state. It's the delegate
-//    responsibility to ChangeState().
+// This lifecycler never change the instance state. It's the delegate
+// responsibility to ChangeState().
 type BasicLifecycler struct {
 	*services.BasicService
 

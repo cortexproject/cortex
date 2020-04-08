@@ -109,16 +109,11 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 }
 
 func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheRing(t *testing.T) {
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
-	require.NoError(t, err)
-	defer os.Remove(tokensFile.Name()) //nolint:errcheck
-
-	// Store some tokens to the file.
 	storedTokens := Tokens{6, 7, 8, 9, 10}
 	differentTokens := Tokens{1, 2, 3, 4, 5}
-	require.NoError(t, storedTokens.StoreToFile(tokensFile.Name()))
 
 	tests := map[string]struct {
+		storedTokens   Tokens
 		initialState   IngesterState
 		initialTokens  Tokens
 		expectedState  IngesterState
@@ -140,6 +135,13 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+			require.NoError(t, err)
+			defer os.Remove(tokensFile.Name()) //nolint:errcheck
+
+			// Store some tokens to the file.
+			require.NoError(t, storedTokens.StoreToFile(tokensFile.Name()))
+
 			testDelegate := &mockDelegate{
 				onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
 					return instanceDesc.GetState(), instanceDesc.GetTokens()

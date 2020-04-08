@@ -1,34 +1,27 @@
 package cortex
 
 import (
-	"errors"
 	"fmt"
-	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/route"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
-	"github.com/cortexproject/cortex/pkg/configs/api"
+	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -38,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/push"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -49,6 +41,7 @@ type ModuleName string
 
 // The various modules that make up Cortex.
 const (
+	API                 ModuleName = "api"
 	Ring                ModuleName = "ring"
 	RuntimeConfig       ModuleName = "runtime-config"
 	Overrides           ModuleName = "overrides"
@@ -97,6 +90,22 @@ func (m *ModuleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return m.Set(s)
 }
 
+func (t *Cortex) initAPI(cfg *Config) (services.Service, error) {
+	cfg.API.ServerPrefix = cfg.Server.PathPrefix
+	cfg.API.LegacyHTTPPrefix = cfg.HTTPPrefix
+
+	a, err := api.New(cfg.API, t.server, util.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	t.api = a
+
+	t.api.RegisterAPI(cfg)
+
+	return nil, nil
+}
+
 func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	serv, err := server.New(cfg.Server)
 	if err != nil {
@@ -117,8 +126,6 @@ func (t *Cortex) initServer(cfg *Config) (services.Service, error) {
 	}
 
 	s := NewServerService(t.server, servicesToWaitFor)
-	serv.HTTP.HandleFunc("/", indexHandler)
-	serv.HTTP.HandleFunc("/config", configHandler(cfg))
 
 	return s, nil
 }
@@ -131,7 +138,9 @@ func (t *Cortex) initRing(cfg *Config) (serv services.Service, err error) {
 		return nil, err
 	}
 	prometheus.MustRegister(t.ring)
-	t.server.HTTP.Handle("/ring", t.ring)
+
+	t.api.RegisterRing(t.ring)
+
 	return t.ring, nil
 }
 
@@ -171,9 +180,8 @@ func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error)
 		return
 	}
 
-	t.server.HTTP.HandleFunc("/all_user_stats", t.distributor.AllUserStatsHandler)
-	t.server.HTTP.Handle("/api/prom/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.distributor.Push)))
-	t.server.HTTP.Handle("/ha-tracker", t.distributor.Replicas)
+	t.api.RegisterDistributor(t.distributor, cfg.Distributor)
+
 	return t.distributor, nil
 }
 
@@ -187,31 +195,8 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	}
 
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
-	api := v1.NewAPI(
-		engine,
-		queryable,
-		querier.DummyTargetRetriever{},
-		querier.DummyAlertmanagerRetriever{},
-		func() config.Config { return config.Config{} },
-		map[string]string{}, // TODO: include configuration flags
-		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false,                              // Disable admin APIs.
-		util.Logger,
-		querier.DummyRulesRetriever{},
-		0, 0, 0, // Remote read samples and concurrency limit.
-		regexp.MustCompile(".*"),
-		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
-		&v1.PrometheusVersion{},
-	)
-	promRouter := route.New().WithPrefix("/api/prom/api/v1")
-	api.Register(promRouter)
 
-	subrouter := t.server.HTTP.PathPrefix("/api/prom").Subrouter()
-	subrouter.PathPrefix("/api/v1").Handler(fakeRemoteAddr(t.httpAuthMiddleware.Wrap(promRouter)))
-	subrouter.Path("/read").Handler(t.httpAuthMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
-	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
-	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
+	t.api.RegisterQuerier(queryable, engine, t.distributor)
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
@@ -221,20 +206,6 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	}
 
 	return worker, nil
-}
-
-// Latest Prometheus requires r.RemoteAddr to be set to addr:port, otherwise it reject the request.
-// Requests to Querier sometimes doesn't have that (if they are fetched from Query-Frontend).
-// Prometheus uses this when logging queries to QueryLogger, but Cortex doesn't call engine.SetQueryLogger to set one.
-//
-// Can be removed when (if) https://github.com/prometheus/prometheus/pull/6840 is merged.
-func fakeRemoteAddr(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.RemoteAddr == "" {
-			r.RemoteAddr = "127.0.0.1:8888"
-		}
-		handler.ServeHTTP(w, r)
-	})
 }
 
 func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
@@ -268,10 +239,8 @@ func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	client.RegisterIngesterServer(t.server.GRPC, t.ingester)
-	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
-	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
-	t.server.HTTP.Handle("/push", t.httpAuthMiddleware.Wrap(push.Handler(cfg.Distributor, t.ingester.Push)))
+	t.api.RegisterIngester(t.ingester, cfg.Distributor)
+
 	return t.ingester, nil
 }
 
@@ -365,12 +334,8 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 	t.cache = cache
 	t.frontend.Wrap(tripperware)
 
-	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
-	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(
-		t.httpAuthMiddleware.Wrap(
-			t.frontend.Handler(),
-		),
-	)
+	t.api.RegisterQueryFrontend(t.frontend)
+
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
 		if t.cache != nil {
@@ -437,15 +402,9 @@ func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	if cfg.Ruler.EnableAPI {
-		util.WarnExperimentalUse("Ruler API")
+	// Expose HTTP endpoints.
+	t.api.RegisterRuler(t.ruler, cfg.Ruler.EnableAPI)
 
-		subrouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Subrouter()
-		t.ruler.RegisterRoutes(subrouter, t.httpAuthMiddleware)
-		ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
-	}
-
-	t.server.HTTP.Handle("/ruler_ring", t.ruler)
 	return t.ruler, nil
 }
 
@@ -455,7 +414,7 @@ func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	t.configAPI = api.New(t.configDB, cfg.Configs.API)
+	t.configAPI = configAPI.New(t.configDB, cfg.Configs.API)
 	t.configAPI.RegisterRoutes(t.server.HTTP)
 	return services.NewIdleService(nil, func(_ error) error {
 		t.configDB.Close()
@@ -468,11 +427,7 @@ func (t *Cortex) initAlertManager(cfg *Config) (serv services.Service, err error
 	if err != nil {
 		return
 	}
-	t.server.HTTP.PathPrefix("/status").Handler(t.alertmanager.GetStatusHandler())
-
-	// TODO this clashed with the queirer and the distributor, so we cannot
-	// run them in the same process.
-	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
+	t.api.RegisterAlertmanager(t.alertmanager, cfg.Target == AlertManager)
 	return t.alertmanager, nil
 }
 
@@ -486,8 +441,7 @@ func (t *Cortex) initCompactor(cfg *Config) (serv services.Service, err error) {
 	}
 
 	// Expose HTTP endpoints.
-	t.server.HTTP.HandleFunc("/compactor/ring", t.compactor.RingHandler)
-
+	t.api.RegisterCompactor(t.compactor)
 	return t.compactor, nil
 }
 
@@ -502,7 +456,7 @@ func (t *Cortex) initStoreGateway(cfg *Config) (serv services.Service, err error
 	t.storeGateway = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 
 	// Expose HTTP endpoints.
-	t.server.HTTP.HandleFunc("/store-gateway/ring", t.storeGateway.RingHandler)
+	t.api.RegisterStoreGateway(t.storeGateway)
 
 	return t.storeGateway, nil
 }
@@ -535,16 +489,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 		return nil, err
 	}
 
-	var deleteRequestHandler *purger.DeleteRequestHandler
-	deleteRequestHandler, err = purger.NewDeleteRequestHandler(t.deletesStore)
-	if err != nil {
-		return nil, err
-	}
-
-	adminRouter := t.server.HTTP.PathPrefix(cfg.HTTPPrefix + "/api/v1/admin/tsdb").Subrouter()
-
-	adminRouter.Path("/delete_series").Methods("PUT", "POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
-	adminRouter.Path("/delete_series").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
+	t.api.RegisterPurger(t.deletesStore)
 
 	return t.dataPurger, nil
 }
@@ -568,6 +513,11 @@ var modules = map[ModuleName]module{
 		service: (*Cortex).initServer,
 	},
 
+	API: {
+		deps:           []ModuleName{Server},
+		wrappedService: (*Cortex).initAPI,
+	},
+
 	RuntimeConfig: {
 		wrappedService: (*Cortex).initRuntimeConfig,
 	},
@@ -577,7 +527,7 @@ var modules = map[ModuleName]module{
 	},
 
 	Ring: {
-		deps:           []ModuleName{Server, RuntimeConfig, MemberlistKV},
+		deps:           []ModuleName{API, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initRing,
 	},
 
@@ -587,7 +537,7 @@ var modules = map[ModuleName]module{
 	},
 
 	Distributor: {
-		deps:           []ModuleName{Ring, Server, Overrides},
+		deps:           []ModuleName{Ring, API, Overrides},
 		wrappedService: (*Cortex).initDistributor,
 	},
 
@@ -601,17 +551,17 @@ var modules = map[ModuleName]module{
 	},
 
 	Ingester: {
-		deps:           []ModuleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
+		deps:           []ModuleName{Overrides, Store, API, RuntimeConfig, MemberlistKV},
 		wrappedService: (*Cortex).initIngester,
 	},
 
 	Flusher: {
-		deps:           []ModuleName{Store, Server},
+		deps:           []ModuleName{Store, API},
 		wrappedService: (*Cortex).initFlusher,
 	},
 
 	Querier: {
-		deps:           []ModuleName{Distributor, Store, Ring, Server, StoreQueryable},
+		deps:           []ModuleName{Distributor, Store, Ring, API, StoreQueryable},
 		wrappedService: (*Cortex).initQuerier,
 	},
 
@@ -621,12 +571,12 @@ var modules = map[ModuleName]module{
 	},
 
 	QueryFrontend: {
-		deps:           []ModuleName{Server, Overrides},
+		deps:           []ModuleName{API, Overrides},
 		wrappedService: (*Cortex).initQueryFrontend,
 	},
 
 	TableManager: {
-		deps:           []ModuleName{Server},
+		deps:           []ModuleName{API},
 		wrappedService: (*Cortex).initTableManager,
 	},
 
@@ -636,27 +586,27 @@ var modules = map[ModuleName]module{
 	},
 
 	Configs: {
-		deps:           []ModuleName{Server},
+		deps:           []ModuleName{API},
 		wrappedService: (*Cortex).initConfig,
 	},
 
 	AlertManager: {
-		deps:           []ModuleName{Server},
+		deps:           []ModuleName{API},
 		wrappedService: (*Cortex).initAlertManager,
 	},
 
 	Compactor: {
-		deps:           []ModuleName{Server},
+		deps:           []ModuleName{API},
 		wrappedService: (*Cortex).initCompactor,
 	},
 
 	StoreGateway: {
-		deps:           []ModuleName{Server},
+		deps:           []ModuleName{API},
 		wrappedService: (*Cortex).initStoreGateway,
 	},
 
 	DataPurger: {
-		deps:           []ModuleName{Store, DeleteRequestsStore, Server},
+		deps:           []ModuleName{Store, DeleteRequestsStore, API},
 		wrappedService: (*Cortex).initDataPurger,
 	},
 

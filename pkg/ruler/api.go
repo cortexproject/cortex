@@ -15,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
@@ -25,28 +24,6 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-// RegisterRoutes registers the ruler API HTTP routes with the provided Router.
-func (r *Ruler) RegisterRoutes(router *mux.Router, middleware middleware.Interface) {
-	// Routes for this API must be encoded to allow for various characters to be
-	// present in the path URL
-	router = router.UseEncodedPath()
-	for _, route := range []struct {
-		name, method, path string
-		handler            http.HandlerFunc
-	}{
-		{"get_rules", "GET", "/api/v1/rules", r.rules},
-		{"get_alerts", "GET", "/api/v1/alerts", r.alerts},
-		{"list_rules", "GET", "/rules", r.listRules},
-		{"list_rules_namespace", "GET", "/rules/{namespace}", r.listRules},
-		{"get_rulegroup", "GET", "/rules/{namespace}/{groupName}", r.getRuleGroup},
-		{"set_rulegroup", "POST", "/rules/{namespace}", r.createRuleGroup},
-		{"delete_rulegroup", "DELETE", "/rules/{namespace}/{groupName}", r.deleteRuleGroup},
-	} {
-		level.Debug(util.Logger).Log("msg", "ruler: registering route", "name", route.name, "method", route.method, "path", route.path)
-		router.Handle(route.path, middleware.Wrap(route.handler)).Methods(route.method).Name(route.name)
-	}
-}
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not pass a context to
@@ -142,7 +119,7 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	}
 }
 
-func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil || userID == "" {
@@ -234,7 +211,7 @@ func (r *Ruler) rules(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Ruler) alerts(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil || userID == "" {
@@ -412,7 +389,7 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 	return userID, namespace, group, nil
 }
 
-func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) ListRules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 
 	userID, namespace, _, err := parseRequest(req, false, false)
@@ -440,7 +417,7 @@ func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
 	marshalAndSend(formatted, w, logger)
 }
 
-func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
@@ -462,7 +439,7 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	marshalAndSend(formatted, w, logger)
 }
 
-func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
@@ -509,7 +486,7 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 	respondAccepted(w, logger)
 }
 
-func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 
 	userID, namespace, groupName, err := parseRequest(req, true, true)

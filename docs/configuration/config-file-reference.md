@@ -62,6 +62,15 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+api:
+  # HTTP URL path under which the Alertmanager ui and api will be served.
+  # CLI flag: -http.alertmanager-http-prefix
+  [alertmanager_http_prefix: <string> | default = "/alertmanager"]
+
+  # HTTP URL path under which the Prometheus api will be served.
+  # CLI flag: -http.prometheus-http-prefix
+  [prometheus_http_prefix: <string> | default = "/prometheus"]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]

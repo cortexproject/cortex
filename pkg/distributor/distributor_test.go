@@ -362,12 +362,12 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					})
 					require.NoError(t, err)
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-					d.Replicas = r
+					d.HATracker = r
 				}
 
 				userID, err := user.ExtractOrgID(ctx)
 				assert.NoError(t, err)
-				err = d.Replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
+				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)

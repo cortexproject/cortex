@@ -2,11 +2,9 @@ package cortex
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/server"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -52,52 +50,4 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 	}
 
 	return services.NewBasicService(nil, runFn, stoppingFn)
-}
-
-const indexPageContent = `
-<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="UTF-8">
-		<title>Cortex</title>
-	</head>
-	<body>
-		<h1>Cortex</h1>
-		<p>Admin Endpoints:</p>
-		<ul>
-			<li><a href="/ring">Ring Status</a></li>
-			<li><a href="/config">Current Config</a></li>
-			<li><a href="/all_user_stats">Usage Statistics</a></li>
-			<li><a href="/ha-tracker">HA Tracking Status</a></li>
-		</ul>
-
-		<p>Dangerous:</p>
-		<ul>
-			<li><a href="/flush">Trigger a Flush</a></li>
-			<li><a href="/shutdown">Trigger Ingester Shutdown</a></li>
-		</ul>
-	</body>
-</html>`
-
-func indexHandler(w http.ResponseWriter, _ *http.Request) {
-	if _, err := w.Write([]byte(indexPageContent)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func configHandler(cfg *Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := yaml.Marshal(cfg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/yaml")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(out); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
-		}
-	}
 }

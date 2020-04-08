@@ -125,7 +125,7 @@ type Distributor struct {
 	distributorsRing *ring.Lifecycler
 
 	// For handling HA replicas.
-	Replicas *haTracker
+	HATracker *haTracker
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -219,7 +219,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		Replicas:             replicas,
+		HATracker:            replicas,
 	}
 
 	subservices = append(subservices, d.ingesterPool)
@@ -318,7 +318,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.Replicas.checkReplica(ctx, userID, cluster, replica)
+	err := d.HATracker.checkReplica(ctx, userID, cluster, replica)
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err

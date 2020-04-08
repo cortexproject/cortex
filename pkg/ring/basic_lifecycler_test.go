@@ -298,9 +298,9 @@ func prepareBasicLifecyclerWithDelegate(cfg BasicLifecyclerConfig, delegate Basi
 }
 
 type mockDelegate struct {
-	onRegister      OnRingInstanceRegister
-	onTokensChanged OnRingInstanceTokensChanged
-	onStopping      OnRingInstanceStopping
+	onRegister      func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens)
+	onTokensChanged func(lifecycler *BasicLifecycler, tokens Tokens)
+	onStopping      func(lifecycler *BasicLifecycler)
 }
 
 func (m *mockDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {

@@ -33,10 +33,6 @@ type BasicLifecyclerDelegate interface {
 	OnRingInstanceStopping(lifecycler *BasicLifecycler)
 }
 
-type OnRingInstanceRegister func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens)
-type OnRingInstanceTokensChanged func(lifecycler *BasicLifecycler, tokens Tokens)
-type OnRingInstanceStopping func(lifecycler *BasicLifecycler)
-
 type BasicLifecyclerConfig struct {
 	InstanceID          string
 	InstanceAddr        string

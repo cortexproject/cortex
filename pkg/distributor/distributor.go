@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -354,10 +353,6 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 		nil
 }
 
-func (d *Distributor) validateMetadata(m *ingester_client.MetricMetadata, userID string) error {
-	return validation.ValidateMetadata(d.limits, userID, m)
-}
-
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -470,7 +465,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	for _, m := range req.Metadata {
-		err := d.validateMetadata(m, userID)
+		err := validation.ValidateMetadata(d.limits, userID, m)
 
 		if err != nil {
 			if firstPartialErr == nil {
@@ -519,49 +514,32 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
-	if len(metadataKeys) > 0 {
-		err = ring.DoBatch(ctx, subRing, metadataKeys, func(ingester ring.IngesterDesc, indexes []int) error {
-			metadata := make([]*client.MetricMetadata, 0, len(indexes))
-			for _, i := range indexes {
-				metadata = append(metadata, validatedMetadata[i])
-			}
+	keys := append(seriesKeys, metadataKeys...)
+	initialMetadataIndex := len(seriesKeys)
 
-			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-			defer cancel()
-			localCtx = user.InjectUserID(localCtx, userID)
+	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
+		var metadata []*client.MetricMetadata
 
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				localCtx = opentracing.ContextWithSpan(localCtx, sp)
-			}
-
-			return d.sendMetadata(localCtx, ingester, metadata)
-		}, func() {})
-		if err != nil {
-			// Metadata is a best-effort approach so we consider failures non-fatal, log them, and move on.
-			logger := util.WithContext(ctx, util.Logger)
-			level.Error(logger).Log("msg", "Failed to send metadata to ingesters", "err", err)
-		}
-	}
-
-	if len(seriesKeys) > 0 {
-		err = ring.DoBatch(ctx, subRing, seriesKeys, func(ingester ring.IngesterDesc, indexes []int) error {
-			timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
-			for _, i := range indexes {
+		for _, i := range indexes {
+			if i >= initialMetadataIndex {
+				metadata = append(metadata, validatedMetadata[i-initialMetadataIndex])
+			} else {
 				timeseries = append(timeseries, validatedTimeseries[i])
 			}
-
-			// Use a background context to make sure all ingesters get samples even if we return early
-			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-			defer cancel()
-			localCtx = user.InjectOrgID(localCtx, userID)
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				localCtx = opentracing.ContextWithSpan(localCtx, sp)
-			}
-			return d.sendSamples(localCtx, ingester, timeseries)
-		}, func() { client.ReuseSlice(req.Timeseries) })
-		if err != nil {
-			return nil, err
 		}
+
+		// Use a background context to make sure all ingesters get samples even if we return early
+		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+		defer cancel()
+		localCtx = user.InjectOrgID(localCtx, userID)
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			localCtx = opentracing.ContextWithSpan(localCtx, sp)
+		}
+		return d.send(localCtx, ingester, timeseries, metadata)
+	}, func() { client.ReuseSlice(req.Timeseries) })
+	if err != nil {
+		return nil, err
 	}
 	return &client.WriteResponse{}, firstPartialErr
 }
@@ -588,7 +566,7 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -597,32 +575,23 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 	req := client.WriteRequest{
 		Timeseries: timeseries,
+		Metadata:   metadata,
 	}
 	_, err = c.Push(ctx, &req)
 
-	ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
-	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+	if len(metadata) > 0 {
+		ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		if err != nil {
+			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		}
 	}
-	return err
-}
+	if len(timeseries) > 0 {
+		ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
+		if err != nil {
+			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+		}
+	}
 
-func (d *Distributor) sendMetadata(ctx context.Context, ingester ring.IngesterDesc, metadata []*client.MetricMetadata) error {
-	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
-	if err != nil {
-		return err
-	}
-	c := h.(ingester_client.IngesterClient)
-
-	req := client.WriteRequest{
-		Metadata: metadata,
-	}
-	_, err = c.Push(ctx, &req)
-
-	ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
-	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
-	}
 	return err
 }
 

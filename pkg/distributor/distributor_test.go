@@ -48,15 +48,20 @@ var (
 )
 
 func TestDistributor_Push(t *testing.T) {
-	metricNames := []string{
-		"cortex_distributor_latest_seen_sample_timestamp_seconds",
-	}
+	// Metrics to assert on.
+	lastSeenTimestamp := "cortex_distributor_latest_seen_sample_timestamp_seconds"
+	distributorAppend := "cortex_distributor_ingester_appends_total"
+	distributorAppendFailure := "cortex_distributor_ingester_append_failures_total"
 
+	type samplesIn struct {
+		num              int
+		startTimestampMs int64
+	}
 	for name, tc := range map[string]struct {
+		metricNames      []string
 		numIngesters     int
 		happyIngesters   int
-		samples          int
-		startTimestampMs int64
+		samples          samplesIn
 		metadata         int
 		expectedResponse *client.WriteResponse
 		expectedError    error
@@ -70,10 +75,10 @@ func TestDistributor_Push(t *testing.T) {
 		"A push to 3 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   3,
-			samples:          5,
+			samples:          samplesIn{num: 5, startTimestampMs: 123456789000},
 			metadata:         5,
 			expectedResponse: success,
-			startTimestampMs: 123456789000,
+			metricNames:      []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
@@ -83,10 +88,10 @@ func TestDistributor_Push(t *testing.T) {
 		"A push to 2 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   2,
-			samples:          5,
+			samples:          samplesIn{num: 5, startTimestampMs: 123456789000},
 			metadata:         5,
 			expectedResponse: success,
-			startTimestampMs: 123456789000,
+			metricNames:      []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
@@ -94,11 +99,11 @@ func TestDistributor_Push(t *testing.T) {
 			`,
 		},
 		"A push to 1 happy ingesters should fail": {
-			numIngesters:     3,
-			happyIngesters:   1,
-			samples:          10,
-			expectedError:    errFail,
-			startTimestampMs: 123456789000,
+			numIngesters:   3,
+			happyIngesters: 1,
+			samples:        samplesIn{num: 10, startTimestampMs: 123456789000},
+			expectedError:  errFail,
+			metricNames:    []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
@@ -106,11 +111,11 @@ func TestDistributor_Push(t *testing.T) {
 			`,
 		},
 		"A push to 0 happy ingesters should fail": {
-			numIngesters:     3,
-			happyIngesters:   0,
-			samples:          10,
-			expectedError:    errFail,
-			startTimestampMs: 123456789000,
+			numIngesters:   3,
+			happyIngesters: 0,
+			samples:        samplesIn{num: 10, startTimestampMs: 123456789000},
+			expectedError:  errFail,
+			metricNames:    []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
@@ -118,22 +123,60 @@ func TestDistributor_Push(t *testing.T) {
 			`,
 		},
 		"A push exceeding burst size should fail": {
-			numIngesters:     3,
-			happyIngesters:   3,
-			samples:          25,
-			metadata:         5,
-			expectedError:    httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 25 samples and 5 metadata"),
-			startTimestampMs: 123456789000,
+			numIngesters:   3,
+			happyIngesters: 3,
+			samples:        samplesIn{num: 25, startTimestampMs: 123456789000},
+			metadata:       5,
+			expectedError:  httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 25 samples and 5 metadata"),
+			metricNames:    []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.024
 			`,
 		},
+		"A push to ingesters should report the correct metrics with no metadata": {
+			numIngesters:     3,
+			happyIngesters:   2,
+			samples:          samplesIn{num: 1, startTimestampMs: 123456789000},
+			metadata:         0,
+			metricNames:      []string{distributorAppend, distributorAppendFailure},
+			expectedResponse: success,
+			expectedMetrics: `
+				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_append_failures_total counter
+				cortex_distributor_ingester_append_failures_total{ingester="2",type="samples"} 1
+				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_appends_total counter
+				cortex_distributor_ingester_appends_total{ingester="0",type="samples"} 1
+				cortex_distributor_ingester_appends_total{ingester="1",type="samples"} 1
+				cortex_distributor_ingester_appends_total{ingester="2",type="samples"} 1
+			`,
+		},
+		"A push to ingesters should report the correct metrics with no samples": {
+			numIngesters:     3,
+			happyIngesters:   2,
+			samples:          samplesIn{num: 0, startTimestampMs: 123456789000},
+			metadata:         1,
+			metricNames:      []string{distributorAppend, distributorAppendFailure},
+			expectedResponse: success,
+			expectedMetrics: `
+				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_append_failures_total counter
+				cortex_distributor_ingester_append_failures_total{ingester="2",type="metadata"} 1
+				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_appends_total counter
+				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="2",type="metadata"} 1
+			`,
+		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
 				latestSeenSampleTimestampPerUser.Reset()
+				ingesterAppends.Reset()
+				ingesterAppendFailures.Reset()
 
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
@@ -143,14 +186,14 @@ func TestDistributor_Push(t *testing.T) {
 				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
 				defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-				request := makeWriteRequest(tc.startTimestampMs, tc.samples, tc.metadata)
+				request := makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata)
 				response, err := d.Push(ctx, request)
 				assert.Equal(t, tc.expectedResponse, response)
 				assert.Equal(t, tc.expectedError, err)
 
 				// Check tracked Prometheus metrics.
 				if tc.expectedMetrics != "" {
-					err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), metricNames...)
+					err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), tc.metricNames...)
 					assert.NoError(t, err)
 				}
 			})

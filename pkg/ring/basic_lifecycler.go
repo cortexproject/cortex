@@ -44,7 +44,6 @@ type BasicLifecyclerConfig struct {
 	// if zone awareness is unused.
 	Zone string
 
-	KVStore             kv.Config
 	HeartbeatPeriod     time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
@@ -78,17 +77,7 @@ type BasicLifecycler struct {
 }
 
 // NewBasicLifecycler makes a new BasicLifecycler.
-func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
-	store, err := kv.NewClient(cfg.KVStore, GetCodec())
-	if err != nil {
-		return nil, errors.Wrap(err, "create KV store client")
-	}
-
-	return NewBasicLifecyclerWithStoreClient(cfg, ringName, ringKey, store, delegate, logger, reg)
-}
-
-// NewBasicLifecycler makes a new BasicLifecycler.
-func NewBasicLifecyclerWithStoreClient(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
+func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
 	l := &BasicLifecycler{
 		cfg:       cfg,
 		ringName:  ringName,

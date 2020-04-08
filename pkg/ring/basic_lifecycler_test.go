@@ -291,7 +291,7 @@ func prepareBasicLifecycler(cfg BasicLifecyclerConfig) (*BasicLifecycler, *mockD
 
 func prepareBasicLifecyclerWithDelegate(cfg BasicLifecyclerConfig, delegate BasicLifecyclerDelegate) (*BasicLifecycler, kv.Client, error) {
 	store := consul.NewInMemoryClient(GetCodec())
-	lifecycler, err := NewBasicLifecyclerWithStoreClient(cfg, testRingName, testRingKey, store, delegate, log.NewNopLogger(), nil)
+	lifecycler, err := NewBasicLifecycler(cfg, testRingName, testRingKey, store, delegate, log.NewNopLogger(), nil)
 	return lifecycler, store, err
 }
 

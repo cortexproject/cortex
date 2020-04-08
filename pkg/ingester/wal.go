@@ -172,10 +172,6 @@ func (w *walWrapper) run() {
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
-			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
-			if err := w.performCheckpoint(true); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
-			}
 			return
 		}
 	}

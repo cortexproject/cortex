@@ -147,6 +147,9 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		// or the data has to be flushed during scaledown.
 		cfg.MaxTransferRetries = 0
 
+		// Transfers are disabled with WAL, hence no need to wait for transfers.
+		cfg.LifecyclerConfig.JoinAfter = 0
+
 		recordPool = sync.Pool{
 			New: func() interface{} {
 				return &Record{}

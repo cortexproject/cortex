@@ -37,7 +37,7 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) IngesterDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -51,6 +51,7 @@ func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state Ingeste
 	}
 
 	d.Ingesters[id] = ingester
+	return ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
@@ -396,4 +397,11 @@ func (d *Desc) getTokens() []TokenDesc {
 
 	sort.Sort(ByToken(tokens))
 	return tokens
+}
+
+func getOrCreateRingDesc(d interface{}) *Desc {
+	if d == nil {
+		return NewDesc()
+	}
+	return d.(*Desc)
 }

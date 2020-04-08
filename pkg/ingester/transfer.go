@@ -607,6 +607,8 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 	ringDesc, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return nil, err
+	} else if ringDesc == nil {
+		return nil, errTransferNoPendingIngesters
 	}
 
 	ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)

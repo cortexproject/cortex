@@ -187,6 +187,13 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 	return result, &consul.QueryMeta{LastIndex: m.current}, nil
 }
 
+func (m *mockKV) Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	delete(m.kvps, key)
+	return nil, nil
+}
+
 func (m *mockKV) ResetIndex() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

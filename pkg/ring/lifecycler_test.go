@@ -162,8 +162,8 @@ func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 func TestRingRestart(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -202,10 +202,20 @@ func TestRingRestart(t *testing.T) {
 }
 
 type MockClient struct {
+	ListFunc        func(ctx context.Context, prefix string) ([]string, error)
 	GetFunc         func(ctx context.Context, key string) (interface{}, error)
+	DeleteFunc      func(ctx context.Context, key string) error
 	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
 	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
+}
+
+func (m *MockClient) List(ctx context.Context, prefix string) ([]string, error) {
+	if m.ListFunc != nil {
+		return m.ListFunc(ctx, prefix)
+	}
+
+	return nil, nil
 }
 
 func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
@@ -214,6 +224,14 @@ func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	return nil, nil
+}
+
+func (m *MockClient) Delete(ctx context.Context, key string) error {
+	if m.DeleteFunc != nil {
+		return m.DeleteFunc(ctx, key)
+	}
+
+	return nil
 }
 
 func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
@@ -299,6 +317,7 @@ func TestTokensOnDisk(t *testing.T) {
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		if ok {
 			expTokens = desc.Ingesters["ing1"].Tokens
@@ -345,8 +364,8 @@ func TestTokensOnDisk(t *testing.T) {
 func TestJoinInLeavingState(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -383,6 +402,7 @@ func TestJoinInLeavingState(t *testing.T) {
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		return ok &&
 			len(desc.Ingesters) == 2 &&

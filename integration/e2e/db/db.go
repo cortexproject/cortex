@@ -47,6 +47,16 @@ func NewConsul() *e2e.HTTPService {
 	)
 }
 
+func NewETCD() *e2e.HTTPService {
+	return e2e.NewHTTPService(
+		"etcd",
+		images.ETCD,
+		e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--log-level=error"),
+		nil,
+		2379,
+	)
+}
+
 func NewDynamoClient(endpoint string) (*dynamodb.DynamoDB, error) {
 	dynamoURL, err := url.Parse(endpoint)
 	if err != nil {

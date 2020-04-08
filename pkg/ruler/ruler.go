@@ -61,6 +61,9 @@ type Config struct {
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
+	// Delay the evaluation of all rules by a set interval to give a buffer
+	// to metric that haven't been forwarded to cortex yet.
+	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
@@ -103,6 +106,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
+	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure they underlying metrics have been pushed to cortex.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
 	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
@@ -480,7 +484,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	opts := &promRules.ManagerOptions{
 		Appendable:  tsdb,
 		TSDB:        tsdb,
-		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
+		QueryFunc:   engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),

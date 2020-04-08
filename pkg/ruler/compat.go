@@ -2,8 +2,11 @@ package ruler
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
@@ -77,4 +80,13 @@ func (t *tsdb) StartTime() (int64, error) {
 // Close closes the storage and all its underlying resources.
 func (t *tsdb) Close() error {
 	return nil
+}
+
+// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// and passing an altered timestamp.
+func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
+	orig := rules.EngineQueryFunc(engine, q)
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		return orig(ctx, qs, t.Add(-delay))
+	}
 }

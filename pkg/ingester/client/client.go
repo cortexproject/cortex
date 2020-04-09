@@ -58,5 +58,5 @@ type Config struct {
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlags("ingester.client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
 }

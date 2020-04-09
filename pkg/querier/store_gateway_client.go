@@ -14,18 +14,19 @@ import (
 
 func NewStoreGatewayClientFactory(cfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_storegateway_client_request_duration_seconds",
-		Help:      "Time spent executing requests on store-gateway.",
-		Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
+		Namespace:   "cortex",
+		Name:        "storegateway_client_request_duration_seconds",
+		Help:        "Time spent executing requests on store-gateway.",
+		Buckets:     prometheus.ExponentialBuckets(0.008, 4, 7),
+		ConstLabels: prometheus.Labels{"client": "querier"},
 	}, []string{"operation", "status_code"})
 
 	return func(addr string) (client.PoolClient, error) {
-		return DialStoreGatewayClient(cfg, addr, requestDuration)
+		return dialStoreGatewayClient(cfg, addr, requestDuration)
 	}
 }
 
-func DialStoreGatewayClient(cfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
+func dialStoreGatewayClient(cfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
 	opts := []grpc.DialOption{grpc.WithInsecure()}
 	opts = append(opts, cfg.DialOption(grpcclient.Instrument(requestDuration))...)
 	conn, err := grpc.Dial(addr, opts...)

@@ -19,8 +19,7 @@ type StoreLimits interface {
 }
 
 type CacheGenNumLoader interface {
-	GetStoreCacheGenNumber(userID string) (string, error)
-	GetResultsCacheGenNumber(userID string) (string, error)
+	GetStoreCacheGenNumber(userID string) string
 }
 
 // Store for chunks.
@@ -196,11 +195,7 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 		return nil
 	}
 
-	var err error
-	ctx, err = c.injectCacheGen(ctx, userID)
-	if err != nil {
-		return err
-	}
+	ctx = c.injectCacheGen(ctx, userID)
 
 	// first, find the schema with the highest start _before or at_ from
 	i := sort.Search(len(c.stores), func(i int) bool {
@@ -251,15 +246,10 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 	return nil
 }
 
-func (c compositeStore) injectCacheGen(ctx context.Context, userID string) (context.Context, error) {
+func (c compositeStore) injectCacheGen(ctx context.Context, userID string) context.Context {
 	if c.cacheGenNumLoader == nil {
-		return ctx, nil
+		return ctx
 	}
 
-	cacheGen, err := c.cacheGenNumLoader.GetStoreCacheGenNumber(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return cache.InjectCacheGenNumber(ctx, cacheGen), nil
+	return cache.InjectCacheGenNumber(ctx, c.cacheGenNumLoader.GetStoreCacheGenNumber(userID))
 }

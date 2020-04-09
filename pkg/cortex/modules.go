@@ -190,10 +190,10 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 	var tombstonesLoader *purger.TombstonesLoader
 
 	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 	} else {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
+		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
 	}
 
 	httpCacheGenNumberHeaderSetterMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
@@ -296,10 +296,10 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 	var tombstonesLoader *purger.TombstonesLoader
 
 	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 	} else {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
+		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
 	}
 
 	err = cfg.Schema.Load()
@@ -353,7 +353,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 
 	var tombstonesLoader *purger.TombstonesLoader
 	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 	}
 
 	tripperware, cache, err := queryrange.NewTripperware(
@@ -433,10 +433,10 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 	var tombstonesLoader *purger.TombstonesLoader
 	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 	} else {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
+		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
 	}
 
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
@@ -674,7 +674,7 @@ func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.T
 				return
 			}
 
-			cacheGenNumber, err := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
+			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return

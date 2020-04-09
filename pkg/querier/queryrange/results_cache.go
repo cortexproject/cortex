@@ -36,7 +36,7 @@ var (
 )
 
 type CacheGenNumberLoader interface {
-	GetResultsCacheGenNumber(userID string) (string, error)
+	GetResultsCacheGenNumber(userID string) string
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -169,12 +169,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if s.cacheGenNumberLoader != nil {
-		cacheGen, err := s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID)
-		if err != nil {
-			return nil, err
-		}
-
-		ctx = cache.InjectCacheGenNumber(ctx, cacheGen)
+		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID))
 	}
 
 	var (

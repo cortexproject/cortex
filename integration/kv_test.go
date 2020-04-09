@@ -54,19 +54,12 @@ func TestKV_List_Delete(t *testing.T) {
 	}, stringCodec{})
 	require.NoError(t, err)
 
-	mockKv, err := kv.NewClient(kv.Config{
-		Store:  "inmemory",
-		Prefix: "keys/",
-	}, stringCodec{})
-	require.NoError(t, err)
-
 	kvs := []struct {
 		name string
 		kv   kv.Client
 	}{
 		{"etcd", etcdKv},
 		{"consul", consulKv},
-		{"inmemory", mockKv},
 	}
 
 	for _, kv := range kvs {

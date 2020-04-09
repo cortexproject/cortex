@@ -90,6 +90,9 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 	// Generate the expected vector when querying it
 	metric := model.Metric{}
 	metric[labels.MetricName] = model.LabelValue(name)
+	for _, lbl := range additionalLabels {
+		metric[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
 
 	vector = append(vector, &model.Sample{
 		Metric:    metric,

@@ -209,7 +209,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	// single binary will be mysteriously unresponsive unless worker is working.  warn and configure here
 	if worker == nil && cfg.Target == All {
-		address := fmt.Sprintf(":%d", cfg.Server.GRPCListenPort)
+		address := fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 		level.Warn(util.Logger).Log("msg", "Worker is nil in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 		cfg.Worker.Address = address
 

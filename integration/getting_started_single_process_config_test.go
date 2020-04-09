@@ -57,7 +57,7 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 
 	labelNames, err := c.LabelNames()
 	require.NoError(t, err)
-	require.Equal(t, []string{"foo"}, labelNames)
+	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 }
 
 func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
@@ -109,5 +109,5 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 
 	labelNames, err := c.LabelNames()
 	require.NoError(t, err)
-	require.Equal(t, []string{"foo"}, labelNames)
+	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 }

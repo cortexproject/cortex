@@ -611,6 +611,6 @@ var modules = map[ModuleName]module{
 	},
 
 	All: {
-		deps: []ModuleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

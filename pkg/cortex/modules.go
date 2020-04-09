@@ -196,7 +196,9 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 
-	handler := t.api.RegisterQuerier(queryable, engine, t.distributor)
+	// if we are not configured for single binary mode then the querier needs to register its paths externally
+	registerExternally := cfg.Target != All
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally)
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.

@@ -112,6 +112,18 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	return value, err
 }
 
+// LabelValues gets label values
+func (c *Client) LabelValues(label string) (model.LabelValues, error) {
+	value, _, err := c.querierClient.LabelValues(context.Background(), label)
+	return value, err
+}
+
+// LabelNames gets label names
+func (c *Client) LabelNames() ([]string, error) {
+	value, _, err := c.querierClient.LabelNames(context.Background())
+	return value, err
+}
+
 type addOrgIDRoundTripper struct {
 	orgID string
 	next  http.RoundTripper

@@ -68,15 +68,20 @@ func TimeToMilliseconds(t time.Time) int64 {
 	return int64(math.Round(float64(t.UnixNano()) / 1000000))
 }
 
-func GenerateSeries(name string, ts time.Time) (series []prompb.TimeSeries, vector model.Vector) {
+func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label) (series []prompb.TimeSeries, vector model.Vector) {
 	tsMillis := TimeToMilliseconds(ts)
 	value := rand.Float64()
 
-	// Generate the series
-	series = append(series, prompb.TimeSeries{
-		Labels: []prompb.Label{
+	lbls := append(
+		[]prompb.Label{
 			{Name: labels.MetricName, Value: name},
 		},
+		additionalLabels...,
+	)
+
+	// Generate the series
+	series = append(series, prompb.TimeSeries{
+		Labels: lbls,
 		Samples: []prompb.Sample{
 			{Value: value, Timestamp: tsMillis},
 		},

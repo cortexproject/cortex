@@ -207,6 +207,10 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
+	if worker == nil && cfg.Target == All {
+		level.Error(util.Logger).Log("msg", "Worker is nil in single binary mode.  This probably means that the query api will be unresponsive.  Please configure the worker.")
+	}
+
 	return worker, nil
 }
 

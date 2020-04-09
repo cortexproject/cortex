@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -232,5 +233,25 @@ func TestWatchPrefix(t *testing.T) {
 		if len(observedKeys) > 0 {
 			t.Errorf("unexpected keys reported: %v", observedKeys)
 		}
+	})
+}
+
+// TestList makes sure stored keys are listed back.
+func TestList(t *testing.T) {
+	keysToCreate := []string{"a", "b", "c"}
+
+	withFixtures(t, func(t *testing.T, client Client) {
+		for _, key := range keysToCreate {
+			err := client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+				return key, false, nil
+			})
+			require.NoError(t, err)
+		}
+
+		storedKeys, err := client.List(context.Background(), "")
+		require.NoError(t, err)
+		sort.Strings(storedKeys)
+
+		require.Equal(t, keysToCreate, storedKeys)
 	})
 }

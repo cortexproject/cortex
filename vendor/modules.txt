@@ -567,7 +567,7 @@ github.com/uber/jaeger-client-go/utils
 # github.com/uber/jaeger-lib v2.2.0+incompatible
 github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
-# github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
+# github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4 => /Users/annanay/Desktop/git/go/src/github.com/weaveworks/common
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc

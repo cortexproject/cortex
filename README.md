@@ -113,6 +113,8 @@ If you have any questions about Cortex:
 
 Your feedback is always welcome.
 
+For security issues see https://github.com/cortexproject/cortex/security/policy
+
 ## Community Meetings
 
 The Cortex community call happens every three weeks on Thursday at 03:30pm – 04:15pm UTC to get calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring).

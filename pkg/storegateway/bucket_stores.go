@@ -63,7 +63,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_blocks_sync_seconds",
+			Name:    "blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
@@ -178,6 +178,14 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	}
 
 	return store.Series(req, srv)
+}
+
+func (u *BucketStores) HasUser(userID string) bool {
+	u.storesMu.RLock()
+	defer u.storesMu.RUnlock()
+
+	_, ok := u.stores[userID]
+	return ok
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {

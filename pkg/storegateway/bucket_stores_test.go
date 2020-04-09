@@ -77,18 +77,18 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	assert.Empty(t, seriesSet)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-			# HELP cortex_querier_bucket_store_blocks_loaded Number of currently loaded blocks.
-			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
-			cortex_querier_bucket_store_blocks_loaded 2
+			# HELP bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE bucket_store_blocks_loaded gauge
+			bucket_store_blocks_loaded 2
 
-			# HELP cortex_querier_bucket_store_block_loads_total Total number of remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_loads_total counter
-			cortex_querier_bucket_store_block_loads_total 2
+			# HELP bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE bucket_store_block_loads_total counter
+			bucket_store_block_loads_total 2
 
-			# HELP cortex_querier_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
-			cortex_querier_bucket_store_block_load_failures_total 0
-	`), "cortex_querier_bucket_store_blocks_loaded", "cortex_querier_bucket_store_block_loads_total", "cortex_querier_bucket_store_block_load_failures_total"))
+			# HELP bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE bucket_store_block_load_failures_total counter
+			bucket_store_block_load_failures_total 0
+	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -132,18 +132,18 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	assert.Equal(t, []storepb.Label{{Name: labels.MetricName, Value: metricName}}, seriesSet[0].Labels)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-			# HELP cortex_querier_bucket_store_blocks_loaded Number of currently loaded blocks.
-			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
-			cortex_querier_bucket_store_blocks_loaded 2
+			# HELP bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE bucket_store_blocks_loaded gauge
+			bucket_store_blocks_loaded 2
 
-			# HELP cortex_querier_bucket_store_block_loads_total Total number of remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_loads_total counter
-			cortex_querier_bucket_store_block_loads_total 2
+			# HELP bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE bucket_store_block_loads_total counter
+			bucket_store_block_loads_total 2
 
-			# HELP cortex_querier_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
-			cortex_querier_bucket_store_block_load_failures_total 0
-	`), "cortex_querier_bucket_store_blocks_loaded", "cortex_querier_bucket_store_block_loads_total", "cortex_querier_bucket_store_block_load_failures_total"))
+			# HELP bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE bucket_store_block_load_failures_total counter
+			bucket_store_block_load_failures_total 0
+	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {

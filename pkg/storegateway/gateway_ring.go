@@ -2,6 +2,7 @@ package storegateway
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -13,6 +14,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
+const (
+	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
+	RingKey = "store-gateway"
+
+	// StoreGatewayRingName is the name of the ring used by the store gateways.
+	RingName = "store-gateway"
+
+	// We use a safe default instead of exposing to config option to the user
+	// in order to simplify the config.
+	RingNumTokens = 512
+)
+
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the store gateways ring. This config
 // is used to strip down the config to the minimum, and avoid confusion
@@ -22,6 +35,7 @@ type RingConfig struct {
 	HeartbeatPeriod   time.Duration `yaml:"heartbeat_period"`
 	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
 	ReplicationFactor int           `yaml:"replication_factor"`
+	TokensFilePath    string        `yaml:"tokens_file_path"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -30,7 +44,8 @@ type RingConfig struct {
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 
 	// Injected internally
-	ListenPort int `yaml:"-"`
+	ListenPort      int           `yaml:"-"`
+	RingCheckPeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -42,52 +57,47 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	// Ring flags
-	cfg.KVStore.RegisterFlagsWithPrefix("store-gateway.ring.", "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "store-gateway.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, "store-gateway.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring.")
-	f.IntVar(&cfg.ReplicationFactor, "store-gateway.replication-factor", 2, "The replication factor to use when sharding blocks.")
+	cfg.KVStore.RegisterFlagsWithPrefix("experimental.store-gateway.ring.", "collectors/", f)
+	f.DurationVar(&cfg.HeartbeatPeriod, "experimental.store-gateway.ring.heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
+	f.DurationVar(&cfg.HeartbeatTimeout, "experimental.store-gateway.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring.")
+	f.IntVar(&cfg.ReplicationFactor, "experimental.store-gateway.replication-factor", 3, "The replication factor to use when sharding blocks.")
+	f.StringVar(&cfg.TokensFilePath, "experimental.store-gateway.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
-	f.Var((*flagext.Strings)(&cfg.InstanceInterfaceNames), "store-gateway.ring.instance-interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.InstanceAddr, "store-gateway.ring.instance-addr", "", "IP address to advertise in the ring.")
-	f.IntVar(&cfg.InstancePort, "store-gateway.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
-	f.StringVar(&cfg.InstanceID, "store-gateway.ring.instance-id", hostname, "Instance ID to register in the ring.")
+	f.Var((*flagext.Strings)(&cfg.InstanceInterfaceNames), "experimental.store-gateway.ring.instance-interface", "Name of network interface to read address from.")
+	f.StringVar(&cfg.InstanceAddr, "experimental.store-gateway.ring.instance-addr", "", "IP address to advertise in the ring.")
+	f.IntVar(&cfg.InstancePort, "experimental.store-gateway.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
+	f.StringVar(&cfg.InstanceID, "experimental.store-gateway.ring.instance-id", hostname, "Instance ID to register in the ring.")
+
+	// Defaults for internal settings.
+	cfg.RingCheckPeriod = 5 * time.Second
 }
 
-// ToLifecyclerConfig returns a LifecyclerConfig based on the store gateway
-// ring config.
-func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
-	// We have to make sure that the ring.LifecyclerConfig and ring.Config
-	// defaults are preserved
-	lc := ring.LifecyclerConfig{}
+func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc := ring.Config{}
-
-	flagext.DefaultValues(&lc)
 	flagext.DefaultValues(&rc)
 
-	// Configure ring
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = cfg.ReplicationFactor
 
-	// Configure lifecycler
-	lc.RingConfig = rc
-	lc.ListenPort = &cfg.ListenPort
-	lc.Addr = cfg.InstanceAddr
-	lc.Port = cfg.InstancePort
-	lc.ID = cfg.InstanceID
-	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.SkipUnregister = false
-	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
-	lc.ObservePeriod = 0
-	lc.JoinAfter = 0
-	lc.MinReadyDuration = 0
-	lc.FinalSleep = 0
+	return rc
+}
 
-	// We use a safe default instead of exposing to config option to the user
-	// in order to simplify the config.
-	lc.NumTokens = 512
+func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames)
+	if err != nil {
+		return ring.BasicLifecyclerConfig{}, err
+	}
 
-	return lc
+	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
+
+	return ring.BasicLifecyclerConfig{
+		ID:                  cfg.InstanceID,
+		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		HeartbeatPeriod:     cfg.HeartbeatPeriod,
+		TokensObservePeriod: 0,
+		NumTokens:           RingNumTokens,
+	}, nil
 }

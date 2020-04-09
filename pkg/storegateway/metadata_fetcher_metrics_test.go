@@ -22,34 +22,34 @@ func TestMetadataFetcherMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-		# HELP cortex_querier_blocks_meta_sync_duration_seconds Duration of the blocks metadata synchronization in seconds
-		# TYPE cortex_querier_blocks_meta_sync_duration_seconds histogram
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="0.01"} 0
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="1"} 0
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="10"} 3
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="100"} 3
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="1000"} 3
-		cortex_querier_blocks_meta_sync_duration_seconds_bucket{le="+Inf"} 3
-		cortex_querier_blocks_meta_sync_duration_seconds_sum 9
-		cortex_querier_blocks_meta_sync_duration_seconds_count 3
+		# HELP blocks_meta_sync_duration_seconds Duration of the blocks metadata synchronization in seconds
+		# TYPE blocks_meta_sync_duration_seconds histogram
+		blocks_meta_sync_duration_seconds_bucket{le="0.01"} 0
+		blocks_meta_sync_duration_seconds_bucket{le="1"} 0
+		blocks_meta_sync_duration_seconds_bucket{le="10"} 3
+		blocks_meta_sync_duration_seconds_bucket{le="100"} 3
+		blocks_meta_sync_duration_seconds_bucket{le="1000"} 3
+		blocks_meta_sync_duration_seconds_bucket{le="+Inf"} 3
+		blocks_meta_sync_duration_seconds_sum 9
+		blocks_meta_sync_duration_seconds_count 3
 
-		# HELP cortex_querier_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
-		# TYPE cortex_querier_blocks_meta_sync_failures_total counter
-		cortex_querier_blocks_meta_sync_failures_total 30
+		# HELP blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE blocks_meta_sync_failures_total counter
+		blocks_meta_sync_failures_total 30
 
-		# HELP cortex_querier_blocks_meta_syncs_total Total blocks metadata synchronization attempts
-		# TYPE cortex_querier_blocks_meta_syncs_total counter
-		cortex_querier_blocks_meta_syncs_total 15
+		# HELP blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE blocks_meta_syncs_total counter
+		blocks_meta_syncs_total 15
 
-		# HELP cortex_querier_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
-		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
-		cortex_querier_blocks_meta_sync_consistency_delay_seconds 300
+		# HELP blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
+		# TYPE blocks_meta_sync_consistency_delay_seconds gauge
+		blocks_meta_sync_consistency_delay_seconds 300
 
-		# HELP cortex_querier_blocks_meta_synced Reflects current state of synced blocks (over all tenants).
-		# TYPE cortex_querier_blocks_meta_synced gauge
-		cortex_querier_blocks_meta_synced{state="corrupted-meta-json"} 75
-		cortex_querier_blocks_meta_synced{state="loaded"} 90
-		cortex_querier_blocks_meta_synced{state="too-fresh"} 105
+		# HELP blocks_meta_synced Reflects current state of synced blocks (over all tenants).
+		# TYPE blocks_meta_synced gauge
+		blocks_meta_synced{state="corrupted-meta-json"} 75
+		blocks_meta_synced{state="loaded"} 90
+		blocks_meta_synced{state="too-fresh"} 105
 `))
 	require.NoError(t, err)
 }

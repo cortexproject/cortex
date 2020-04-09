@@ -75,7 +75,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 	}
 
 	if reg != nil {
-		reg.MustRegister(d.fetchersMetrics)
+		prometheus.WrapRegistererWithPrefix("cortex_querier_", reg).MustRegister(d.fetchersMetrics)
 	}
 
 	d.Service = services.NewTimerService(cfg.ScanInterval, d.starting, d.scan, nil)

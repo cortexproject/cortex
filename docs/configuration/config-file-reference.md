@@ -390,9 +390,11 @@ walconfig:
   # CLI flag: -ingester.wal-enabled
   [wal_enabled: <boolean> | default = false]
 
-  # Enable checkpointing of in-memory chunks.
+  # Enable checkpointing of in-memory chunks. It should always be true when
+  # using normally. Set it to false iff you are doing some small tests as there
+  # is no mechanism to delete the old WAL yet if checkpoint is disabled.
   # CLI flag: -ingester.checkpoint-enabled
-  [checkpoint_enabled: <boolean> | default = false]
+  [checkpoint_enabled: <boolean> | default = true]
 
   # Recover data from existing WAL irrespective of WAL enabled/disabled.
   # CLI flag: -ingester.recover-from-wal

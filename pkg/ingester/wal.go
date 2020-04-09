@@ -54,6 +54,16 @@ type WAL interface {
 	Stop()
 }
 
+type RecordType byte
+
+const (
+	// WAL record types.
+	WALRecordType1 RecordType = 1
+
+	// Checkpoint record types.
+	CheckpointRecordType1 RecordType = 2
+)
+
 type noopWAL struct{}
 
 func (noopWAL) Log(*Record) error { return nil }
@@ -67,6 +77,7 @@ type walWrapper struct {
 	wal           *wal.WAL
 	getUserStates func() map[string]*userState
 	checkpointMtx sync.Mutex
+	bytesPool     sync.Pool
 
 	// Checkpoint metrics.
 	checkpointDeleteFail    prometheus.Counter
@@ -98,6 +109,11 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		quit:          make(chan struct{}),
 		wal:           tsdbWAL,
 		getUserStates: userStatesFunc,
+		bytesPool: sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 0, 512)
+			},
+		},
 	}
 
 	w.checkpointDeleteFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -141,11 +157,16 @@ func (w *walWrapper) Log(record *Record) error {
 		if record == nil {
 			return nil
 		}
-		buf, err := proto.Marshal(record)
+		var err error
+		b := w.bytesPool.Get().([]byte)
+		defer func() { w.bytesPool.Put(b) }() //nolint:staticcheck
+
+		b, err = encodeWithTypeHeader(record, WALRecordType1, b)
 		if err != nil {
 			return err
 		}
-		return w.wal.Log(buf)
+
+		return w.wal.Log(b)
 	}
 }
 
@@ -267,10 +288,11 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	}
 
 	var wireChunkBuf []client.Chunk
+	b := make([]byte, 0, 1024)
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf)
+			wireChunkBuf, b, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf, b)
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
@@ -379,24 +401,24 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 // checkpointSeries write the chunks of the series to the checkpoint.
-func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
+func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
 	var err error
 	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
 	if err != nil {
-		return wireChunks, err
+		return wireChunks, b, err
 	}
 
-	buf, err := proto.Marshal(&Series{
+	b, err = encodeWithTypeHeader(&Series{
 		UserId:      userID,
 		Fingerprint: uint64(fp),
 		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
-	})
+	}, CheckpointRecordType1, b)
 	if err != nil {
-		return wireChunks, err
+		return wireChunks, b, err
 	}
 
-	return wireChunks, cp.Log(buf)
+	return wireChunks, b, cp.Log(b)
 }
 
 type walRecoveryParameters struct {
@@ -563,12 +585,15 @@ func processCheckpoint(name string, userStates *userStates, params walRecoveryPa
 Loop:
 	for reader.Next() {
 		s := seriesPool.Get().(*Series)
-		if err := proto.Unmarshal(reader.Record(), s); err != nil {
+		m, err := decodeRecord(reader.Record(), CheckpointRecordType1, s)
+		if err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
 			break Loop
 		}
+		s = m.(*Series)
+
 		// The yoloString from the unmarshal of LabelAdapter gets corrupted
 		// when travelling through the channel. Hence making a copy of that.
 		// This extra alloc during the read path is fine as it's only 1 time
@@ -745,12 +770,14 @@ Loop:
 			break Loop
 		default:
 		}
-		if err := proto.Unmarshal(reader.Record(), record); err != nil {
+		m, err := decodeRecord(reader.Record(), WALRecordType1, record)
+		if err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
 			break Loop
 		}
+		record = m.(*Record)
 
 		if len(record.Labels) > 0 {
 			state := userStates.getOrCreate(record.UserId)
@@ -935,4 +962,35 @@ func SegmentRange(dir string) (int, int, error) {
 		return -1, -1, nil
 	}
 	return first, last, nil
+}
+
+func decodeRecord(rec []byte, typ RecordType, m proto.Message) (proto.Message, error) {
+	err := proto.Unmarshal(rec, m)
+	if err == nil {
+		return m, nil
+	}
+
+	var merr tsdb_errors.MultiError
+	merr.Add(err)
+
+	if len(rec) > 0 && RecordType(rec[0]) == typ {
+		if err := proto.Unmarshal(rec[1:], m); err != nil {
+			merr.Add(err)
+		} else {
+			merr = nil
+		}
+	}
+
+	return m, merr.Err()
+}
+
+func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, error) {
+	buf, err := proto.Marshal(m)
+	if err != nil {
+		return b, err
+	}
+
+	b = append(b[:0], byte(typ))
+	b = append(b, buf...)
+	return b, nil
 }

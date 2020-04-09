@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -174,4 +176,75 @@ func TestCheckpointRepair(t *testing.T) {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	}
 
+}
+
+func TestMigrationToTypedRecord(t *testing.T) {
+	// WAL record migration.
+	walRecord := &Record{
+		UserId: "12345",
+		Labels: []Labels{
+			{Fingerprint: 7568176523, Labels: []client.LabelAdapter{{Name: "n1", Value: "v1"}}},
+			{Fingerprint: 5720984283, Labels: []client.LabelAdapter{{Name: "n2", Value: "v2"}}},
+		},
+		Samples: []Sample{
+			{Fingerprint: 768276312, Timestamp: 10, Value: 10},
+			{Fingerprint: 326847234, Timestamp: 99, Value: 99},
+		},
+	}
+
+	oldRecordBytes, err := proto.Marshal(walRecord)
+	require.NoError(t, err)
+	newRecordBytes, err := encodeWithTypeHeader(walRecord, WALRecordType1, nil)
+	require.NoError(t, err)
+
+	m, err := decodeRecord(oldRecordBytes, WALRecordType1, &Record{})
+	require.NoError(t, err)
+	oldWALRecordDecoded := m.(*Record)
+
+	m, err = decodeRecord(newRecordBytes, WALRecordType1, &Record{})
+	require.NoError(t, err)
+	newWALRecordDecoded := m.(*Record)
+
+	require.Equal(t, walRecord, oldWALRecordDecoded)
+	require.Equal(t, walRecord, newWALRecordDecoded)
+
+	// Checkpoint record migration.
+	checkpointRecord := &Series{
+		UserId:      "12345",
+		Fingerprint: 3479837401,
+		Labels: []client.LabelAdapter{
+			{Name: "n1", Value: "v1"},
+			{Name: "n2", Value: "v2"},
+		},
+		Chunks: []client.Chunk{
+			{
+				StartTimestampMs: 12345,
+				EndTimestampMs:   23456,
+				Encoding:         3,
+				Data:             []byte{3, 3, 65, 23, 66},
+			},
+			{
+				StartTimestampMs: 34567,
+				EndTimestampMs:   45678,
+				Encoding:         2,
+				Data:             []byte{11, 22, 33, 44, 55, 66, 77, 88},
+			},
+		},
+	}
+
+	oldRecordBytes, err = proto.Marshal(checkpointRecord)
+	require.NoError(t, err)
+	newRecordBytes, err = encodeWithTypeHeader(checkpointRecord, CheckpointRecordType1, nil)
+	require.NoError(t, err)
+
+	m, err = decodeRecord(oldRecordBytes, CheckpointRecordType1, &Series{})
+	require.NoError(t, err)
+	oldCheckpointRecordDecoded := m.(*Series)
+
+	m, err = decodeRecord(newRecordBytes, CheckpointRecordType1, &Series{})
+	require.NoError(t, err)
+	newCheckpointRecordDecoded := m.(*Series)
+
+	require.Equal(t, checkpointRecord, oldCheckpointRecordDecoded)
+	require.Equal(t, checkpointRecord, newCheckpointRecordDecoded)
 }

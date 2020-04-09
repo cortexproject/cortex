@@ -1,4 +1,4 @@
-package cortex
+package healthcheck
 
 import (
 	"context"
@@ -10,18 +10,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type healthCheck struct {
+// HealthCheck fulfills the grpc_health_v1.HealthServer interface by ensuring
+// the services being managed by the provided service manager are healthy.
+type HealthCheck struct {
 	sm *services.Manager
 }
 
-func newHealthCheck(sm *services.Manager) *healthCheck {
-	return &healthCheck{
+// New returns a new HealthCheck for the provided service manager.
+func New(sm *services.Manager) *HealthCheck {
+	return &HealthCheck{
 		sm: sm,
 	}
 }
 
 // Check implements the grpc healthcheck.
-func (h *healthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (h *HealthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	if !h.isHealthy() {
 		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}, nil
 	}
@@ -30,12 +33,12 @@ func (h *healthCheck) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequ
 }
 
 // Watch implements the grpc healthcheck.
-func (h *healthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_v1.Health_WatchServer) error {
+func (h *HealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
 // isHealthy returns whether the Cortex instance should be considered healthy.
-func (h *healthCheck) isHealthy() bool {
+func (h *HealthCheck) isHealthy() bool {
 	states := h.sm.ServicesByState()
 
 	// Given this is an health check endpoint for the whole instance, we should consider

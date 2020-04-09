@@ -207,8 +207,16 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
+	// single binary will be mysteriously unresponsive unless worker is working.  warn and configure here
 	if worker == nil && cfg.Target == All {
-		level.Error(util.Logger).Log("msg", "Worker is nil in single binary mode.  This probably means that the query api will be unresponsive.  Please configure the worker.")
+		address := fmt.Sprintf(":%d", cfg.Server.GRPCListenPort)
+		level.Warn(util.Logger).Log("msg", "Worker is nil in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
+		cfg.Worker.Address = address
+
+		worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
+		if err != nil {
+			return
+		}
 	}
 
 	return worker, nil

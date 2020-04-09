@@ -59,8 +59,6 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 
 func newSingleBinary(name string, join string) *e2ecortex.CortexService {
 	flags := map[string]string{
-		"-target":                        "all", // single-binary mode
-		"-log.level":                     "warn",
 		"-ingester.final-sleep":          "0s",
 		"-ingester.join-after":           "0s", // join quickly
 		"-ingester.min-ready-duration":   "0s",
@@ -81,7 +79,6 @@ func newSingleBinary(name string, join string) *e2ecortex.CortexService {
 		name,
 		mergeFlags(ChunksStorageFlags, flags),
 		"",
-		80,
 		8000,
 	)
 

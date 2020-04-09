@@ -109,6 +109,7 @@ The general [configuration documentation](../configuration/_index.md) also appli
 
 - [`storage_config`](#storage-config)
 - [`tsdb_config`](#tsdb-config)
+- [`store_gateway_config`](#store-gateway-config)
 - [`compactor_config`](#compactor-config)
 
 ### `storage_config`
@@ -123,6 +124,9 @@ storage:
 ```
 
 {{ .TSDBConfigBlock }}
+
+{{ .StoreGatewayConfigBlock }}
+
 {{ .CompactorConfigBlock }}
 
 ## Known issues

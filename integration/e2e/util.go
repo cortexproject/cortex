@@ -22,17 +22,23 @@ func EmptyFlags() map[string]string {
 }
 
 func MergeFlags(inputs ...map[string]string) map[string]string {
+	output := MergeFlagsWithoutRemovingEmpty(inputs...)
+
+	for k, v := range output {
+		if v == "" {
+			delete(output, k)
+		}
+	}
+
+	return output
+}
+
+func MergeFlagsWithoutRemovingEmpty(inputs ...map[string]string) map[string]string {
 	output := map[string]string{}
 
 	for _, input := range inputs {
 		for name, value := range input {
 			output[name] = value
-		}
-	}
-
-	for k, v := range output {
-		if v == "" {
-			delete(output, k)
 		}
 	}
 

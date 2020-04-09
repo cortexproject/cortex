@@ -353,9 +353,8 @@ Data stays in the index indefinitely or until it is evicted by newer entries.&lt
 &lt;li&gt;&lt;p&gt;Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on &lt;a href=&#34;https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/&#34;&gt;statefulset&lt;/a&gt; with fixed volumes.&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;Following flags needs to be set&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;--ingester.wal-dir&lt;/code&gt; to the directory where the WAL data should be stores and/or recovered from. Note that this should be on the mounted volume.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;--ingester.wal-enabled&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; which enables writing to WAL during ingestion.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--ingester.checkpoint-enabled&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--ingester.wal-dir&lt;/code&gt; to the directory where the WAL data should be stores and/or recovered from. Note that this should be on the mounted volume.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;--ingester.checkpoint-duration&lt;/code&gt; to the interval at which checkpoints should be created. Default is &lt;code&gt;30m&lt;/code&gt;, and depending on the number of series, it can be brought down to &lt;code&gt;15m&lt;/code&gt; if there are less series per ingester (say 1M).&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;--ingester.recover-from-wal&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to &lt;code&gt;true&lt;/code&gt;. The WAL dir needs to be set for this.
 &lt;ul&gt;

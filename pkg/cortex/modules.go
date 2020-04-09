@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 
@@ -202,7 +204,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := cfg.Target != All
-	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally)
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally, httpCacheGenNumberHeaderSetterMiddleware)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -620,7 +622,7 @@ var modules = map[ModuleName]module{
 	},
 
 	QueryFrontend: {
-		deps:           []ModuleName{Server, Overrides, DeleteRequestsStore},
+		deps:           []ModuleName{API, Overrides, DeleteRequestsStore},
 		wrappedService: (*Cortex).initQueryFrontend,
 	},
 

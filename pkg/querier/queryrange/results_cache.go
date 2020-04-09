@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -188,12 +186,6 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response, extents, err = s.handleHit(ctx, r, cached)
 	} else {
 		response, extents, err = s.handleMiss(ctx, r, userID)
-
-		// check if there is change in gen number to cache data with new gen number
-		newCacheGenNumber := s.cacheGenNumbers[userID]
-		if newCacheGenNumber != cacheGenNumber {
-			key = strings.Replace(key, cacheGenNumber, newCacheGenNumber, 1)
-		}
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -208,7 +200,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func shouldCacheResponse(r Response) bool {
+func (s resultsCache) shouldCacheResponse(r Response) bool {
 	headerValues := getHeaderValuesWithName(r, cachecontrolHeader)
 	for _, v := range headerValues {
 		if v == noCacheValue {
@@ -223,11 +215,11 @@ func shouldCacheResponse(r Response) bool {
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
 	if promResp, ok := r.(*PrometheusResponse); ok {
 		for _, hv := range promResp.Headers {
-			if hv.GetName() != headerName {
+			if hv.GetName() != cachecontrolHeader {
 				continue
 			}
 
-			headerValues = append(headerValues, hv.Values...)
+			headerValues = append(headerValues, hv.GetValues()...)
 		}
 	}
 
@@ -295,7 +287,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		if !s.shouldCacheResponse(reqResp.Response) {
 			continue
 		}
-		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
+		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))
 		if err != nil {
 			return nil, nil, err
 		}

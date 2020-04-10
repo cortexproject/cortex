@@ -70,7 +70,7 @@ type seriesStore struct {
 }
 
 func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
-	rs, err := newReadStore(cfg, schema, index, chunks, limits, chunksCache)
+	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}

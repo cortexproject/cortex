@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/prometheus/common/model"
@@ -12,15 +14,39 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+type deleteRequestHandlerMetrics struct {
+	deleteRequestsReceivedTotal *prometheus.CounterVec
+}
+
+func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandlerMetrics {
+	m := deleteRequestHandlerMetrics{}
+
+	m.deleteRequestsReceivedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "purger_delete_requests_received_total",
+		Help:      "Number of delete requests received per user",
+	}, []string{"user"})
+
+	if r != nil {
+		r.MustRegister(
+			m.deleteRequestsReceivedTotal,
+		)
+	}
+
+	return &m
+}
+
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteStore *DeleteStore
+	metrics     *deleteRequestHandlerMetrics
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore *DeleteStore, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
+		metrics:     newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -84,6 +110,8 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	if err := dm.deleteStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), match); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+
+	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests

@@ -40,8 +40,10 @@ var (
 
 type hasChunksForIntervalFunc func(userID, seriesID string, from, through model.Time) (bool, error)
 
-// Schema interface defines methods to calculate the hash and range keys needed
+// Schema interfaces define methods to calculate the hash and range keys needed
 // to write or read chunks from the external index.
+
+// BasicSchema has operation shared between StoreSchema and SeriesStoreSchema
 type BaseSchema interface {
 	// When doing a read, use these methods to return the list of entries you should query
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error)
@@ -50,7 +52,7 @@ type BaseSchema interface {
 	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 }
 
-// Schema used by store
+// StoreSchema is a schema used by store
 type StoreSchema interface {
 	BaseSchema
 
@@ -58,7 +60,7 @@ type StoreSchema interface {
 	GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 }
 
-// Schema used by seriesStore
+// SeriesStoreSchema is a schema used by seriesStore
 type SeriesStoreSchema interface {
 	BaseSchema
 

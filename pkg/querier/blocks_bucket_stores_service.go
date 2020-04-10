@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -27,11 +28,11 @@ type BucketStoresService struct {
 
 	cfg    tsdb.Config
 	logger log.Logger
-	stores *BucketStores
+	stores *storegateway.BucketStores
 }
 
 func NewBucketStoresService(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*BucketStoresService, error) {
-	stores, err := NewBucketStores(cfg, nil, bucketClient, logLevel, logger, registerer)
+	stores, err := storegateway.NewBucketStores(cfg, nil, bucketClient, logLevel, logger, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +100,7 @@ func (s *BucketStoresService) Series(ctx context.Context, userID string, req *st
 	// Inject the user ID into the context metadata, as expected by BucketStores.
 	ctx = setUserIDToGRPCContext(ctx, userID)
 
-	srv := newBucketStoreSeriesServer(ctx)
+	srv := storegateway.NewBucketStoreSeriesServer(ctx)
 	err := s.stores.Series(req, srv)
 	if err != nil {
 		return nil, nil, err

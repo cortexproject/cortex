@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -602,7 +603,7 @@ func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema), func(t *testing.T) {
 				// reset queries for test
-				mockSchema.queries = nil
+				mockSchema.resetQueries()
 
 				t.Log("========= Running query", tc.query, "with schema", schema)
 				matchers, err := promql.ParseMetricSelector(tc.query)
@@ -613,7 +614,7 @@ func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
 				_, err = store.Get(ctx, userID, from, through, matchers...)
 				require.NoError(t, err)
 
-				qs := mockSchema.queries
+				qs := mockSchema.getQueries()
 				sort.Strings(qs)
 
 				if !reflect.DeepEqual(tc.expect, qs) {
@@ -625,32 +626,54 @@ func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
 }
 
 type mockBaseSchema struct {
+	schema BaseSchema
+
+	mu      sync.Mutex
 	queries []string
-	schema  BaseSchema
 }
 
-type mockStoreSchema struct {
-	*mockBaseSchema
-	schema StoreSchema
+func (m *mockBaseSchema) getQueries() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.queries
+}
+
+func (m *mockBaseSchema) resetQueries() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queries = nil
 }
 
 func (m *mockBaseSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
+	m.mu.Lock()
 	m.queries = append(m.queries, metricName)
+	m.mu.Unlock()
+
 	return m.schema.GetReadQueriesForMetric(from, through, userID, metricName)
 }
 
 func (m *mockBaseSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
+	m.mu.Lock()
 	m.queries = append(m.queries, fmt.Sprintf("%s{%s}", metricName, labelName))
+	m.mu.Unlock()
+
 	return m.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 }
 
 func (m *mockBaseSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
+	m.mu.Lock()
 	m.queries = append(m.queries, fmt.Sprintf("%s{%s=%q}", metricName, labelName, labelValue))
+	m.mu.Unlock()
 	return m.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
 }
 
 func (m *mockBaseSchema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
 	return m.schema.FilterReadQueries(queries, shard)
+}
+
+type mockStoreSchema struct {
+	*mockBaseSchema
+	schema StoreSchema
 }
 
 func (m mockStoreSchema) GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {

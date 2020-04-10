@@ -1,4 +1,4 @@
-package cortex
+package healthcheck
 
 import (
 	"context"
@@ -73,7 +73,7 @@ func TestHealthCheck_isHealthy(t *testing.T) {
 				s.(*mockService).switchState(testData.states[i])
 			}
 
-			h := newHealthCheck(sm)
+			h := New(sm)
 			assert.Equal(t, testData.expected, h.isHealthy())
 		})
 	}

@@ -5272,7 +5272,11 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[BUGFIX] Register the metrics of the WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2295&#34;&gt;#2295&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2342&#34;&gt;#2342&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h3 id=&#34;config-file-breaking-changes&#34;&gt;config file breaking changes&lt;/h3&gt;
+&lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;This experimental blocks storage in Cortex &lt;code&gt;1.0.0&lt;/code&gt; has a bug which may lead to the error &lt;code&gt;cannot iterate chunk for series&lt;/code&gt; when running queries. This bug has been fixed in &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;. If you&amp;rsquo;re running the experimental blocks storage, please build Cortex from &lt;code&gt;master&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;config-file-breaking-changes&#34;&gt;Config file breaking changes&lt;/h3&gt;
 &lt;p&gt;In this section you can find a config file diff showing the breaking changes introduced in Cortex. You can also find the &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/configuration-file/&#34;&gt;full configuration file reference doc&lt;/a&gt; in the website.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-diff&#34; data-lang=&#34;diff&#34;&gt;### ingester_config
 # Period with which to attempt to flush chunks.
@@ -5857,7 +5861,7 @@ backoff_config:
 &lt;h3 id=&#34;changes-to-denormalised-tokens-in-the-ring&#34;&gt;Changes to denormalised tokens in the ring&lt;/h3&gt;
 &lt;p&gt;Cortex 0.4.0 is the last version that can &lt;em&gt;write&lt;/em&gt; denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.&lt;/p&gt;
 &lt;p&gt;Cortex 0.6.0 is the last version that can &lt;em&gt;read&lt;/em&gt; denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with &lt;code&gt;-ingester.normalise-tokens=false&lt;/code&gt;) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.&lt;/p&gt;
-&lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
+&lt;h3 id=&#34;known-issues-1&#34;&gt;Known issues&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;The gRPC streaming for ingesters doesn&amp;rsquo;t work when using the experimental TSDB blocks storage. Please do not enable &lt;code&gt;-querier.ingester-streaming&lt;/code&gt; if you&amp;rsquo;re using the TSDB blocks storage. If you want to enable it, you can build Cortex from &lt;code&gt;master&lt;/code&gt; given the issue has been fixed after Cortex &lt;code&gt;0.7&lt;/code&gt; branch has been cut and the fix wasn&amp;rsquo;t included in the &lt;code&gt;0.7&lt;/code&gt; because related to an experimental feature.&lt;/li&gt;
 &lt;/ul&gt;
@@ -6010,7 +6014,7 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li&gt;&lt;p&gt;Run the migrate command:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;migrate -path &amp;lt;absolute_path_to_cortex&amp;gt;/cmd/cortex/migrations -database postgres://localhost:5432/database force &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;2&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/li&gt;
 &lt;/ol&gt;
-&lt;h3 id=&#34;known-issues-1&#34;&gt;Known issues&lt;/h3&gt;
+&lt;h3 id=&#34;known-issues-2&#34;&gt;Known issues&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;p&gt;The &lt;code&gt;cortex_prometheus_rule_group_last_evaluation_timestamp_seconds&lt;/code&gt; metric, tracked by the ruler, is not unregistered for rule groups not being used anymore. This issue will be fixed in the next Cortex release (see &lt;a href=&#34;https://github.com/cortexproject/cortex/issues/2033&#34;&gt;2033&lt;/a&gt;).&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;Write-Ahead-Log (WAL) does not have automatic repair of corrupt checkpoint or WAL segments, which is possible if ingester crashes abruptly or the underlying disk corrupts. Currently the only way to resolve this is to manually delete the affected checkpoint and/or WAL segments. Automatic repair will be added in the future releases.&lt;/p&gt;&lt;/li&gt;

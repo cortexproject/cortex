@@ -1,4 +1,4 @@
-package querier
+package storegateway
 
 import (
 	"context"
@@ -33,7 +33,7 @@ type BucketStores struct {
 	bucket             objstore.Bucket
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
-	metaFetcherMetrics *metaFetcherMetrics
+	metaFetcherMetrics *MetadataFetcherMetrics
 	indexCacheMetrics  prometheus.Collector
 	filters            []block.MetadataFilter
 
@@ -60,7 +60,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
-		metaFetcherMetrics: newMetaFetcherMetrics(),
+		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_sync_seconds",
@@ -254,7 +254,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	u.stores[userID] = bs
-	u.metaFetcherMetrics.addUserRegistry(userID, fetcherReg)
+	u.metaFetcherMetrics.AddUserRegistry(userID, fetcherReg)
 	u.bucketStoreMetrics.AddUserRegistry(userID, bucketStoreReg)
 
 	return bs, nil

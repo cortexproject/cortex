@@ -33,6 +33,7 @@ var (
 type WorkerConfig struct {
 	Address           string        `yaml:"frontend_address"`
 	Parallelism       int           `yaml:"parallelism"`
+	TotalParallelism  int           `yaml:"total_parallelism"`
 	DNSLookupDuration time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
@@ -41,7 +42,8 @@ type WorkerConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
-	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
+	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
+	f.IntVar(&cfg.TotalParallelism, "querier.worker-total-parallelism", 20, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
@@ -156,6 +158,7 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 
 	backoff := util.NewBackoff(ctx, backoffConfig)
 	for backoff.Ongoing() {
+
 		c, err := client.Process(ctx)
 		if err != nil {
 			level.Error(w.log).Log("msg", "error contacting frontend", "err", err)
@@ -175,6 +178,7 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 
 // process loops processing requests on an established stream.
 func (w *worker) process(c Frontend_ProcessClient) error {
+
 	// Build a child context so we can cancel querie when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()

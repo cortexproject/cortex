@@ -106,7 +106,7 @@ is annotated diff:
 
     # bind_port needs to be unique
 -   bind_port: 7946
-+   bind_port: 7948 
++   bind_port: 7948
 
 ...
 

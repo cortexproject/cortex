@@ -2,12 +2,12 @@
 title: "How Gojek Is Leveraging Cortex to Keep Up with Its Ever-Growing Scale"
 linkTitle: "Gojek"
 weight: 1
-slug: gojek 
+slug: gojek
 ---
 
 [Gojek](https://www.gojek.com/) launched in 2010 as a call center for booking motorcycle taxi rides in Indonesia. Today, the startup is a decacorn serving  millions of users across Southeast Asia with its mobile wallet, GoPay, and 20+ products on its super app. Want to order dinner? Book a massage? Buy movie tickets? You can do all of that with the Gojek app.
 
-The company’s mission is to solve everyday challenges with technology innovation. To achieve that across multiple markets the systems team at Gojek focused on building an infrastructure for speed, reliability, and scale. By 2019, the team realized it needed a new monitoring system that could keep up with Gojek’s ever-growing technology organization, which led them to [Cortex](https://github.com/cortexproject/cortex), the horizontally scalable [Prometheus](https://prometheus.io/) implementation. 
+The company’s mission is to solve everyday challenges with technology innovation. To achieve that across multiple markets the systems team at Gojek focused on building an infrastructure for speed, reliability, and scale. By 2019, the team realized it needed a new monitoring system that could keep up with Gojek’s ever-growing technology organization, which led them to [Cortex](https://github.com/cortexproject/cortex), the horizontally scalable [Prometheus](https://prometheus.io/) implementation.
 
 “We were using InfluxDB for metrics storage. Developers configured alerts by committing kapacitor scripts in git repos. To achieve high availability, we had a relay setup with two InfluxDBs. Since we could not horizontally scale Influx unless we paid for an enterprise license, we ended up having many InfluxDB clusters with relay setup,” says Product Engineer Ankit Goel.
 
@@ -29,7 +29,7 @@ Cortex met all of these requirements, and also had the following features that t
 
 Because it supports remote_write, Cortex enabled one of Gojek’s key needs: the ability to offer monitoring as a service. “With Thanos, we would have had to deploy a Thanos sidecar on every Prometheus that would have been deployed,” says Goel. “So essentially, there would be a substantial part of infrastructure on the client side that we would need to manage. We preferred Cortex because people could simply push their metrics to us, and we would have all the metrics in a single place.”
 
-The implementation started in January 2019. The team developed a few tools: a simple service for token-based authentication, and another for storing team information, such as notification channels and PagerDuty policies. Once all this was done, they leveraged [InfluxData Telegraf’s remote_write plugin](https://github.com/achilles42/telegraf/tree/prometheus-remote-write) to write to Cortex. This allowed them to have all the metrics being sent to InfluxDB to be sent to Cortex as well. “So moving from InfluxDB to tenants would not be that complicated. Because Cortex was multi-tenant, we could directly map each of our InfluxDB servers to our tenants,” says Goel. They’ve developed an internal helm chart to deploy and manage Cortex. After the customizations were completed in about two months, “we had our setup up and running, and we onboarded one team on Cortex,” he says. 
+The implementation started in January 2019. The team developed a few tools: a simple service for token-based authentication, and another for storing team information, such as notification channels and PagerDuty policies. Once all this was done, they leveraged [InfluxData Telegraf’s remote_write plugin](https://github.com/achilles42/telegraf/tree/prometheus-remote-write) to write to Cortex. This allowed them to have all the metrics being sent to InfluxDB to be sent to Cortex as well. “So moving from InfluxDB to tenants would not be that complicated. Because Cortex was multi-tenant, we could directly map each of our InfluxDB servers to our tenants,” says Goel. They’ve developed an internal helm chart to deploy and manage Cortex. After the customizations were completed in about two months, “we had our setup up and running, and we onboarded one team on Cortex,” he says.
 
 In the initial version, GitOps was the only interface for developers to apply alerts and create dashboards. The team built tools like [grafonnet-playground](https://github.com/lahsivjar/grafonnet-playground) to make it easy for developers to create dashboards. Developers are also allowed to create dashboards using the UI, since Grafana maintains version history for dashboards.
 

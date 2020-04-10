@@ -11,7 +11,7 @@ slug: support-metadata-api
 - Status: Accepted
 
 ## Problem Statement
-Prometheus holds metric metadata alongside the contents of a scrape. This metadata (`HELP`, `TYPE`, `UNIT` and `METRIC_NAME`) enables [some Prometheus API](https://github.com/prometheus/prometheus/issues/6395) endpoints to output the metadata for integrations (e.g. [Grafana](https://github.com/grafana/grafana/pull/21124)) to consume it. 
+Prometheus holds metric metadata alongside the contents of a scrape. This metadata (`HELP`, `TYPE`, `UNIT` and `METRIC_NAME`) enables [some Prometheus API](https://github.com/prometheus/prometheus/issues/6395) endpoints to output the metadata for integrations (e.g. [Grafana](https://github.com/grafana/grafana/pull/21124)) to consume it.
 
 At the moment of writing, Cortex does not support the `api/v1/metadata` endpoint that Prometheus implements as metadata was never propagated via remote write. Recent [work is done in Prometheus](https://github.com/prometheus/prometheus/pull/6815/files) enables the propagation of metadata.
 
@@ -22,7 +22,7 @@ Before we delve into the solutions, let's set a baseline about how the data is r
 
 Metadata from Prometheus is sent in the same [`WriteRequest` proto message](https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto) that the samples use. It is part of a different field (#3 given #2 is already [used interally](https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L36)), the data is a set identified by the metric name - that means it is aggregated across targets, and is sent all at once. Implying, Cortex will receive a single `WriteRequest` containing a set of the metadata for that instance at an specified interval.
 
-. It is also important to note that this current process is an intermediary step. Eventually, metadata in a request will be sent alongside samples and only for those included. The solutions proposed, take this nuance into account to avoid coupling between the current and future state of Prometheus, and hopefully do something now that also works for the future. 
+. It is also important to note that this current process is an intermediary step. Eventually, metadata in a request will be sent alongside samples and only for those included. The solutions proposed, take this nuance into account to avoid coupling between the current and future state of Prometheus, and hopefully do something now that also works for the future.
 
 As a reference, these are some key numbers regarding the size (and send timings) of the data at hand from our clusters at Grafana Labs:
 

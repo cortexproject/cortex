@@ -1,7 +1,7 @@
 ---
 title: "v1.x Guarantees"
 linkTitle: "v1.x Guarantees"
-weight: 6 
+weight: 6
 slug: v1guarantees
 ---
 

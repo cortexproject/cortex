@@ -5,7 +5,7 @@ weight: 4
 slug: schema-configuration
 ---
 
-Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose. 
+Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.
 
 Currently there are 9 schemas that are used in production but we recommend running with `v9` schema when possible. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.
 
@@ -45,12 +45,12 @@ configs:
   - from: "2020-03-01" # Or typically a week before the Cortex cluster was created.
     schema: v9
     index:
-      period: 1w 
+      period: 1w
       prefix: cortex_index_
     # Chunks section is optional and required only if you're not using a
     # separate object store.
     chunks:
-      period: 1w 
+      period: 1w
       prefix: cortex_chunks
     store: aws-dynamo/bigtable-hashed/cassandra/boltdb
     object_store: <above options>/s3/gcs/azure/filesystem
@@ -66,10 +66,10 @@ configs:
   - from: "2018-08-23"
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     store: gcp-columnkey
 
@@ -77,10 +77,10 @@ configs:
   - from: "2019-02-13"
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: gcp-columnkey
@@ -90,22 +90,22 @@ configs:
   - from: "2019-02-24"
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed
 
-  # Starting 2019-03-05 we moved from v9 schema to v10 schema. 
+  # Starting 2019-03-05 we moved from v9 schema to v10 schema.
   - from: "2019-03-05"
     schema: v10
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed

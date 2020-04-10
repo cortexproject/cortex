@@ -45,3 +45,4 @@ Currently experimental features are:
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
+- Openstack Swift storage.

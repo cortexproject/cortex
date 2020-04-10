@@ -127,7 +127,11 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [BUGFIX] Register the metrics of the WAL. #2295
 * [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
 
-### config file breaking changes
+### Known issues
+
+- This experimental blocks storage in Cortex `1.0.0` has a bug which may lead to the error `cannot iterate chunk for series` when running queries. This bug has been fixed in #2400. If you're running the experimental blocks storage, please build Cortex from `master`. 
+
+### Config file breaking changes
 
 In this section you can find a config file diff showing the breaking changes introduced in Cortex. You can also find the [full configuration file reference doc](https://cortexmetrics.io/docs/configuration/configuration-file/) in the website.
 

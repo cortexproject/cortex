@@ -666,10 +666,6 @@ func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardA
 // v9Entries adds a layer of indirection between labels -> series -> chunks.
 type v9Entries struct{}
 
-func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-
 func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
 
@@ -768,10 +764,6 @@ func (v9Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardA
 // v10Entries builds on v9 by sharding index rows to reduce their size.
 type v10Entries struct {
 	rowShards uint32
-}
-
-func (v10Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
 }
 
 func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {

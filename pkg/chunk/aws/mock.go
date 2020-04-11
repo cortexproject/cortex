@@ -250,9 +250,6 @@ type dynamoDBMockRequest struct {
 	err    error
 }
 
-func (m *dynamoDBMockRequest) NextPage() dynamoDBRequest {
-	return m
-}
 func (m *dynamoDBMockRequest) Send() error {
 	return m.err
 }
@@ -261,9 +258,6 @@ func (m *dynamoDBMockRequest) Data() interface{} {
 }
 func (m *dynamoDBMockRequest) Error() error {
 	return m.err
-}
-func (m *dynamoDBMockRequest) HasNextPage() bool {
-	return false
 }
 func (m *dynamoDBMockRequest) Retryable() bool {
 	return false

@@ -359,11 +359,9 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 }
 
 type dynamoDBRequest interface {
-	NextPage() dynamoDBRequest
 	Send() error
 	Data() interface{}
 	Error() error
-	HasNextPage() bool
 	Retryable() bool
 }
 
@@ -383,31 +381,16 @@ type dynamoDBRequestAdapter struct {
 	request *request.Request
 }
 
-func (a dynamoDBRequestAdapter) NextPage() dynamoDBRequest {
-	next := a.request.NextPage()
-	if next == nil {
-		return nil
-	}
-	return dynamoDBRequestAdapter{next}
-}
-
 func (a dynamoDBRequestAdapter) Data() interface{} {
 	return a.request.Data
 }
 
 func (a dynamoDBRequestAdapter) Send() error {
-	// Clear error in case we are retrying the same operation - if we
-	// don't do this then the same error will come back again immediately
-	a.request.Error = nil
 	return a.request.Send()
 }
 
 func (a dynamoDBRequestAdapter) Error() error {
 	return a.request.Error
-}
-
-func (a dynamoDBRequestAdapter) HasNextPage() bool {
-	return a.request.HasNextPage()
 }
 
 func (a dynamoDBRequestAdapter) Retryable() bool {

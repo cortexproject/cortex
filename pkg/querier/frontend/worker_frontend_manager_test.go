@@ -51,28 +51,39 @@ func TestConcurrency(t *testing.T) {
 	})
 
 	tests := []struct {
-		concurrency int
+		concurrency []int
 	}{
 		{
-			concurrency: 0,
+			concurrency: []int{0},
 		},
 		{
-			concurrency: 1,
+			concurrency: []int{1},
 		},
 		{
-			concurrency: 5,
+			concurrency: []int{5},
 		},
 		{
-			concurrency: 30,
+			concurrency: []int{5, 3, 7},
+		},
+		{
+			concurrency: []int{-1},
 		},
 	}
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("Testing concurrency %d", tt.concurrency), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Testing concurrency %v", tt.concurrency), func(t *testing.T) {
 			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 0, 100000000)
-			mgr.concurrentRequests(tt.concurrency)
-			time.Sleep(100 * time.Millisecond)
 
-			assert.Equal(t, int32(tt.concurrency), mgr.currentProcessors.Load())
+			for _, c := range tt.concurrency {
+				mgr.concurrentRequests(c)
+				time.Sleep(50 * time.Millisecond)
+
+				expected := int32(c)
+				if expected < 0 {
+					expected = 0
+				}
+				assert.Equal(t, expected, mgr.currentProcessors.Load())
+			}
+
 			mgr.stop()
 			assert.Equal(t, int32(0), mgr.currentProcessors.Load())
 		})

@@ -56,12 +56,16 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 }
 
 func (f *frontendManager) stop() {
-	f.cancel()
-	f.concurrentRequests(0)
+	f.cancel()              // force stop
+	f.concurrentRequests(0) // graceful quit
 	f.wg.Wait()
 }
 
 func (f *frontendManager) concurrentRequests(n int) {
+	if n < 0 {
+		n = 0
+	}
+
 	// adjust clients slice as necessary
 	for len(f.gracefulQuit) != n {
 		if len(f.gracefulQuit) < n {

@@ -103,7 +103,6 @@ func TestConcurrency(t *testing.T) {
 
 			mgr.stop()
 			assert.Equal(t, int32(0), mgr.currentProcessors.Load())
-
 		})
 	}
 }
@@ -129,4 +128,31 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	mgr.stop()
 	assert.Equal(t, int32(0), mgr.currentProcessors.Load())
 	assert.Equal(t, int32(0), calls.Load())
+}
+
+func TestServeCancelStopsProcess(t *testing.T) {
+	calls := atomic.NewInt32(0)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Inc()
+		_, err := w.Write([]byte("Hello World"))
+		assert.NoError(t, err)
+	})
+
+	client := &mockFrontendClient{
+		failRecv: true,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, 0, 100000000)
+
+	mgr.concurrentRequests(1)
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int32(1), mgr.currentProcessors.Load())
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int32(0), mgr.currentProcessors.Load())
+
+	mgr.stop()
+	assert.Equal(t, int32(0), mgr.currentProcessors.Load())
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -52,8 +51,8 @@ type worker struct {
 	log    log.Logger
 	server *server.Server
 
-	watcher naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
-	wg      sync.WaitGroup
+	watcher  naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
+	managers map[string]*frontendManager
 }
 
 // NewWorker creates a new worker and returns a service that is wrapping it.
@@ -75,17 +74,20 @@ func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (service
 	}
 
 	w := &worker{
-		cfg:     cfg,
-		log:     log,
-		server:  server,
-		watcher: watcher,
+		cfg:      cfg,
+		log:      log,
+		server:   server,
+		watcher:  watcher,
+		managers: map[string]*frontendManager{},
 	}
 	return services.NewBasicService(nil, w.watchDNSLoop, w.stopping), nil
 }
 
 func (w *worker) stopping(_ error) error {
 	// wait until all per-address workers are done. This is only called after watchDNSLoop exits.
-	w.wg.Wait()
+	for _, mgr := range w.managers {
+		mgr.stop()
+	}
 	return nil
 }
 
@@ -99,8 +101,6 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 		<-servCtx.Done()
 		w.watcher.Close()
 	}()
-
-	mgrs := map[string]*frontendManager{}
 
 	for {
 		updates, err := w.watcher.Next()
@@ -116,22 +116,18 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 		for _, update := range updates {
 			switch update.Op {
 			case naming.Add:
-				// jpe : do the cancel contexts matter?
-
 				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
 				client, err := w.connect(update.Addr)
 				if err != nil {
-					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err) // jpe : dangerous
+					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 				}
 
 				mgr := NewFrontendManager(servCtx, w.log, w.server, client, w.cfg.Parallelism, w.cfg.GRPCClientConfig.MaxRecvMsgSize)
-				mgrs[update.Addr] = mgr
+				w.managers[update.Addr] = mgr
 
 			case naming.Delete:
-				// jpe : does this actually gracefully shutdown?
-
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
-				if mgr, ok := mgrs[update.Addr]; ok {
+				if mgr, ok := w.managers[update.Addr]; ok {
 					mgr.stop()
 				}
 

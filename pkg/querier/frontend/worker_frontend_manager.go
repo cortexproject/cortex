@@ -23,19 +23,22 @@ type frontendManager struct {
 
 	server         upstream
 	log            log.Logger
-	ctx            context.Context
 	maxSendMsgSize int
 
-	wg  sync.WaitGroup
-	mtx sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func NewFrontendManager(ctx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+	ctx, cancel := context.WithCancel((ctx))
+
 	f := &frontendManager{
 		client:         client,
-		ctx:            ctx,
 		log:            log,
 		server:         server,
+		ctx:            ctx,
+		cancel:         cancel,
 		maxSendMsgSize: maxSendMsgSize,
 	}
 
@@ -45,14 +48,12 @@ func NewFrontendManager(ctx context.Context, log log.Logger, server upstream, cl
 }
 
 func (f *frontendManager) stop() {
+	f.cancel()
 	f.concurrentRequests(0)
 	f.wg.Wait()
 }
 
 func (f *frontendManager) concurrentRequests(n int) error {
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-
 	// adjust clients slice as necessary
 	for len(f.gracefulQuit) != n {
 		if len(f.gracefulQuit) < n {
@@ -75,10 +76,6 @@ func (f *frontendManager) concurrentRequests(n int) error {
 	return nil
 }
 
-// jpe
-// is f.wg.Add(1) safe?
-// pass graceful quit
-
 // runOne loops, trying to establish a stream to the frontend to begin
 // request processing.
 func (f *frontendManager) runOne(quit <-chan struct{}) {
@@ -88,7 +85,6 @@ func (f *frontendManager) runOne(quit <-chan struct{}) {
 	backoff := util.NewBackoff(f.ctx, backoffConfig)
 	for backoff.Ongoing() {
 
-		// break context chain here
 		c, err := f.client.Process(f.ctx)
 		if err != nil {
 			level.Error(f.log).Log("msg", "error contacting frontend", "err", err)
@@ -115,7 +111,7 @@ func (f *frontendManager) process(quit <-chan struct{}, c Frontend_ProcessClient
 	for {
 		select {
 		case <-quit:
-			return nil // jpe: won't really work with runOne
+			return fmt.Errorf("graceful quit received")
 		default:
 		}
 

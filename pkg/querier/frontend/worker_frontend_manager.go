@@ -9,16 +9,19 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+type upstream interface {
+	Handle(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+}
 
 type frontendManager struct {
 	client       FrontendClient
 	gracefulQuit []chan struct{}
 
-	server         *server.Server
+	server         upstream
 	log            log.Logger
 	ctx            context.Context
 	maxSendMsgSize int
@@ -27,8 +30,7 @@ type frontendManager struct {
 	mtx sync.Mutex
 }
 
-
-func NewFrontendManager(ctx context.Context, log log.Logger, server *server.Server, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+func NewFrontendManager(ctx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
 	f := &frontendManager{
 		client:         client,
 		ctx:            ctx,
@@ -74,7 +76,6 @@ func (f *frontendManager) concurrentRequests(n int) error {
 }
 
 // jpe
-// pass grpc client config?
 // is f.wg.Add(1) safe?
 // pass graceful quit
 

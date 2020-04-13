@@ -1,10 +1,15 @@
 package grpcclient
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
+	"io/ioutil"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -19,6 +24,10 @@ type Config struct {
 
 	BackoffOnRatelimits bool               `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       util.BackoffConfig `yaml:"backoff_config"`
+
+	TLSCertPath string `yaml:"tls_cert_path"`
+	TLSKeyPath  string `yaml:"tls_key_path"`
+	TLSCAPath   string `yaml:"tls_ca_path"`
 }
 
 // RegisterFlags registers flags.
@@ -31,6 +40,10 @@ func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.BackoffOnRatelimits, prefix+".backoff-on-ratelimits", false, "Enable backoff and retry when we hit ratelimits.")
 
 	cfg.BackoffConfig.RegisterFlags(prefix, f)
+
+	f.StringVar(&cfg.TLSCertPath, prefix+".tls-cert-path", "", "gRPC TLS cert path.")
+	f.StringVar(&cfg.TLSKeyPath, prefix+".tls-key-path", "", "gRPC TLS key path.")
+	f.StringVar(&cfg.TLSCAPath, prefix+".tls-ca-path", "", "gRPC TLS CA path.")
 }
 
 // CallOptions returns the config in terms of CallOptions.
@@ -54,9 +67,32 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
 	}
 
-	return []grpc.DialOption{
-		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
+	var opts []grpc.DialOption
+	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" && cfg.TLSCAPath != "" {
+		clientCert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
+		if err != nil {
+			log.Warnf("error loading cert %s or key %s, tls disabled", cfg.TLSCertPath, cfg.TLSKeyPath)
+		}
+		var caCertPool *x509.CertPool
+		caCert, err := ioutil.ReadFile(cfg.TLSCAPath)
+		if err != nil {
+			log.Warnf("error loading ca cert %s, tls disabled", cfg.TLSCAPath)
+		} else {
+			caCertPool = x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+		}
+		if len(clientCert.Certificate) > 0 && caCertPool != nil {
+			tlsConfig := &tls.Config{
+				InsecureSkipVerify: true,
+				Certificates:       []tls.Certificate{clientCert},
+				RootCAs:            caCertPool,
+			}
+			opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+		}
+	}
+
+	return append(opts, grpc.WithDefaultCallOptions(cfg.CallOptions()...),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
 		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
-	}
+	)
 }

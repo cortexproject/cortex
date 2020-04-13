@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -21,6 +22,8 @@ var (
 		MinBackoff: 50 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	}
+
+	errGracefulQuit = errors.New("processor quitting gracefully")
 )
 
 type frontendManager struct {
@@ -96,6 +99,9 @@ func (f *frontendManager) runOne(quit <-chan struct{}) {
 	f.wg.Add(1)
 	defer f.wg.Done()
 
+	f.currentProcessors.Inc()
+	defer f.currentProcessors.Dec()
+
 	backoff := util.NewBackoff(f.serverCtx, backoffConfig)
 	for backoff.Ongoing() {
 
@@ -107,6 +113,11 @@ func (f *frontendManager) runOne(quit <-chan struct{}) {
 		}
 
 		if err := f.process(quit, c); err != nil {
+			if err == errGracefulQuit {
+				level.Debug(f.log).Log("msg", "gracefully shutting down processor")
+				return
+			}
+
 			level.Error(f.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -122,13 +133,10 @@ func (f *frontendManager) process(quit <-chan struct{}, c Frontend_ProcessClient
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
 
-	f.currentProcessors.Inc()
-	defer f.currentProcessors.Dec()
-
 	for {
 		select {
 		case <-quit:
-			return fmt.Errorf("graceful quit received")
+			return errGracefulQuit
 		default:
 		}
 

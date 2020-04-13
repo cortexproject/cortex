@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -16,16 +17,20 @@ import (
 )
 
 type mockFrontendClient struct {
+	failRecv bool
 }
 
 func (m *mockFrontendClient) Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error) {
-	return &mockFrontendProcessClient{}, nil
+	return &mockFrontendProcessClient{
+		failRecv: m.failRecv,
+	}, nil
 }
 
 type mockFrontendProcessClient struct {
 	grpc.ClientStream
 
-	wg sync.WaitGroup
+	failRecv bool
+	wg       sync.WaitGroup
 }
 
 func (m *mockFrontendProcessClient) Send(*ProcessResponse) error {
@@ -35,6 +40,10 @@ func (m *mockFrontendProcessClient) Send(*ProcessResponse) error {
 func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
 	m.wg.Wait()
 	m.wg.Add(1)
+
+	if m.failRecv {
+		return nil, errors.New("wups")
+	}
 
 	return &ProcessRequest{
 		HttpRequest: &httpgrpc.HTTPRequest{},
@@ -88,4 +97,24 @@ func TestConcurrency(t *testing.T) {
 			assert.Equal(t, int32(0), mgr.currentProcessors.Load())
 		})
 	}
+}
+
+func TestRecvFailDoesntCancelProcess(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte("Hello World"))
+		assert.NoError(t, err)
+	})
+
+	client := &mockFrontendClient{
+		failRecv: true,
+	}
+
+	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, 0, 100000000)
+
+	mgr.concurrentRequests(1)
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int32(1), mgr.currentProcessors.Load())
+
+	mgr.stop()
+	assert.Equal(t, int32(0), mgr.currentProcessors.Load())
 }

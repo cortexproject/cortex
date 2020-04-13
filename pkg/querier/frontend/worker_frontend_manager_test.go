@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"go.uber.org/atomic"
 	grpc "google.golang.org/grpc"
 )
 
@@ -54,7 +55,9 @@ func (m *mockFrontendProcessClient) Context() context.Context {
 }
 
 func TestConcurrency(t *testing.T) {
+	calls := atomic.NewInt32(0)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Inc()
 		_, err := w.Write([]byte("Hello World"))
 		assert.NoError(t, err)
 	})
@@ -83,6 +86,7 @@ func TestConcurrency(t *testing.T) {
 			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 0, 100000000)
 
 			for _, c := range tt.concurrency {
+				calls.Store(0)
 				mgr.concurrentRequests(c)
 				time.Sleep(50 * time.Millisecond)
 
@@ -91,16 +95,23 @@ func TestConcurrency(t *testing.T) {
 					expected = 0
 				}
 				assert.Equal(t, expected, mgr.currentProcessors.Load())
+
+				if expected > 0 {
+					assert.Greater(t, calls.Load(), int32(0))
+				}
 			}
 
 			mgr.stop()
 			assert.Equal(t, int32(0), mgr.currentProcessors.Load())
+
 		})
 	}
 }
 
 func TestRecvFailDoesntCancelProcess(t *testing.T) {
+	calls := atomic.NewInt32(0)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Inc()
 		_, err := w.Write([]byte("Hello World"))
 		assert.NoError(t, err)
 	})
@@ -117,4 +128,5 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 
 	mgr.stop()
 	assert.Equal(t, int32(0), mgr.currentProcessors.Load())
+	assert.Equal(t, int32(0), calls.Load())
 }

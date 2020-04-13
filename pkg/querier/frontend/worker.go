@@ -15,16 +15,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
-)
-
-var (
-	backoffConfig = util.BackoffConfig{
-		MinBackoff: 50 * time.Millisecond,
-		MaxBackoff: 1 * time.Second,
-	}
 )
 
 // WorkerConfig is config for a worker.

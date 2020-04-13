@@ -5,12 +5,20 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
+)
+
+var (
+	backoffConfig = util.BackoffConfig{
+		MinBackoff: 50 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
+	}
 )
 
 type upstream interface {
@@ -77,6 +85,10 @@ func (f *frontendManager) concurrentRequests(n int) {
 
 // runOne loops, trying to establish a stream to the frontend to begin
 // request processing.
+//  Ways that this can be cancelled
+//   servCtx is cancelled => Cortex is shutting down.
+//   c.Recv() errors => transient network issue, client timeout
+//   close quit channel => frontendManager is politely asking to shutdown a processor
 func (f *frontendManager) runOne(quit <-chan struct{}) {
 	f.wg.Add(1)
 	defer f.wg.Done()

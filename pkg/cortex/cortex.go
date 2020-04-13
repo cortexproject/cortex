@@ -43,6 +43,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -322,7 +323,7 @@ func (t *Cortex) Run() error {
 	// before starting servers, register /ready handler and gRPC health check service.
 	// It should reflect entire Cortex.
 	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
-	grpc_health_v1.RegisterHealthServer(t.server.GRPC, newHealthCheck(sm))
+	grpc_health_v1.RegisterHealthServer(t.server.GRPC, healthcheck.New(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }

@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -29,23 +30,24 @@ type frontendManager struct {
 	log            log.Logger
 	maxSendMsgSize int
 
-	gracefulQuit []chan struct{}
-	serverCtx    context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
+	gracefulQuit      []chan struct{}
+	serverCtx         context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	currentProcessors *atomic.Int32
 }
 
-// NewFrontendManager creates a frontend manager with the given params
-func NewFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
 	serverCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{
-		client:         client,
-		log:            log,
-		server:         server,
-		serverCtx:      serverCtx,
-		cancel:         cancel,
-		maxSendMsgSize: maxSendMsgSize,
+		client:            client,
+		log:               log,
+		server:            server,
+		serverCtx:         serverCtx,
+		cancel:            cancel,
+		maxSendMsgSize:    maxSendMsgSize,
+		currentProcessors: atomic.NewInt32(0),
 	}
 
 	f.concurrentRequests(initialConcurrentRequests)
@@ -66,7 +68,7 @@ func (f *frontendManager) concurrentRequests(n int) {
 			quit := make(chan struct{})
 			f.gracefulQuit = append(f.gracefulQuit, quit)
 
-			f.runOne(quit)
+			go f.runOne(quit)
 
 			continue
 		}
@@ -115,6 +117,9 @@ func (f *frontendManager) process(quit <-chan struct{}, c Frontend_ProcessClient
 	// Build a child context so we can cancel querie when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
+
+	f.currentProcessors.Inc()
+	defer f.currentProcessors.Dec()
 
 	for {
 		select {

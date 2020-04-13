@@ -116,7 +116,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 				}
 
-				w.managers[update.Addr] = NewFrontendManager(servCtx, w.log, w.server, client, 0, w.cfg.GRPCClientConfig.MaxRecvMsgSize)
+				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, 0, w.cfg.GRPCClientConfig.MaxRecvMsgSize)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)

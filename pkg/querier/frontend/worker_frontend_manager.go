@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -21,13 +22,9 @@ var (
 	}
 )
 
-type upstream interface {
-	Handle(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
-}
-
 type frontendManager struct {
 	client FrontendClient
-	server upstream
+	server *server.Server
 
 	log            log.Logger
 	maxSendMsgSize int
@@ -39,7 +36,7 @@ type frontendManager struct {
 }
 
 // NewFrontendManager creates a frontend manager with the given params
-func NewFrontendManager(serverCtx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+func NewFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
 	serverCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{

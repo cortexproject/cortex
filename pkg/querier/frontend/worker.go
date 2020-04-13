@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -40,6 +41,7 @@ type WorkerConfig struct {
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
+	f.IntVar(&cfg.TotalParallelism, "querier.worker-total-parallelism", 0, "Number of simultaneous queries to process across all query frontends.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
@@ -122,8 +124,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 				}
 
-				mgr := NewFrontendManager(servCtx, w.log, w.server, client, w.cfg.Parallelism, w.cfg.GRPCClientConfig.MaxRecvMsgSize)
-				w.managers[update.Addr] = mgr
+				w.managers[update.Addr] = NewFrontendManager(servCtx, w.log, w.server, client, 0, w.cfg.GRPCClientConfig.MaxRecvMsgSize)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
@@ -135,6 +136,8 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 				return fmt.Errorf("unknown op: %v", update.Op)
 			}
 		}
+
+		w.resetParallelism()
 	}
 }
 
@@ -146,4 +149,38 @@ func (w *worker) connect(address string) (FrontendClient, error) {
 		return nil, err
 	}
 	return NewFrontendClient(conn), nil
+}
+
+func (w *worker) resetParallelism() {
+
+	// if total parallelism is unset, this is easy
+	if w.cfg.TotalParallelism == 0 {
+		for _, mgr := range w.managers {
+			mgr.concurrentRequests(w.cfg.TotalParallelism)
+		}
+	}
+
+	// otherwise we have to do some work.  assign
+	addresses := make([]string, 0, len(w.managers))
+	for addr := range w.managers {
+		addresses = append(addresses, addr)
+	}
+	rand.Shuffle(len(addresses), func(i, j int) { addresses[i], addresses[j] = addresses[j], addresses[i] })
+
+	for i, addr := range addresses {
+		concurrentRequests := w.cfg.TotalParallelism / len(w.managers)
+
+		if i <= w.cfg.TotalParallelism%len(w.managers) {
+			concurrentRequests++
+		}
+
+		if concurrentRequests == 0 {
+			concurrentRequests = 1
+		}
+
+		mgr, ok := w.managers[addr]
+		if ok {
+			mgr.concurrentRequests(concurrentRequests)
+		}
+	}
 }

@@ -31,7 +31,7 @@ type frontendManager struct {
 }
 
 func NewFrontendManager(ctx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
-	ctx, cancel := context.WithCancel((ctx))
+	ctx, cancel := context.WithCancel(ctx)
 
 	f := &frontendManager{
 		client:         client,
@@ -53,7 +53,7 @@ func (f *frontendManager) stop() {
 	f.wg.Wait()
 }
 
-func (f *frontendManager) concurrentRequests(n int) error {
+func (f *frontendManager) concurrentRequests(n int) {
 	// adjust clients slice as necessary
 	for len(f.gracefulQuit) != n {
 		if len(f.gracefulQuit) < n {
@@ -72,8 +72,6 @@ func (f *frontendManager) concurrentRequests(n int) error {
 			close(quit)
 		}
 	}
-
-	return nil
 }
 
 // runOne loops, trying to establish a stream to the frontend to begin

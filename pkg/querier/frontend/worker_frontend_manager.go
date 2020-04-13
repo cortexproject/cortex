@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (

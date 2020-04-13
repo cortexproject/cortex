@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"go.uber.org/atomic"
 	grpc "google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type mockFrontendClient struct {

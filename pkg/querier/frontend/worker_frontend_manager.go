@@ -18,26 +18,27 @@ type upstream interface {
 }
 
 type frontendManager struct {
-	client       FrontendClient
-	gracefulQuit []chan struct{}
+	client FrontendClient
+	server upstream
 
-	server         upstream
 	log            log.Logger
 	maxSendMsgSize int
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	gracefulQuit []chan struct{}
+	serverCtx    context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
-func NewFrontendManager(ctx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
-	ctx, cancel := context.WithCancel(ctx)
+// NewFrontendManager creates a frontend manager with the given params
+func NewFrontendManager(serverCtx context.Context, log log.Logger, server upstream, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+	serverCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{
 		client:         client,
 		log:            log,
 		server:         server,
-		ctx:            ctx,
+		serverCtx:      serverCtx,
 		cancel:         cancel,
 		maxSendMsgSize: maxSendMsgSize,
 	}
@@ -80,10 +81,10 @@ func (f *frontendManager) runOne(quit <-chan struct{}) {
 	f.wg.Add(1)
 	defer f.wg.Done()
 
-	backoff := util.NewBackoff(f.ctx, backoffConfig)
+	backoff := util.NewBackoff(f.serverCtx, backoffConfig)
 	for backoff.Ongoing() {
 
-		c, err := f.client.Process(f.ctx)
+		c, err := f.client.Process(f.serverCtx)
 		if err != nil {
 			level.Error(f.log).Log("msg", "error contacting frontend", "err", err)
 			backoff.Wait()

@@ -37,6 +37,7 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	lifecyclerConfig.RingConfig = ringConfig
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id
+	lifecyclerConfig.Zone = "zone1"
 	lifecyclerConfig.FinalSleep = 0
 	lifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
 
@@ -161,8 +162,8 @@ func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 func TestRingRestart(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -201,10 +202,20 @@ func TestRingRestart(t *testing.T) {
 }
 
 type MockClient struct {
+	ListFunc        func(ctx context.Context, prefix string) ([]string, error)
 	GetFunc         func(ctx context.Context, key string) (interface{}, error)
+	DeleteFunc      func(ctx context.Context, key string) error
 	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
 	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
+}
+
+func (m *MockClient) List(ctx context.Context, prefix string) ([]string, error) {
+	if m.ListFunc != nil {
+		return m.ListFunc(ctx, prefix)
+	}
+
+	return nil, nil
 }
 
 func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
@@ -213,6 +224,14 @@ func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	return nil, nil
+}
+
+func (m *MockClient) Delete(ctx context.Context, key string) error {
+	if m.DeleteFunc != nil {
+		return m.DeleteFunc(ctx, key)
+	}
+
+	return nil
 }
 
 func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
@@ -298,6 +317,7 @@ func TestTokensOnDisk(t *testing.T) {
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		if ok {
 			expTokens = desc.Ingesters["ing1"].Tokens
@@ -344,8 +364,8 @@ func TestTokensOnDisk(t *testing.T) {
 func TestJoinInLeavingState(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+	c := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(c)
 
 	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
@@ -382,11 +402,66 @@ func TestJoinInLeavingState(t *testing.T) {
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
+
 		desc, ok := d.(*Desc)
 		return ok &&
 			len(desc.Ingesters) == 2 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
 			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
 			len(desc.Ingesters["ing2"].Tokens) == 2
+	})
+}
+
+func TestRestoreOfZoneWhenOverwritten(t *testing.T) {
+	// This test is simulating a case during upgrade of pre 1.0 cortex where
+	// older ingesters do not have the zone field in their ring structs
+	// so it gets removed. The current version of the lifecylcer should
+	// write it back on update during its next heartbeat.
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	codec := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	cfg := testLifecyclerConfig(ringConfig, "ing1")
+
+	// Set ing1 to not have a zone
+	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (interface{}, bool, error) {
+		r := &Desc{
+			Ingesters: map[string]IngesterDesc{
+				"ing1": {
+					State:  ACTIVE,
+					Addr:   "0.0.0.0",
+					Tokens: []uint32{1, 4},
+				},
+				"ing2": {
+					Tokens: []uint32{2, 3},
+				},
+			},
+		}
+
+		return r, true, nil
+	})
+	require.NoError(t, err)
+
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// Check that the lifecycler was able to reset the zone value to the expected setting
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		return ok &&
+			len(desc.Ingesters) == 2 &&
+			desc.Ingesters["ing1"].Zone == l1.Zone &&
+			desc.Ingesters["ing2"].Zone == ""
+
 	})
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -44,7 +45,7 @@ type BlocksScanner struct {
 	cfg             BlocksScannerConfig
 	logger          log.Logger
 	bucketClient    objstore.Bucket
-	fetchersMetrics *metaFetcherMetrics
+	fetchersMetrics *storegateway.MetadataFetcherMetrics
 
 	// We reuse the metadata fetcher instance for a given tenant both because of performance
 	// reasons (the fetcher keeps a in-memory cache) and being able to collect and group metrics.
@@ -65,7 +66,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 		bucketClient:    bucketClient,
 		fetchers:        make(map[string]block.MetadataFetcher),
 		metas:           make(map[string][]*metadata.Meta),
-		fetchersMetrics: newMetaFetcherMetrics(),
+		fetchersMetrics: storegateway.NewMetadataFetcherMetrics(),
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_scan_duration_seconds",
 			Help:    "The total time it takes to run a full blocks scan across the storage.",
@@ -289,7 +290,7 @@ func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher,
 		return nil, err
 	}
 
-	d.fetchersMetrics.addUserRegistry(userID, userReg)
+	d.fetchersMetrics.AddUserRegistry(userID, userReg)
 	return f, nil
 }
 

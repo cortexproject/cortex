@@ -62,6 +62,15 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+api:
+  # HTTP URL path under which the Alertmanager ui and api will be served.
+  # CLI flag: -http.alertmanager-http-prefix
+  [alertmanager_http_prefix: <string> | default = "/alertmanager"]
+
+  # HTTP URL path under which the Prometheus api will be served.
+  # CLI flag: -http.prometheus-http-prefix
+  [prometheus_http_prefix: <string> | default = "/prometheus"]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]
@@ -381,9 +390,11 @@ walconfig:
   # CLI flag: -ingester.wal-enabled
   [wal_enabled: <boolean> | default = false]
 
-  # Enable checkpointing of in-memory chunks.
+  # Enable checkpointing of in-memory chunks. It should always be true when
+  # using normally. Set it to false iff you are doing some small tests as there
+  # is no mechanism to delete the old WAL yet if checkpoint is disabled.
   # CLI flag: -ingester.checkpoint-enabled
-  [checkpoint_enabled: <boolean> | default = false]
+  [checkpoint_enabled: <boolean> | default = true]
 
   # Recover data from existing WAL irrespective of WAL enabled/disabled.
   # CLI flag: -ingester.recover-from-wal
@@ -699,6 +710,11 @@ The `ruler_config` configures the Cortex ruler.
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m0s]
+
+# Duration to delay the evaluation of rules to ensure they underlying metrics
+# have been pushed to cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[evaluation_delay_duration: <duration> | default = 0s]
 
 # How frequently to poll for rule changes
 # CLI flag: -ruler.poll-interval

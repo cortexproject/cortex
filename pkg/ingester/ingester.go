@@ -147,6 +147,9 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		// or the data has to be flushed during scaledown.
 		cfg.MaxTransferRetries = 0
 
+		// Transfers are disabled with WAL, hence no need to wait for transfers.
+		cfg.LifecyclerConfig.JoinAfter = 0
+
 		recordPool = sync.Pool{
 			New: func() interface{} {
 				return &Record{}
@@ -372,10 +375,8 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	}
 
 	if len(req.Metadata) > 0 {
-		// Given requests can only contain either metadata or samples, no-op if there is metadata for now.
 		logger := util.WithContext(ctx, util.Logger)
 		level.Debug(logger).Log("msg", "metadata received in the ingester", "count", len(req.Metadata))
-		return &client.WriteResponse{}, nil
 	}
 
 	for _, ts := range req.Timeseries {

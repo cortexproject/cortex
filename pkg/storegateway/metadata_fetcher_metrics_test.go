@@ -1,4 +1,4 @@
-package querier
+package storegateway
 
 import (
 	"bytes"
@@ -10,15 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMetaFetcherMetrics(t *testing.T) {
+func TestMetadataFetcherMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	metrics := newMetaFetcherMetrics()
+	metrics := NewMetadataFetcherMetrics()
 	mainReg.MustRegister(metrics)
 
-	metrics.addUserRegistry("user1", populateMetaFetcherMetrics(3))
-	metrics.addUserRegistry("user2", populateMetaFetcherMetrics(5))
-	metrics.addUserRegistry("user3", populateMetaFetcherMetrics(7))
+	metrics.AddUserRegistry("user1", populateMetadataFetcherMetrics(3))
+	metrics.AddUserRegistry("user2", populateMetadataFetcherMetrics(5))
+	metrics.AddUserRegistry("user3", populateMetadataFetcherMetrics(7))
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
@@ -54,9 +54,9 @@ func TestMetaFetcherMetrics(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func populateMetaFetcherMetrics(base float64) *prometheus.Registry {
+func populateMetadataFetcherMetrics(base float64) *prometheus.Registry {
 	reg := prometheus.NewRegistry()
-	m := newMetaFetcherMetricsMock(reg)
+	m := newMetadataFetcherMetricsMock(reg)
 
 	m.syncs.Add(base * 1)
 	m.syncFailures.Add(base * 2)
@@ -70,7 +70,7 @@ func populateMetaFetcherMetrics(base float64) *prometheus.Registry {
 	return reg
 }
 
-type metaFetcherMetricsMock struct {
+type metadataFetcherMetricsMock struct {
 	syncs                prometheus.Counter
 	syncFailures         prometheus.Counter
 	syncDuration         prometheus.Histogram
@@ -78,8 +78,8 @@ type metaFetcherMetricsMock struct {
 	synced               *prometheus.GaugeVec
 }
 
-func newMetaFetcherMetricsMock(reg prometheus.Registerer) *metaFetcherMetricsMock {
-	var m metaFetcherMetricsMock
+func newMetadataFetcherMetricsMock(reg prometheus.Registerer) *metadataFetcherMetricsMock {
+	var m metadataFetcherMetricsMock
 
 	m.syncs = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Subsystem: "blocks_meta",

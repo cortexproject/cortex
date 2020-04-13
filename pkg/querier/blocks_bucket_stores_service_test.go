@@ -3,22 +3,22 @@ package querier
 import (
 	"context"
 	"errors"
-	"sync/atomic"
+	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func TestUserStore_InitialSync(t *testing.T) {
+func TestBucketStoresService_InitialSync(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -57,14 +57,14 @@ func TestUserStore_InitialSync(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			cfg := tsdb.Config{}
-			flagext.DefaultValues(&cfg)
+			cfg, cleanup := prepareStorageConfig(t)
 			cfg.BucketStore.SyncInterval = testData.syncInterval
+			defer cleanup()
 
 			bucketClient := &tsdb.BucketClientMock{}
 			testData.setup(bucketClient)
 
-			us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+			us, err := NewBucketStoresService(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
 			if err == nil {
 				err = services.StartAndAwaitRunning(context.Background(), us)
 				defer services.StopAndAwaitTerminated(context.Background(), us) //nolint:errcheck
@@ -76,32 +76,19 @@ func TestUserStore_InitialSync(t *testing.T) {
 	}
 }
 
-func TestUserStore_syncUserStores(t *testing.T) {
-	cfg := tsdb.Config{}
-	flagext.DefaultValues(&cfg)
-	cfg.BucketStore.TenantSyncConcurrency = 2
-
-	// Disable the sync interval so that there will be no initial sync.
-	cfg.BucketStore.SyncInterval = 0
-
-	bucketClient := &tsdb.BucketClientMock{}
-	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
-
-	us, err := NewUserStore(cfg, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+func prepareStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
+	tmpDir, err := ioutil.TempDir(os.TempDir(), "blocks-sync-*")
 	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), us))
-	defer services.StopAndAwaitTerminated(context.Background(), us) //nolint:errcheck
 
-	// Sync user stores and count the number of times the callback is called.
-	storesCount := int32(0)
-	err = us.syncUserStores(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
-		atomic.AddInt32(&storesCount, 1)
-		return nil
-	})
+	cfg := cortex_tsdb.Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.BucketStore.SyncDir = tmpDir
 
-	assert.NoError(t, err)
-	bucketClient.AssertNumberOfCalls(t, "Iter", 1)
-	assert.Equal(t, storesCount, int32(3))
+	cleanup := func() {
+		require.NoError(t, os.RemoveAll(tmpDir))
+	}
+
+	return cfg, cleanup
 }
 
 func mockLoggingLevel() logging.Level {

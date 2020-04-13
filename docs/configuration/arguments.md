@@ -343,9 +343,6 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    Setting this to `true` enables writing to WAL during ingestion.
 
-- `-ingester.checkpoint-enabled`
-   Set this to `true` to enable checkpointing of in-memory chunks to disk. This is optional which helps in speeding up the replay process.
-
 - `-ingester.checkpoint-duration` 
    This is the interval at which checkpoints should be created.
 

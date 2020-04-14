@@ -4,13 +4,11 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"google.golang.org/grpc/naming"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -99,124 +97,6 @@ func TestResetParallelism(t *testing.T) {
 				concurrency += mgr.currentProcessors.Load()
 			}
 			assert.Equal(t, int32(0), concurrency)
-		})
-	}
-}
-
-type mockDNSWatcher struct {
-	updates []*naming.Update //nolint:staticcheck
-	wg      sync.WaitGroup
-}
-
-func (m *mockDNSWatcher) Next() ([]*naming.Update, error) { //nolint:staticcheck
-	m.wg.Add(1)
-	m.wg.Wait()
-
-	var update *naming.Update //nolint:staticcheck
-	update, m.updates = m.updates[0], m.updates[1:]
-
-	return []*naming.Update{update}, nil //nolint:staticcheck
-}
-
-func (m *mockDNSWatcher) Close() {
-
-}
-
-func TestDNSWatcher(t *testing.T) {
-	tests := []struct {
-		name              string
-		updates           []*naming.Update //nolint:staticcheck
-		expectedFrontends [][]string
-	}{
-		{
-			name: "Test add one",
-			updates: []*naming.Update{ //nolint:staticcheck
-				{
-					Op:   naming.Add,
-					Addr: "blerg",
-				},
-			},
-			expectedFrontends: [][]string{
-				{
-					"blerg",
-				},
-			},
-		},
-		{
-			name: "Test add one and delete",
-			updates: []*naming.Update{ //nolint:staticcheck
-				{
-					Op:   naming.Add,
-					Addr: "blerg",
-				},
-				{
-					Op:   naming.Delete,
-					Addr: "blerg",
-				},
-			},
-			expectedFrontends: [][]string{
-				{
-					"blerg",
-				},
-				{},
-			},
-		},
-		{
-			name: "Test delete nonexistent",
-			updates: []*naming.Update{ //nolint:staticcheck
-				{
-					Op:   naming.Delete,
-					Addr: "blerg",
-				},
-				{
-					Op:   naming.Add,
-					Addr: "blerg",
-				},
-			},
-			expectedFrontends: [][]string{
-				{},
-				{
-					"blerg",
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := WorkerConfig{
-				Parallelism:      0,
-				TotalParallelism: 0,
-			}
-
-			watcher := &mockDNSWatcher{
-				updates: tt.updates,
-			}
-			w := &worker{
-				cfg:      cfg,
-				log:      util.Logger,
-				managers: map[string]*frontendManager{},
-				watcher:  watcher,
-			}
-
-			ctx, cancel := context.WithCancel(context.Background())
-			go w.watchDNSLoop(ctx) //nolint:errcheck
-			time.Sleep(50 * time.Millisecond)
-
-			for i := range tt.updates {
-				watcher.wg.Done()
-
-				time.Sleep(50 * time.Millisecond)
-
-				// confirm all expected frontends exist
-				for _, expected := range tt.expectedFrontends[i] {
-					_, ok := w.managers[expected]
-
-					assert.Truef(t, ok, "Unable to find %s on iteration %d", expected, i)
-				}
-			}
-
-			cancel()
 		})
 	}
 }

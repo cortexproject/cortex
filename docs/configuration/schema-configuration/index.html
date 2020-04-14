@@ -48,12 +48,12 @@ tags: &lt;map[string]string&gt;
   - from: &quot;2020-03-01&quot; # Or typically a week before the Cortex cluster was created.
     schema: v9
     index:
-      period: 1w 
+      period: 1w
       prefix: cortex_index_
     # Chunks section is optional and required only if you're not using a
     # separate object store.
     chunks:
-      period: 1w 
+      period: 1w
       prefix: cortex_chunks
     store: aws-dynamo/bigtable-hashed/cassandra/boltdb
     object_store: &lt;above options&gt;/s3/gcs/azure/filesystem
@@ -65,10 +65,10 @@ tags: &lt;map[string]string&gt;
   - from: &quot;2018-08-23&quot;
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     store: gcp-columnkey
 
@@ -76,10 +76,10 @@ tags: &lt;map[string]string&gt;
   - from: &quot;2019-02-13&quot;
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: gcp-columnkey
@@ -89,22 +89,22 @@ tags: &lt;map[string]string&gt;
   - from: &quot;2019-02-24&quot;
     schema: v9
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed
 
-  # Starting 2019-03-05 we moved from v9 schema to v10 schema. 
+  # Starting 2019-03-05 we moved from v9 schema to v10 schema.
   - from: &quot;2019-03-05&quot;
     schema: v10
     chunks:
-        period: 1w 
+        period: 1w
         prefix: dev_chunks_
     index:
-        period: 1w 
+        period: 1w
         prefix: dev_index_
     object_store: gcs
     store: bigtable-hashed

@@ -69,19 +69,19 @@
  # CLI flag: -ingester.concurrent-flushes
 <span style=color:#a40000>-[concurrentflushes: &lt;int&gt; | default = 50]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[concurrent_flushes: &lt;int&gt; | default = 50]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 <span style=color:#a40000>-# If true, spread series flushes across the whole period of MaxChunkAge
 </span><span style=color:#a40000></span><span style=color:#00a000>+# If true, spread series flushes across the whole period of
 </span><span style=color:#00a000>+# -ingester.max-chunk-age.
 </span><span style=color:#00a000></span> # CLI flag: -ingester.spread-flushes
 <span style=color:#a40000>-[spreadflushes: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[spread_flushes: &lt;boolean&gt; | default = true]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Period with which to update the per-user ingestion rates.
  # CLI flag: -ingester.rate-update-period
 <span style=color:#a40000>-[rateupdateperiod: &lt;duration&gt; | default = 15s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[rate_update_period: &lt;duration&gt; | default = 15s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 
 ### querier_config
 
@@ -89,35 +89,35 @@
  # CLI flag: -querier.max-concurrent
 <span style=color:#a40000>-[maxconcurrent: &lt;int&gt; | default = 20]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[max_concurrent: &lt;int&gt; | default = 20]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Use batch iterators to execute query, as opposed to fully materialising the
  # series in memory.  Takes precedent over the -querier.iterators flag.
  # CLI flag: -querier.batch-iterators
 <span style=color:#a40000>-[batchiterators: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[batch_iterators: &lt;boolean&gt; | default = true]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Use streaming RPCs to query ingester.
  # CLI flag: -querier.ingester-streaming
 <span style=color:#a40000>-[ingesterstreaming: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[ingester_streaming: &lt;boolean&gt; | default = true]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Maximum number of samples a single query can load into memory.
  # CLI flag: -querier.max-samples
 <span style=color:#a40000>-[maxsamples: &lt;int&gt; | default = 50000000]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[max_samples: &lt;int&gt; | default = 50000000]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # The default evaluation interval or step size for subqueries.
  # CLI flag: -querier.default-evaluation-interval
 <span style=color:#a40000>-[defaultevaluationinterval: &lt;duration&gt; | default = 1m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[default_evaluation_interval: &lt;duration&gt; | default = 1m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### query_frontend_config
 
  # URL of downstream Prometheus.
  # CLI flag: -frontend.downstream-url
 <span style=color:#a40000>-[downstream: &lt;string&gt; | default = &#34;&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[downstream_url: &lt;string&gt; | default = &#34;&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 
 ### ruler_config
 
@@ -125,125 +125,125 @@
  # CLI flag: -ruler.external.url
 <span style=color:#a40000>-[externalurl: &lt;url&gt; | default = ]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[external_url: &lt;url&gt; | default = ]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # How frequently to evaluate rules
  # CLI flag: -ruler.evaluation-interval
 <span style=color:#a40000>-[evaluationinterval: &lt;duration&gt; | default = 1m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[evaluation_interval: &lt;duration&gt; | default = 1m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # How frequently to poll for rule changes
  # CLI flag: -ruler.poll-interval
 <span style=color:#a40000>-[pollinterval: &lt;duration&gt; | default = 1m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[poll_interval: &lt;duration&gt; | default = 1m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 <span style=color:#a40000>-storeconfig:
 </span><span style=color:#a40000></span><span style=color:#00a000>+storage:
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # file path to store temporary rule files for the prometheus rule managers
  # CLI flag: -ruler.rule-path
 <span style=color:#a40000>-[rulepath: &lt;string&gt; | default = &#34;/rules&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[rule_path: &lt;string&gt; | default = &#34;/rules&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # URL of the Alertmanager to send notifications to.
  # CLI flag: -ruler.alertmanager-url
 <span style=color:#a40000>-[alertmanagerurl: &lt;url&gt; | default = ]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[alertmanager_url: &lt;url&gt; | default = ]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Use DNS SRV records to discover alertmanager hosts.
  # CLI flag: -ruler.alertmanager-discovery
 <span style=color:#a40000>-[alertmanagerdiscovery: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[enable_alertmanager_discovery: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # How long to wait between refreshing alertmanager hosts.
  # CLI flag: -ruler.alertmanager-refresh-interval
 <span style=color:#a40000>-[alertmanagerrefreshinterval: &lt;duration&gt; | default = 1m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[alertmanager_refresh_interval: &lt;duration&gt; | default = 1m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # If enabled requests to alertmanager will utilize the V2 API.
  # CLI flag: -ruler.alertmanager-use-v2
 <span style=color:#a40000>-[alertmanangerenablev2api: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[enable_alertmanager_v2: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Capacity of the queue for notifications to be sent to the Alertmanager.
  # CLI flag: -ruler.notification-queue-capacity
 <span style=color:#a40000>-[notificationqueuecapacity: &lt;int&gt; | default = 10000]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[notification_queue_capacity: &lt;int&gt; | default = 10000]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # HTTP timeout duration when sending notifications to the Alertmanager.
  # CLI flag: -ruler.notification-timeout
 <span style=color:#a40000>-[notificationtimeout: &lt;duration&gt; | default = 10s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[notification_timeout: &lt;duration&gt; | default = 10s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Distribute rule evaluation using ring backend
  # CLI flag: -ruler.enable-sharding
 <span style=color:#a40000>-[enablesharding: &lt;boolean&gt; | default = false]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[enable_sharding: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Time to spend searching for a pending ruler when shutting down.
  # CLI flag: -ruler.search-pending-for
 <span style=color:#a40000>-[searchpendingfor: &lt;duration&gt; | default = 5m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[search_pending_for: &lt;duration&gt; | default = 5m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Period with which to attempt to flush rule groups.
  # CLI flag: -ruler.flush-period
 <span style=color:#a40000>-[flushcheckperiod: &lt;duration&gt; | default = 1m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[flush_period: &lt;duration&gt; | default = 1m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### alertmanager_config
 
  # Base path for data storage.
  # CLI flag: -alertmanager.storage.path
 <span style=color:#a40000>-[datadir: &lt;string&gt; | default = &#34;data/&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[data_dir: &lt;string&gt; | default = &#34;data/&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
  # relevant URL components will be derived automatically.
  # CLI flag: -alertmanager.web.external-url
 <span style=color:#a40000>-[externalurl: &lt;url&gt; | default = ]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[external_url: &lt;url&gt; | default = ]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # How frequently to poll Cortex configs
  # CLI flag: -alertmanager.configs.poll-interval
 <span style=color:#a40000>-[pollinterval: &lt;duration&gt; | default = 15s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[poll_interval: &lt;duration&gt; | default = 15s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Listen address for cluster.
  # CLI flag: -cluster.listen-address
 <span style=color:#a40000>-[clusterbindaddr: &lt;string&gt; | default = &#34;0.0.0.0:9094&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[cluster_bind_address: &lt;string&gt; | default = &#34;0.0.0.0:9094&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Explicit address to advertise in cluster.
  # CLI flag: -cluster.advertise-address
 <span style=color:#a40000>-[clusteradvertiseaddr: &lt;string&gt; | default = &#34;&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[cluster_advertise_address: &lt;string&gt; | default = &#34;&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Time to wait between peers to send notifications.
  # CLI flag: -cluster.peer-timeout
 <span style=color:#a40000>-[peertimeout: &lt;duration&gt; | default = 15s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[peer_timeout: &lt;duration&gt; | default = 15s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Filename of fallback config to use if none specified for instance.
  # CLI flag: -alertmanager.configs.fallback
 <span style=color:#a40000>-[fallbackconfigfile: &lt;string&gt; | default = &#34;&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[fallback_config_file: &lt;string&gt; | default = &#34;&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Root of URL to generate if config is http://internal.monitor
  # CLI flag: -alertmanager.configs.auto-webhook-root
 <span style=color:#a40000>-[autowebhookroot: &lt;string&gt; | default = &#34;&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[auto_webhook_root: &lt;string&gt; | default = &#34;&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### table_manager_config
 
 <span style=color:#a40000>-store:
 </span><span style=color:#a40000></span><span style=color:#00a000>+storage:
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 <span style=color:#a40000>-# How frequently to poll DynamoDB to learn our capacity.
 </span><span style=color:#a40000>-# CLI flag: -dynamodb.poll-interval
 </span><span style=color:#a40000>-[dynamodb_poll_interval: &lt;duration&gt; | default = 2m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+# How frequently to poll backend to learn our capacity.
 </span><span style=color:#00a000>+# CLI flag: -table-manager.poll-interval
 </span><span style=color:#00a000>+[poll_interval: &lt;duration&gt; | default = 2m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 <span style=color:#a40000>-# DynamoDB periodic tables grace period (duration which table will be
 </span><span style=color:#a40000>-# created/deleted before/after it&#39;s needed).
 </span><span style=color:#a40000>-# CLI flag: -dynamodb.periodic-table.grace-period
@@ -251,7 +251,7 @@
 </span><span style=color:#00a000>+# before/after it&#39;s needed).
 </span><span style=color:#00a000>+# CLI flag: -table-manager.periodic-table.grace-period
 </span><span style=color:#00a000></span> [creation_grace_period: &lt;duration&gt; | default = 10m0s]
- 
+
  index_tables_provisioning:
    # Enables on demand throughput provisioning for the storage provider (if
 <span style=color:#a40000>-  # supported). Applies only to tables which are not autoscaled
@@ -261,8 +261,8 @@
 </span><span style=color:#00a000>+  # DynamoDB
 </span><span style=color:#00a000>+  # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
 </span><span style=color:#00a000>+  [enable_ondemand_throughput_mode: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
- 
+</span><span style=color:#00a000></span>
+
    # Enables on demand throughput provisioning for the storage provider (if
 <span style=color:#a40000>-  # supported). Applies only to tables which are not autoscaled
 </span><span style=color:#a40000>-  # CLI flag: -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode
@@ -271,8 +271,8 @@
 </span><span style=color:#00a000>+  # DynamoDB
 </span><span style=color:#00a000>+  # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
 </span><span style=color:#00a000>+  [enable_inactive_throughput_on_demand_mode: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
- 
+</span><span style=color:#00a000></span>
+
  chunk_tables_provisioning:
    # Enables on demand throughput provisioning for the storage provider (if
 <span style=color:#a40000>-  # supported). Applies only to tables which are not autoscaled
@@ -282,7 +282,7 @@
 </span><span style=color:#00a000>+  # DynamoDB
 </span><span style=color:#00a000>+  # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
 </span><span style=color:#00a000>+  [enable_ondemand_throughput_mode: &lt;boolean&gt; | default = false]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### storage_config
 
  aws:
@@ -294,12 +294,12 @@
      # CLI flag: -dynamodb.url
 <span style=color:#a40000>-    [dynamodb: &lt;url&gt; | default = ]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [dynamodb_url: &lt;url&gt; | default = ]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # DynamoDB table management requests per second limit.
      # CLI flag: -dynamodb.api-limit
 <span style=color:#a40000>-    [apilimit: &lt;float&gt; | default = 2]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [api_limit: &lt;float&gt; | default = 2]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # DynamoDB rate cap to back off when throttled.
      # CLI flag: -dynamodb.throttle-limit
 <span style=color:#a40000>-    [throttlelimit: &lt;float&gt; | default = 10]
@@ -308,93 +308,93 @@
 </span><span style=color:#a40000>-    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
 </span><span style=color:#a40000>-    # CLI flag: -applicationautoscaling.url
 </span><span style=color:#a40000>-    [applicationautoscaling: &lt;url&gt; | default = ]
-</span><span style=color:#a40000></span> 
- 
+</span><span style=color:#a40000></span>
+
        # Queue length above which we will scale up capacity
        # CLI flag: -metrics.target-queue-length
 <span style=color:#a40000>-      [targetqueuelen: &lt;int&gt; | default = 100000]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [target_queue_length: &lt;int&gt; | default = 100000]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # Scale up capacity by this multiple
        # CLI flag: -metrics.scale-up-factor
 <span style=color:#a40000>-      [scaleupfactor: &lt;float&gt; | default = 1.3]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [scale_up_factor: &lt;float&gt; | default = 1.3]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # Ignore throttling below this level (rate per second)
        # CLI flag: -metrics.ignore-throttle-below
 <span style=color:#a40000>-      [minthrottling: &lt;float&gt; | default = 1]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [ignore_throttle_below: &lt;float&gt; | default = 1]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # query to fetch ingester queue length
        # CLI flag: -metrics.queue-length-query
 <span style=color:#a40000>-      [queuelengthquery: &lt;string&gt; | default = &#34;sum(avg_over_time(cortex_ingester_flush_queue_length{job=\&#34;cortex/ingester\&#34;}[2m]))&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [queue_length_query: &lt;string&gt; | default = &#34;sum(avg_over_time(cortex_ingester_flush_queue_length{job=\&#34;cortex/ingester\&#34;}[2m]))&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # query to fetch throttle rates per table
        # CLI flag: -metrics.write-throttle-query
 <span style=color:#a40000>-      [throttlequery: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_throttled_total{operation=\&#34;DynamoDB.BatchWriteItem\&#34;}[1m])) by (table) &gt; 0&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [write_throttle_query: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_throttled_total{operation=\&#34;DynamoDB.BatchWriteItem\&#34;}[1m])) by (table) &gt; 0&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # query to fetch write capacity usage per table
        # CLI flag: -metrics.usage-query
 <span style=color:#a40000>-      [usagequery: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_consumed_capacity_total{operation=\&#34;DynamoDB.BatchWriteItem\&#34;}[15m])) by (table) &gt; 0&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [write_usage_query: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_consumed_capacity_total{operation=\&#34;DynamoDB.BatchWriteItem\&#34;}[15m])) by (table) &gt; 0&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # query to fetch read capacity usage per table
        # CLI flag: -metrics.read-usage-query
 <span style=color:#a40000>-      [readusagequery: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_consumed_capacity_total{operation=\&#34;DynamoDB.QueryPages\&#34;}[1h])) by (table) &gt; 0&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [read_usage_query: &lt;string&gt; | default = &#34;sum(rate(cortex_dynamo_consumed_capacity_total{operation=\&#34;DynamoDB.QueryPages\&#34;}[1h])) by (table) &gt; 0&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # query to fetch read errors per table
        # CLI flag: -metrics.read-error-query
 <span style=color:#a40000>-      [readerrorquery: &lt;string&gt; | default = &#34;sum(increase(cortex_dynamo_failures_total{operation=\&#34;DynamoDB.QueryPages\&#34;,error=\&#34;ProvisionedThroughputExceededException\&#34;}[1m])) by (table) &gt; 0&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [read_error_query: &lt;string&gt; | default = &#34;sum(increase(cortex_dynamo_failures_total{operation=\&#34;DynamoDB.QueryPages\&#34;,error=\&#34;ProvisionedThroughputExceededException\&#34;}[1m])) by (table) &gt; 0&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # Number of chunks to group together to parallelise fetches (zero to
      # disable)
 <span style=color:#a40000>-    # CLI flag: -dynamodb.chunk.gang.size
 </span><span style=color:#a40000>-    [chunkgangsize: &lt;int&gt; | default = 10]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    # CLI flag: -dynamodb.chunk-gang-size
 </span><span style=color:#00a000>+    [chunk_gang_size: &lt;int&gt; | default = 10]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # Max number of chunk-get operations to start in parallel
 <span style=color:#a40000>-    # CLI flag: -dynamodb.chunk.get.max.parallelism
 </span><span style=color:#a40000>-    [chunkgetmaxparallelism: &lt;int&gt; | default = 32]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    # CLI flag: -dynamodb.chunk.get-max-parallelism
 </span><span style=color:#00a000>+    [chunk_get_max_parallelism: &lt;int&gt; | default = 32]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      backoff_config:
        # Minimum delay when backing off.
        # CLI flag: -bigtable.backoff-min-period
 <span style=color:#a40000>-      [minbackoff: &lt;duration&gt; | default = 100ms]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [min_period: &lt;duration&gt; | default = 100ms]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # Maximum delay when backing off.
        # CLI flag: -bigtable.backoff-max-period
 <span style=color:#a40000>-      [maxbackoff: &lt;duration&gt; | default = 10s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [max_period: &lt;duration&gt; | default = 10s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
        # Number of times to backoff and retry before failing.
        # CLI flag: -bigtable.backoff-retries
 <span style=color:#a40000>-      [maxretries: &lt;int&gt; | default = 10]
 </span><span style=color:#a40000></span><span style=color:#00a000>+      [max_retries: &lt;int&gt; | default = 10]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
    # If enabled, once a tables info is fetched, it is cached.
    # CLI flag: -bigtable.table-cache.enabled
 <span style=color:#a40000>-  [tablecacheenabled: &lt;boolean&gt; | default = true]
 </span><span style=color:#a40000></span><span style=color:#00a000>+  [table_cache_enabled: &lt;boolean&gt; | default = true]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
    # Duration to cache tables before checking again.
    # CLI flag: -bigtable.table-cache.expiration
 <span style=color:#a40000>-  [tablecacheexpiration: &lt;duration&gt; | default = 30m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+  [table_cache_expiration: &lt;duration&gt; | default = 30m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # Cache validity for active index entries. Should be no higher than
  # -ingester.max-chunk-idle.
  # CLI flag: -store.index-cache-validity
 <span style=color:#a40000>-[indexcachevalidity: &lt;duration&gt; | default = 5m0s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[index_cache_validity: &lt;duration&gt; | default = 5m0s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### ingester_client_config
 
  grpc_client_config:
@@ -403,17 +403,17 @@
      # CLI flag: -ingester.client.backoff-min-period
 <span style=color:#a40000>-    [minbackoff: &lt;duration&gt; | default = 100ms]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [min_period: &lt;duration&gt; | default = 100ms]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # Maximum delay when backing off.
      # CLI flag: -ingester.client.backoff-max-period
 <span style=color:#a40000>-    [maxbackoff: &lt;duration&gt; | default = 10s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [max_period: &lt;duration&gt; | default = 10s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # Number of times to backoff and retry before failing.
      # CLI flag: -ingester.client.backoff-retries
 <span style=color:#a40000>-    [maxretries: &lt;int&gt; | default = 10]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [max_retries: &lt;int&gt; | default = 10]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
 ### frontend_worker_config
 
 <span style=color:#a40000>-# Address of query frontend service.
@@ -421,19 +421,19 @@
 </span><span style=color:#00a000></span> # CLI flag: -querier.frontend-address
 <span style=color:#a40000>-[address: &lt;string&gt; | default = &#34;&#34;]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[frontend_address: &lt;string&gt; | default = &#34;&#34;]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  # How often to query DNS.
  # CLI flag: -querier.dns-lookup-period
 <span style=color:#a40000>-[dnslookupduration: &lt;duration&gt; | default = 10s]
 </span><span style=color:#a40000></span><span style=color:#00a000>+[dns_lookup_duration: &lt;duration&gt; | default = 10s]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
  grpc_client_config:
    backoff_config:
      # Minimum delay when backing off.
      # CLI flag: -querier.frontend-client.backoff-min-period
 <span style=color:#a40000>-    [minbackoff: &lt;duration&gt; | default = 100ms]
 </span><span style=color:#a40000></span><span style=color:#00a000>+    [min_period: &lt;duration&gt; | default = 100ms]
-</span><span style=color:#00a000></span> 
+</span><span style=color:#00a000></span>
      # Maximum delay when backing off.
      # CLI flag: -querier.frontend-client.backoff-max-period
 <span style=color:#a40000>-    [maxbackoff: &lt;duration&gt; | default = 10s]

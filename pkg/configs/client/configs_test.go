@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 
 	"github.com/stretchr/testify/require"
 
@@ -35,7 +36,7 @@ func TestDoRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	resp, err := doRequest(server.URL, 1*time.Second, 0)
+	resp, err := doRequest(server.URL, httpclient.Config{HTTPClientTimeout: 1 * time.Second}, 0)
 	assert.Nil(t, err)
 
 	expected := ConfigsResponse{Configs: map[string]userconfig.View{

@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"os"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,15 +10,16 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 type Config struct {
-	ServerServicePort  int
-	ServerMetricsPort  int
-	BackendEndpoints   string
-	PreferredBackend   string
-	BackendReadTimeout time.Duration
-	LogLevel           logging.Level
+	ServerServicePort int
+	ServerMetricsPort int
+	BackendEndpoints  string
+	PreferredBackend  string
+	ClientConfig      httpclient.Config
+	LogLevel          logging.Level
 }
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
 	flag.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
 	flag.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client.")
-	flag.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
+	cfg.ClientConfig.RegisterFlags(flag.CommandLine)
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 

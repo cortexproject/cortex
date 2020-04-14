@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 // ProxyBackend holds the information of a single backend.
@@ -25,26 +27,31 @@ type ProxyBackend struct {
 }
 
 // NewProxyBackend makes a new ProxyBackend
-func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred bool) *ProxyBackend {
+func NewProxyBackend(name string, config *httpclient.Config, preferred bool) *ProxyBackend {
+	roundTripper := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
+		IdleConnTimeout:     90 * time.Second,
+	}
+	if tlsConfig := config.GetTLSConfig(); tlsConfig != nil {
+		roundTripper.TLSClientConfig = tlsConfig
+	}
+
 	return &ProxyBackend{
 		name:      name,
-		endpoint:  endpoint,
-		timeout:   timeout,
+		endpoint:  config.HTTPEndpoint.URL,
+		timeout:   config.HTTPClientTimeout,
 		preferred: preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
 			},
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				DialContext: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
-				IdleConnTimeout:     90 * time.Second,
-			},
+			Transport: roundTripper,
 		},
 	}
 }

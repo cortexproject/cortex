@@ -19,76 +19,83 @@ func TestResetParallelism(t *testing.T) {
 	})
 
 	tests := []struct {
+		name                string
 		parallelism         int
 		totalParallelism    int
 		numManagers         int
 		expectedConcurrency int32
 	}{
 		{
+			name:                "Test create least one worker per manager",
 			parallelism:         0,
 			totalParallelism:    0,
 			numManagers:         2,
 			expectedConcurrency: 2,
 		},
 		{
-			parallelism:         1,
+			name:                "Test concurrency per query frontend configuration",
+			parallelism:         4,
 			totalParallelism:    0,
 			numManagers:         2,
-			expectedConcurrency: 2,
+			expectedConcurrency: 8,
 		},
 		{
+			name:                "Test Total Parallelism with a remainder",
 			parallelism:         1,
 			totalParallelism:    7,
 			numManagers:         4,
 			expectedConcurrency: 7,
 		},
 		{
-			parallelism:         1,
-			totalParallelism:    3,
-			numManagers:         6,
-			expectedConcurrency: 6,
-		},
-		{
+			name:                "Test Total Parallelism dividing evenly",
 			parallelism:         1,
 			totalParallelism:    6,
 			numManagers:         2,
 			expectedConcurrency: 6,
 		},
+		{
+			name:                "Test Total Parallelism at least one worker per manager",
+			parallelism:         1,
+			totalParallelism:    3,
+			numManagers:         6,
+			expectedConcurrency: 6,
+		},
 	}
 
 	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := WorkerConfig{
+				Parallelism:      tt.parallelism,
+				TotalParallelism: tt.totalParallelism,
+			}
 
-		cfg := WorkerConfig{
-			Parallelism:      tt.parallelism,
-			TotalParallelism: tt.totalParallelism,
-		}
+			w := &worker{
+				cfg:      cfg,
+				log:      util.Logger,
+				managers: map[string]*frontendManager{},
+			}
 
-		w := &worker{
-			cfg:      cfg,
-			log:      util.Logger,
-			managers: map[string]*frontendManager{},
-		}
+			for i := 0; i < tt.numManagers; i++ {
+				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 0, 100000000)
+			}
 
-		for i := 0; i < tt.numManagers; i++ {
-			w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 0, 100000000)
-		}
+			w.resetParallelism()
+			time.Sleep(100 * time.Millisecond)
 
-		w.resetParallelism()
-		time.Sleep(100 * time.Millisecond)
+			concurrency := int32(0)
+			for _, mgr := range w.managers {
+				concurrency += mgr.currentProcessors.Load()
+			}
+			assert.Equal(t, tt.expectedConcurrency, concurrency)
 
-		concurrency := int32(0)
-		for _, mgr := range w.managers {
-			concurrency += mgr.currentProcessors.Load()
-		}
-		assert.Equal(t, tt.expectedConcurrency, concurrency)
+			err := w.stopping(nil)
+			assert.NoError(t, err)
 
-		err := w.stopping(nil)
-		assert.NoError(t, err)
-
-		concurrency = int32(0)
-		for _, mgr := range w.managers {
-			concurrency += mgr.currentProcessors.Load()
-		}
-		assert.Equal(t, int32(0), concurrency)
+			concurrency = int32(0)
+			for _, mgr := range w.managers {
+				concurrency += mgr.currentProcessors.Load()
+			}
+			assert.Equal(t, int32(0), concurrency)
+		})
 	}
 }

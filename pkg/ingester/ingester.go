@@ -102,7 +102,7 @@ type Ingester struct {
 	chunkStore         ChunkStore
 	lifecycler         *ring.Lifecycler
 	limits             *validation.Overrides
-	limiter            *SeriesLimiter
+	limiter            *Limiter
 	subservicesWatcher *services.FailureWatcher
 
 	userStatesMtx sync.RWMutex // protects userStates and stopped
@@ -175,7 +175,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
-	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.subservicesWatcher = services.NewFailureWatcher()
 	i.subservicesWatcher.WatchService(i.lifecycler)
 

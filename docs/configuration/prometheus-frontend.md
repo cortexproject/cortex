@@ -5,7 +5,6 @@ weight: 3
 slug: prometheus-frontend
 ---
 
-
 You can use the Cortex query frontend with any Prometheus-API compatible
 service, including Prometheus and Thanos.  Use this config file to get
 the benefits of query parallelisation and caching.
@@ -25,7 +24,7 @@ server:
   http_listen_port: 9091
 
 query_range:
-  split_queries_by_day: true
+  split_queries_by_interval: 24h
   align_queries_with_step: true
   cache_results: true
 
@@ -40,16 +39,25 @@ query_range:
         size: 1024
         validity: 24h
 
-      # If you want to use a memcached cluster, configure a headless service
-      # in Kubernetes and Cortex will discover the individual instances using
-      # a SRV DNS query.  Cortex will then do client-side hashing to spread
-      # the load evenly.
-      # memcached:
-      #   memcached_client:
-      #     host: memcached.default.svc.cluster.local
-      #     service: memcached
-      #     consistent_hash: true
+      # If you want to use a memcached cluster, you can either configure a
+      # headless service in Kubernetes and Cortex will discover the individual
+      # instances using a SRV DNS query (host) or list comma separated
+      # memcached addresses.
+      # host + service: this is the config you should set when you use the
+      # SRV DNS (this is considered stable)
+      # addresses: this is experimental and supports service discovery
+      # (https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery)
+      # so it could either be a list of single addresses, or a SRV record
+      # prefixed with dnssrvnoa+. Cortex will then do client-side hashing to
+      # spread the load evenly.
 
+      # memcached:
+      #   expiration : 24h
+      # memcached_client:
+      #   host: memcached.default.svc.cluster.local
+      #   service: memcached
+      #   addresses: ""
+      #   consistent_hash: true
 
 frontend:
   log_queries_longer_than: 1s

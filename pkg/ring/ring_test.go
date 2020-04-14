@@ -46,6 +46,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 		name:     "ingester",
 		cfg:      cfg,
 		ringDesc: desc,
+		strategy: &DefaultReplicationStrategy{},
 	}
 
 	ctx := context.Background()
@@ -87,6 +88,7 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 		name:     "ingester",
 		cfg:      Config{},
 		ringDesc: desc,
+		strategy: &DefaultReplicationStrategy{},
 	}
 	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
 }
@@ -143,6 +145,7 @@ func TestSubring(t *testing.T) {
 		},
 		ringDesc:   r,
 		ringTokens: r.getTokens(),
+		strategy:   &DefaultReplicationStrategy{},
 	}
 
 	// Subring of 0 invalid
@@ -197,6 +200,7 @@ func TestStableSubring(t *testing.T) {
 		},
 		ringDesc:   r,
 		ringTokens: r.getTokens(),
+		strategy:   &DefaultReplicationStrategy{},
 	}
 
 	// Generate the same subring multiple times
@@ -256,6 +260,7 @@ func TestZoneAwareIngesterAssignmentSucccess(t *testing.T) {
 		},
 		ringDesc:   r,
 		ringTokens: r.getTokens(),
+		strategy:   &DefaultReplicationStrategy{},
 	}
 	// use the GenerateTokens to get an array of random uint32 values
 	testValues := make([]uint32, testCount)
@@ -320,6 +325,7 @@ func TestZoneAwareIngesterAssignmentFailure(t *testing.T) {
 		},
 		ringDesc:   r,
 		ringTokens: r.getTokens(),
+		strategy:   &DefaultReplicationStrategy{},
 	}
 	// use the GenerateTokens to get an array of random uint32 values
 	testValues := make([]uint32, testCount)

@@ -270,6 +270,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 
 	// these routes are either registered the default server OR to an internal mux.  The internal mux is
 	//  for use in a single binary mode when both the query frontend and the querier would attempt to claim these routes
+	//  TODO:  Add support to expose querier paths with a configurable prefix in single binary mode.
 	router := mux.NewRouter()
 	if registerRoutesExternally {
 		router = a.server.HTTP

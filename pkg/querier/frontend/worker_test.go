@@ -81,5 +81,14 @@ func TestResetParallelism(t *testing.T) {
 			concurrency += mgr.currentProcessors.Load()
 		}
 		assert.Equal(t, tt.expectedConcurrency, concurrency)
+
+		err := w.stopping(nil)
+		assert.NoError(t, err)
+
+		concurrency = int32(0)
+		for _, mgr := range w.managers {
+			concurrency += mgr.currentProcessors.Load()
+		}
+		assert.Equal(t, int32(0), concurrency)
 	}
 }

@@ -152,7 +152,8 @@ func (w *worker) resetParallelism() {
 		}
 	}
 
-	// otherwise we have to do some work.  assign
+	// otherwise we have to do some work.  randomize the order of our managers and set concurrency
+	//  on each to match the requested total concurrency
 	addresses := make([]string, 0, len(w.managers))
 	for addr := range w.managers {
 		addresses = append(addresses, addr)

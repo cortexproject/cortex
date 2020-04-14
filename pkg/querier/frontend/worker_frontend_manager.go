@@ -93,7 +93,7 @@ func (f *frontendManager) concurrentRequests(n int) {
 // request processing.
 //  Ways that this can be cancelled
 //   servCtx is cancelled => Cortex is shutting down.
-//   c.Recv() errors => transient network issue, client timeout
+//   c.Recv() errors => transient network issue, a client of the query frontend times out
 //   close quit channel => frontendManager is politely asking to shutdown a processor
 func (f *frontendManager) runOne(quit <-chan struct{}) {
 	f.wg.Add(1)

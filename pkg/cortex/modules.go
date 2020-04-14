@@ -196,11 +196,21 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 
-	t.api.RegisterQuerier(queryable, engine, t.distributor)
+	// if we are not configured for single binary mode then the querier needs to register its paths externally
+	registerExternally := cfg.Target != All
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally)
+
+	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
+	//  worker we will attempt an automatic configuration here
+	if cfg.Worker.Address == "" && cfg.Target == All {
+		address := fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
+		level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
+		cfg.Worker.Address = address
+	}
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -611,6 +621,6 @@ var modules = map[ModuleName]module{
 	},
 
 	All: {
-		deps: []ModuleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

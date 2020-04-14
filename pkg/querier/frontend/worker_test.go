@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/stretchr/testify/assert"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"google.golang.org/grpc/naming"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestResetParallelism(t *testing.T) {
@@ -103,18 +104,18 @@ func TestResetParallelism(t *testing.T) {
 }
 
 type mockDNSWatcher struct {
-	updates []*naming.Update
+	updates []*naming.Update //nolint:staticcheck
 	wg      sync.WaitGroup
 }
 
-func (m *mockDNSWatcher) Next() ([]*naming.Update, error) {
+func (m *mockDNSWatcher) Next() ([]*naming.Update, error) { //nolint:staticcheck
 	m.wg.Add(1)
 	m.wg.Wait()
 
-	var update *naming.Update
+	var update *naming.Update //nolint:staticcheck
 	update, m.updates = m.updates[0], m.updates[1:]
 
-	return []*naming.Update{update}, nil
+	return []*naming.Update{update}, nil //nolint:staticcheck
 }
 
 func (m *mockDNSWatcher) Close() {
@@ -124,12 +125,12 @@ func (m *mockDNSWatcher) Close() {
 func TestDNSWatcher(t *testing.T) {
 	tests := []struct {
 		name              string
-		updates           []*naming.Update
+		updates           []*naming.Update //nolint:staticcheck
 		expectedFrontends [][]string
 	}{
 		{
 			name: "Test add one",
-			updates: []*naming.Update{
+			updates: []*naming.Update{ //nolint:staticcheck
 				{
 					Op:   naming.Add,
 					Addr: "blerg",
@@ -143,7 +144,7 @@ func TestDNSWatcher(t *testing.T) {
 		},
 		{
 			name: "Test add one and delete",
-			updates: []*naming.Update{
+			updates: []*naming.Update{ //nolint:staticcheck
 				{
 					Op:   naming.Add,
 					Addr: "blerg",
@@ -162,7 +163,7 @@ func TestDNSWatcher(t *testing.T) {
 		},
 		{
 			name: "Test delete nonexistent",
-			updates: []*naming.Update{
+			updates: []*naming.Update{ //nolint:staticcheck
 				{
 					Op:   naming.Delete,
 					Addr: "blerg",
@@ -199,7 +200,7 @@ func TestDNSWatcher(t *testing.T) {
 			}
 
 			ctx, cancel := context.WithCancel(context.Background())
-			go w.watchDNSLoop(ctx)
+			go w.watchDNSLoop(ctx) //nolint:errcheck
 			time.Sleep(50 * time.Millisecond)
 
 			for i := range tt.updates {

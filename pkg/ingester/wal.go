@@ -20,8 +20,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -49,7 +51,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
-	Log(*Record) error
+	Log(*WALRecord) error
 	// Stop stops all the WAL operations.
 	Stop()
 }
@@ -58,16 +60,17 @@ type RecordType byte
 
 const (
 	// WAL record types.
-	WALRecordType1 RecordType = 1
+	WALRecordSeriesType1  RecordType = 1
+	WALRecordSamplesType1 RecordType = 2
 
 	// Checkpoint record types.
-	CheckpointRecordType1 RecordType = 2
+	CheckpointRecordType1 RecordType = 3
 )
 
 type noopWAL struct{}
 
-func (noopWAL) Log(*Record) error { return nil }
-func (noopWAL) Stop()             {}
+func (noopWAL) Log(*WALRecord) error { return nil }
+func (noopWAL) Stop()                {}
 
 type walWrapper struct {
 	cfg  WALConfig
@@ -85,6 +88,8 @@ type walWrapper struct {
 	checkpointCreationFail  prometheus.Counter
 	checkpointCreationTotal prometheus.Counter
 	checkpointDuration      prometheus.Summary
+	walLoggedBytes          prometheus.Counter
+	walRecordsLogged        prometheus.Counter
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -99,7 +104,7 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	if registerer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)
 	}
-	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, true)
+	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, false)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +142,14 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
+	w.walLoggedBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_logged_bytes_total",
+		Help: "Total number of checkpoint creations that failed.",
+	})
+	w.walRecordsLogged = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_records_logged_total",
+		Help: "Total number of checkpoint creations that failed.",
+	})
 
 	w.wait.Add(1)
 	go w.run()
@@ -149,24 +162,38 @@ func (w *walWrapper) Stop() {
 	w.wal.Close()
 }
 
-func (w *walWrapper) Log(record *Record) error {
+func (w *walWrapper) Log(record *WALRecord) error {
+	if record == nil {
+		return nil
+	}
 	select {
 	case <-w.quit:
 		return nil
 	default:
-		if record == nil {
-			return nil
-		}
-		var err error
-		b := w.bytesPool.Get().([]byte)
-		defer func() { w.bytesPool.Put(b) }() //nolint:staticcheck
+		buf := w.bytesPool.Get().([]byte)[:0]
+		defer func() {
+			w.bytesPool.Put(buf) // nolint:staticcheck
+		}()
 
-		b, err = encodeWithTypeHeader(record, WALRecordType1, b)
-		if err != nil {
-			return err
+		if len(record.Series) > 0 {
+			buf = record.encodeSeries(buf)
+			if err := w.wal.Log(buf); err != nil {
+				return err
+			}
+			w.walRecordsLogged.Inc()
+			w.walLoggedBytes.Add(float64(len(buf)))
+			buf = buf[:0]
+		}
+		if len(record.Samples) > 0 {
+			buf = record.encodeSamples(buf)
+			if err := w.wal.Log(buf); err != nil {
+				return err
+			}
+			w.walRecordsLogged.Inc()
+			w.walLoggedBytes.Add(float64(len(buf)))
 		}
 
-		return w.wal.Log(b)
+		return nil
 	}
 }
 
@@ -261,7 +288,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return errors.Wrap(err, "create checkpoint dir")
 	}
-	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, true)
+	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)
 	if err != nil {
 		return errors.Wrap(err, "open checkpoint")
 	}
@@ -585,7 +612,7 @@ func processCheckpoint(name string, userStates *userStates, params walRecoveryPa
 Loop:
 	for reader.Next() {
 		s := seriesPool.Get().(*Series)
-		m, err := decodeRecord(reader.Record(), CheckpointRecordType1, s)
+		m, err := decodeCheckpointRecord(reader.Record(), s)
 		if err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
@@ -693,7 +720,7 @@ func processCheckpointRecord(
 }
 
 type samplesWithUserID struct {
-	samples []Sample
+	samples []tsdb_record.RefSample
 	userID  string
 }
 
@@ -760,6 +787,8 @@ func processWAL(startSegment int, userStates *userStates, params walRecoveryPara
 	var (
 		capturedErr error
 		record      = &Record{}
+		walRecord   = &WALRecord{}
+		lp          labelPairs
 	)
 Loop:
 	for reader.Next() {
@@ -770,25 +799,53 @@ Loop:
 			break Loop
 		default:
 		}
-		m, err := decodeRecord(reader.Record(), WALRecordType1, record)
+
+		record.Samples = record.Samples[:0]
+		record.Labels = record.Labels[:0]
+		// Only one of 'record' or 'walRecord' will have the data.
+		record, walRecord, err = decodeWALRecord(reader.Record(), record, walRecord)
 		if err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
 			break Loop
 		}
-		record = m.(*Record)
 
-		if len(record.Labels) > 0 {
-			state := userStates.getOrCreate(record.UserId)
-			// Create the series from labels which do not exist.
-			for _, labels := range record.Labels {
-				_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
+		if len(record.Labels) > 0 || len(walRecord.Series) > 0 {
+
+			var userID string
+			if len(walRecord.Series) > 0 {
+				userID = walRecord.UserID
+			} else {
+				userID = record.UserId
+			}
+
+			state := userStates.getOrCreate(userID)
+
+			createSeries := func(fingerprint model.Fingerprint, lbls labelPairs) error {
+				_, ok := state.fpToSeries.get(fingerprint)
 				if ok {
-					continue
+					return nil
 				}
-				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, nil, true)
-				if err != nil {
+				_, err := state.createSeriesWithFingerprint(fingerprint, lbls, nil, true)
+				return err
+			}
+
+			for _, labels := range record.Labels {
+				if err := createSeries(model.Fingerprint(labels.Fingerprint), labels.Labels); err != nil {
+					// We don't return here in order to close/drain all the channels and
+					// make sure all goroutines exit.
+					capturedErr = err
+					break Loop
+				}
+			}
+
+			for _, s := range walRecord.Series {
+				lp = lp[:0]
+				for _, l := range s.Labels {
+					lp = append(lp, client.LabelAdapter(l))
+				}
+				if err := createSeries(model.Fingerprint(s.Ref), lp); err != nil {
 					// We don't return here in order to close/drain all the channels and
 					// make sure all goroutines exit.
 					capturedErr = err
@@ -801,39 +858,70 @@ Loop:
 		// With O(300 * #cores) in-flight sample batches, large scrapes could otherwise
 		// cause thousands of very large in flight buffers occupying large amounts
 		// of unused memory.
-		for len(record.Samples) > 0 {
+		for len(record.Samples) > 0 || len(walRecord.Samples) > 0 {
 			m := 5000
-			if len(record.Samples) < m {
-				m = len(record.Samples)
+			var userID string
+			if len(record.Samples) > 0 {
+				userID = record.UserId
+				if len(record.Samples) < m {
+					m = len(record.Samples)
+				}
 			}
+			if len(walRecord.Samples) > 0 {
+				userID = walRecord.UserID
+				if len(walRecord.Samples) < m {
+					m = len(walRecord.Samples)
+				}
+			}
+
 			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) == 0 {
 					// It is possible that the previous iteration did not put
 					// anything in this shard. In that case no need to get a new buffer.
-					shards[i].userID = record.UserId
+					shards[i].userID = userID
 					continue
 				}
 				select {
 				case buf := <-outputs[i]:
 					buf.samples = buf.samples[:0]
-					buf.userID = record.UserId
+					buf.userID = userID
 					shards[i] = buf
 				default:
 					shards[i] = &samplesWithUserID{
-						userID: record.UserId,
+						userID: userID,
 					}
 				}
 			}
-			for _, sam := range record.Samples[:m] {
-				mod := sam.Fingerprint % uint64(params.numWorkers)
-				shards[mod].samples = append(shards[mod].samples, sam)
+
+			if len(record.Samples) > 0 {
+				for _, sam := range record.Samples[:m] {
+					mod := sam.Fingerprint % uint64(params.numWorkers)
+					shards[mod].samples = append(shards[mod].samples, tsdb_record.RefSample{
+						Ref: sam.Fingerprint,
+						T:   int64(sam.Timestamp),
+						V:   sam.Value,
+					})
+				}
 			}
+			if len(walRecord.Samples) > 0 {
+				for _, sam := range walRecord.Samples[:m] {
+					mod := sam.Ref % uint64(params.numWorkers)
+					shards[mod].samples = append(shards[mod].samples, sam)
+				}
+			}
+
 			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) > 0 {
 					inputs[i] <- shards[i]
 				}
 			}
-			record.Samples = record.Samples[m:]
+
+			if len(record.Samples) > 0 {
+				record.Samples = record.Samples[m:]
+			}
+			if len(walRecord.Samples) > 0 {
+				walRecord.Samples = walRecord.Samples[m:]
+			}
 		}
 	}
 
@@ -875,21 +963,20 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 		}
 		sc := seriesCache[samples.userID]
 		for i := range samples.samples {
-			series, ok := sc[samples.samples[i].Fingerprint]
+			series, ok := sc[samples.samples[i].Ref]
 			if !ok {
-				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Fingerprint))
+				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Ref))
 				if !ok {
 					// This should ideally not happen.
 					// If the series was not created in recovering checkpoint or
 					// from the labels of any records previous to this, there
 					// is no way to get the labels for this fingerprint.
-					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Fingerprint).String())
+					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Ref).String())
 					continue
 				}
 			}
-
-			sp.Timestamp = model.Time(samples.samples[i].Timestamp)
-			sp.Value = model.SampleValue(samples.samples[i].Value)
+			sp.Timestamp = model.Time(samples.samples[i].T)
+			sp.Value = model.SampleValue(samples.samples[i].V)
 			// There can be many out of order samples because of checkpoint and WAL overlap.
 			// Checking this beforehand avoids the allocation of lots of error messages.
 			if sp.Timestamp.After(series.lastTime) {
@@ -964,20 +1051,27 @@ func SegmentRange(dir string) (int, int, error) {
 	return first, last, nil
 }
 
-func decodeRecord(rec []byte, typ RecordType, m proto.Message) (proto.Message, error) {
+func decodeCheckpointRecord(rec []byte, m proto.Message) (proto.Message, error) {
+	// Legacy record without a type header. It errors out for new records with type <= 7.
+	// As all record types satisfy the condition currently, no error here means it a legacy record.
 	err := proto.Unmarshal(rec, m)
 	if err == nil {
 		return m, nil
 	}
 
+	// If we reached here, it means the record is most likely not a legacy record.
 	var merr tsdb_errors.MultiError
 	merr.Add(err)
 
-	if len(rec) > 0 && RecordType(rec[0]) == typ {
-		if err := proto.Unmarshal(rec[1:], m); err != nil {
-			merr.Add(err)
-		} else {
-			merr = nil
+	if len(rec) > 0 {
+		switch RecordType(rec[0]) {
+		case CheckpointRecordType1:
+			if err := proto.Unmarshal(rec[1:], m); err != nil {
+				merr.Add(err)
+			} else {
+				merr = nil
+			}
+		default:
 		}
 	}
 
@@ -993,4 +1087,92 @@ func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, er
 	b = append(b[:0], byte(typ))
 	b = append(b, buf...)
 	return b, nil
+}
+
+type WALRecord struct {
+	UserID  string
+	Series  []tsdb_record.RefSeries
+	Samples []tsdb_record.RefSample
+}
+
+func (record *WALRecord) encodeSeries(b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(WALRecordSeriesType1))
+	buf.PutUvarintStr(record.UserID)
+
+	var enc tsdb_record.Encoder
+	// The 'encoded' already has the type header and userID here,
+	// hence re-using the remaining part of the slice (encoded[len(encoded):]))
+	// to encode the series.
+	encoded := buf.Get()
+	encoded = append(encoded, enc.Series(record.Series, encoded[len(encoded):])...)
+
+	return encoded
+}
+
+func (record *WALRecord) encodeSamples(b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(WALRecordSamplesType1))
+	buf.PutUvarintStr(record.UserID)
+
+	var enc tsdb_record.Encoder
+	// The 'encoded' already has the type header and userID here,
+	// hence re-using the remaining part of the slice (encoded[len(encoded):]))
+	// to encode the samples.
+	encoded := buf.Get()
+	encoded = append(encoded, enc.Samples(record.Samples, encoded[len(encoded):])...)
+
+	return encoded
+}
+
+func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (*Record, *WALRecord, error) {
+	// Legacy record without a type header. It errors out for new records with type <= 7.
+	// As all record types satisfy the condition currently, no error here means it a legacy record.
+	err := proto.Unmarshal(b, rec)
+	if err == nil {
+		return rec, walRec, nil
+	}
+
+	// If we reached here, it means the record is most likely not a legacy record.
+	var merr tsdb_errors.MultiError
+	merr.Add(err)
+
+	var (
+		userID   string
+		dec      tsdb_record.Decoder
+		rseries  []tsdb_record.RefSeries
+		rsamples []tsdb_record.RefSample
+
+		decbuf = encoding.Decbuf{B: b}
+		t      = RecordType(decbuf.Byte())
+	)
+
+	walRec.Series = walRec.Series[:0]
+	walRec.Samples = walRec.Samples[:0]
+	switch t {
+	case WALRecordSamplesType1:
+		userID = decbuf.UvarintStr()
+		rsamples, err = dec.Samples(decbuf.B, walRec.Samples)
+	case WALRecordSeriesType1:
+		userID = decbuf.UvarintStr()
+		rseries, err = dec.Series(decbuf.B, walRec.Series)
+	default:
+		err = errors.Errorf("invalid record type %d", t)
+	}
+
+	if decbuf.Err() != nil {
+		return rec, walRec, decbuf.Err()
+	}
+
+	merr.Add(err)
+	if err == nil {
+		// There was no error decoding the records with type headers.
+		// Hence make the first error nil.
+		merr = nil
+		walRec.UserID = userID
+		walRec.Samples = rsamples
+		walRec.Series = rseries
+	}
+
+	return rec, walRec, merr.Err()
 }

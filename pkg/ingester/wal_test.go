@@ -11,6 +11,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -180,7 +182,7 @@ func TestCheckpointRepair(t *testing.T) {
 
 func TestMigrationToTypedRecord(t *testing.T) {
 	// WAL record migration.
-	walRecord := &Record{
+	walRecordOld := &Record{
 		UserId: "12345",
 		Labels: []Labels{
 			{Fingerprint: 7568176523, Labels: []client.LabelAdapter{{Name: "n1", Value: "v1"}}},
@@ -191,22 +193,45 @@ func TestMigrationToTypedRecord(t *testing.T) {
 			{Fingerprint: 326847234, Timestamp: 99, Value: 99},
 		},
 	}
+	walRecordNew := &WALRecord{
+		UserID: "12345",
+		Series: []tsdb_record.RefSeries{
+			{Ref: 7568176523, Labels: []labels.Label{{Name: "n1", Value: "v1"}}},
+			{Ref: 5720984283, Labels: []labels.Label{{Name: "n2", Value: "v2"}}},
+		},
+		Samples: []tsdb_record.RefSample{
+			{Ref: 768276312, T: 10, V: 10},
+			{Ref: 326847234, T: 99, V: 99},
+		},
+	}
 
-	oldRecordBytes, err := proto.Marshal(walRecord)
+	// Encoding old record.
+	oldRecordBytes, err := proto.Marshal(walRecordOld)
 	require.NoError(t, err)
-	newRecordBytes, err := encodeWithTypeHeader(walRecord, WALRecordType1, nil)
-	require.NoError(t, err)
+	// Series and samples are encoded separately in the new record.
+	newRecordSeriesBytes := walRecordNew.encodeSeries(nil)
+	newRecordSamples := walRecordNew.encodeSamples(nil)
 
-	m, err := decodeRecord(oldRecordBytes, WALRecordType1, &Record{})
+	// Test decoding of old record.
+	record, walRecord, err := decodeWALRecord(oldRecordBytes, &Record{}, &WALRecord{})
 	require.NoError(t, err)
-	oldWALRecordDecoded := m.(*Record)
+	require.Equal(t, walRecordOld, record)
+	require.Equal(t, &WALRecord{}, walRecord)
 
-	m, err = decodeRecord(newRecordBytes, WALRecordType1, &Record{})
+	// Test series and samples of new record separately.
+	record, walRecord, err = decodeWALRecord(newRecordSeriesBytes, &Record{}, &WALRecord{})
 	require.NoError(t, err)
-	newWALRecordDecoded := m.(*Record)
+	require.Equal(t, &Record{}, record)
+	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
+	require.Equal(t, walRecordNew.Series, walRecord.Series)
+	require.Equal(t, 0, len(walRecord.Samples))
 
-	require.Equal(t, walRecord, oldWALRecordDecoded)
-	require.Equal(t, walRecord, newWALRecordDecoded)
+	record, walRecord, err = decodeWALRecord(newRecordSamples, &Record{}, &WALRecord{})
+	require.NoError(t, err)
+	require.Equal(t, &Record{}, record)
+	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
+	require.Equal(t, walRecordNew.Samples, walRecord.Samples)
+	require.Equal(t, 0, len(walRecord.Series))
 
 	// Checkpoint record migration.
 	checkpointRecord := &Series{
@@ -234,14 +259,14 @@ func TestMigrationToTypedRecord(t *testing.T) {
 
 	oldRecordBytes, err = proto.Marshal(checkpointRecord)
 	require.NoError(t, err)
-	newRecordBytes, err = encodeWithTypeHeader(checkpointRecord, CheckpointRecordType1, nil)
+	newRecordBytes, err := encodeWithTypeHeader(checkpointRecord, CheckpointRecordType1, nil)
 	require.NoError(t, err)
 
-	m, err = decodeRecord(oldRecordBytes, CheckpointRecordType1, &Series{})
+	m, err := decodeCheckpointRecord(oldRecordBytes, &Series{})
 	require.NoError(t, err)
 	oldCheckpointRecordDecoded := m.(*Series)
 
-	m, err = decodeRecord(newRecordBytes, CheckpointRecordType1, &Series{})
+	m, err = decodeCheckpointRecord(newRecordBytes, &Series{})
 	require.NoError(t, err)
 	newCheckpointRecordDecoded := m.(*Series)
 

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
@@ -152,7 +153,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 		recordPool = sync.Pool{
 			New: func() interface{} {
-				return &Record{}
+				return &WALRecord{}
 			},
 		}
 	}
@@ -360,15 +361,15 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	}
 
 	var firstPartialErr *validationError
-	var record *Record
+	var record *WALRecord
 	if i.cfg.WALConfig.WALEnabled {
-		record = recordPool.Get().(*Record)
-		record.UserId = userID
+		record = recordPool.Get().(*WALRecord)
+		record.UserID = userID
 		// Assuming there is not much churn in most cases, there is no use
 		// keeping the record.Labels slice hanging around.
-		record.Labels = nil
+		record.Series = nil
 		if cap(record.Samples) < len(req.Timeseries) {
-			record.Samples = make([]Sample, 0, len(req.Timeseries))
+			record.Samples = make([]tsdb_record.RefSample, 0, len(req.Timeseries))
 		} else {
 			record.Samples = record.Samples[:0]
 		}
@@ -418,7 +419,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *WALRecord) error {
 	labels.removeBlanks()
 
 	var (
@@ -474,10 +475,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	}
 
 	if record != nil {
-		record.Samples = append(record.Samples, Sample{
-			Fingerprint: uint64(fp),
-			Timestamp:   uint64(timestamp),
-			Value:       float64(value),
+		record.Samples = append(record.Samples, tsdb_record.RefSample{
+			Ref: uint64(fp),
+			T:   int64(timestamp),
+			V:   float64(value),
 		})
 	}
 

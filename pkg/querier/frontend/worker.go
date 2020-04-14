@@ -144,16 +144,6 @@ func (w *worker) connect(address string) (FrontendClient, error) {
 }
 
 func (w *worker) resetParallelism() {
-
-	// if total parallelism is unset, this is easy
-	if w.cfg.TotalParallelism == 0 {
-		for _, mgr := range w.managers {
-			mgr.concurrentRequests(w.cfg.TotalParallelism)
-		}
-	}
-
-	// otherwise we have to do some work.  randomize the order of our managers and set concurrency
-	//  on each to match the requested total concurrency
 	addresses := make([]string, 0, len(w.managers))
 	for addr := range w.managers {
 		addresses = append(addresses, addr)
@@ -161,10 +151,15 @@ func (w *worker) resetParallelism() {
 	rand.Shuffle(len(addresses), func(i, j int) { addresses[i], addresses[j] = addresses[j], addresses[i] })
 
 	for i, addr := range addresses {
-		concurrentRequests := w.cfg.TotalParallelism / len(w.managers)
+		concurrentRequests := 0
+		if w.cfg.TotalParallelism > 0 {
+			concurrentRequests = w.cfg.TotalParallelism / len(w.managers)
 
-		if i < w.cfg.TotalParallelism%len(w.managers) {
-			concurrentRequests++
+			if i < w.cfg.TotalParallelism%len(w.managers) {
+				concurrentRequests++
+			}
+		} else {
+			concurrentRequests = w.cfg.Parallelism
 		}
 
 		if concurrentRequests == 0 {

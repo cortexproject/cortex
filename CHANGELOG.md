@@ -129,7 +129,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 
 ### Known issues
 
-- This experimental blocks storage in Cortex `1.0.0` has a bug which may lead to the error `cannot iterate chunk for series` when running queries. This bug has been fixed in #2400. If you're running the experimental blocks storage, please build Cortex from `master`. 
+- This experimental blocks storage in Cortex `1.0.0` has a bug which may lead to the error `cannot iterate chunk for series` when running queries. This bug has been fixed in #2400. If you're running the experimental blocks storage, please build Cortex from `master`.
 
 ### Config file breaking changes
 

@@ -197,7 +197,7 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 
 # Idle timeout for HTTP server
 # CLI flag: -server.http-idle-timeout
-[http_server_idle_timeout: <duration> | default = 2m0s]
+[http_server_idle_timeout: <duration> | default = 2m]
 
 # Limit on the size of a gRPC message this server can receive (bytes).
 # CLI flag: -server.grpc-max-recv-msg-size-bytes
@@ -229,7 +229,7 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Duration after which a keepalive probe is sent in case of no activity over the
 # connection., Default: 2h
 # CLI flag: -server.grpc.keepalive.time
-[grpc_server_keepalive_time: <duration> | default = 2h0m0s]
+[grpc_server_keepalive_time: <duration> | default = 2h]
 
 # After having pinged for keepalive check, the duration after which an idle
 # connection should be closed, Default: 20s
@@ -377,7 +377,7 @@ ring:
   # The heartbeat timeout after which distributors are considered unhealthy
   # within the ring.
   # CLI flag: -distributor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m0s]
+  [heartbeat_timeout: <duration> | default = 1m]
 ```
 
 ### `ingester_config`
@@ -406,7 +406,7 @@ walconfig:
 
   # Interval at which checkpoints should be created.
   # CLI flag: -ingester.checkpoint-duration
-  [checkpoint_duration: <duration> | default = 30m0s]
+  [checkpoint_duration: <duration> | default = 30m]
 
 lifecycler:
   ring:
@@ -445,7 +445,7 @@ lifecycler:
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m0s]
+    [heartbeat_timeout: <duration> | default = 1m]
 
     # The number of ingesters to write to and read from.
     # CLI flag: -distributor.replication-factor
@@ -472,7 +472,7 @@ lifecycler:
   # Minimum duration to wait before becoming ready. This is to work around race
   # conditions with ingesters exiting and updating the ring.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m0s]
+  [min_ready_duration: <duration> | default = 1m]
 
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
@@ -499,29 +499,29 @@ lifecycler:
 
 # Period with which to attempt to flush chunks.
 # CLI flag: -ingester.flush-period
-[flush_period: <duration> | default = 1m0s]
+[flush_period: <duration> | default = 1m]
 
 # Period chunks will remain in memory after flushing.
 # CLI flag: -ingester.retain-period
-[retain_period: <duration> | default = 5m0s]
+[retain_period: <duration> | default = 5m]
 
 # Maximum chunk idle time before flushing.
 # CLI flag: -ingester.max-chunk-idle
-[max_chunk_idle_time: <duration> | default = 5m0s]
+[max_chunk_idle_time: <duration> | default = 5m]
 
 # Maximum chunk idle time for chunks terminating in stale markers before
 # flushing. 0 disables it and a stale series is not flushed until the
 # max-chunk-idle timeout is reached.
 # CLI flag: -ingester.max-stale-chunk-idle
-[max_stale_chunk_idle_time: <duration> | default = 2m0s]
+[max_stale_chunk_idle_time: <duration> | default = 2m]
 
 # Timeout for individual flush operations.
 # CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 1m0s]
+[flush_op_timeout: <duration> | default = 1m]
 
 # Maximum chunk age before flushing.
 # CLI flag: -ingester.max-chunk-age
-[max_chunk_age: <duration> | default = 12h0m0s]
+[max_chunk_age: <duration> | default = 12h]
 
 # Range of time to subtract from -ingester.max-chunk-age to spread out flushes
 # CLI flag: -ingester.chunk-age-jitter
@@ -552,7 +552,7 @@ The `querier_config` configures the Cortex querier.
 
 # The timeout for a query.
 # CLI flag: -querier.timeout
-[timeout: <duration> | default = 2m0s]
+[timeout: <duration> | default = 2m]
 
 # Use iterators to execute query, as opposed to fully materialising the series
 # in memory.
@@ -584,11 +584,11 @@ The `querier_config` configures the Cortex querier.
 
 # Maximum duration into the future you can query. 0 to disable.
 # CLI flag: -querier.max-query-into-future
-[max_query_into_future: <duration> | default = 10m0s]
+[max_query_into_future: <duration> | default = 10m]
 
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
-[default_evaluation_interval: <duration> | default = 1m0s]
+[default_evaluation_interval: <duration> | default = 1m]
 
 # Active query tracker monitors active queries, and writes them to the file in
 # given directory. If Cortex discovers any queries in this log during startup,
@@ -681,7 +681,7 @@ results_cache:
   # Most recent allowed cacheable result, to prevent caching very recent results
   # that might still be in flux.
   # CLI flag: -frontend.max-cache-freshness
-  [max_freshness: <duration> | default = 1m0s]
+  [max_freshness: <duration> | default = 1m]
 
 # Cache query results.
 # CLI flag: -querier.cache-results
@@ -709,7 +709,7 @@ The `ruler_config` configures the Cortex ruler.
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
-[evaluation_interval: <duration> | default = 1m0s]
+[evaluation_interval: <duration> | default = 1m]
 
 # Duration to delay the evaluation of rules to ensure they underlying metrics
 # have been pushed to cortex.
@@ -718,7 +718,7 @@ The `ruler_config` configures the Cortex ruler.
 
 # How frequently to poll for rule changes
 # CLI flag: -ruler.poll-interval
-[poll_interval: <duration> | default = 1m0s]
+[poll_interval: <duration> | default = 1m]
 
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3)
@@ -817,7 +817,7 @@ storage:
 
 # How long to wait between refreshing alertmanager hosts.
 # CLI flag: -ruler.alertmanager-refresh-interval
-[alertmanager_refresh_interval: <duration> | default = 1m0s]
+[alertmanager_refresh_interval: <duration> | default = 1m]
 
 # If enabled requests to alertmanager will utilize the V2 API.
 # CLI flag: -ruler.alertmanager-use-v2
@@ -837,7 +837,7 @@ storage:
 
 # Time to spend searching for a pending ruler when shutting down.
 # CLI flag: -ruler.search-pending-for
-[search_pending_for: <duration> | default = 5m0s]
+[search_pending_for: <duration> | default = 5m]
 
 ring:
   kvstore:
@@ -882,7 +882,7 @@ ring:
   # The heartbeat timeout after which rulers are considered unhealthy within the
   # ring.
   # CLI flag: -ruler.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m0s]
+  [heartbeat_timeout: <duration> | default = 1m]
 
   # Number of tokens for each ingester.
   # CLI flag: -ruler.ring.num-tokens
@@ -890,7 +890,7 @@ ring:
 
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
-[flush_period: <duration> | default = 1m0s]
+[flush_period: <duration> | default = 1m]
 
 # Enable the ruler api
 # CLI flag: -experimental.ruler.enable-api
@@ -908,7 +908,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 # How long to keep data for.
 # CLI flag: -alertmanager.storage.retention
-[retention: <duration> | default = 120h0m0s]
+[retention: <duration> | default = 120h]
 
 # The URL under which Alertmanager is externally reachable (for example, if
 # Alertmanager is served via a reverse proxy). Used for generating relative and
@@ -983,12 +983,12 @@ The `table_manager_config` configures the Cortex table-manager.
 
 # How frequently to poll backend to learn our capacity.
 # CLI flag: -table-manager.poll-interval
-[poll_interval: <duration> | default = 2m0s]
+[poll_interval: <duration> | default = 2m]
 
 # Periodic tables grace period (duration which table will be created/deleted
 # before/after it's needed).
 # CLI flag: -table-manager.periodic-table.grace-period
-[creation_grace_period: <duration> | default = 10m0s]
+[creation_grace_period: <duration> | default = 10m]
 
 index_tables_provisioning:
   # Enables on demand throughput provisioning for the storage provider (if
@@ -1480,7 +1480,7 @@ bigtable:
 
   # Duration to cache tables before checking again.
   # CLI flag: -bigtable.table-cache.expiration
-  [table_cache_expiration: <duration> | default = 30m0s]
+  [table_cache_expiration: <duration> | default = 30m]
 
 gcs:
   # Name of GCS bucket to put chunks in.
@@ -1588,7 +1588,7 @@ filesystem:
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m0s]
+[index_cache_validity: <duration> | default = 5m]
 
 index_queries_cache_config:
   # Cache config for index entry reading. Enable in-memory cache.
@@ -1654,7 +1654,7 @@ The `flusher_config` configures the WAL flusher target, used to manually run one
 
 # Timeout for individual flush operations.
 # CLI flag: -flusher.flush-op-timeout
-[flush_op_timeout: <duration> | default = 2m0s]
+[flush_op_timeout: <duration> | default = 2m]
 ```
 
 ### `chunk_store_config`
@@ -1964,7 +1964,7 @@ The `memberlist_config` configures the Gossip memberlist.
 
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
-[left_ingesters_timeout: <duration> | default = 5m0s]
+[left_ingesters_timeout: <duration> | default = 5m]
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
@@ -2049,12 +2049,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h0m0s]
+[reject_old_samples_max_age: <duration> | default = 336h]
 
 # Duration which table will be created/deleted before/after it's needed; we
 # won't accept sample from before this time.
 # CLI flag: -validation.create-grace-period
-[creation_grace_period: <duration> | default = 10m0s]
+[creation_grace_period: <duration> | default = 10m]
 
 # Enforce every metadata has a metric name.
 # CLI flag: -validation.enforce-metadata-metric-name
@@ -2230,7 +2230,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 # Period with which to poll DNS for memcache servers.
 # CLI flag: -<prefix>.memcached.update-interval
-[update_interval: <duration> | default = 1m0s]
+[update_interval: <duration> | default = 1m]
 
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
@@ -2332,12 +2332,12 @@ The `tsdb_config` configures the experimental blocks storage.
 # be larger than the block_ranges_period and large enough to give queriers
 # enough time to discover newly uploaded blocks.
 # CLI flag: -experimental.tsdb.retention-period
-[retention_period: <duration> | default = 6h0m0s]
+[retention_period: <duration> | default = 6h]
 
 # How frequently the TSDB blocks are scanned and new ones are shipped to the
 # storage. 0 means shipping is disabled.
 # CLI flag: -experimental.tsdb.ship-interval
-[ship_interval: <duration> | default = 1m0s]
+[ship_interval: <duration> | default = 1m]
 
 # Maximum number of tenants concurrently shipping blocks to the storage.
 # CLI flag: -experimental.tsdb.ship-concurrency
@@ -2355,7 +2355,7 @@ bucket_store:
   # How frequently scan the bucket to look for changes (new blocks shipped by
   # ingesters and blocks removed by retention or compaction). 0 disables it.
   # CLI flag: -experimental.tsdb.bucket-store.sync-interval
-  [sync_interval: <duration> | default = 5m0s]
+  [sync_interval: <duration> | default = 5m]
 
   # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
   # allocations.
@@ -2460,12 +2460,12 @@ bucket_store:
   # replacement yet.Default is 6h, half of the default value for
   # -compactor.deletion-delay.
   # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
-  [ignore_deletion_mark_delay: <duration> | default = 6h0m0s]
+  [ignore_deletion_mark_delay: <duration> | default = 6h]
 
 # How frequently does Cortex try to compact TSDB head. Block is only created if
 # data covers smallest block range. Must be greater than 0 and max 5 minutes.
 # CLI flag: -experimental.tsdb.head-compaction-interval
-[head_compaction_interval: <duration> | default = 1m0s]
+[head_compaction_interval: <duration> | default = 1m]
 
 # Maximum number of tenants concurrently compacting TSDB head into a new block
 # CLI flag: -experimental.tsdb.head-compaction-concurrency
@@ -2565,7 +2565,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
 # be removed.
 # CLI flag: -compactor.consistency-delay
-[consistency_delay: <duration> | default = 30m0s]
+[consistency_delay: <duration> | default = 30m]
 
 # Data directory in which to cache blocks and process compactions
 # CLI flag: -compactor.data-dir
@@ -2573,7 +2573,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 
 # The frequency at which the compaction runs
 # CLI flag: -compactor.compaction-interval
-[compaction_interval: <duration> | default = 1h0m0s]
+[compaction_interval: <duration> | default = 1h]
 
 # How many times to retry a failed compaction during a single compaction
 # interval
@@ -2587,7 +2587,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # failures, if store gateway still has the block loaded, or compactor is
 # ignoring the deletion because it's compacting the block at the same time.
 # CLI flag: -compactor.deletion-delay
-[deletion_delay: <duration> | default = 12h0m0s]
+[deletion_delay: <duration> | default = 12h]
 
 # Shard tenants across multiple compactor instances. Sharding is required if you
 # run multiple compactor instances, in order to coordinate compactions and avoid
@@ -2639,7 +2639,7 @@ sharding_ring:
   # The heartbeat timeout after which compactors are considered unhealthy within
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m0s]
+  [heartbeat_timeout: <duration> | default = 1m]
 ```
 
 ### `purger_config`

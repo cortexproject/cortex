@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -231,6 +232,8 @@ func (a *API) RegisterRing(r *ring.Ring) {
 
 // RegisterStoreGateway registers the ring UI page associated with the store-gateway.
 func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
+	storegatewaypb.RegisterStoreGatewayServer(a.server.GRPC, s)
+
 	a.RegisterRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false)
 }
 

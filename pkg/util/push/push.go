@@ -17,7 +17,6 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 		var req client.PreallocWriteRequest
-		req.Source = client.API
 		_, err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), cfg.MaxRecvMsgSize, &req, compressionType)
 		logger := util.WithContext(r.Context(), util.Logger)
 		if err != nil {
@@ -25,6 +24,7 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		req.Source = client.API
 
 		if _, err := push(r.Context(), &req.WriteRequest); err != nil {
 			resp, ok := httpgrpc.HTTPResponseFromError(err)

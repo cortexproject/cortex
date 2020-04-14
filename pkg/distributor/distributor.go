@@ -360,6 +360,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
+	source := req.Source
 	var firstPartialErr error
 	removeReplica := false
 
@@ -536,7 +537,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
-		return d.send(localCtx, ingester, timeseries, metadata)
+		return d.send(localCtx, ingester, timeseries, metadata, source)
 	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
@@ -566,7 +567,7 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata, source client.WriteRequest_SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -576,6 +577,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 	req := client.WriteRequest{
 		Timeseries: timeseries,
 		Metadata:   metadata,
+		Source:     source,
 	}
 	_, err = c.Push(ctx, &req)
 

@@ -17,7 +17,7 @@
 * [CHANGE] Experimental WAL: Default value of `-ingester.checkpoint-enabled` changed to `true`. #2416
 * [FEATURE] Ruler: The `-ruler.evaluation-delay` flag was added to allow users to configure a default evaluation delay for all rules in cortex. The default value is 0 which is the current behavior. #2423
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
-* [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383 
+* [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
 * [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 * [ENHANCEMENT] FIFO cache to support eviction based on memory usage. The `-<prefix>.fifocache.size` CLI flag has been renamed to `-<prefix>.fifocache.max-size-items` as well as its YAML config option `size` renamed to `max_size_items`. Added `-<prefix>.fifocache.max-size-bytes` CLI flag and YAML config option `max_size_bytes` to specify memory limit of the cache. #2319
@@ -87,7 +87,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [CHANGE] Frontend worker in querier now starts after all Querier module dependencies are started. This fixes issue where frontend worker started to send queries to querier before it was ready to serve them (mostly visible when using experimental blocks storage). #2246
 * [CHANGE] Lifecycler component now enters Failed state on errors, and doesn't exit the process. (Important if you're vendoring Cortex and use Lifecycler) #2251
 * [CHANGE] `/ready` handler now returns 200 instead of 204. #2330
-* [CHANGE] Better defaults for the following options: #2344 
+* [CHANGE] Better defaults for the following options: #2344
   - `-<prefix>.consul.consistent-reads`: Old default: `true`, new default: `false`. This reduces the load on Consul.
   - `-<prefix>.consul.watch-rate-limit`: Old default: 0, new default: 1. This rate limits the reads to 1 per second. Which is good enough for ring watches.
   - `-distributor.health-check-ingesters`: Old default: `false`, new default: `true`.
@@ -129,7 +129,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 
 ### Known issues
 
-- This experimental blocks storage in Cortex `1.0.0` has a bug which may lead to the error `cannot iterate chunk for series` when running queries. This bug has been fixed in #2400. If you're running the experimental blocks storage, please build Cortex from `master`. 
+- This experimental blocks storage in Cortex `1.0.0` has a bug which may lead to the error `cannot iterate chunk for series` when running queries. This bug has been fixed in #2400. If you're running the experimental blocks storage, please build Cortex from `master`.
 
 ### Config file breaking changes
 
@@ -180,19 +180,19 @@ In this section you can find a config file diff showing the breaking changes int
  # CLI flag: -ingester.concurrent-flushes
 -[concurrentflushes: <int> | default = 50]
 +[concurrent_flushes: <int> | default = 50]
- 
+
 -# If true, spread series flushes across the whole period of MaxChunkAge
 +# If true, spread series flushes across the whole period of
 +# -ingester.max-chunk-age.
  # CLI flag: -ingester.spread-flushes
 -[spreadflushes: <boolean> | default = false]
 +[spread_flushes: <boolean> | default = true]
- 
+
  # Period with which to update the per-user ingestion rates.
  # CLI flag: -ingester.rate-update-period
 -[rateupdateperiod: <duration> | default = 15s]
 +[rate_update_period: <duration> | default = 15s]
- 
+
 
 ### querier_config
 
@@ -200,35 +200,35 @@ In this section you can find a config file diff showing the breaking changes int
  # CLI flag: -querier.max-concurrent
 -[maxconcurrent: <int> | default = 20]
 +[max_concurrent: <int> | default = 20]
- 
+
  # Use batch iterators to execute query, as opposed to fully materialising the
  # series in memory.  Takes precedent over the -querier.iterators flag.
  # CLI flag: -querier.batch-iterators
 -[batchiterators: <boolean> | default = false]
 +[batch_iterators: <boolean> | default = true]
- 
+
  # Use streaming RPCs to query ingester.
  # CLI flag: -querier.ingester-streaming
 -[ingesterstreaming: <boolean> | default = false]
 +[ingester_streaming: <boolean> | default = true]
- 
+
  # Maximum number of samples a single query can load into memory.
  # CLI flag: -querier.max-samples
 -[maxsamples: <int> | default = 50000000]
 +[max_samples: <int> | default = 50000000]
- 
+
  # The default evaluation interval or step size for subqueries.
  # CLI flag: -querier.default-evaluation-interval
 -[defaultevaluationinterval: <duration> | default = 1m0s]
 +[default_evaluation_interval: <duration> | default = 1m0s]
- 
+
 ### query_frontend_config
 
  # URL of downstream Prometheus.
  # CLI flag: -frontend.downstream-url
 -[downstream: <string> | default = ""]
 +[downstream_url: <string> | default = ""]
- 
+
 
 ### ruler_config
 
@@ -236,125 +236,125 @@ In this section you can find a config file diff showing the breaking changes int
  # CLI flag: -ruler.external.url
 -[externalurl: <url> | default = ]
 +[external_url: <url> | default = ]
- 
+
  # How frequently to evaluate rules
  # CLI flag: -ruler.evaluation-interval
 -[evaluationinterval: <duration> | default = 1m0s]
 +[evaluation_interval: <duration> | default = 1m0s]
- 
+
  # How frequently to poll for rule changes
  # CLI flag: -ruler.poll-interval
 -[pollinterval: <duration> | default = 1m0s]
 +[poll_interval: <duration> | default = 1m0s]
- 
+
 -storeconfig:
 +storage:
- 
+
  # file path to store temporary rule files for the prometheus rule managers
  # CLI flag: -ruler.rule-path
 -[rulepath: <string> | default = "/rules"]
 +[rule_path: <string> | default = "/rules"]
- 
+
  # URL of the Alertmanager to send notifications to.
  # CLI flag: -ruler.alertmanager-url
 -[alertmanagerurl: <url> | default = ]
 +[alertmanager_url: <url> | default = ]
- 
+
  # Use DNS SRV records to discover alertmanager hosts.
  # CLI flag: -ruler.alertmanager-discovery
 -[alertmanagerdiscovery: <boolean> | default = false]
 +[enable_alertmanager_discovery: <boolean> | default = false]
- 
+
  # How long to wait between refreshing alertmanager hosts.
  # CLI flag: -ruler.alertmanager-refresh-interval
 -[alertmanagerrefreshinterval: <duration> | default = 1m0s]
 +[alertmanager_refresh_interval: <duration> | default = 1m0s]
- 
+
  # If enabled requests to alertmanager will utilize the V2 API.
  # CLI flag: -ruler.alertmanager-use-v2
 -[alertmanangerenablev2api: <boolean> | default = false]
 +[enable_alertmanager_v2: <boolean> | default = false]
- 
+
  # Capacity of the queue for notifications to be sent to the Alertmanager.
  # CLI flag: -ruler.notification-queue-capacity
 -[notificationqueuecapacity: <int> | default = 10000]
 +[notification_queue_capacity: <int> | default = 10000]
- 
+
  # HTTP timeout duration when sending notifications to the Alertmanager.
  # CLI flag: -ruler.notification-timeout
 -[notificationtimeout: <duration> | default = 10s]
 +[notification_timeout: <duration> | default = 10s]
- 
+
  # Distribute rule evaluation using ring backend
  # CLI flag: -ruler.enable-sharding
 -[enablesharding: <boolean> | default = false]
 +[enable_sharding: <boolean> | default = false]
- 
+
  # Time to spend searching for a pending ruler when shutting down.
  # CLI flag: -ruler.search-pending-for
 -[searchpendingfor: <duration> | default = 5m0s]
 +[search_pending_for: <duration> | default = 5m0s]
- 
+
  # Period with which to attempt to flush rule groups.
  # CLI flag: -ruler.flush-period
 -[flushcheckperiod: <duration> | default = 1m0s]
 +[flush_period: <duration> | default = 1m0s]
- 
+
 ### alertmanager_config
 
  # Base path for data storage.
  # CLI flag: -alertmanager.storage.path
 -[datadir: <string> | default = "data/"]
 +[data_dir: <string> | default = "data/"]
- 
+
  # will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
  # relevant URL components will be derived automatically.
  # CLI flag: -alertmanager.web.external-url
 -[externalurl: <url> | default = ]
 +[external_url: <url> | default = ]
- 
+
  # How frequently to poll Cortex configs
  # CLI flag: -alertmanager.configs.poll-interval
 -[pollinterval: <duration> | default = 15s]
 +[poll_interval: <duration> | default = 15s]
- 
+
  # Listen address for cluster.
  # CLI flag: -cluster.listen-address
 -[clusterbindaddr: <string> | default = "0.0.0.0:9094"]
 +[cluster_bind_address: <string> | default = "0.0.0.0:9094"]
- 
+
  # Explicit address to advertise in cluster.
  # CLI flag: -cluster.advertise-address
 -[clusteradvertiseaddr: <string> | default = ""]
 +[cluster_advertise_address: <string> | default = ""]
- 
+
  # Time to wait between peers to send notifications.
  # CLI flag: -cluster.peer-timeout
 -[peertimeout: <duration> | default = 15s]
 +[peer_timeout: <duration> | default = 15s]
- 
+
  # Filename of fallback config to use if none specified for instance.
  # CLI flag: -alertmanager.configs.fallback
 -[fallbackconfigfile: <string> | default = ""]
 +[fallback_config_file: <string> | default = ""]
- 
+
  # Root of URL to generate if config is http://internal.monitor
  # CLI flag: -alertmanager.configs.auto-webhook-root
 -[autowebhookroot: <string> | default = ""]
 +[auto_webhook_root: <string> | default = ""]
- 
+
 ### table_manager_config
 
 -store:
 +storage:
- 
+
 -# How frequently to poll DynamoDB to learn our capacity.
 -# CLI flag: -dynamodb.poll-interval
 -[dynamodb_poll_interval: <duration> | default = 2m0s]
 +# How frequently to poll backend to learn our capacity.
 +# CLI flag: -table-manager.poll-interval
 +[poll_interval: <duration> | default = 2m0s]
- 
+
 -# DynamoDB periodic tables grace period (duration which table will be
 -# created/deleted before/after it's needed).
 -# CLI flag: -dynamodb.periodic-table.grace-period
@@ -362,7 +362,7 @@ In this section you can find a config file diff showing the breaking changes int
 +# before/after it's needed).
 +# CLI flag: -table-manager.periodic-table.grace-period
  [creation_grace_period: <duration> | default = 10m0s]
- 
+
  index_tables_provisioning:
    # Enables on demand throughput provisioning for the storage provider (if
 -  # supported). Applies only to tables which are not autoscaled
@@ -372,8 +372,8 @@ In this section you can find a config file diff showing the breaking changes int
 +  # DynamoDB
 +  # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
 +  [enable_ondemand_throughput_mode: <boolean> | default = false]
- 
- 
+
+
    # Enables on demand throughput provisioning for the storage provider (if
 -  # supported). Applies only to tables which are not autoscaled
 -  # CLI flag: -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode
@@ -382,8 +382,8 @@ In this section you can find a config file diff showing the breaking changes int
 +  # DynamoDB
 +  # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
 +  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
- 
- 
+
+
  chunk_tables_provisioning:
    # Enables on demand throughput provisioning for the storage provider (if
 -  # supported). Applies only to tables which are not autoscaled
@@ -393,7 +393,7 @@ In this section you can find a config file diff showing the breaking changes int
 +  # DynamoDB
 +  # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
 +  [enable_ondemand_throughput_mode: <boolean> | default = false]
- 
+
 ### storage_config
 
  aws:
@@ -405,12 +405,12 @@ In this section you can find a config file diff showing the breaking changes int
      # CLI flag: -dynamodb.url
 -    [dynamodb: <url> | default = ]
 +    [dynamodb_url: <url> | default = ]
- 
+
      # DynamoDB table management requests per second limit.
      # CLI flag: -dynamodb.api-limit
 -    [apilimit: <float> | default = 2]
 +    [api_limit: <float> | default = 2]
- 
+
      # DynamoDB rate cap to back off when throttled.
      # CLI flag: -dynamodb.throttle-limit
 -    [throttlelimit: <float> | default = 10]
@@ -419,93 +419,93 @@ In this section you can find a config file diff showing the breaking changes int
 -    # ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.
 -    # CLI flag: -applicationautoscaling.url
 -    [applicationautoscaling: <url> | default = ]
- 
- 
+
+
        # Queue length above which we will scale up capacity
        # CLI flag: -metrics.target-queue-length
 -      [targetqueuelen: <int> | default = 100000]
 +      [target_queue_length: <int> | default = 100000]
- 
+
        # Scale up capacity by this multiple
        # CLI flag: -metrics.scale-up-factor
 -      [scaleupfactor: <float> | default = 1.3]
 +      [scale_up_factor: <float> | default = 1.3]
- 
+
        # Ignore throttling below this level (rate per second)
        # CLI flag: -metrics.ignore-throttle-below
 -      [minthrottling: <float> | default = 1]
 +      [ignore_throttle_below: <float> | default = 1]
- 
+
        # query to fetch ingester queue length
        # CLI flag: -metrics.queue-length-query
 -      [queuelengthquery: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
 +      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
- 
+
        # query to fetch throttle rates per table
        # CLI flag: -metrics.write-throttle-query
 -      [throttlequery: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
 +      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
- 
+
        # query to fetch write capacity usage per table
        # CLI flag: -metrics.usage-query
 -      [usagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
 +      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
- 
+
        # query to fetch read capacity usage per table
        # CLI flag: -metrics.read-usage-query
 -      [readusagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
 +      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
- 
+
        # query to fetch read errors per table
        # CLI flag: -metrics.read-error-query
 -      [readerrorquery: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
 +      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
- 
+
      # Number of chunks to group together to parallelise fetches (zero to
      # disable)
 -    # CLI flag: -dynamodb.chunk.gang.size
 -    [chunkgangsize: <int> | default = 10]
 +    # CLI flag: -dynamodb.chunk-gang-size
 +    [chunk_gang_size: <int> | default = 10]
- 
+
      # Max number of chunk-get operations to start in parallel
 -    # CLI flag: -dynamodb.chunk.get.max.parallelism
 -    [chunkgetmaxparallelism: <int> | default = 32]
 +    # CLI flag: -dynamodb.chunk.get-max-parallelism
 +    [chunk_get_max_parallelism: <int> | default = 32]
- 
+
      backoff_config:
        # Minimum delay when backing off.
        # CLI flag: -bigtable.backoff-min-period
 -      [minbackoff: <duration> | default = 100ms]
 +      [min_period: <duration> | default = 100ms]
- 
+
        # Maximum delay when backing off.
        # CLI flag: -bigtable.backoff-max-period
 -      [maxbackoff: <duration> | default = 10s]
 +      [max_period: <duration> | default = 10s]
- 
+
        # Number of times to backoff and retry before failing.
        # CLI flag: -bigtable.backoff-retries
 -      [maxretries: <int> | default = 10]
 +      [max_retries: <int> | default = 10]
- 
+
    # If enabled, once a tables info is fetched, it is cached.
    # CLI flag: -bigtable.table-cache.enabled
 -  [tablecacheenabled: <boolean> | default = true]
 +  [table_cache_enabled: <boolean> | default = true]
- 
+
    # Duration to cache tables before checking again.
    # CLI flag: -bigtable.table-cache.expiration
 -  [tablecacheexpiration: <duration> | default = 30m0s]
 +  [table_cache_expiration: <duration> | default = 30m0s]
- 
+
  # Cache validity for active index entries. Should be no higher than
  # -ingester.max-chunk-idle.
  # CLI flag: -store.index-cache-validity
 -[indexcachevalidity: <duration> | default = 5m0s]
 +[index_cache_validity: <duration> | default = 5m0s]
- 
+
 ### ingester_client_config
 
  grpc_client_config:
@@ -514,17 +514,17 @@ In this section you can find a config file diff showing the breaking changes int
      # CLI flag: -ingester.client.backoff-min-period
 -    [minbackoff: <duration> | default = 100ms]
 +    [min_period: <duration> | default = 100ms]
- 
+
      # Maximum delay when backing off.
      # CLI flag: -ingester.client.backoff-max-period
 -    [maxbackoff: <duration> | default = 10s]
 +    [max_period: <duration> | default = 10s]
- 
+
      # Number of times to backoff and retry before failing.
      # CLI flag: -ingester.client.backoff-retries
 -    [maxretries: <int> | default = 10]
 +    [max_retries: <int> | default = 10]
- 
+
 ### frontend_worker_config
 
 -# Address of query frontend service.
@@ -532,19 +532,19 @@ In this section you can find a config file diff showing the breaking changes int
  # CLI flag: -querier.frontend-address
 -[address: <string> | default = ""]
 +[frontend_address: <string> | default = ""]
- 
+
  # How often to query DNS.
  # CLI flag: -querier.dns-lookup-period
 -[dnslookupduration: <duration> | default = 10s]
 +[dns_lookup_duration: <duration> | default = 10s]
- 
+
  grpc_client_config:
    backoff_config:
      # Minimum delay when backing off.
      # CLI flag: -querier.frontend-client.backoff-min-period
 -    [minbackoff: <duration> | default = 100ms]
 +    [min_period: <duration> | default = 100ms]
- 
+
      # Maximum delay when backing off.
      # CLI flag: -querier.frontend-client.backoff-max-period
 -    [maxbackoff: <duration> | default = 10s]

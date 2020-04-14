@@ -5,7 +5,7 @@ weight: 3
 slug: query-tee
 ---
 
-The `query-tee` is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series. 
+The `query-tee` is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.
 
 This service exposes Prometheus-compatible read API endpoints and, for each received request, performs the request against all backends tracking the response time of each backend and then sends back to the client one of the received responses.
 

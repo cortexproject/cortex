@@ -44,7 +44,6 @@ func (a *appender) Commit() error {
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
 	a.labels = nil
 	a.samples = nil
-
 	return err
 }
 

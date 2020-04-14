@@ -162,7 +162,7 @@ func (w *worker) resetParallelism() {
 	for i, addr := range addresses {
 		concurrentRequests := w.cfg.TotalParallelism / len(w.managers)
 
-		if i <= w.cfg.TotalParallelism%len(w.managers) {
+		if i < w.cfg.TotalParallelism%len(w.managers) {
 			concurrentRequests++
 		}
 

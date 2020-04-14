@@ -63,6 +63,8 @@ func (w *specWriter) writeConfigEntry(e *configEntry, indent int) {
 		fieldDefault := e.fieldDefault
 		if e.fieldType == "string" {
 			fieldDefault = strconv.Quote(fieldDefault)
+		} else if e.fieldType == "duration" {
+			fieldDefault = cleanupDuration(fieldDefault)
 		}
 
 		if e.required {
@@ -180,4 +182,20 @@ func (w *markdownWriter) string() string {
 
 func pad(length int) string {
 	return strings.Repeat(" ", length)
+}
+
+func cleanupDuration(value string) string {
+	// This is the list of suffixes to remove from the duration if they're not
+	// the whole duration value.
+	suffixes := []string{"0s", "0m"}
+
+	for _, suffix := range suffixes {
+		re := regexp.MustCompile("(^.+\\D)" + suffix + "$")
+
+		if groups := re.FindStringSubmatch(value); len(groups) == 2 {
+			value = groups[1]
+		}
+	}
+
+	return value
 }

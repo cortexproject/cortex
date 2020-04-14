@@ -94,6 +94,7 @@ type Ring struct {
 	key      string
 	cfg      Config
 	KVClient kv.Client
+	strategy ReplicationStrategy
 
 	mtx        sync.RWMutex
 	ringDesc   *Desc
@@ -108,13 +109,18 @@ type Ring struct {
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string) (*Ring, error) {
-	if cfg.ReplicationFactor <= 0 {
-		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
-	}
 	codec := GetCodec()
 	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
+	}
+
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, &DefaultReplicationStrategy{})
+}
+
+func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
+	if cfg.ReplicationFactor <= 0 {
+		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
 
 	r := &Ring{
@@ -122,6 +128,7 @@ func New(cfg Config, name, key string) (*Ring, error) {
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
+		strategy: strategy,
 		ringDesc: &Desc{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
@@ -208,22 +215,16 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
-		// to write the extra replica somewhere.  So we increase the size of the set
-		// of replicas for the key. This means we have to also increase the
-		// size of the replica set for read, but we can read from Leaving ingesters,
-		// so don't skip it in this case.
-		// NB dead ingester will be filtered later (by replication_strategy.go).
-		if op == Write && ingester.State != ACTIVE {
-			n++
-		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+		// Check whether the replica set should be extended given we're including
+		// this instance.
+		if r.strategy.ShouldExtendReplicaSet(ingester, op) {
 			n++
 		}
 
 		ingesters = append(ingesters, ingester)
 	}
 
-	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, op)
+	liveIngesters, maxFailure, err := r.strategy.Filter(ingesters, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout)
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -423,8 +424,9 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	sub := &Ring{
-		name: "subring",
-		cfg:  r.cfg,
+		name:     "subring",
+		cfg:      r.cfg,
+		strategy: r.strategy,
 		ringDesc: &Desc{
 			Ingesters: ingesters,
 		},

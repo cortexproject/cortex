@@ -140,12 +140,12 @@ tsdb:
   # be larger than the block_ranges_period and large enough to give queriers
   # enough time to discover newly uploaded blocks.
   # CLI flag: -experimental.tsdb.retention-period
-  [retention_period: <duration> | default = 6h0m0s]
+  [retention_period: <duration> | default = 6h]
 
   # How frequently the TSDB blocks are scanned and new ones are shipped to the
   # storage. 0 means shipping is disabled.
   # CLI flag: -experimental.tsdb.ship-interval
-  [ship_interval: <duration> | default = 1m0s]
+  [ship_interval: <duration> | default = 1m]
 
   # Maximum number of tenants concurrently shipping blocks to the storage.
   # CLI flag: -experimental.tsdb.ship-concurrency
@@ -163,7 +163,7 @@ tsdb:
     # How frequently scan the bucket to look for changes (new blocks shipped by
     # ingesters and blocks removed by retention or compaction). 0 disables it.
     # CLI flag: -experimental.tsdb.bucket-store.sync-interval
-    [sync_interval: <duration> | default = 5m0s]
+    [sync_interval: <duration> | default = 5m]
 
     # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
     # allocations.
@@ -268,13 +268,13 @@ tsdb:
     # a replacement yet.Default is 6h, half of the default value for
     # -compactor.deletion-delay.
     # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
-    [ignore_deletion_mark_delay: <duration> | default = 6h0m0s]
+    [ignore_deletion_mark_delay: <duration> | default = 6h]
 
   # How frequently does Cortex try to compact TSDB head. Block is only created
   # if data covers smallest block range. Must be greater than 0 and max 5
   # minutes.
   # CLI flag: -experimental.tsdb.head-compaction-interval
-  [head_compaction_interval: <duration> | default = 1m0s]
+  [head_compaction_interval: <duration> | default = 1m]
 
   # Maximum number of tenants concurrently compacting TSDB head into a new block
   # CLI flag: -experimental.tsdb.head-compaction-concurrency
@@ -375,7 +375,7 @@ compactor:
   # Malformed blocks older than the maximum of consistency-delay and 48h0m0s
   # will be removed.
   # CLI flag: -compactor.consistency-delay
-  [consistency_delay: <duration> | default = 30m0s]
+  [consistency_delay: <duration> | default = 30m]
 
   # Data directory in which to cache blocks and process compactions
   # CLI flag: -compactor.data-dir
@@ -383,7 +383,7 @@ compactor:
 
   # The frequency at which the compaction runs
   # CLI flag: -compactor.compaction-interval
-  [compaction_interval: <duration> | default = 1h0m0s]
+  [compaction_interval: <duration> | default = 1h]
 
   # How many times to retry a failed compaction during a single compaction
   # interval
@@ -398,7 +398,7 @@ compactor:
   # compactor is ignoring the deletion because it's compacting the block at the
   # same time.
   # CLI flag: -compactor.deletion-delay
-  [deletion_delay: <duration> | default = 12h0m0s]
+  [deletion_delay: <duration> | default = 12h]
 
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and
@@ -450,7 +450,7 @@ compactor:
     # The heartbeat timeout after which compactors are considered unhealthy
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m0s]
+    [heartbeat_timeout: <duration> | default = 1m]
 ```
 
 ## Known issues

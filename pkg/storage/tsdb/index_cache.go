@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"github.com/thanos-io/thanos/pkg/model"
-	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -43,13 +42,6 @@ type IndexCacheConfig struct {
 	InMemory            InMemoryIndexCacheConfig  `yaml:"inmemory"`
 	Memcached           MemcachedIndexCacheConfig `yaml:"memcached"`
 	PostingsCompression bool                      `yaml:"postings_compression_enabled"`
-
-	// Controls what is the ratio of postings offsets store will hold in memory.
-	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
-	// It's meant for setups that want low baseline memory pressure and where less traffic is expected.
-	// On the contrary, smaller value will increase baseline memory usage, but improve latency slightly.
-	// 1 will keep all in memory. Default value is the same as in Prometheus which gives a good balance.
-	PostingOffsetsInMemSampling int `yaml:"postings_offsets_in_mem_sampling"`
 }
 
 func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
@@ -59,7 +51,6 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. Supported values: %s.", strings.Join(supportedIndexCacheBackends, ", ")))
 	f.BoolVar(&cfg.PostingsCompression, prefix+"postings-compression-enabled", false, "Compress postings before storing them to postings cache.")
-	f.IntVar(&cfg.PostingOffsetsInMemSampling, prefix+"posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")

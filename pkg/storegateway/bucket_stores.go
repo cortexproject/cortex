@@ -249,7 +249,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
-		u.cfg.BucketStore.IndexCache.PostingOffsetsInMemSampling,
+		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 	)
 	if err != nil {
 		return nil, err

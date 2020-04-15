@@ -80,7 +80,7 @@ func createCortexRemoteWriteRequest(t *testing.T) *http.Request {
 	}
 	input := client.WriteRequest{
 		Timeseries: []client.PreallocTimeseries{
-			{ts},
+			client.PreallocTimeseries{ts},
 		},
 		Source: client.RULE,
 	}

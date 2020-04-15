@@ -70,16 +70,17 @@ func createRemoteWriteRequest(t *testing.T) *http.Request {
 
 func createCortexRemoteWriteRequest(t *testing.T) *http.Request {
 	t.Helper()
+	ts := &client.TimeSeries{
+		Labels: []client.LabelAdapter{
+			{Name: "__name__", Value: "foo"},
+		},
+		Samples: []client.Sample{
+			{Value: 1, TimestampMs: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
+		},
+	}
 	input := client.WriteRequest{
 		Timeseries: []client.PreallocTimeseries{
-			{&client.TimeSeries{
-				Labels: []client.LabelAdapter{
-					{Name: "__name__", Value: "foo"},
-				},
-				Samples: []client.Sample{
-					{Value: 1, TimestampMs: time.Date(2020, 4, 1, 0, 0, 0, 0, time.UTC).UnixNano()},
-				},
-			}},
+			{ts},
 		},
 		Source: client.RULE,
 	}

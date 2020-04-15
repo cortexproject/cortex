@@ -1,20 +1,14 @@
 package ring
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func TestReplicationStrategy(t *testing.T) {
+func TestRingReplicationStrategy(t *testing.T) {
 	for i, tc := range []struct {
 		RF, LiveIngesters, DeadIngesters int
 		op                               Operation // Will default to READ
@@ -87,19 +81,10 @@ func TestReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.DeadIngesters; i++ {
 			ingesters = append(ingesters, IngesterDesc{})
 		}
-		r, err := New(Config{
-			KVStore: kv.Config{
-				Mock: consul.NewInMemoryClient(GetCodec()),
-			},
-			HeartbeatTimeout:  100 * time.Second,
-			ReplicationFactor: tc.RF,
-		}, "ingester", IngesterRingKey)
-		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-		defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, tc.op)
+			strategy := &DefaultReplicationStrategy{}
+			liveIngesters, maxFailure, err := strategy.Filter(ingesters, tc.op, tc.RF, 100*time.Second)
 			if tc.ExpectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.LiveIngesters, len(liveIngesters))

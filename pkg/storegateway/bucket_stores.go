@@ -63,7 +63,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_blocks_sync_seconds",
+			Name:    "blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),

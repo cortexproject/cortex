@@ -34,9 +34,6 @@ const (
 
 	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
 	CompactorRingKey = "compactor"
-
-	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
-	StoreGatewayRingKey = "store-gateway"
 )
 
 // ReadRing represents the read interface to the ring.
@@ -61,10 +58,22 @@ const (
 	Read Operation = iota
 	Write
 	Reporting // Special value for inquiring about health
+
+	// BlocksSync is the operation run by the store-gateway to sync blocks.
+	BlocksSync
+
+	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
+	BlocksRead
 )
 
-// ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
-var ErrEmptyRing = errors.New("empty ring")
+var (
+	// ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
+	ErrEmptyRing = errors.New("empty ring")
+
+	// ErrInstanceNotFound is the error returned when trying to get information for an instance
+	// not registered within the ring.
+	ErrInstanceNotFound = errors.New("instance not found in the ring")
+)
 
 // Config for a Ring
 type Config struct {
@@ -265,6 +274,37 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 	}, nil
 }
 
+// GetAllTokens returns all ring tokens of healthy instances for the given operation.
+func (r *Ring) GetAllTokens(op Operation) TokenDescs {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	all := make([]TokenDesc, 0, len(r.ringTokens))
+	cache := map[string]bool{}
+
+	for _, token := range r.ringTokens {
+		healthy, ok := cache[token.Ingester]
+		if !ok {
+			if instance, exists := r.ringDesc.Ingesters[token.Ingester]; exists {
+				healthy = r.IsHealthy(&instance, op)
+			} else {
+				// Shouldn't never happen unless a bug but in case we consider it unhealthy.
+				healthy = false
+			}
+
+			cache[token.Ingester] = healthy
+		}
+
+		if healthy {
+			// Given ringTokens is sorted and we iterate it in order, we can simply
+			// append to the result while keeping ordering.
+			all = append(all, token)
+		}
+	}
+
+	return all
+}
+
 func (r *Ring) search(key uint32) int {
 	i := sort.Search(len(r.ringTokens), func(x int) bool {
 		return r.ringTokens[x].Token > key
@@ -441,4 +481,19 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	return sub, nil
+}
+
+// GetInstanceState returns the current state of an instance or an error if the
+// instance does not exist in the ring.
+func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	instances := r.ringDesc.GetIngesters()
+	instance, ok := instances[instanceID]
+	if !ok {
+		return PENDING, ErrInstanceNotFound
+	}
+
+	return instance.GetState(), nil
 }

@@ -463,7 +463,10 @@ func (t *Cortex) initStoreGateway(cfg *Config) (serv services.Service, err error
 	cfg.StoreGateway.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
 	cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
-	t.storeGateway = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
+	t.storeGateway, err = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, cfg.Server.LogLevel, util.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
 
 	// Expose HTTP endpoints.
 	t.api.RegisterStoreGateway(t.storeGateway)

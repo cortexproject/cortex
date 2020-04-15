@@ -232,7 +232,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	// ACTIVE within the ring.
 	if c.compactorCfg.ShardingEnabled {
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := c.waitRingActive(ctx); err != nil {
+		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
@@ -425,25 +425,4 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	}
 
 	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
-}
-
-func (c *Compactor) waitRingActive(ctx context.Context) error {
-	for {
-		// Check if the ingester is ACTIVE in the ring and our ring client
-		// has detected it.
-		if rs, err := c.ring.GetAll(); err == nil {
-			for _, i := range rs.Ingesters {
-				if i.GetAddr() == c.ringLifecycler.Addr && i.GetState() == ring.ACTIVE {
-					return nil
-				}
-			}
-		}
-
-		select {
-		case <-time.After(time.Second):
-			// Nothing to do
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 }

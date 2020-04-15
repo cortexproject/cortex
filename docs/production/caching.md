@@ -163,7 +163,8 @@ These query results can potentially be very large, and as such the maximum value
 The cache is populated when there is a cache miss.
 Items stay in the cache indefinitely.
 
-The query results cache should be configured on the **query-frontend** using flags with `-frontend.memcached` prefix. You need to also set `-querier.cache-results=true` and `-querier.split-queries-by-interval=24h` (24h is a good starting point).
+The query results cache should be configured on the **query-frontend** using flags with `-frontend.memcached` (or for example -frontend.redis) prefix.
+You need to also set `-querier.cache-results=true` and `-querier.split-queries-by-interval=24h` (24h is a good starting point).
 
 
 ### Index Write Cache

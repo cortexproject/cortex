@@ -42,7 +42,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances.")
 }
 
-// StoreGateway is the Cortex service responsible
+// StoreGateway is the Cortex service responsible to expose an API over the bucket
+// where blocks are stored, supporting blocks sharding and replication across a pool
+// of store gateway instances (optional).
 type StoreGateway struct {
 	services.Service
 

@@ -67,7 +67,10 @@ func newTestChunkStore(t require.TestingT, schemaName string) Store {
 func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) Store {
 	schemaCfg := DefaultSchemaConfig("", schemaName, 0)
 
-	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schemaCfg.Configs[0].CreateSchema(), storeCfg)
+	schema, err := schemaCfg.Configs[0].CreateSchema()
+	require.NoError(t, err)
+
+	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg)
 }
 
 func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema BaseSchema, storeCfg StoreConfig) Store {
@@ -583,7 +586,8 @@ func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
 		flagext.DefaultValues(&storeCfg)
 
 		schemaCfg := DefaultSchemaConfig("", schema, 0)
-		schemaObj := schemaCfg.Configs[0].CreateSchema()
+		schemaObj, err := schemaCfg.Configs[0].CreateSchema()
+		require.NoError(t, err)
 
 		var mockSchema = &mockBaseSchema{schema: schemaObj}
 

@@ -24,7 +24,9 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		req.Source = client.API
+		if req.Source == 0 {
+			req.Source = client.API
+		}
 
 		if _, err := push(r.Context(), &req.WriteRequest); err != nil {
 			resp, ok := httpgrpc.HTTPResponseFromError(err)

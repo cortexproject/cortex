@@ -396,7 +396,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			chunkIDs, err := c.lookupChunkIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
+			chunkIDs, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -429,8 +429,8 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 }
 
-func (c *baseStore) lookupChunkIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "Store.lookupChunkIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
 	var err error

@@ -18,18 +18,16 @@ import (
 )
 
 func TestHandler_remoteWrite(t *testing.T) {
-	req := createRemoteWriteRequest(t)
+	req := createRequest(t, createPrometheusRemoteWriteProtobuf(t))
 	resp := httptest.NewRecorder()
-
 	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, verifyWriteRequestHandler(t, client.API))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
 }
 
 func TestHandler_cortexWriteRequest(t *testing.T) {
-	req := createCortexRemoteWriteRequest(t)
+	req := createRequest(t, createCortexWriteRequestProtobuf(t))
 	resp := httptest.NewRecorder()
-
 	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, verifyWriteRequestHandler(t, client.RULE))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
@@ -38,12 +36,26 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 func verifyWriteRequestHandler(t *testing.T, expectSource client.WriteRequest_SourceEnum) func(ctx context.Context, request *client.WriteRequest) (response *client.WriteResponse, err error) {
 	t.Helper()
 	return func(ctx context.Context, request *client.WriteRequest) (response *client.WriteResponse, err error) {
+		assert.Len(t, request.Timeseries, 1)
+		assert.Equal(t, "__name__", request.Timeseries[0].Labels[0].Name)
+		assert.Equal(t, "foo", request.Timeseries[0].Labels[0].Value)
 		assert.Equal(t, expectSource, request.Source)
 		return &client.WriteResponse{}, nil
 	}
 }
 
-func createRemoteWriteRequest(t *testing.T) *http.Request {
+func createRequest(t *testing.T, protobuf []byte) *http.Request {
+	t.Helper()
+	inoutBytes := snappy.Encode(nil, protobuf)
+	req, err := http.NewRequest("POST", "http://localhost/", bytes.NewReader(inoutBytes))
+	require.NoError(t, err)
+	req.Header.Add("Content-Encoding", "snappy")
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	return req
+}
+
+func createPrometheusRemoteWriteProtobuf(t *testing.T) []byte {
 	t.Helper()
 	input := prompb.WriteRequest{
 		Timeseries: []prompb.TimeSeries{
@@ -59,16 +71,9 @@ func createRemoteWriteRequest(t *testing.T) *http.Request {
 	}
 	inoutBytes, err := input.Marshal()
 	require.NoError(t, err)
-	inoutBytes = snappy.Encode(nil, inoutBytes)
-	req, err := http.NewRequest("POST", "http://localhost/", bytes.NewReader(inoutBytes))
-	require.NoError(t, err)
-	req.Header.Add("Content-Encoding", "snappy")
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	return req
+	return inoutBytes
 }
-
-func createCortexRemoteWriteRequest(t *testing.T) *http.Request {
+func createCortexWriteRequestProtobuf(t *testing.T) []byte {
 	t.Helper()
 	ts := client.PreallocTimeseries{
 		TimeSeries: &client.TimeSeries{
@@ -86,11 +91,5 @@ func createCortexRemoteWriteRequest(t *testing.T) *http.Request {
 	}
 	inoutBytes, err := input.Marshal()
 	require.NoError(t, err)
-	inoutBytes = snappy.Encode(nil, inoutBytes)
-	req, err := http.NewRequest("POST", "http://localhost/", bytes.NewReader(inoutBytes))
-	require.NoError(t, err)
-	req.Header.Add("Content-Encoding", "snappy")
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	return req
+	return inoutBytes
 }

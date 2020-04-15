@@ -1,12 +1,16 @@
 .PHONY: all test clean images protos exes dist
 .DEFAULT_GOAL := all
 
+# Version number
+VERSION=$(shell cat "./VERSION" 2> /dev/null)
+
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.
 IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
-GIT_REVISION := $(shell git rev-parse HEAD)
+GIT_REVISION := $(shell git rev-parse --short HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 UPTODATE := .uptodate
 
 # Support gsed on OSX (installed via brew), falling back to sed. On Linux
@@ -82,7 +86,7 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
+GO_FLAGS := -ldflags "-X main.Branch=$(GIT_BRANCH) -X main.Revision=$(GIT_REVISION) -X main.Version=$(VERSION) -extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 

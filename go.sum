@@ -777,8 +777,8 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d/go.mod h1:usT/TxtJQ7DzinTt+G9kinDQmRS5sxwu0unVKZ9vdcw=
-github.com/thanos-io/thanos v0.8.1-0.20200326105947-214ff4480e93 h1:6SlyEQmt5MivC6HxPGeYaB6pDeackPDzGTYHfjCdh04=
-github.com/thanos-io/thanos v0.8.1-0.20200326105947-214ff4480e93/go.mod h1:PeLHoE5XdPZss/3eLvuxDCFXnM6Sd2Kh+saQIRJVtBE=
+github.com/thanos-io/thanos v0.12.0 h1:Elo3ojC8H39an5D5GqxxUhM5+7FAToXEm8XX8pMZR88=
+github.com/thanos-io/thanos v0.12.0/go.mod h1:+nN9AzmfaIH2e2KJGyRxX0BoUGrRSyZmp+U8ToRxlDc=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tidwall/pretty v1.0.0 h1:HsD+QiTn7sK6flMKIvNmpqz1qrpP3Ps6jOKIKMooyg4=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

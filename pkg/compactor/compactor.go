@@ -348,6 +348,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 			ignoreDeletionMarkFilter,
 			deduplicateBlocksFilter,
 		},
+		nil,
 	)
 	if err != nil {
 		return err

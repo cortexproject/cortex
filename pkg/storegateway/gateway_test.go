@@ -102,9 +102,9 @@ func TestStoreGateway_InitialSyncWithShardingEnabled(t *testing.T) {
 			assert.Equal(t, RingNumTokens, len(g.ringLifecycler.GetTokens()))
 			assert.Subset(t, g.ringLifecycler.GetTokens(), testData.initialTokens)
 
-			assert.True(t, g.stores.HasUser("user-1"))
-			assert.True(t, g.stores.HasUser("user-2"))
-			assert.False(t, g.stores.HasUser("user-unknown"))
+			assert.NotNil(t, g.stores.getStore("user-1"))
+			assert.NotNil(t, g.stores.getStore("user-2"))
+			assert.Nil(t, g.stores.getStore("user-unknown"))
 		})
 	}
 }
@@ -126,9 +126,9 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	bucketClient.MockIter("user-2/", []string{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
-	assert.True(t, g.stores.HasUser("user-1"))
-	assert.True(t, g.stores.HasUser("user-2"))
-	assert.False(t, g.stores.HasUser("user-unknown"))
+	assert.NotNil(t, g.stores.getStore("user-1"))
+	assert.NotNil(t, g.stores.getStore("user-2"))
+	assert.Nil(t, g.stores.getStore("user-unknown"))
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {

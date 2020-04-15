@@ -180,14 +180,6 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	return store.Series(req, srv)
 }
 
-func (u *BucketStores) HasUser(userID string) bool {
-	u.storesMu.RLock()
-	defer u.storesMu.RUnlock()
-
-	_, ok := u.stores[userID]
-	return ok
-}
-
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
 	store := u.stores[userID]

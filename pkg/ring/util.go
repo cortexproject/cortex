@@ -3,7 +3,6 @@ package ring
 import (
 	"context"
 	"math/rand"
-	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -33,11 +32,6 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		tokens = append(tokens, candidate)
 		i++
 	}
-
-	// Ensure generated tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
 
 	return tokens
 }

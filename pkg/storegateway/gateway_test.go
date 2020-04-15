@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -50,12 +51,12 @@ func TestStoreGateway_InitialSyncWithShardingEnabled(t *testing.T) {
 		"instance already in the ring with ACTIVE state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.ACTIVE,
-			initialTokens: ring.Tokens(ring.GenerateTokens(RingNumTokens, ring.Tokens{})),
+			initialTokens: generateSortedTokens(RingNumTokens),
 		},
 		"instance already in the ring with LEAVING state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.LEAVING,
-			initialTokens: ring.Tokens(ring.GenerateTokens(RingNumTokens, ring.Tokens{})),
+			initialTokens: generateSortedTokens(RingNumTokens),
 		},
 	}
 
@@ -265,15 +266,15 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 		expectedNumTokens int
 	}{
 		"stored tokens are less than the configured ones": {
-			storedTokens:      ring.Tokens(ring.GenerateTokens(RingNumTokens-10, nil)),
+			storedTokens:      generateSortedTokens(RingNumTokens - 10),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are equal to the configured ones": {
-			storedTokens:      ring.Tokens(ring.GenerateTokens(RingNumTokens, nil)),
+			storedTokens:      generateSortedTokens(RingNumTokens),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are more then the configured ones": {
-			storedTokens:      ring.Tokens(ring.GenerateTokens(RingNumTokens+10, nil)),
+			storedTokens:      generateSortedTokens(RingNumTokens + 10),
 			expectedNumTokens: RingNumTokens + 10,
 		},
 	}
@@ -505,4 +506,15 @@ func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 	}
 
 	return db.Close()
+}
+
+func generateSortedTokens(numTokens int) ring.Tokens {
+	tokens := ring.GenerateTokens(numTokens, nil)
+
+	// Ensure generated tokens are sorted.
+	sort.Slice(tokens, func(i, j int) bool {
+		return tokens[i] < tokens[j]
+	})
+
+	return ring.Tokens(tokens)
 }

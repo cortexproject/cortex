@@ -126,7 +126,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 
 		// Filter blocks by the shard of this store-gateway instance if the
 		// sharding is enabled.
-		filters = append(filters, NewShardingMetadataFilter(g.ring, g.ringLifecycler.GetInstanceAddr(), logger))
+		filters = append(filters, NewShardingMetadataFilter(g.ring, lifecyclerCfg.Addr, logger))
 	}
 
 	var storesReg prometheus.Registerer

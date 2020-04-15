@@ -220,12 +220,10 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-syncTicker.C:
 			g.syncStores(ctx, syncReasonPeriodic)
 		case <-ringTickerChan:
-			if g.gatewayCfg.ShardingEnabled {
-				currTokens := g.ring.GetAllTokens(ring.BlocksSync)
-				if !currTokens.Equals(ringLastTokens) {
-					ringLastTokens = currTokens
-					g.syncStores(ctx, syncReasonRingChange)
-				}
+			currTokens := g.ring.GetAllTokens(ring.BlocksSync)
+			if !currTokens.Equals(ringLastTokens) {
+				ringLastTokens = currTokens
+				g.syncStores(ctx, syncReasonRingChange)
 			}
 		case <-ctx.Done():
 			return nil

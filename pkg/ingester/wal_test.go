@@ -27,22 +27,30 @@ func TestWAL(t *testing.T) {
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
 	cfg.WALConfig.Dir = dirname
-	cfg.WALConfig.CheckpointDuration = 100 * time.Millisecond
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+	cfg.WALConfig.checkpointDuringShutdown = true
 
 	numSeries := 100
 	numSamplesPerSeriesPerPush := 10
-	numRestarts := 3
+	numRestarts := 5
 
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
+	// Checkpoint happens when stopping.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	for r := 0; r < numRestarts; r++ {
+		if r == 2 {
+			// From 3rd restart onwards, we are disabling checkpointing during shutdown
+			// to test both checkpoint+WAL replay.
+			cfg.WALConfig.checkpointDuringShutdown = false
+		}
 		if r == numRestarts-1 {
 			cfg.WALConfig.WALEnabled = false
 			cfg.WALConfig.CheckpointEnabled = false
 		}
+
 		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 

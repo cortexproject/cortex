@@ -7,9 +7,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
-type ReplicationStrategy struct{}
+type BlocksReplicationStrategy struct{}
 
-func (s *ReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Operation, replicationFactor int, heartbeatTimeout time.Duration) ([]ring.IngesterDesc, int, error) {
+func (s *BlocksReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Operation, replicationFactor int, heartbeatTimeout time.Duration) ([]ring.IngesterDesc, int, error) {
 	// Filter out unhealthy instances.
 	for i := 0; i < len(instances); {
 		if instances[i].IsHealthy(op, heartbeatTimeout) {
@@ -29,7 +29,7 @@ func (s *ReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Oper
 	return instances, maxFailures, nil
 }
 
-func (s *ReplicationStrategy) ShouldExtendReplicaSet(instance ring.IngesterDesc, op ring.Operation) bool {
+func (s *BlocksReplicationStrategy) ShouldExtendReplicaSet(instance ring.IngesterDesc, op ring.Operation) bool {
 	switch op {
 	case ring.BlocksSync:
 		// If the instance is JOINING or LEAVING we should extend the replica set:

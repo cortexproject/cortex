@@ -239,7 +239,7 @@ func TestShardingMetadataFilter(t *testing.T) {
 				HeartbeatTimeout:  time.Minute,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &ReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck

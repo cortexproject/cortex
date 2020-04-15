@@ -196,6 +196,7 @@ github.com/golang-migrate/migrate/v4/source
 github.com/golang-migrate/migrate/v4/source/file
 # github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9
 github.com/golang/groupcache/lru
+github.com/golang/groupcache/singleflight
 # github.com/golang/protobuf v1.3.2
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/jsonpb
@@ -515,7 +516,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.8.1-0.20200326105947-214ff4480e93
+# github.com/thanos-io/thanos v0.12.0
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata

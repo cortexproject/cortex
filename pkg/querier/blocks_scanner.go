@@ -285,6 +285,7 @@ func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher,
 		filepath.Join(d.cfg.CacheDir, userID),
 		userReg,
 		filters,
+		nil,
 	)
 	if err != nil {
 		return nil, err

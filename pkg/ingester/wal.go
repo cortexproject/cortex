@@ -56,14 +56,24 @@ type WAL interface {
 	Stop()
 }
 
+// RecordType represents the type of the WAL/Checkpoint record.
 type RecordType byte
 
 const (
-	// WAL record types.
-	WALRecordSeriesType1  RecordType = 1
+	// Currently we also support the old records without a type header.
+	// For that, we assume the record type does not cross 7 as the proto unmarshalling
+	// will produce an error if the first byte is less than 7 (thus we know its not the old record).
+	// The old record will be removed in the future releases, hence the record type should not cross
+	// '7' till then.
+	// Relevant code to verify this is https://github.com/cortexproject/cortex/blob/90516410b9e1fe2fe3ae9041260c02d2a6f0468d/pkg/ingester/wal.pb.go#L894-L917
+	// (with error at line 916).
+
+	// WALRecordSeriesType1 is the type for the WAL record on Prometheus TSDB record for series.
+	WALRecordSeriesType1 RecordType = 1
+	// WALRecordSamplesType1 is the type for the WAL record based on Prometheus TSDB record for samples.
 	WALRecordSamplesType1 RecordType = 2
 
-	// Checkpoint record types.
+	// CheckpointRecordType1 is the type for the Checkpoint record based on protos.
 	CheckpointRecordType1 RecordType = 3
 )
 
@@ -82,7 +92,7 @@ type walWrapper struct {
 	checkpointMtx sync.Mutex
 	bytesPool     sync.Pool
 
-	// Checkpoint metrics.
+	// Metrics.
 	checkpointDeleteFail    prometheus.Counter
 	checkpointDeleteTotal   prometheus.Counter
 	checkpointCreationFail  prometheus.Counter
@@ -1051,31 +1061,22 @@ func SegmentRange(dir string) (int, int, error) {
 	return first, last, nil
 }
 
-func decodeCheckpointRecord(rec []byte, m proto.Message) (proto.Message, error) {
-	// Legacy record without a type header. It errors out for new records with type <= 7.
-	// As all record types satisfy the condition currently, no error here means it a legacy record.
-	err := proto.Unmarshal(rec, m)
-	if err == nil {
-		return m, nil
-	}
-
-	// If we reached here, it means the record is most likely not a legacy record.
-	var merr tsdb_errors.MultiError
-	merr.Add(err)
-
-	if len(rec) > 0 {
-		switch RecordType(rec[0]) {
-		case CheckpointRecordType1:
-			if err := proto.Unmarshal(rec[1:], m); err != nil {
-				merr.Add(err)
-			} else {
-				merr = nil
-			}
-		default:
+func decodeCheckpointRecord(rec []byte, m proto.Message) (_ proto.Message, err error) {
+	switch RecordType(rec[0]) {
+	case CheckpointRecordType1:
+		if err := proto.Unmarshal(rec[1:], m); err != nil {
+			return m, err
+		}
+	default:
+		// The legacy proto record will have it's first byte >7.
+		// Hence it does not match any of the existing record types.
+		err := proto.Unmarshal(rec, m)
+		if err != nil {
+			return m, err
 		}
 	}
 
-	return m, merr.Err()
+	return m, err
 }
 
 func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, error) {
@@ -1089,6 +1090,7 @@ func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, er
 	return b, nil
 }
 
+// WALRecord is a struct combining the series and samples record.
 type WALRecord struct {
 	UserID  string
 	Series  []tsdb_record.RefSeries
@@ -1101,9 +1103,8 @@ func (record *WALRecord) encodeSeries(b []byte) []byte {
 	buf.PutUvarintStr(record.UserID)
 
 	var enc tsdb_record.Encoder
-	// The 'encoded' already has the type header and userID here,
-	// hence re-using the remaining part of the slice (encoded[len(encoded):]))
-	// to encode the series.
+	// The 'encoded' already has the type header and userID here, hence re-using
+	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
 	encoded := buf.Get()
 	encoded = append(encoded, enc.Series(record.Series, encoded[len(encoded):])...)
 
@@ -1116,27 +1117,15 @@ func (record *WALRecord) encodeSamples(b []byte) []byte {
 	buf.PutUvarintStr(record.UserID)
 
 	var enc tsdb_record.Encoder
-	// The 'encoded' already has the type header and userID here,
-	// hence re-using the remaining part of the slice (encoded[len(encoded):]))
-	// to encode the samples.
+	// The 'encoded' already has the type header and userID here, hence re-using
+	// the remaining part of the slice (i.e. encoded[len(encoded):]))to encode the samples.
 	encoded := buf.Get()
 	encoded = append(encoded, enc.Samples(record.Samples, encoded[len(encoded):])...)
 
 	return encoded
 }
 
-func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (*Record, *WALRecord, error) {
-	// Legacy record without a type header. It errors out for new records with type <= 7.
-	// As all record types satisfy the condition currently, no error here means it a legacy record.
-	err := proto.Unmarshal(b, rec)
-	if err == nil {
-		return rec, walRec, nil
-	}
-
-	// If we reached here, it means the record is most likely not a legacy record.
-	var merr tsdb_errors.MultiError
-	merr.Add(err)
-
+func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (_ *Record, _ *WALRecord, err error) {
 	var (
 		userID   string
 		dec      tsdb_record.Decoder
@@ -1157,22 +1146,23 @@ func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (*Record, *WALRec
 		userID = decbuf.UvarintStr()
 		rseries, err = dec.Series(decbuf.B, walRec.Series)
 	default:
-		err = errors.Errorf("invalid record type %d", t)
+		// The legacy proto record will have it's first byte >7.
+		// Hence it does not match any of the existing record types.
+		err = proto.Unmarshal(b, rec)
+		return rec, walRec, err
 	}
 
+	// We reach here only if its a record with type header.
 	if decbuf.Err() != nil {
 		return rec, walRec, decbuf.Err()
 	}
 
-	merr.Add(err)
 	if err == nil {
 		// There was no error decoding the records with type headers.
-		// Hence make the first error nil.
-		merr = nil
 		walRec.UserID = userID
 		walRec.Samples = rsamples
 		walRec.Series = rseries
 	}
 
-	return rec, walRec, merr.Err()
+	return rec, walRec, err
 }

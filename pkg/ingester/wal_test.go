@@ -183,3 +183,47 @@ func TestCheckpointRepair(t *testing.T) {
 	}
 
 }
+
+func BenchmarkWALReplay(b *testing.B) {
+	dirname, err := ioutil.TempDir("", "cortex-wal")
+	require.NoError(b, err)
+	defer func() {
+		require.NoError(b, os.RemoveAll(dirname))
+	}()
+
+	cfg := defaultIngesterTestConfig()
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.CheckpointEnabled = true
+	cfg.WALConfig.Recover = true
+	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+	cfg.WALConfig.checkpointDuringShutdown = false
+
+	numSeries := 10
+	numSamplesPerSeriesPerPush := 2
+	numPushes := 100000
+
+	_, ing := newTestStore(b, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+
+	// Add samples for the checkpoint.
+	for r := 0; r < numPushes; r++ {
+		_, _ = pushTestSamples(b, ing, numSeries, numSamplesPerSeriesPerPush, r*numSamplesPerSeriesPerPush)
+	}
+	w, ok := ing.wal.(*walWrapper)
+	require.True(b, ok)
+	require.NoError(b, w.performCheckpoint(true))
+
+	// Add samples for the additional WAL not in checkpoint.
+	for r := 0; r < numPushes; r++ {
+		_, _ = pushTestSamples(b, ing, numSeries, numSamplesPerSeriesPerPush, (numPushes+r)*numSamplesPerSeriesPerPush)
+	}
+
+	require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	var ing2 *Ingester
+	b.Run("wal replay", func(b *testing.B) {
+		// Replay will happen here.
+		_, ing2 = newTestStore(b, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	})
+	require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ing2))
+}

@@ -47,7 +47,6 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	r := Ring{
-		name:     "ingester",
 		cfg:      cfg,
 		ringDesc: desc,
 		strategy: &DefaultReplicationStrategy{},
@@ -89,7 +88,6 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 	}
 	desc := NewDesc()
 	r := Ring{
-		name:     "ingester",
 		cfg:      Config{},
 		ringDesc: desc,
 		strategy: &DefaultReplicationStrategy{},
@@ -143,7 +141,6 @@ func TestSubring(t *testing.T) {
 
 	// Create a ring with the ingesters
 	ring := Ring{
-		name: "main ring",
 		cfg: Config{
 			HeartbeatTimeout: time.Hour,
 		},
@@ -198,7 +195,6 @@ func TestStableSubring(t *testing.T) {
 
 	// Create a ring with the ingesters
 	ring := Ring{
-		name: "main ring",
 		cfg: Config{
 			HeartbeatTimeout: time.Hour,
 		},
@@ -257,7 +253,6 @@ func TestZoneAwareIngesterAssignmentSucccess(t *testing.T) {
 
 	// Create a ring with the ingesters
 	ring := Ring{
-		name: "main ring",
 		cfg: Config{
 			HeartbeatTimeout:  time.Hour,
 			ReplicationFactor: 3,
@@ -322,7 +317,6 @@ func TestZoneAwareIngesterAssignmentFailure(t *testing.T) {
 
 	// Create a ring with the ingesters
 	ring := Ring{
-		name: "main ring",
 		cfg: Config{
 			HeartbeatTimeout:  time.Hour,
 			ReplicationFactor: 3,

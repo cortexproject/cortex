@@ -99,7 +99,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type Ring struct {
 	services.Service
 
-	name     string
 	key      string
 	cfg      Config
 	KVClient kv.Client
@@ -133,7 +132,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 	}
 
 	r := &Ring{
-		name:     name,
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
@@ -142,27 +140,32 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		numMembersDesc: prometheus.NewDesc(
 			"cortex_ring_members",
 			"Number of members in the ring",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 		totalTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_total",
 			"Number of tokens in the ring",
-			[]string{"name"}, nil,
+			nil,
+			map[string]string{"name": name},
 		),
 		numTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_owned",
 			"The number of tokens in the ring owned by the member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		oldestTimestampDesc: prometheus.NewDesc(
 			"cortex_ring_oldest_member_timestamp",
 			"Timestamp of the oldest member in the ring.",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 	}
 
@@ -320,6 +323,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.memberOwnershipDesc
 	ch <- r.numMembersDesc
 	ch <- r.totalTokensDesc
+	ch <- r.oldestTimestampDesc
 	ch <- r.numTokensDesc
 }
 
@@ -359,14 +363,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
-			r.name,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			r.numTokensDesc,
 			prometheus.GaugeValue,
 			float64(numTokens[id]),
 			id,
-			r.name,
 		)
 	}
 
@@ -396,7 +398,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(count),
 			state,
-			r.name,
 		)
 	}
 	for state, timestamp := range oldestTimestampByState {
@@ -405,7 +406,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(timestamp),
 			state,
-			r.name,
 		)
 	}
 
@@ -413,7 +413,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringTokens)),
-		r.name,
 	)
 }
 
@@ -464,7 +463,6 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	sub := &Ring{
-		name:     "subring",
 		cfg:      r.cfg,
 		strategy: r.strategy,
 		ringDesc: &Desc{

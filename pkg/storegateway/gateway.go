@@ -113,15 +113,19 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 		delegate = ring.NewTokensPersistencyDelegate(gatewayCfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, logger)
 
-		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingName, RingKey, ringStore, delegate, logger, reg)
+		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, logger, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring lifecycler")
 		}
 
 		ringCfg := gatewayCfg.ShardingRing.ToRingConfig()
-		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingName, RingKey, ringStore, &BlocksReplicationStrategy{})
+		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, &BlocksReplicationStrategy{})
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
+		}
+
+		if reg != nil {
+			reg.MustRegister(g.ring)
 		}
 
 		// Filter blocks by the shard of this store-gateway instance if the

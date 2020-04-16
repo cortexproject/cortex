@@ -15,16 +15,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address           string        `yaml:"frontend_address"`
-	Parallelism       int           `yaml:"parallelism"`
-	TotalParallelism  int           `yaml:"total_parallelism"`
-	DNSLookupDuration time.Duration `yaml:"dns_lookup_duration"`
+	Address             string        `yaml:"frontend_address"`
+	Parallelism         int           `yaml:"parallelism"`
+	MatchMaxConcurrency bool          `yaml:"match_max_concurrency"`
+	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
@@ -33,7 +34,7 @@ type WorkerConfig struct {
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
-	f.IntVar(&cfg.TotalParallelism, "querier.worker-total-parallelism", 0, "Number of simultaneous queries to process across all query frontends.  Overrides querier.worker-parallelism.")
+	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
@@ -41,9 +42,10 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Worker is the counter-part to the frontend, actually processing requests.
 type worker struct {
-	cfg    WorkerConfig
-	log    log.Logger
-	server *server.Server
+	cfg        WorkerConfig
+	querierCfg querier.Config
+	log        log.Logger
+	server     *server.Server
 
 	watcher  naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
 	managers map[string]*frontendManager
@@ -51,7 +53,7 @@ type worker struct {
 
 // NewWorker creates a new worker and returns a service that is wrapping it.
 // If no address is specified, it returns nil service (and no error).
-func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (services.Service, error) {
+func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Server, log log.Logger) (services.Service, error) {
 	if cfg.Address == "" {
 		level.Info(log).Log("msg", "no address specified, not starting worker")
 		return nil, nil
@@ -68,11 +70,12 @@ func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (service
 	}
 
 	w := &worker{
-		cfg:      cfg,
-		log:      log,
-		server:   server,
-		watcher:  watcher,
-		managers: map[string]*frontendManager{},
+		cfg:        cfg,
+		querierCfg: querierCfg,
+		log:        log,
+		server:     server,
+		watcher:    watcher,
+		managers:   map[string]*frontendManager{},
 	}
 	return services.NewBasicService(nil, w.watchDNSLoop, w.stopping), nil
 }
@@ -152,10 +155,10 @@ func (w *worker) resetParallelism() {
 
 	for i, addr := range addresses {
 		concurrentRequests := 0
-		if w.cfg.TotalParallelism > 0 {
-			concurrentRequests = w.cfg.TotalParallelism / len(w.managers)
+		if w.cfg.MatchMaxConcurrency {
+			concurrentRequests = w.querierCfg.MaxConcurrent / len(w.managers)
 
-			if i < w.cfg.TotalParallelism%len(w.managers) {
+			if i < w.querierCfg.MaxConcurrent%len(w.managers) {
 				concurrentRequests++
 			}
 		} else {

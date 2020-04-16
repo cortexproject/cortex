@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -22,42 +23,42 @@ func TestResetParallelism(t *testing.T) {
 	tests := []struct {
 		name                string
 		parallelism         int
-		totalParallelism    int
+		maxConcurrent       int
 		numManagers         int
 		expectedConcurrency int32
 	}{
 		{
 			name:                "Test create least one worker per manager",
 			parallelism:         0,
-			totalParallelism:    0,
+			maxConcurrent:       0,
 			numManagers:         2,
 			expectedConcurrency: 2,
 		},
 		{
 			name:                "Test concurrency per query frontend configuration",
 			parallelism:         4,
-			totalParallelism:    0,
+			maxConcurrent:       0,
 			numManagers:         2,
 			expectedConcurrency: 8,
 		},
 		{
 			name:                "Test Total Parallelism with a remainder",
 			parallelism:         1,
-			totalParallelism:    7,
+			maxConcurrent:       7,
 			numManagers:         4,
 			expectedConcurrency: 7,
 		},
 		{
 			name:                "Test Total Parallelism dividing evenly",
 			parallelism:         1,
-			totalParallelism:    6,
+			maxConcurrent:       6,
 			numManagers:         2,
 			expectedConcurrency: 6,
 		},
 		{
 			name:                "Test Total Parallelism at least one worker per manager",
 			parallelism:         1,
-			totalParallelism:    3,
+			maxConcurrent:       3,
 			numManagers:         6,
 			expectedConcurrency: 6,
 		},
@@ -66,14 +67,18 @@ func TestResetParallelism(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := WorkerConfig{
-				Parallelism:      tt.parallelism,
-				TotalParallelism: tt.totalParallelism,
+				Parallelism:         tt.parallelism,
+				MatchMaxConcurrency: tt.maxConcurrent > 0,
+			}
+			querierCfg := querier.Config{
+				MaxConcurrent: tt.maxConcurrent,
 			}
 
 			w := &worker{
-				cfg:      cfg,
-				log:      util.Logger,
-				managers: map[string]*frontendManager{},
+				cfg:        cfg,
+				querierCfg: querierCfg,
+				log:        util.Logger,
+				managers:   map[string]*frontendManager{},
 			}
 
 			for i := 0; i < tt.numManagers; i++ {

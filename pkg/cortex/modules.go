@@ -210,7 +210,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
+	worker, err := frontend.NewWorker(cfg.Worker, cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}

@@ -114,7 +114,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 			switch update.Op {
 			case naming.Add:
 				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
-				client, err := w.connect(update.Addr)
+				client, err := w.connect(servCtx, update.Addr)
 				if err != nil {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 				}
@@ -136,10 +136,14 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 	}
 }
 
-func (w *worker) connect(address string) (FrontendClient, error) {
-	opts := []grpc.DialOption{grpc.WithInsecure()}
+func (w *worker) connect(ctx context.Context, address string) (FrontendClient, error) {
+	opts := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithBlock(),
+	}
 	opts = append(opts, w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)...)
-	conn, err := grpc.Dial(address, opts...)
+
+	conn, err := grpc.DialContext(ctx, address, opts...)
 	if err != nil {
 		return nil, err
 	}

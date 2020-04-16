@@ -42,6 +42,18 @@ func TestIndex(t *testing.T) {
 		{mustParseMatcher(`{foo="bar", flip="flap"}`), []model.Fingerprint{2}},
 		{mustParseMatcher(`{foo="baz", flip="flop"}`), []model.Fingerprint{1}},
 		{mustParseMatcher(`{foo="baz", flip="flap"}`), []model.Fingerprint{0}},
+
+		{mustParseMatcher(`{fizz=~"b.*"}`), []model.Fingerprint{}},
+
+		{mustParseMatcher(`{foo=~"bar.*"}`), []model.Fingerprint{2, 3}},
+		{mustParseMatcher(`{foo=~"ba.*"}`), []model.Fingerprint{0, 1, 2, 3}},
+		{mustParseMatcher(`{flip=~"flop|flap"}`), []model.Fingerprint{0, 1, 2, 3}},
+		{mustParseMatcher(`{flip=~"flaps"}`), []model.Fingerprint{}},
+
+		{mustParseMatcher(`{foo=~"bar|bax", flip="flop"}`), []model.Fingerprint{3}},
+		{mustParseMatcher(`{foo=~"bar|baz", flip="flap"}`), []model.Fingerprint{0, 2}},
+		{mustParseMatcher(`{foo=~"baz.+", flip="flop"}`), []model.Fingerprint{}},
+		{mustParseMatcher(`{foo=~"baz", flip="flap"}`), []model.Fingerprint{0}},
 	} {
 		assert.Equal(t, tc.fps, index.Lookup(tc.matchers))
 	}

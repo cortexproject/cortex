@@ -157,25 +157,37 @@ func (w *worker) resetParallelism() {
 	}
 	rand.Shuffle(len(addresses), func(i, j int) { addresses[i], addresses[j] = addresses[j], addresses[i] })
 
+	totalConcurrency := 0
 	for i, addr := range addresses {
 		concurrentRequests := 0
 		if w.cfg.MatchMaxConcurrency {
 			concurrentRequests = w.querierCfg.MaxConcurrent / len(w.managers)
 
+			// if max concurrency does not evenly divide into our frontends we will choose some
+			//  to receive an extra connection.  addresses were randomized above so this will be a
+			//  random selection of frontends
 			if i < w.querierCfg.MaxConcurrent%len(w.managers) {
+				level.Warn(w.log).Log("msg", "max concurrency is not evenly dividable across query frontends. adding an extra connection", "addr", addr)
 				concurrentRequests++
 			}
 		} else {
 			concurrentRequests = w.cfg.Parallelism
 		}
 
+		// max concurrency is less than the total number of query frontends.  to prevent accidentally
+		// starving a frontend we are just going to always connect once to every frontend
+		//  this is dangerous b/c we may start exceeding promql max concurrency
 		if concurrentRequests == 0 {
 			concurrentRequests = 1
 		}
 
-		mgr, ok := w.managers[addr]
-		if ok {
+		totalConcurrency += concurrentRequests
+		if mgr, ok := w.managers[addr]; ok {
 			mgr.concurrentRequests(concurrentRequests)
 		}
+	}
+
+	if totalConcurrency > w.querierCfg.MaxConcurrent {
+		level.Warn(w.log).Log("msg", "total worker concurrency is greater than promql max concurrency. queries may be queued in the querier which reduces QOS")
 	}
 }

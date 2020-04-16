@@ -39,6 +39,8 @@ func (a *appender) AddFast(l labels.Labels, ref uint64, t int64, v float64) erro
 }
 
 func (a *appender) Commit() error {
+	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
+	// We shouldn't call client.ReuseSlice here.
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
 	a.labels = nil
 	a.samples = nil

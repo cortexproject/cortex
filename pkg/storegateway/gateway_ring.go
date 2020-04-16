@@ -15,11 +15,15 @@ import (
 )
 
 const (
-	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
+	// RingKey is the key under which we store the store gateways ring in the KVStore.
 	RingKey = "store-gateway"
 
-	// StoreGatewayRingName is the name of the ring used by the store gateways.
-	RingName = "store-gateway"
+	// RingNameForServer is the name of the ring used by the store gateway server.
+	RingNameForServer = "store-gateway"
+
+	// RingNameForClient is the name of the ring used by the store gateway client (we need
+	// a different name to avoid clashing Prometheus metrics when running in single-binary).
+	RingNameForClient = "store-gateway-client"
 
 	// We use a safe default instead of exposing to config option to the user
 	// in order to simplify the config.

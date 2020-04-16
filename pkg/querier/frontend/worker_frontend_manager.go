@@ -86,10 +86,6 @@ func (f *frontendManager) concurrentRequests(n int) {
 
 // runOne loops, trying to establish a stream to the frontend to begin
 // request processing.
-//  Ways that this can be cancelled
-//   servCtx is cancelled => Cortex is shutting down.
-//   c.Recv() errors => transient network issue, a client of the query frontend times out
-//   close quit channel => frontendManager is politely asking to shutdown a processor
 func (f *frontendManager) runOne(ctx context.Context) {
 	f.wg.Add(1)
 	defer f.wg.Done()

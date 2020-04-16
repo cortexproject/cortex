@@ -15,6 +15,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 var (
@@ -27,11 +28,11 @@ var (
 )
 
 type frontendManager struct {
-	client FrontendClient
-	server *server.Server
+	server    *server.Server
+	client    FrontendClient
+	clientCfg grpcclient.Config
 
-	log            log.Logger
-	maxSendMsgSize int
+	log log.Logger
 
 	gracefulQuit      []chan struct{}
 	serverCtx         context.Context
@@ -40,16 +41,16 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, maxSendMsgSize int) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.Config) *frontendManager {
 	serverCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{
-		client:            client,
 		log:               log,
+		client:            client,
+		clientCfg:         clientCfg,
 		server:            server,
 		serverCtx:         serverCtx,
 		cancel:            cancel,
-		maxSendMsgSize:    maxSendMsgSize,
 		currentProcessors: atomic.NewInt32(0),
 	}
 
@@ -162,8 +163,8 @@ func (f *frontendManager) process(quit <-chan struct{}, c Frontend_ProcessClient
 			}
 
 			// Ensure responses that are too big are not retried.
-			if len(response.Body) >= f.maxSendMsgSize {
-				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.maxSendMsgSize)
+			if len(response.Body) >= f.clientCfg.MaxSendMsgSize {
+				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.MaxSendMsgSize)
 				response = &httpgrpc.HTTPResponse{
 					Code: http.StatusRequestEntityTooLarge,
 					Body: []byte(errMsg),

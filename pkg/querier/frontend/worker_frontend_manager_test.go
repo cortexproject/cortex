@@ -16,6 +16,7 @@ import (
 	grpc "google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 type mockFrontendClient struct {
@@ -84,7 +85,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("Testing concurrency %v", tt.concurrency), func(t *testing.T) {
-			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 100000000)
+			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.Config{})
 
 			for _, c := range tt.concurrency {
 				calls.Store(0)
@@ -120,7 +121,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		failRecv: true,
 	}
 
-	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, 100000000)
+	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.Config{})
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)
@@ -144,7 +145,7 @@ func TestServeCancelStopsProcess(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, 100000000)
+	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.Config{})
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 func TestResetParallelism(t *testing.T) {
@@ -82,7 +83,7 @@ func TestResetParallelism(t *testing.T) {
 			}
 
 			for i := 0; i < tt.numManagers; i++ {
-				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 100000000)
+				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.Config{})
 			}
 
 			w.resetParallelism()

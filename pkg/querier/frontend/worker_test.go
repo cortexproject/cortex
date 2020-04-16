@@ -82,7 +82,7 @@ func TestResetParallelism(t *testing.T) {
 			}
 
 			for i := 0; i < tt.numManagers; i++ {
-				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 0, 100000000)
+				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, 100000000)
 			}
 
 			w.resetParallelism()

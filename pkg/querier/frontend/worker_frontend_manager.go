@@ -40,7 +40,7 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, initialConcurrentRequests int, maxSendMsgSize int) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, maxSendMsgSize int) *frontendManager {
 	serverCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{
@@ -52,8 +52,6 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 		maxSendMsgSize:    maxSendMsgSize,
 		currentProcessors: atomic.NewInt32(0),
 	}
-
-	f.concurrentRequests(initialConcurrentRequests)
 
 	return f
 }

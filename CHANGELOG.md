@@ -24,11 +24,13 @@
 * [ENHANCEMENT] Added `-querier.worker-match-max-concurrent`.  Force worker concurrency to match the `-querier.max-concurrent` option.  Overrides `-querier.worker-parallelism`.  #2456
 * [ENHANCEMENT] Single Binary: Added query-frontend to the single binary.  Single binary users will now benefit from various query-frontend features.  Primarily: sharding, parallelization, load shedding, additional caching (if configured), and query retries. #2437
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
+* [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109
 * [BUGFIX] Experimental TSDB: fixed response status code from `422` to `500` when an error occurs while iterating chunks with the experimental blocks storage. #2402
 * [BUGFIX] Ring: Fixed a situation where upgrading from pre-1.0 cortex with a rolling strategy caused new 1.0 ingesters to lose their zone value in the ring until manually forced to re-register. #2404
+* [BUGFIX] Distributor: `/all_user_stats` now show API and Rule Ingest Rate correctly. #2457
 
 ## 1.0.0 / 2020-04-02
 

@@ -63,7 +63,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_blocks_sync_seconds",
+			Name:    "blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
@@ -226,6 +226,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			// TODO(pracucci) can this cause troubles with the upcoming blocks sharding in the store-gateway?
 			block.NewDeduplicateFilter(),
 		}...),
+		nil,
 	)
 	if err != nil {
 		return nil, err
@@ -248,6 +249,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
+		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 	)
 	if err != nil {
 		return nil, err

@@ -138,7 +138,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.subservicesWatcher.WatchService(i.lifecycler)
 
 	// Init the limter and instantiate the user states which depend on it
-	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)

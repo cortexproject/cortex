@@ -34,6 +34,7 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	flagext.DefaultValues(&lifecyclerConfig)
 	lifecyclerConfig.Addr = "0.0.0.0"
 	lifecyclerConfig.Port = 1
+	lifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	lifecyclerConfig.RingConfig = ringConfig
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id

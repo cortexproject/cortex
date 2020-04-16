@@ -137,7 +137,7 @@ func NewTripperware(
 		Namespace: "cortex",
 		Name:      "query_frontend_queries_total",
 		Help:      "Total queries sent per tenant.",
-	}, []string{"method", "user"})
+	}, []string{"op", "user"})
 
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
@@ -191,9 +191,9 @@ func NewTripperware(
 			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
 			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
-				method := "query"
+				op := "query"
 				if isQueryRange {
-					method = "query_range"
+					op = "query_range"
 				}
 
 				user, err := user.ExtractOrgID(r.Context())
@@ -201,7 +201,7 @@ func NewTripperware(
 				if err != nil {
 					return nil, err
 				}
-				queriesPerTenant.WithLabelValues(method, user).Inc()
+				queriesPerTenant.WithLabelValues(op, user).Inc()
 
 				if !isQueryRange {
 					return next.RoundTrip(r)

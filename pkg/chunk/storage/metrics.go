@@ -5,11 +5,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
+// takes a chunk client and exposes metrics for its operations.
 type metricsChunkClient struct {
 	client chunk.Client
 
@@ -64,23 +64,16 @@ func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk)
 		return err
 	}
 
-	if len(chunks) == 0 {
-		return nil
-	}
-
 	// For PutChunks, we explicitly encode the userID in the chunk and don't use context.
 	userSizes := map[string]int{}
 	userCounts := map[string]int{}
-
 	for _, c := range chunks {
 		userSizes[c.UserID] += c.Data.Size()
 		userCounts[c.UserID]++
 	}
-
 	for user, size := range userSizes {
 		c.metrics.chunksSizePutPerUser.WithLabelValues(user).Add(float64(size))
 	}
-
 	for user, num := range userCounts {
 		c.metrics.chunksPutPerUser.WithLabelValues(user).Add(float64(num))
 	}
@@ -94,21 +87,20 @@ func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk)
 		return chks, err
 	}
 
-	user, err := user.ExtractOrgID(ctx)
-	// Should never happen.
-	if err != nil {
-		return nil, err
-	}
-
-	size := 0
-	num := 0
+	// For GetChunks, userID is the chunk and we don't need to use context.
+	// For now, we just load one user chunks at once, but the interface lets us do it for multiple users.
+	userSizes := map[string]int{}
+	userCounts := map[string]int{}
 	for _, c := range chks {
-		num++
-		size += c.Data.Size()
+		userSizes[c.UserID] += c.Data.Size()
+		userCounts[c.UserID]++
 	}
-
-	c.metrics.chunksFetchedPerUser.WithLabelValues(user).Add(float64(num))
-	c.metrics.chunksSizeFetchedPerUser.WithLabelValues(user).Add(float64(size))
+	for user, size := range userSizes {
+		c.metrics.chunksSizeFetchedPerUser.WithLabelValues(user).Add(float64(size))
+	}
+	for user, num := range userCounts {
+		c.metrics.chunksFetchedPerUser.WithLabelValues(user).Add(float64(num))
+	}
 
 	return chks, nil
 }

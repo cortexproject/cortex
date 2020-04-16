@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// Exported errors.
 var (
 	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
 	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")

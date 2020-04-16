@@ -27,8 +27,9 @@
 * [ENHANCEMENT] Single Binary: Added query-frontend to the single binary.  Single binary users will now benefit from various query-frontend features.  Primarily: sharding, parallelization, load shedding, additional caching (if configured), and query retries. #2437
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475
-* [ENHANCEMENT] Added per tenant metrics for chunks and bytes read from chunk store: #2463
+* [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
   * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
+  * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109

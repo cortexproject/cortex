@@ -397,13 +397,14 @@ Consider you have 4 ingesters &lt;code&gt;ingester-0 ingester-1 ingester-2 inges
 &lt;p&gt;After hitting the endpoint for &lt;code&gt;ingester-2 ingester-3&lt;/code&gt;, scale down the ingesters to 2.&lt;/p&gt;
 &lt;p&gt;PS: Given you have to scale down 1 ingester at a time, you can pipeline the shutdown and scaledown process instead of hitting shutdown endpoint for all to-be-scaled-down ingesters at the same time.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Fallback option&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;There is a &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1747&#34;&gt;flush mode ingester&lt;/a&gt; in progress, and with recent discussions there will be a separate target called flusher in it&amp;rsquo;s place.&lt;/p&gt;
-&lt;p&gt;You can run it as a kubernetes job which will
-* Attach to the volume of the scaled down ingester
-* Recover from the WAL
-* And flush all the chunks.&lt;/p&gt;
-&lt;p&gt;This job is to be run for all the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;
-&lt;p&gt;More info about the flusher target will be added once it&amp;rsquo;s upstream.&lt;/p&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/production/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/auth/</guid><description>
+&lt;p&gt;There is a &lt;code&gt;flusher&lt;/code&gt; target that can be used to flush the data in the WAL. It&amp;rsquo;s config can be found &lt;a href=&#34;/docs/configuration/configuration-file/#flusher-config&#34;&gt;here&lt;/a&gt;. As flusher depends on the chunk store and the http API components, you need to also set all the config related to them similar to ingesters (see &lt;a href=&#34;/docs/configuration/configuration-file/#supported-contents-and-default-values-of-the-config-file&#34;&gt;api,storage,chunk_store,limits,runtime_config&lt;/a&gt; and &lt;a href=&#34;/docs/configuration/schema-configuration/&#34;&gt;schema&lt;/a&gt;). Pro tip: Re-use the ingester config and set the &lt;code&gt;target&lt;/code&gt; as &lt;code&gt;flusher&lt;/code&gt; with additional flusher config, the irrelevant config will be ignored.&lt;/p&gt;
+&lt;p&gt;You can run it as a Kubernetes job which will:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Attach to the volume of the scaled down ingester.&lt;/li&gt;
+&lt;li&gt;Recover from the WAL.&lt;/li&gt;
+&lt;li&gt;And flush all the chunks.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This job is to be run for all the PVCs linked to the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/production/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls

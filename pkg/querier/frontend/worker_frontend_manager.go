@@ -2,7 +2,6 @@ package frontend
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -23,8 +22,6 @@ var (
 		MinBackoff: 50 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	}
-
-	errGracefulQuit = errors.New("processor quitting gracefully")
 )
 
 type frontendManager struct {
@@ -34,23 +31,23 @@ type frontendManager struct {
 
 	log log.Logger
 
-	gracefulQuit      []chan struct{}
-	serverCtx         context.Context
-	cancel            context.CancelFunc
+	workerCancels     []context.CancelFunc
+	managerCtx        context.Context
+	managerCancel     context.CancelFunc
 	wg                sync.WaitGroup
 	currentProcessors *atomic.Int32
 }
 
 func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.Config) *frontendManager {
-	serverCtx, cancel := context.WithCancel(serverCtx)
+	managerCtx, cancel := context.WithCancel(serverCtx)
 
 	f := &frontendManager{
 		log:               log,
 		client:            client,
 		clientCfg:         clientCfg,
 		server:            server,
-		serverCtx:         serverCtx,
-		cancel:            cancel,
+		managerCtx:        managerCtx,
+		managerCancel:     cancel,
 		currentProcessors: atomic.NewInt32(0),
 	}
 
@@ -58,8 +55,8 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 }
 
 func (f *frontendManager) stop() {
-	f.cancel()              // force stop
-	f.concurrentRequests(0) // graceful quit
+	f.managerCancel()
+	f.concurrentRequests(0)
 	f.wg.Wait()
 }
 
@@ -69,21 +66,20 @@ func (f *frontendManager) concurrentRequests(n int) {
 	}
 
 	// adjust clients slice as necessary
-	for len(f.gracefulQuit) != n {
-		if len(f.gracefulQuit) < n {
-			quit := make(chan struct{})
-			f.gracefulQuit = append(f.gracefulQuit, quit)
+	for len(f.workerCancels) != n {
+		if len(f.workerCancels) < n {
+			ctx, cancel := context.WithCancel(f.managerCtx)
+			f.workerCancels = append(f.workerCancels, cancel)
 
-			go f.runOne(quit)
-
+			go f.runOne(ctx)
 			continue
 		}
 
-		if len(f.gracefulQuit) > n {
+		if len(f.workerCancels) > n {
 			// remove from slice and shutdown
-			var quit chan struct{}
-			quit, f.gracefulQuit = f.gracefulQuit[0], f.gracefulQuit[1:]
-			close(quit)
+			var cancel context.CancelFunc
+			cancel, f.workerCancels = f.workerCancels[0], f.workerCancels[1:]
+			cancel()
 		}
 	}
 }
@@ -94,29 +90,24 @@ func (f *frontendManager) concurrentRequests(n int) {
 //   servCtx is cancelled => Cortex is shutting down.
 //   c.Recv() errors => transient network issue, a client of the query frontend times out
 //   close quit channel => frontendManager is politely asking to shutdown a processor
-func (f *frontendManager) runOne(quit <-chan struct{}) {
+func (f *frontendManager) runOne(ctx context.Context) {
 	f.wg.Add(1)
 	defer f.wg.Done()
 
 	f.currentProcessors.Inc()
 	defer f.currentProcessors.Dec()
 
-	backoff := util.NewBackoff(f.serverCtx, backoffConfig)
+	backoff := util.NewBackoff(ctx, backoffConfig)
 	for backoff.Ongoing() {
 
-		c, err := f.client.Process(f.serverCtx)
+		c, err := f.client.Process(ctx)
 		if err != nil {
 			level.Error(f.log).Log("msg", "error contacting frontend", "err", err)
 			backoff.Wait()
 			continue
 		}
 
-		if err := f.process(quit, c); err != nil {
-			if err == errGracefulQuit {
-				level.Debug(f.log).Log("msg", "gracefully shutting down processor")
-				return
-			}
-
+		if err := f.process(ctx, c); err != nil {
 			level.Error(f.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -127,18 +118,12 @@ func (f *frontendManager) runOne(quit <-chan struct{}) {
 }
 
 // process loops processing requests on an established stream.
-func (f *frontendManager) process(quit <-chan struct{}, c Frontend_ProcessClient) error {
-	// Build a child context so we can cancel querie when the stream is closed.
+func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient) error {
+	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
 
 	for {
-		select {
-		case <-quit:
-			return errGracefulQuit
-		default:
-		}
-
 		request, err := c.Recv()
 		if err != nil {
 			return err

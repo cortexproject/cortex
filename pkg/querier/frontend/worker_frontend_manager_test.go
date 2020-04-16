@@ -25,6 +25,7 @@ type mockFrontendClient struct {
 
 func (m *mockFrontendClient) Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error) {
 	return &mockFrontendProcessClient{
+		ctx:      ctx,
 		failRecv: m.failRecv,
 	}, nil
 }
@@ -32,6 +33,7 @@ func (m *mockFrontendClient) Process(ctx context.Context, opts ...grpc.CallOptio
 type mockFrontendProcessClient struct {
 	grpc.ClientStream
 
+	ctx      context.Context
 	failRecv bool
 	wg       sync.WaitGroup
 }
@@ -43,6 +45,10 @@ func (m *mockFrontendProcessClient) Send(*ProcessResponse) error {
 func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
 	m.wg.Wait()
 	m.wg.Add(1)
+
+	if m.ctx.Err() != nil {
+		return nil, m.ctx.Err()
+	}
 
 	if m.failRecv {
 		return nil, errors.New("wups")
@@ -145,7 +151,7 @@ func TestServeCancelStopsProcess(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.Config{})
+	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.Config{MaxSendMsgSize: 100000})
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)

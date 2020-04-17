@@ -82,3 +82,6 @@ compactor:
   sharding_ring:
     kvstore:
       store: inmemory
+
+frontend_worker:
+  match_max_concurrent: true

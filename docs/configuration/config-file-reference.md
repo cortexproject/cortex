@@ -1808,7 +1808,7 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # Force worker concurrency to match the -querier.max-concurrent option.
 # Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrency: <boolean> | default = false]
+[match_max_concurrent: <boolean> | default = false]
 
 # How often to query DNS.
 # CLI flag: -querier.dns-lookup-period

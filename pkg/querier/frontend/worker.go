@@ -24,7 +24,7 @@ import (
 type WorkerConfig struct {
 	Address             string        `yaml:"frontend_address"`
 	Parallelism         int           `yaml:"parallelism"`
-	MatchMaxConcurrency bool          `yaml:"match_max_concurrency"`
+	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`

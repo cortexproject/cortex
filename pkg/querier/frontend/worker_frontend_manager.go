@@ -66,21 +66,18 @@ func (f *frontendManager) concurrentRequests(n int) {
 	}
 
 	// adjust clients slice as necessary
-	for len(f.workerCancels) != n {
-		if len(f.workerCancels) < n {
-			ctx, cancel := context.WithCancel(f.managerCtx)
-			f.workerCancels = append(f.workerCancels, cancel)
+	for len(f.workerCancels) < n {
+		ctx, cancel := context.WithCancel(f.managerCtx)
+		f.workerCancels = append(f.workerCancels, cancel)
 
-			go f.runOne(ctx)
-			continue
-		}
+		go f.runOne(ctx)
+	}
 
-		if len(f.workerCancels) > n {
-			// remove from slice and shutdown
-			var cancel context.CancelFunc
-			cancel, f.workerCancels = f.workerCancels[0], f.workerCancels[1:]
-			cancel()
-		}
+	for len(f.workerCancels) > n {
+		// remove from slice and shutdown
+		var cancel context.CancelFunc
+		cancel, f.workerCancels = f.workerCancels[0], f.workerCancels[1:]
+		cancel()
 	}
 }
 

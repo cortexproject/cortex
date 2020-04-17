@@ -1,13 +1,21 @@
 .PHONY: all test clean images protos exes dist
 .DEFAULT_GOAL := all
 
+# Version number
+VERSION=$(shell cat "./VERSION" 2> /dev/null)
+
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.
 IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
-GIT_REVISION := $(shell git rev-parse HEAD)
+GIT_REVISION := $(shell git rev-parse --short HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 UPTODATE := .uptodate
+
+# Support gsed on OSX (installed via brew), falling back to sed. On Linux
+# systems gsed won't be installed, so will use sed as expected.
+SED ?= $(shell which gsed 2>/dev/null || which sed)
 
 # Building Docker images is now automated. The convention is every directory
 # with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
@@ -78,7 +86,7 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
+GO_FLAGS := -ldflags "-X main.Branch=$(GIT_BRANCH) -X main.Revision=$(GIT_REVISION) -X main.Version=$(VERSION) -extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
@@ -119,7 +127,9 @@ $(EXES):
 protos: $(PROTO_GOS)
 
 %.pb.go:
-	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
+	@# to configure all such relative paths.
+	protoc -I $(GOPATH)/src:./vendor/github.com/thanos-io/thanos/pkg/store:./vendor/github.com/thanos-io/thanos/pkg/store/storepb:./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
 	misspell -error docs
@@ -196,6 +206,13 @@ clean-doc:
 
 check-doc: doc
 	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md
+
+clean-white-noise:
+	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \
+	SED_BIN="$(SED)" xargs ./tools/cleanup-white-noise.sh
+
+check-white-noise: clean-white-noise
+	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)
 
 web-serve:
 	cd website && hugo --config config.toml -v server

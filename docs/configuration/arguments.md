@@ -126,6 +126,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Set this flag to `true` for the new behaviour.
 
+   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier. If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
+
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
 - `-distributor.extra-query-delay`
@@ -303,7 +305,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
    Deprecated. New ingesters always write "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
 
    Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
-   
+
    Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with `-ingester.normalise-tokens=false`) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.
 
 - `-ingester.chunk-encoding`
@@ -343,7 +345,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    Setting this to `true` enables writing to WAL during ingestion.
 
-- `-ingester.checkpoint-duration` 
+- `-ingester.checkpoint-duration`
    This is the interval at which checkpoints should be created.
 
 - `-ingester.recover-from-wal`

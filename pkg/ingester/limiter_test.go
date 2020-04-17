@@ -94,7 +94,7 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerMetric("test")
 
 			assert.Equal(t, testData.expected, actual)
@@ -184,7 +184,7 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerUser("test")
 
 			assert.Equal(t, testData.expected, actual)
@@ -192,7 +192,7 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 	}
 }
 
-func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
+func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 	tests := map[string]struct {
 		maxLocalSeriesPerMetric  int
 		maxGlobalSeriesPerMetric int
@@ -246,7 +246,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -254,7 +254,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 	}
 }
 
-func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
+func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 	tests := map[string]struct {
 		maxLocalSeriesPerUser  int
 		maxGlobalSeriesPerUser int
@@ -308,7 +308,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -316,7 +316,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 	}
 }
 
-func TestSeriesLimiter_minNonZero(t *testing.T) {
+func TestLimiter_minNonZero(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -355,7 +355,7 @@ func TestSeriesLimiter_minNonZero(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			limiter := NewSeriesLimiter(nil, nil, 0, false)
+			limiter := NewLimiter(nil, nil, 0, false)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))
 		})
 	}

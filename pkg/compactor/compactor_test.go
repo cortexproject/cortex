@@ -333,7 +333,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info msg="starting compaction of user blocks" user=user-1`,
 		`level=info org_id=user-1 msg="start sync of metas"`,
 		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compaction"`,
+		`level=info org_id=user-1 msg="start of compactions"`,
 		`level=info org_id=user-1 msg="compaction iterations done"`,
 		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
 		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
@@ -341,7 +341,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info org_id=user-2 msg="start sync of metas"`,
 		`level=info org_id=user-2 msg="start of GC"`,
-		`level=info org_id=user-2 msg="start of compaction"`,
+		`level=info org_id=user-2 msg="start of compactions"`,
 		`level=info org_id=user-2 msg="compaction iterations done"`,
 		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
 		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
@@ -428,7 +428,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		`level=info msg="starting compaction of user blocks" user=user-1`,
 		`level=info org_id=user-1 msg="start sync of metas"`,
 		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compaction"`,
+		`level=info org_id=user-1 msg="start of compactions"`,
 		`level=info org_id=user-1 msg="compaction iterations done"`,
 		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
 		`level=debug org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
@@ -518,7 +518,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info msg="starting compaction of user blocks" user=user-1`,
 		`level=info org_id=user-1 msg="start sync of metas"`,
 		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compaction"`,
+		`level=info org_id=user-1 msg="start of compactions"`,
 		`level=info org_id=user-1 msg="compaction iterations done"`,
 		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
 		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
@@ -526,7 +526,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info msg="starting compaction of user blocks" user=user-2`,
 		`level=info org_id=user-2 msg="start sync of metas"`,
 		`level=info org_id=user-2 msg="start of GC"`,
-		`level=info org_id=user-2 msg="start of compaction"`,
+		`level=info org_id=user-2 msg="start of compactions"`,
 		`level=info org_id=user-2 msg="compaction iterations done"`,
 		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
 		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
@@ -654,7 +654,7 @@ func removeMetaFetcherLogs(input []string) []string {
 	out := make([]string, 0, len(input))
 
 	for i := 0; i < len(input); i++ {
-		if !strings.Contains(input[i], "block.MetaFetcher") {
+		if !strings.Contains(input[i], "block.MetaFetcher") && !strings.Contains(input[i], "block.BaseFetcher") {
 			out = append(out, input[i])
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,7 +138,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.subservicesWatcher.WatchService(i.lifecycler)
 
 	// Init the limter and instantiate the user states which depend on it
-	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
@@ -431,9 +432,9 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	through := time.Now()
-	from := through.Add(-i.cfg.TSDBConfig.Retention)
-	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
+	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// label values without any time range bound.
+	q, err := db.Querier(0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
@@ -460,9 +461,9 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	through := time.Now()
-	from := through.Add(-i.cfg.TSDBConfig.Retention)
-	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
+	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// label names without any time range bound.
+	q, err := db.Querier(0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}

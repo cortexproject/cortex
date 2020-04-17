@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
@@ -168,6 +169,13 @@ type BucketStoreConfig struct {
 	ConsistencyDelay         time.Duration    `yaml:"consistency_delay"`
 	IndexCache               IndexCacheConfig `yaml:"index_cache"`
 	IgnoreDeletionMarksDelay time.Duration    `yaml:"ignore_deletion_mark_delay"`
+
+	// Controls what is the ratio of postings offsets store will hold in memory.
+	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
+	// It's meant for setups that want low baseline memory pressure and where less traffic is expected.
+	// On the contrary, smaller value will increase baseline memory usage, but improve latency slightly.
+	// 1 will keep all in memory. Default value is the same as in Prometheus which gives a good balance.
+	PostingOffsetsInMemSampling int `yaml:"postings_offsets_in_mem_sampling" doc:"hidden"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -187,6 +195,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.IgnoreDeletionMarksDelay, "experimental.tsdb.bucket-store.ignore-deletion-marks-delay", time.Hour*6, "Duration after which the blocks marked for deletion will be filtered out while fetching blocks. "+
 		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet."+
 		"Default is 6h, half of the default value for -compactor.deletion-delay.")
+	f.IntVar(&cfg.PostingOffsetsInMemSampling, "experimental.tsdb.bucket-store.posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
 }
 
 // Validate the config.

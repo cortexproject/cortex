@@ -1,4 +1,4 @@
-package querier
+package storegateway
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -16,8 +17,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -74,18 +77,18 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	assert.Empty(t, seriesSet)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-			# HELP cortex_querier_bucket_store_blocks_loaded Number of currently loaded blocks.
-			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
-			cortex_querier_bucket_store_blocks_loaded 2
+			# HELP bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE bucket_store_blocks_loaded gauge
+			bucket_store_blocks_loaded 2
 
-			# HELP cortex_querier_bucket_store_block_loads_total Total number of remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_loads_total counter
-			cortex_querier_bucket_store_block_loads_total 2
+			# HELP bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE bucket_store_block_loads_total counter
+			bucket_store_block_loads_total 2
 
-			# HELP cortex_querier_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
-			cortex_querier_bucket_store_block_load_failures_total 0
-	`), "cortex_querier_bucket_store_blocks_loaded", "cortex_querier_bucket_store_block_loads_total", "cortex_querier_bucket_store_block_load_failures_total"))
+			# HELP bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE bucket_store_block_load_failures_total counter
+			bucket_store_block_load_failures_total 0
+	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -129,18 +132,41 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	assert.Equal(t, []storepb.Label{{Name: labels.MetricName, Value: metricName}}, seriesSet[0].Labels)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-			# HELP cortex_querier_bucket_store_blocks_loaded Number of currently loaded blocks.
-			# TYPE cortex_querier_bucket_store_blocks_loaded gauge
-			cortex_querier_bucket_store_blocks_loaded 2
+			# HELP bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE bucket_store_blocks_loaded gauge
+			bucket_store_blocks_loaded 2
 
-			# HELP cortex_querier_bucket_store_block_loads_total Total number of remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_loads_total counter
-			cortex_querier_bucket_store_block_loads_total 2
+			# HELP bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE bucket_store_block_loads_total counter
+			bucket_store_block_loads_total 2
 
-			# HELP cortex_querier_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
-			# TYPE cortex_querier_bucket_store_block_load_failures_total counter
-			cortex_querier_bucket_store_block_load_failures_total 0
-	`), "cortex_querier_bucket_store_blocks_loaded", "cortex_querier_bucket_store_block_loads_total", "cortex_querier_bucket_store_block_load_failures_total"))
+			# HELP bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE bucket_store_block_load_failures_total counter
+			bucket_store_block_load_failures_total 0
+	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
+}
+
+func TestBucketStores_syncUsersBlocks(t *testing.T) {
+	cfg, cleanup := prepareStorageConfig(t)
+	cfg.BucketStore.TenantSyncConcurrency = 2
+	defer cleanup()
+
+	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
+
+	stores, err := NewBucketStores(cfg, nil, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	// Sync user stores and count the number of times the callback is called.
+	storesCount := int32(0)
+	err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
+		atomic.AddInt32(&storesCount, 1)
+		return nil
+	})
+
+	assert.NoError(t, err)
+	bucketClient.AssertNumberOfCalls(t, "Iter", 1)
+	assert.Equal(t, storesCount, int32(3))
 }
 
 func prepareStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
@@ -207,7 +233,7 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
-	srv := newBucketStoreSeriesServer(ctx)
+	srv := NewBucketStoreSeriesServer(ctx)
 	err := stores.Series(req, srv)
 
 	return srv.SeriesSet, srv.Warnings, err
@@ -221,4 +247,10 @@ func mockLoggingLevel() logging.Level {
 	}
 
 	return level
+}
+
+func setUserIDToGRPCContext(ctx context.Context, userID string) context.Context {
+	// We have to store it in the incoming metadata because we have to emulate the
+	// case it's coming from a gRPC request, while here we're running everything in-memory.
+	return metadata.NewIncomingContext(ctx, metadata.Pairs(cortex_tsdb.TenantIDExternalLabel, userID))
 }

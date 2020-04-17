@@ -42,7 +42,17 @@ func (m *BucketClientMock) Iter(ctx context.Context, dir string, f func(string) 
 
 // MockIter is a convenient method to mock Iter()
 func (m *BucketClientMock) MockIter(prefix string, objects []string, err error) {
+	m.MockIterWithCallback(prefix, objects, err, nil)
+}
+
+// MockIterWithCallback is a convenient method to mock Iter() and get a callback called when the Iter
+// API is called.
+func (m *BucketClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
 	m.On("Iter", mock.Anything, prefix, mock.Anything).Return(err).Run(func(args mock.Arguments) {
+		if cb != nil {
+			cb()
+		}
+
 		f := args.Get(2).(func(string) error)
 
 		for _, o := range objects {

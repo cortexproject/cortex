@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -38,7 +39,7 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 
 	// Push some series to Cortex.
 	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now)
+	series, expectedVector := generateSeries("series_1", now, prompb.Label{Name: "foo", Value: "bar"})
 
 	res, err := c.Push(series)
 	require.NoError(t, err)
@@ -49,6 +50,14 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
+
+	labelValues, err := c.LabelValues("foo")
+	require.NoError(t, err)
+	require.Equal(t, model.LabelValues{"bar"}, labelValues)
+
+	labelNames, err := c.LabelNames()
+	require.NoError(t, err)
+	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 }
 
 func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
@@ -82,7 +91,7 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 
 	// Push some series to Cortex.
 	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now)
+	series, expectedVector := generateSeries("series_1", now, prompb.Label{Name: "foo", Value: "bar"})
 
 	res, err := c.Push(series)
 	require.NoError(t, err)
@@ -93,4 +102,12 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
+
+	labelValues, err := c.LabelValues("foo")
+	require.NoError(t, err)
+	require.Equal(t, model.LabelValues{"bar"}, labelValues)
+
+	labelNames, err := c.LabelNames()
+	require.NoError(t, err)
+	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 }

@@ -1,13 +1,14 @@
 package ring
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIngesterDesc_IsHealthy(t *testing.T) {
+func TestIngesterDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -17,14 +18,14 @@ func TestIngesterDesc_IsHealthy(t *testing.T) {
 		readExpected   bool
 		reportExpected bool
 	}{
-		"ALIVE ingester with last keepalive newer than timeout": {
+		"ACTIVE ingester with last keepalive newer than timeout": {
 			ingester:       &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
 			timeout:        time.Minute,
 			writeExpected:  true,
 			readExpected:   true,
 			reportExpected: true,
 		},
-		"ALIVE ingester with last keepalive older than timeout": {
+		"ACTIVE ingester with last keepalive older than timeout": {
 			ingester:       &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
 			timeout:        time.Minute,
 			writeExpected:  false,
@@ -63,6 +64,60 @@ func TestIngesterDesc_IsHealthy(t *testing.T) {
 	}
 }
 
+func TestIngesterDesc_IsHealthy_ForStoreGatewayOperations(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		instance      *IngesterDesc
+		timeout       time.Duration
+		syncExpected  bool
+		queryExpected bool
+	}{
+		"ACTIVE instance with last keepalive newer than timeout": {
+			instance:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:       time.Minute,
+			syncExpected:  true,
+			queryExpected: true,
+		},
+		"ACTIVE instance with last keepalive older than timeout": {
+			instance:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
+			timeout:       time.Minute,
+			syncExpected:  false,
+			queryExpected: false,
+		},
+		"JOINING instance with last keepalive newer than timeout": {
+			instance:      &IngesterDesc{State: JOINING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:       time.Minute,
+			syncExpected:  true,
+			queryExpected: false,
+		},
+		"LEAVING instance with last keepalive newer than timeout": {
+			instance:      &IngesterDesc{State: LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:       time.Minute,
+			syncExpected:  true,
+			queryExpected: false,
+		},
+		"PENDING instance with last keepalive newer than timeout": {
+			instance:      &IngesterDesc{State: PENDING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:       time.Minute,
+			syncExpected:  false,
+			queryExpected: false,
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			actual := testData.instance.IsHealthy(BlocksSync, testData.timeout)
+			assert.Equal(t, testData.syncExpected, actual)
+
+			actual = testData.instance.IsHealthy(BlocksRead, testData.timeout)
+			assert.Equal(t, testData.queryExpected, actual)
+		})
+	}
+}
+
 func normalizedSource() *Desc {
 	r := NewDesc()
 	r.Ingesters["first"] = IngesterDesc{
@@ -89,7 +144,7 @@ func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
 	assert.Equal(t, normalizedOutput(), r)
 }
 
-func TestReady(t *testing.T) {
+func TestDesc_Ready(t *testing.T) {
 	now := time.Now()
 
 	r := &Desc{
@@ -130,5 +185,79 @@ func TestReady(t *testing.T) {
 
 	if err := r.Ready(now, 10*time.Second); err != nil {
 		t.Fatal("expected ready, got", err)
+	}
+}
+
+func TestTokenDescs_Equals(t *testing.T) {
+	tests := []struct {
+		first    TokenDescs
+		second   TokenDescs
+		expected bool
+	}{
+		{
+			first:    nil,
+			second:   nil,
+			expected: true,
+		}, {
+			first:    TokenDescs{},
+			second:   TokenDescs{},
+			expected: true,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+			},
+			second:   nil,
+			expected: false,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+				{Token: 2, Ingester: "2", Zone: "2"},
+			},
+			second: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+				{Token: 2, Ingester: "2", Zone: "2"},
+			},
+			expected: true,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+				{Token: 2, Ingester: "2", Zone: "2"},
+			},
+			second: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+			},
+			expected: false,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+			},
+			second: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "different"},
+			},
+			expected: false,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+			},
+			second: TokenDescs{
+				{Token: 1, Ingester: "different", Zone: "1"},
+			},
+			expected: false,
+		}, {
+			first: TokenDescs{
+				{Token: 1, Ingester: "1", Zone: "1"},
+			},
+			second: TokenDescs{
+				{Token: 0, Ingester: "1", Zone: "1"},
+			},
+			expected: false,
+		},
+	}
+
+	for testID, testData := range tests {
+		t.Run(fmt.Sprintf("Test %d", testID), func(t *testing.T) {
+			assert.Equal(t, testData.expected, testData.first.Equals(testData.second))
+			assert.Equal(t, testData.expected, testData.second.Equals(testData.first))
+		})
 	}
 }

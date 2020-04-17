@@ -27,17 +27,19 @@ func TestFactoryStop(t *testing.T) {
 		{
 			From:      chunk.DayTime{Time: model.Time(0)},
 			IndexType: "inmemory",
+			Schema:    "v3",
 		},
 		{
 			From:      chunk.DayTime{Time: model.Time(1)},
 			IndexType: "inmemory",
+			Schema:    "v9",
 		},
 	}
 
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits)
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, nil)
 	require.NoError(t, err)
 
 	store.Stop()

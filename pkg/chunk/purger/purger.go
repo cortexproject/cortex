@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
@@ -28,35 +29,27 @@ const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 type purgerMetrics struct {
 	deleteRequestsProcessedTotal      *prometheus.CounterVec
 	deleteRequestsChunksSelectedTotal *prometheus.CounterVec
-	deleteRequestsProcessingFailures  *prometheus.GaugeVec
+	deleteRequestsProcessingFailures  *prometheus.CounterVec
 }
 
 func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	m := purgerMetrics{}
 
-	m.deleteRequestsProcessedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsProcessedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "purger_delete_requests_processed_total",
 		Help:      "Number of delete requests processed per user",
 	}, []string{"user"})
-	m.deleteRequestsChunksSelectedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsChunksSelectedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "purger_delete_requests_chunks_selected_total",
 		Help:      "Number of chunks selected while building delete plans per user",
 	}, []string{"user"})
-	m.deleteRequestsProcessingFailures = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	m.deleteRequestsProcessingFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "purger_delete_requests_processing_failure",
+		Name:      "purger_delete_requests_processing_failures",
 		Help:      "Delete requests processing failure for each user",
 	}, []string{"user"})
-
-	if r != nil {
-		r.MustRegister(
-			m.deleteRequestsProcessedTotal,
-			m.deleteRequestsChunksSelectedTotal,
-			m.deleteRequestsProcessingFailures,
-		)
-	}
 
 	return &m
 }
@@ -186,8 +179,6 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 		dp.inProcessRequestIDsMtx.Lock()
 		delete(dp.inProcessRequestIDs, job.userID)
 		dp.inProcessRequestIDsMtx.Unlock()
-
-		dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(job.userID).Set(0)
 	} else {
 		dp.pendingPlansCountMtx.Unlock()
 	}

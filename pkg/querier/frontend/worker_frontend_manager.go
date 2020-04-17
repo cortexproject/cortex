@@ -32,22 +32,18 @@ type frontendManager struct {
 	log log.Logger
 
 	workerCancels     []context.CancelFunc
-	managerCtx        context.Context
-	managerCancel     context.CancelFunc
+	serverCtx         context.Context
 	wg                sync.WaitGroup
 	currentProcessors *atomic.Int32
 }
 
 func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.Config) *frontendManager {
-	managerCtx, cancel := context.WithCancel(serverCtx)
-
 	f := &frontendManager{
 		log:               log,
 		client:            client,
 		clientCfg:         clientCfg,
 		server:            server,
-		managerCtx:        managerCtx,
-		managerCancel:     cancel,
+		serverCtx:         serverCtx,
 		currentProcessors: atomic.NewInt32(0),
 	}
 
@@ -55,7 +51,6 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 }
 
 func (f *frontendManager) stop() {
-	f.managerCancel()
 	f.concurrentRequests(0)
 	f.wg.Wait()
 }
@@ -65,16 +60,14 @@ func (f *frontendManager) concurrentRequests(n int) {
 		n = 0
 	}
 
-	// adjust clients slice as necessary
 	for len(f.workerCancels) < n {
-		ctx, cancel := context.WithCancel(f.managerCtx)
+		ctx, cancel := context.WithCancel(f.serverCtx)
 		f.workerCancels = append(f.workerCancels, cancel)
 
 		go f.runOne(ctx)
 	}
 
 	for len(f.workerCancels) > n {
-		// remove from slice and shutdown
 		var cancel context.CancelFunc
 		cancel, f.workerCancels = f.workerCancels[0], f.workerCancels[1:]
 		cancel()
@@ -92,7 +85,6 @@ func (f *frontendManager) runOne(ctx context.Context) {
 
 	backoff := util.NewBackoff(ctx, backoffConfig)
 	for backoff.Ongoing() {
-
 		c, err := f.client.Process(ctx)
 		if err != nil {
 			level.Error(f.log).Log("msg", "error contacting frontend", "err", err)

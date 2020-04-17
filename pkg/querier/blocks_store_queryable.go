@@ -196,10 +196,8 @@ func (q *blocksStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...
 	set, warnings, err := q.selectSorted(sp, matchers...)
 
 	// We need to wrap the error in order to have Prometheus returning a 5xx error.
-	if err != nil {
-		if unwrappedErr := errors.Unwrap(err); unwrappedErr != context.Canceled && unwrappedErr != context.DeadlineExceeded {
-			err = promql.ErrStorage{Err: err}
-		}
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		err = promql.ErrStorage{Err: err}
 	}
 
 	return set, warnings, err

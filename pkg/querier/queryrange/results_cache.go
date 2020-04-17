@@ -81,7 +81,8 @@ func (PrometheusResponseExtractor) ExtractCacheGenNumbersFromHeaders(from Respon
 	return getHeaderValuesWithName(from, ResultsCacheGenNumberHeaderName)
 }
 
-// ResponseWithoutHeaders is useful in caching data without headers.
+// ResponseWithoutHeaders is useful in caching data without headers since
+// we anyways do not need headers for sending back the response so this saves some space by reducing size of the objects.
 func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
@@ -185,7 +186,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r, userID)
+		response, extents, err = s.handleMiss(ctx, r)
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -215,7 +216,7 @@ func (s resultsCache) shouldCacheResponse(r Response) bool {
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
 	if promResp, ok := r.(*PrometheusResponse); ok {
 		for _, hv := range promResp.Headers {
-			if hv.GetName() != cachecontrolHeader {
+			if hv.GetName() != headerName {
 				continue
 			}
 
@@ -226,7 +227,7 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 	return
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r Request, userID string) (Response, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err

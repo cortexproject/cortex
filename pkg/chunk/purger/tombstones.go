@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/pkg/errors"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,30 +23,23 @@ import (
 const tombstonesReloadDuration = 5 * time.Minute
 
 type tombstonesLoaderMetrics struct {
-	cacheGenLoadFailures       prometheus.Gauge
-	deleteRequestsLoadFailures prometheus.Gauge
+	cacheGenLoadFailures       prometheus.Counter
+	deleteRequestsLoadFailures prometheus.Counter
 }
 
 func newtombstonesLoaderMetrics(r prometheus.Registerer) *tombstonesLoaderMetrics {
 	m := tombstonesLoaderMetrics{}
 
-	m.cacheGenLoadFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.cacheGenLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "tombstones_loader_cache_gen_load_failures",
-		Help:      "Failures while loading cache generation number using tombstones loader",
+		Name:      "tombstones_loader_cache_gen_load_failures_total",
+		Help:      "Total number of failures while loading cache generation number using tombstones loader",
 	})
-	m.deleteRequestsLoadFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.deleteRequestsLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "tombstones_loader_cache_delete_requests_load_failures",
-		Help:      "Failures while loading delete requests using tombstones loader",
+		Name:      "tombstones_loader_cache_delete_requests_load_failures_total",
+		Help:      "Total number of failures while loading delete requests using tombstones loader",
 	})
-
-	if r != nil {
-		r.MustRegister(
-			m.cacheGenLoadFailures,
-			m.deleteRequestsLoadFailures,
-		)
-	}
 
 	return &m
 }
@@ -213,7 +208,7 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 
 	pendingDeleteRequests, err := tl.deleteStore.GetPendingDeleteRequestsForUser(context.Background(), userID)
 	if err != nil {
-		tl.metrics.deleteRequestsLoadFailures.Add(1)
+		tl.metrics.deleteRequestsLoadFailures.Inc()
 		return errors.Wrap(err, "error loading delete requests")
 	}
 
@@ -225,7 +220,7 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 			tombstoneSet.tombstones[i].Matchers[j], err = promql.ParseMetricSelector(selector)
 
 			if err != nil {
-				tl.metrics.deleteRequestsLoadFailures.Add(1)
+				tl.metrics.deleteRequestsLoadFailures.Inc()
 				return errors.Wrapf(err, "error parsing metric selector")
 			}
 		}
@@ -243,7 +238,6 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 	defer tl.tombstonesMtx.Unlock()
 	tl.tombstones[userID] = &tombstoneSet
 
-	tl.metrics.deleteRequestsLoadFailures.Set(0)
 	return nil
 }
 
@@ -278,7 +272,7 @@ func (tl *TombstonesLoader) getCacheGenNumbers(userID string) *cacheGenNumbers {
 	genNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error loading cache generation numbers", "err", err)
-		tl.metrics.cacheGenLoadFailures.Add(1)
+		tl.metrics.cacheGenLoadFailures.Inc()
 		return &cacheGenNumbers{}
 	}
 
@@ -286,7 +280,6 @@ func (tl *TombstonesLoader) getCacheGenNumbers(userID string) *cacheGenNumbers {
 	defer tl.cacheGenNumbersMtx.Unlock()
 
 	tl.cacheGenNumbers[userID] = genNumbers
-	tl.metrics.cacheGenLoadFailures.Set(0)
 	return genNumbers
 }
 

@@ -2,7 +2,6 @@ package cortex
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -10,9 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
@@ -189,22 +186,11 @@ func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error)
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
-	}
-
-	httpCacheGenNumberHeaderSetterMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
-
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, t.tombstonesLoader, prometheus.DefaultRegisterer)
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := cfg.Target != All
-	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally, httpCacheGenNumberHeaderSetterMiddleware)
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally, t.tombstonesLoader)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -295,21 +281,12 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return nil, nil
 	}
 
-	var tombstonesLoader *purger.TombstonesLoader
-
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
-	}
-
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer, tombstonesLoader)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer, t.tombstonesLoader)
 	if err != nil {
 		return
 	}
@@ -322,6 +299,9 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 
 func (t *Cortex) initDeleteRequestsStore(cfg *Config) (serv services.Service, err error) {
 	if !cfg.DataPurgerConfig.Enable {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		t.tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
+
 		return
 	}
 
@@ -335,6 +315,8 @@ func (t *Cortex) initDeleteRequestsStore(cfg *Config) (serv services.Service, er
 	if err != nil {
 		return
 	}
+
+	t.tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 
 	return
 }
@@ -353,11 +335,6 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		return
 	}
 
-	var tombstonesLoader *purger.TombstonesLoader
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
-	}
-
 	tripperware, cache, err := queryrange.NewTripperware(
 		cfg.QueryRange,
 		util.Logger,
@@ -373,7 +350,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		},
 		cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
-		tombstonesLoader,
+		t.tombstonesLoader,
 	)
 
 	if err != nil {
@@ -433,17 +410,9 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
-	}
-
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, t.tombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -664,26 +633,4 @@ var modules = map[ModuleName]module{
 	All: {
 		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
-}
-
-// middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
-func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
-	return middleware.Func(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, err := user.ExtractOrgID(r.Context())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnauthorized)
-				return
-			}
-
-			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnauthorized)
-				return
-			}
-
-			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
-			next.ServeHTTP(w, r)
-		})
-	})
 }

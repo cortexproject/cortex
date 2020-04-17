@@ -102,11 +102,19 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		// lets wait till ingester has no chunks in memory
 		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_memory_chunks"))
 
+		// lets verify that chunk store chunk metrics are updated.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunks_total"))
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunk_bytes_total"))
+
 		// Query back the series.
 		result, err := client.Query("series_1", ts)
 		require.NoError(t, err)
 		require.Equal(t, model.ValVector, result.Type())
 		assert.Equal(t, expectedVector, result.(model.Vector))
+
+		// check we've queried them from the chunk store.
+		require.NoError(t, querier.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_fetched_chunks_total"))
+		require.NoError(t, querier.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_fetched_chunk_bytes_total"))
 	}
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.

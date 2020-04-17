@@ -94,6 +94,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	return mergeChunks
 }
 
+// NewChunkStoreQueryable returns the storage.Queryable implementation against the chunks store.
 func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
 	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
 }

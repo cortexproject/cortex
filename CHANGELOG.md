@@ -8,6 +8,9 @@
   * Updated the index hosted at the root prefix to point to the updated routes.
   * Legacy routes hardcoded with the `/api/prom` prefix now respect the `-http.prefix` flag.
 * [CHANGE] The metrics `cortex_distributor_ingester_appends_total` and `distributor_ingester_append_failures_total` now includes a `type` label to differentiate between `samples` and `metadata`. #2336
+* [CHANGE] The metrics for number of chunks and bytes flushed to the chunk store are renamed from: #2463
+  * `cortex_ingester_chunks_stored_total` > `cortex_chunk_store_stored_chunks_total`
+  * `cortex_ingester_chunk_stored_bytes_total` > `cortex_chunk_store_stored_chunk_bytes_total`
 * [CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: #2375
   * `cortex_querier_bucket_store_blocks_meta_syncs_total` > `cortex_querier_blocks_meta_syncs_total`
   * `cortex_querier_bucket_store_blocks_meta_sync_failures_total` > `cortex_querier_blocks_meta_sync_failures_total`
@@ -24,6 +27,9 @@
 * [ENHANCEMENT] Single Binary: Added query-frontend to the single binary.  Single binary users will now benefit from various query-frontend features.  Primarily: sharding, parallelization, load shedding, additional caching (if configured), and query retries. #2437
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475
+* [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
+  * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
+  * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109

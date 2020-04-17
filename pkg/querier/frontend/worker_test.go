@@ -33,7 +33,7 @@ func TestResetConcurrency(t *testing.T) {
 			parallelism:         0,
 			maxConcurrent:       0,
 			numManagers:         2,
-			expectedConcurrency: 0,
+			expectedConcurrency: 2,
 		},
 		{
 			name:                "Test concurrency per query frontend configuration",

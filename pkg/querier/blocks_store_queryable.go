@@ -196,8 +196,10 @@ func (q *blocksStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...
 	set, warnings, err := q.selectSorted(sp, matchers...)
 
 	// We need to wrap the error in order to have Prometheus returning a 5xx error.
-	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-		err = promql.ErrStorage{Err: err}
+	if err != nil {
+		if unwrappedErr := errors.Unwrap(err); unwrappedErr != context.Canceled && unwrappedErr != context.DeadlineExceeded {
+			err = promql.ErrStorage{Err: err}
+		}
 	}
 
 	return set, warnings, err
@@ -278,7 +280,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...
 					break
 				}
 				if err != nil {
-					return err
+					return errors.Wrapf(err, "failed to receive series from %s", c)
 				}
 
 				// Response may either contain series or warning. If it's warning, we get nil here.

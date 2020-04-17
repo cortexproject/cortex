@@ -221,6 +221,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 
 			// Start the configure number of gateways.
 			var gateways []*StoreGateway
+			var gatewayIds []string
 			registries := map[string]*prometheus.Registry{}
 
 			for i := 1; i <= testData.numGateways; i++ {
@@ -240,7 +241,21 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 				require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 
 				gateways = append(gateways, g)
+				gatewayIds = append(gatewayIds, instanceID)
 				registries[instanceID] = reg
+			}
+
+			// Wait until the ring client of each gateway has synced (to avoid flaky tests on subsequent assertions).
+			if testData.shardingEnabled {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+
+				// A gateway is ready for the test once it sees all instances ACTIVE in the ring.
+				for _, g := range gateways {
+					for _, instanceID := range gatewayIds {
+						require.NoError(t, ring.WaitInstanceState(ctx, g.ring, instanceID, ring.ACTIVE))
+					}
+				}
 			}
 
 			// Re-sync the stores because the ring topology has changed in the meanwhile

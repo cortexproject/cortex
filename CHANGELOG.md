@@ -21,6 +21,11 @@
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
 * [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 * [ENHANCEMENT] FIFO cache to support eviction based on memory usage. The `-<prefix>.fifocache.size` CLI flag has been renamed to `-<prefix>.fifocache.max-size-items` as well as its YAML config option `size` renamed to `max_size_items`. Added `-<prefix>.fifocache.max-size-bytes` CLI flag and YAML config option `max_size_bytes` to specify memory limit of the cache. #2319
+* [ENHANCEMENT] Added the following metrics for monitoring delete requests: #2445
+  - `purger_delete_requests_received_total`: Number of delete requests received per user.
+  - `purger_delete_requests_processed_total`: Number of delete requests processed per user.
+  - `purger_delete_requests_chunks_selected_total`: Number of chunks selected while building delete plans per user.
+  - `purger_delete_requests_processing_failures_total`: Number of delete requests processing failures per user.
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109

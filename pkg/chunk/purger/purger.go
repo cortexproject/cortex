@@ -47,8 +47,8 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	}, []string{"user"})
 	m.deleteRequestsProcessingFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "purger_delete_requests_processing_failures",
-		Help:      "Delete requests processing failure for each user",
+		Name:      "purger_delete_requests_processing_failures_total",
+		Help:      "Number of delete requests processing failures per user",
 	}, []string{"user"})
 
 	return &m

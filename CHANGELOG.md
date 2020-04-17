@@ -30,6 +30,7 @@
 * [BUGFIX] Experimental TSDB: fixed response status code from `422` to `500` when an error occurs while iterating chunks with the experimental blocks storage. #2402
 * [BUGFIX] Ring: Fixed a situation where upgrading from pre-1.0 cortex with a rolling strategy caused new 1.0 ingesters to lose their zone value in the ring until manually forced to re-register. #2404
 * [BUGFIX] Distributor: `/all_user_stats` now show API and Rule Ingest Rate correctly. #2457
+* [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
 
 ## 1.0.0 / 2020-04-02
 

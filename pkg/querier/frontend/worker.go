@@ -132,7 +132,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 			}
 		}
 
-		w.resetParallelism()
+		w.resetConcurrency()
 	}
 }
 
@@ -150,7 +150,7 @@ func (w *worker) connect(ctx context.Context, address string) (FrontendClient, e
 	return NewFrontendClient(conn), nil
 }
 
-func (w *worker) resetParallelism() {
+func (w *worker) resetConcurrency() {
 	addresses := make([]string, 0, len(w.managers))
 	for addr := range w.managers {
 		addresses = append(addresses, addr)
@@ -159,30 +159,9 @@ func (w *worker) resetParallelism() {
 
 	totalConcurrency := 0
 	for i, addr := range addresses {
-		concurrentRequests := 0
-		if w.cfg.MatchMaxConcurrency {
-			concurrentRequests = w.querierCfg.MaxConcurrent / len(w.managers)
-
-			// If max concurrency does not evenly divide into our frontends a subset will be chosen
-			// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
-			// random selection of frontends.
-			if i < w.querierCfg.MaxConcurrent%len(w.managers) {
-				level.Warn(w.log).Log("msg", "max concurrency is not evenly dividable across query frontends. adding an extra connection", "addr", addr)
-				concurrentRequests++
-			}
-		} else {
-			concurrentRequests = w.cfg.Parallelism
-		}
-
-		// If concurrentRequests is 0 then w.querierCfg.MaxConcurrent is less than the total number of
-		// query frontends. In order to prevent accidentally starving a frontend we are just going to
-		// always connect once to every frontend.  This is dangerous b/c we may start exceeding promql
-		// max concurrency.
-		if concurrentRequests == 0 {
-			concurrentRequests = 1
-		}
-
+		concurrentRequests := w.concurrency(i, addr)
 		totalConcurrency += concurrentRequests
+
 		if mgr, ok := w.managers[addr]; ok {
 			mgr.concurrentRequests(concurrentRequests)
 		} else {
@@ -193,4 +172,32 @@ func (w *worker) resetParallelism() {
 	if totalConcurrency > w.querierCfg.MaxConcurrent {
 		level.Warn(w.log).Log("msg", "total worker concurrency is greater than promql max concurrency. queries may be queued in the querier which reduces QOS")
 	}
+}
+
+func (w *worker) concurrency(index int, addr string) int {
+	concurrentRequests := 0
+
+	if w.cfg.MatchMaxConcurrency {
+		concurrentRequests = w.querierCfg.MaxConcurrent / len(w.managers)
+
+		// If max concurrency does not evenly divide into our frontends a subset will be chosen
+		// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
+		// random selection of frontends.
+		if index < w.querierCfg.MaxConcurrent%len(w.managers) {
+			level.Warn(w.log).Log("msg", "max concurrency is not evenly divisible across query frontends. adding an extra connection", "addr", addr)
+			concurrentRequests++
+		}
+	} else {
+		concurrentRequests = w.cfg.Parallelism
+	}
+
+	// If concurrentRequests is 0 then w.querierCfg.MaxConcurrent is less than the total number of
+	// query frontends. In order to prevent accidentally starving a frontend we are just going to
+	// always connect once to every frontend.  This is dangerous b/c we may start exceeding promql
+	// max concurrency.
+	if concurrentRequests == 0 {
+		concurrentRequests = 1
+	}
+
+	return concurrentRequests
 }

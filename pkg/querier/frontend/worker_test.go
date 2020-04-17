@@ -15,7 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
-func TestResetParallelism(t *testing.T) {
+func TestResetConcurrency(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte("Hello World"))
 		assert.NoError(t, err)
@@ -33,7 +33,7 @@ func TestResetParallelism(t *testing.T) {
 			parallelism:         0,
 			maxConcurrent:       0,
 			numManagers:         2,
-			expectedConcurrency: 2,
+			expectedConcurrency: 0,
 		},
 		{
 			name:                "Test concurrency per query frontend configuration",
@@ -86,7 +86,7 @@ func TestResetParallelism(t *testing.T) {
 				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.Config{})
 			}
 
-			w.resetParallelism()
+			w.resetConcurrency()
 			time.Sleep(100 * time.Millisecond)
 
 			concurrency := int32(0)

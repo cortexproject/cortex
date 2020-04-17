@@ -278,7 +278,7 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -497,7 +497,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 		return nil, err
 	}
 
-	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient)
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

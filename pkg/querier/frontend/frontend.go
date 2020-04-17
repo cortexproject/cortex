@@ -171,12 +171,16 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		server.WriteError(w, err)
+		return
+	}
+
 	hs := w.Header()
 	for h, vs := range resp.Header {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
 }
 
 func writeError(w http.ResponseWriter, err error) {

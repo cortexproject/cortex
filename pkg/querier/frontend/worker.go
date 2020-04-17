@@ -185,6 +185,8 @@ func (w *worker) resetParallelism() {
 		totalConcurrency += concurrentRequests
 		if mgr, ok := w.managers[addr]; ok {
 			mgr.concurrentRequests(concurrentRequests)
+		} else {
+			level.Error(w.log).Log("msg", "address not found in managers map.  this should not happen", "addr", addr)
 		}
 	}
 

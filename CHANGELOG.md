@@ -24,6 +24,11 @@
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
 * [ENHANCEMENT] Added `cortex_distributor_latest_seen_sample_timestamp_seconds` metric to see how far behind Prometheus servers are in sending data. #2371
 * [ENHANCEMENT] FIFO cache to support eviction based on memory usage. The `-<prefix>.fifocache.size` CLI flag has been renamed to `-<prefix>.fifocache.max-size-items` as well as its YAML config option `size` renamed to `max_size_items`. Added `-<prefix>.fifocache.max-size-bytes` CLI flag and YAML config option `max_size_bytes` to specify memory limit of the cache. #2319
+* [ENHANCEMENT] Added the following metrics for monitoring delete requests: #2445
+  - `cortex_purger_delete_requests_received_total`: Number of delete requests received per user.
+  - `cortex_purger_delete_requests_processed_total`: Number of delete requests processed per user.
+  - `cortex_purger_delete_requests_chunks_selected_total`: Number of chunks selected while building delete plans per user.
+  - `cortex_purger_delete_requests_processing_failures_total`: Number of delete requests processing failures per user.
 * [ENHANCEMENT] Single Binary: Added query-frontend to the single binary.  Single binary users will now benefit from various query-frontend features.  Primarily: sharding, parallelization, load shedding, additional caching (if configured), and query retries. #2437
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475

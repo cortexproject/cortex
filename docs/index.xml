@@ -5187,6 +5187,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_chunk_store_fetched_chunks_total&lt;/code&gt; and &lt;code&gt;cortex_chunk_store_fetched_chunk_bytes_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_query_frontend_queries_total&lt;/code&gt; (per tenant queries counted by the frontend)&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] query-frontend now also logs the POST data of long queries. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2481&#34;&gt;#2481&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixes &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2411&#34;&gt;#2411&lt;/a&gt;, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code&gt;-server.path-prefix&lt;/code&gt; is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2372&#34;&gt;#2372&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2109&#34;&gt;#2109&lt;/a&gt;&lt;/li&gt;

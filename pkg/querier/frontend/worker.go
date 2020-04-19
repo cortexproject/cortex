@@ -139,7 +139,6 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 func (w *worker) connect(ctx context.Context, address string) (FrontendClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
-		grpc.WithBlock(),
 	}
 	opts = append(opts, w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)...)
 

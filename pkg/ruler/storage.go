@@ -5,19 +5,10 @@ import (
 	"flag"
 	"fmt"
 
-<<<<<<< HEAD
-	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/chunk/openstack"
-=======
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
->>>>>>> af18111b3... migrate cortex ruler to use Thanos objstore bucket client
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
@@ -33,10 +24,9 @@ type RuleStoreConfig struct {
 	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	S3         s3.Config         `yaml:"s3"`
-	GCS        gcs.Config        `yaml:"gcs"`
-	Azure      azure.Config      `yaml:"azure"`
-	Filesystem filesystem.Config `yaml:"filesystem"`
+	S3    s3.Config    `yaml:"s3"`
+	GCS   gcs.Config   `yaml:"gcs"`
+	Azure azure.Config `yaml:"azure"`
 
 	mock rules.RuleStore `yaml:"-"`
 }
@@ -79,15 +69,9 @@ func NewRuleStorage(cfg RuleStoreConfig, logger log.Logger) (rules.RuleStore, er
 	case "gcs":
 		return newObjRuleStore(gcs.NewBucketClient(context.Background(), cfg.GCS, "cortex-ruler", logger))
 	case "s3":
-<<<<<<< HEAD
-		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3, ""))
-	case "swift":
-		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
-=======
 		return newObjRuleStore(s3.NewBucketClient(cfg.S3, "cortex-ruler", logger))
 	case "filesystem":
 		return newObjRuleStore(filesystem.NewBucketClient(cfg.Filesystem))
->>>>>>> af18111b3... migrate cortex ruler to use Thanos objstore bucket client
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
 	}

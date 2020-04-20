@@ -12,7 +12,7 @@ type Config struct {
 	ServiceAccount flagext.Secret `yaml:"service_account"`
 }
 
-// RegisterFlags registers the flags for TSDB GCS storage
+// RegisterFlags registers the flags for TSDB GCS storage with the TSDB prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("experimental.tsdb.", f)
 }

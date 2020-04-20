@@ -15,7 +15,7 @@ type Config struct {
 	MaxRetries         int            `yaml:"max_retries"`
 }
 
-// RegisterFlags registers the flags for TSDB Azure storage
+// RegisterFlags registers the flags for TSDB Azure storage with the TSDB prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("experimental.tsdb.", f)
 }

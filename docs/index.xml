@@ -5149,7 +5149,20 @@ Consider you have 4 ingesters &lt;code&gt;ingester-0 ingester-1 ingester-2 inges
 &lt;li&gt;Recover from the WAL.&lt;/li&gt;
 &lt;li&gt;And flush all the chunks.&lt;/li&gt;
 &lt;/ol&gt;
-&lt;p&gt;This job is to be run for all the PVCs linked to the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
+&lt;p&gt;This job is to be run for all the PVCs linked to the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p&gt;
+&lt;h2 id=&#34;additional-notes&#34;&gt;Additional notes&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;If you have lots of ingestion with the WAL replay taking a longer time, you can try reducing the checkpoint duration (&lt;code&gt;--ingester.checkpoint-duration&lt;/code&gt;) to &lt;code&gt;15m&lt;/code&gt;. This would require slightly higher disk bandwidth for writes (still less in absolute terms), but it will reduce the WAL replay time overall.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;non-kubernetes-or-baremetal-deployments&#34;&gt;Non-Kubernetes or baremetal deployments&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
+&lt;ul&gt;
+&lt;li&gt;If it fails to attach to the same volume for any reason, use the &lt;a href=&#34;#scale-down&#34;&gt;flusher&lt;/a&gt; to flush that data.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;2 ingesters should not be working with the same volume/directory for the WAL. It will cause data corruptions.&lt;/li&gt;
+&lt;li&gt;Basing from above point, rollout should include bringing down an ingester completely and then starting the new ingester. Not the other way round, i.e. bringing another ingester live and taking the old one down.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p&gt;Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p&gt;

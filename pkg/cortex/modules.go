@@ -224,8 +224,23 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 		return nil, nil
 	}
 
-	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && !cfg.TSDB.StoreGatewayEnabled {
 		storeQueryable, err := querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+		t.storeQueryable = storeQueryable
+		return storeQueryable, nil
+	}
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && cfg.TSDB.StoreGatewayEnabled {
+		// When running in single binary, if the blocks sharding is disabled and no custom
+		// store-gateway address has been configured, we can set it to the running process.
+		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
+		}
+
+		storeQueryable, err := querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}

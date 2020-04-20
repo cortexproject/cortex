@@ -22,6 +22,7 @@ const (
 	TableManager
 	AlertManager
 	Ruler
+	StoreGateway
 )
 
 var (
@@ -34,11 +35,13 @@ var (
 		TableManager:  []string{},
 		AlertManager:  []string{"cortex_alertmanager"},
 		Ruler:         []string{},
+		StoreGateway:  []string{"!cortex_storegateway_client", "cortex_storegateway"}, // The metrics prefix cortex_storegateway_client may be used by other components so we ignore it.
 	}
 
 	// Blacklisted metrics prefixes across any Cortex service.
 	blacklistedMetricsPrefixes = []string{
 		"cortex_alert_manager", // It should be "cortex_alertmanager"
+		"cortex_store_gateway", // It should be "cortex_storegateway"
 	}
 )
 

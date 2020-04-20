@@ -2,6 +2,20 @@
 
 ## master / unreleased
 
+* [CHANGE] Updated the Ruler storage config to utilize Thanos `objstore.Bucket` instead of `chunk.ObjectClient` based clients. #2489
+  * Removed `-ruler.storage.azure.download-buffer-size`
+  * Removed `-ruler.storage.azure.upload-buffer-size`
+  * Added `-ruler.storage.azure.endpoint-suffix`
+  * Added `-ruler.storage.azure.max-retries`
+  * Changed `-ruler.storage.gcs.bucketname` > `-ruler.storage.gcs.bucket-name`
+  * Removed `-ruler.storage.gcs.chunk-buffer-size`
+  * Removed `-ruler.storage.gcs.request-timeout`
+  * Added `-ruler.storage.gcs.service-account`
+  * Changed `-ruler.storage.s3.url` > `-ruler.storage.s3.endpoint`, credentials are no longer url encoded and in-memory is no longer an option
+  * Changed `-ruler.storage.s3.buckets` > `-ruler.storage.s3.bucket-name`, multiple buckets can no longer be specified
+  * Added `-ruler.storage.s3.secret-access-key`
+  * Added `-ruler.storage.s3.access-key-id`
+  * Added `-ruler.storage.s3.insecure` 
 * [CHANGE] Added v1 API routes documented in #2327. #2372
   * Added `-http.alertmanager-http-prefix` flag which allows the configuration of the path where the Alertmanager API and UI can be reached. The default is set to `/alertmanager`.
   * Added `-http.prometheus-http-prefix` flag which allows the configuration of the path where the Prometheus API and UI can be reached. The default is set to `/prometheus`.

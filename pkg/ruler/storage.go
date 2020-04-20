@@ -12,7 +12,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
 )
@@ -23,10 +22,9 @@ type RuleStoreConfig struct {
 	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	S3         s3.Config         `yaml:"s3"`
-	GCS        gcs.Config        `yaml:"gcs"`
-	Azure      azure.Config      `yaml:"azure"`
-	Filesystem filesystem.Config `yaml:"filesystem"`
+	S3    s3.Config    `yaml:"s3"`
+	GCS   gcs.Config   `yaml:"gcs"`
+	Azure azure.Config `yaml:"azure"`
 
 	mock rules.RuleStore `yaml:"-"`
 }
@@ -61,8 +59,6 @@ func NewRuleStorage(cfg RuleStoreConfig, logger log.Logger) (rules.RuleStore, er
 		return newObjRuleStore(gcs.NewBucketClient(context.Background(), cfg.GCS, "cortex-ruler", logger))
 	case "s3":
 		return newObjRuleStore(s3.NewBucketClient(cfg.S3, "cortex-ruler", logger))
-	case "filesystem":
-		return newObjRuleStore(filesystem.NewBucketClient(cfg.Filesystem))
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
 	}

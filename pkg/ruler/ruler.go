@@ -159,7 +159,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		return nil, err
 	}
 
-	ruleStore, err := NewRuleStorage(cfg.StoreConfig)
+	ruleStore, err := NewRuleStorage(cfg.StoreConfig, logger)
 	if err != nil {
 		return nil, err
 	}

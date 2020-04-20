@@ -5,13 +5,16 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/go-kit/kit/log"
+	"github.com/thanos-io/thanos/pkg/objstore"
+
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
+	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
+	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
+	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
 )
 
 // RuleStoreConfig conigures a rule store
@@ -20,9 +23,10 @@ type RuleStoreConfig struct {
 	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	Azure azure.BlobStorageConfig `yaml:"azure"`
-	GCS   gcp.GCSConfig           `yaml:"gcs"`
-	S3    aws.S3Config            `yaml:"s3"`
+	S3         s3.Config         `yaml:"s3"`
+	GCS        gcs.Config        `yaml:"gcs"`
+	Azure      azure.Config      `yaml:"azure"`
+	Filesystem filesystem.Config `yaml:"filesystem"`
 
 	mock rules.RuleStore `yaml:"-"`
 }
@@ -37,7 +41,7 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
+func NewRuleStorage(cfg RuleStoreConfig, logger log.Logger) (rules.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -52,17 +56,19 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 
 		return rules.NewConfigRuleStore(c), nil
 	case "azure":
-		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure, ""))
+		return newObjRuleStore(azure.NewBucketClient(cfg.Azure, "cortex-ruler", logger))
 	case "gcs":
-		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS, ""))
+		return newObjRuleStore(gcs.NewBucketClient(context.Background(), cfg.GCS, "cortex-ruler", logger))
 	case "s3":
-		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3, ""))
+		return newObjRuleStore(s3.NewBucketClient(cfg.S3, "cortex-ruler", logger))
+	case "filesystem":
+		return newObjRuleStore(filesystem.NewBucketClient(cfg.Filesystem))
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
 	}
 }
 
-func newObjRuleStore(client chunk.ObjectClient, err error) (rules.RuleStore, error) {
+func newObjRuleStore(client objstore.Bucket, err error) (rules.RuleStore, error) {
 	if err != nil {
 		return nil, err
 	}

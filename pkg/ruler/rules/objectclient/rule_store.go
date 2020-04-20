@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	proto "github.com/gogo/protobuf/proto"
+	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -25,19 +25,20 @@ const (
 
 // RuleStore allows cortex rules to be stored using an object store backend.
 type RuleStore struct {
-	client chunk.ObjectClient
+	bucket objstore.Bucket
 }
 
 // NewRuleStore returns a new RuleStore
-func NewRuleStore(client chunk.ObjectClient) *RuleStore {
+func NewRuleStore(bucket objstore.Bucket) *RuleStore {
 	return &RuleStore{
-		client: client,
+		bucket: bucket,
 	}
 }
 
 func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.RuleGroupDesc, error) {
-	reader, err := o.client.GetObject(ctx, objectKey)
-	if err == chunk.ErrStorageObjectNotFound {
+
+	reader, err := o.bucket.Get(ctx, objectKey)
+	if o.bucket.IsObjNotFoundErr(err) {
 		level.Debug(util.Logger).Log("msg", "rule group does not exist", "name", objectKey)
 		return nil, rules.ErrGroupNotFound
 	}
@@ -64,28 +65,28 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 
 // ListAllRuleGroups returns all the active rule groups
 func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	ruleGroupObjects, err := o.client.List(ctx, generateRuleObjectKey("", "", ""))
-	if err != nil {
-		return nil, err
-	}
-
 	userGroupMap := map[string]rules.RuleGroupList{}
-	for _, obj := range ruleGroupObjects {
-
-		user := decomposeRuleObjectKey(obj.Key)
+	err := o.bucket.Iter(ctx, generateRuleObjectKey("", "", ""), func(s string) error {
+		user := decomposeRuleObjectKey(s)
 		if user == "" {
-			continue
+			return nil
 		}
 
-		rg, err := o.getRuleGroup(ctx, obj.Key)
+		rg, err := o.getRuleGroup(ctx, s)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if _, exists := userGroupMap[user]; !exists {
 			userGroupMap[user] = rules.RuleGroupList{}
 		}
 		userGroupMap[user] = append(userGroupMap[user], rg)
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return userGroupMap, nil
@@ -93,22 +94,25 @@ func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.Rul
 
 // ListRuleGroups returns all the active rule groups for a user
 func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
-	ruleGroupObjects, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""))
+	groups := []*rules.RuleGroupDesc{}
+
+	err := o.bucket.Iter(ctx, generateRuleObjectKey(userID, namespace, ""), func(s string) error {
+		level.Debug(util.Logger).Log("msg", "listing rule group", "key", s)
+
+		rg, err := o.getRuleGroup(ctx, s)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to retrieve rule group", "err", err, "key", s)
+			return err
+		}
+		groups = append(groups, rg)
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	groups := []*rules.RuleGroupDesc{}
-	for _, obj := range ruleGroupObjects {
-		level.Debug(util.Logger).Log("msg", "listing rule group", "key", obj.Key)
-
-		rg, err := o.getRuleGroup(ctx, obj.Key)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to retrieve rule group", "err", err, "key", obj.Key)
-			return nil, err
-		}
-		groups = append(groups, rg)
-	}
 	return groups, nil
 }
 
@@ -131,14 +135,14 @@ func (o *RuleStore) SetRuleGroup(ctx context.Context, userID string, namespace s
 	}
 
 	objectKey := generateRuleObjectKey(userID, namespace, group.Name)
-	return o.client.PutObject(ctx, objectKey, bytes.NewReader(data))
+	return o.bucket.Upload(ctx, objectKey, bytes.NewReader(data))
 }
 
 // DeleteRuleGroup deletes the specified rule group
 func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, groupName string) error {
 	objectKey := generateRuleObjectKey(userID, namespace, groupName)
-	err := o.client.DeleteObject(ctx, objectKey)
-	if err == chunk.ErrStorageObjectNotFound {
+	err := o.bucket.Delete(ctx, objectKey)
+	if o.bucket.IsObjNotFoundErr(err) {
 		return rules.ErrGroupNotFound
 	}
 	return err

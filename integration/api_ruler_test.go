@@ -39,7 +39,7 @@ func TestRulerAPI(t *testing.T) {
 		Name:     "test_encoded_+\"+group_name?",
 		Interval: 100,
 		Rules: []rulefmt.Rule{
-			rulefmt.Rule{
+			{
 				Record: "test_rule",
 				Expr:   "up",
 			},

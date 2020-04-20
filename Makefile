@@ -133,7 +133,9 @@ protos: $(PROTO_GOS)
 
 lint:
 	misspell -error docs
-	golangci-lint run --build-tags netgo,require_docker --timeout=5m --enable golint --enable misspell --enable gofmt
+
+	# Configured via .golangci.yml.
+	golangci-lint run
 
 	# Ensure no blacklisted package is imported.
 	faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert" ./pkg/... ./cmd/... ./tools/... ./integration/...

@@ -5195,6 +5195,7 @@ replica: replica2
 &lt;li&gt;[BUGFIX] Ring: Fixed a situation where upgrading from pre-1.0 cortex with a rolling strategy caused new 1.0 ingesters to lose their zone value in the ring until manually forced to re-register. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2404&#34;&gt;#2404&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Distributor: &lt;code&gt;/all_user_stats&lt;/code&gt; now show API and Rule Ingest Rate correctly. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2457&#34;&gt;#2457&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixed &lt;code&gt;version&lt;/code&gt;, &lt;code&gt;revision&lt;/code&gt; and &lt;code&gt;branch&lt;/code&gt; labels exported by the &lt;code&gt;cortex_build_info&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2468&#34;&gt;#2468&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2483&#34;&gt;#2483&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;1-0-0-2020-04-02&#34;&gt;1.0.0 / 2020-04-02&lt;/h2&gt;
 &lt;p&gt;This is the first major release of Cortex. We made a lot of &lt;strong&gt;breaking changes&lt;/strong&gt; in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/v1guarantees/&#34;&gt;https://cortexmetrics.io/docs/configuration/v1guarantees/&lt;/a&gt;&lt;/p&gt;

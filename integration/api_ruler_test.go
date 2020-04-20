@@ -20,7 +20,7 @@ func TestRulerAPI(t *testing.T) {
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, RulerConfigs["-ruler.storage.s3.buckets"])
+	minio := e2edb.NewMinio(9000, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
 
 	// Start Cortex components.

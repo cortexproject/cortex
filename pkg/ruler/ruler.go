@@ -382,11 +382,15 @@ func (r *Ruler) run(ctx context.Context) error {
 func (r *Ruler) loadRules(ctx context.Context) {
 	ringHasher := fnv.New32a()
 
+	level.Debug(r.logger).Log("msg", "polling for rule groups")
+
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
 		return
 	}
+
+	level.Debug(r.logger).Log("msg", "poll for rule groups success", "num_rules", len(configs))
 
 	// Iterate through each users configuration and determine if the on-disk
 	// configurations need to be updated

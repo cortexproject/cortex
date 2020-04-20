@@ -294,7 +294,7 @@ func NewRuler(name string, flags map[string]string, image string) *CortexService
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
-			"-log.level": "warn",
+			"-log.level": "debug",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

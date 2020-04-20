@@ -52,13 +52,15 @@ var (
 	}
 
 	RulerConfigs = map[string]string{
-		"-ruler.enable-sharding":             "false",
-		"-ruler.poll-interval":               "2s",
-		"-experimental.ruler.enable-api":     "true",
-		"-ruler.storage.type":                "s3",
-		"-ruler.storage.s3.buckets":          "cortex-rules",
-		"-ruler.storage.s3.force-path-style": "true",
-		"-ruler.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+		"-ruler.enable-sharding":              "false",
+		"-ruler.poll-interval":                "2s",
+		"-experimental.ruler.enable-api":      "true",
+		"-ruler.storage.type":                 "s3",
+		"-ruler.storage.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-ruler.storage.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-ruler.storage.s3.bucket-name":       bucketName,
+		"-ruler.storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-ruler.storage.s3.insecure":          "true",
 	}
 
 	BlocksStorageFlags = map[string]string{

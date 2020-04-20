@@ -74,3 +74,14 @@ You can run it as a Kubernetes job which will:
 3. And flush all the chunks.
 
 This job is to be run for all the PVCs linked to the ingesters that you missed hitting the shutdown endpoint as a first option.
+
+## Additional notes
+
+* If you have lots of ingestion with the WAL replay taking a longer time, you can try reducing the checkpoint duration (`--ingester.checkpoint-duration`) to `15m`. This would require slightly higher disk bandwidth for writes (still less in absolute terms), but it will reduce the WAL replay time overall.
+
+### Non-Kubernetes or baremetal deployments
+
+* When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
+    * If it fails to attach to the same volume for any reason, use the [flusher](#scale-down) to flush that data.
+* 2 ingesters should not be working with the same volume/directory for the WAL. It will cause data corruptions.
+* Basing from above point, rollout should include bringing down an ingester completely and then starting the new ingester. Not the other way round, i.e. bringing another ingester live and taking the old one down.

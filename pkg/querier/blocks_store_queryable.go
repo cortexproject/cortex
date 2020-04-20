@@ -42,13 +42,22 @@ type BlocksStoreSet interface {
 	GetClientsFor(metas []*metadata.Meta) ([]storegatewaypb.StoreGatewayClient, error)
 }
 
+// BlocksFinder is the interface used to find blocks for a given user and time range.
+type BlocksFinder interface {
+	services.Service
+
+	// GetBlocks returns known blocks for userID containing samples within the range minT
+	// and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
+	GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, error)
+}
+
 // BlocksStoreQueryable is a queryable which queries blocks storage via
 // the store-gateway.
 type BlocksStoreQueryable struct {
 	services.Service
 
-	stores  BlocksStoreSet
-	scanner *BlocksScanner
+	stores BlocksStoreSet
+	finder BlocksFinder
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -58,17 +67,17 @@ type BlocksStoreQueryable struct {
 	storesHit prometheus.Histogram
 }
 
-func NewBlocksStoreQueryable(stores BlocksStoreSet, scanner *BlocksScanner, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
+func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
 
-	manager, err := services.NewManager(stores, scanner)
+	manager, err := services.NewManager(stores, finder)
 	if err != nil {
 		return nil, errors.Wrap(err, "register blocks storage queryable subservices")
 	}
 
 	q := &BlocksStoreQueryable{
 		stores:             stores,
-		scanner:            scanner,
+		finder:             finder,
 		subservices:        manager,
 		subservicesWatcher: services.NewFailureWatcher(),
 		storesHit: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
@@ -173,7 +182,7 @@ func (q *BlocksStoreQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 		minT:      mint,
 		maxT:      maxt,
 		userID:    userID,
-		scanner:   q.scanner,
+		finder:    q.finder,
 		stores:    q.stores,
 		storesHit: q.storesHit,
 	}, nil
@@ -183,7 +192,7 @@ type blocksStoreQuerier struct {
 	ctx        context.Context
 	minT, maxT int64
 	userID     string
-	scanner    *BlocksScanner
+	finder     BlocksFinder
 	stores     BlocksStoreSet
 	storesHit  prometheus.Histogram
 }
@@ -227,13 +236,16 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...
 	}
 
 	// Find the list of blocks we need to query given the time range.
-	metas, err := q.scanner.GetBlocks(q.userID, minT, maxT)
+	metas, err := q.finder.GetBlocks(q.userID, minT, maxT)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if len(metas) == 0 {
-		q.storesHit.Observe(0)
+		if q.storesHit != nil {
+			q.storesHit.Observe(0)
+		}
+
 		return series.NewEmptySeriesSet(), nil, nil
 	}
 
@@ -307,6 +319,9 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...
 		return nil, nil, err
 	}
 
-	q.storesHit.Observe(float64(len(clients)))
+	if q.storesHit != nil {
+		q.storesHit.Observe(float64(len(clients)))
+	}
+
 	return storage.NewMergeSeriesSet(seriesSets, nil), warnings, nil
 }

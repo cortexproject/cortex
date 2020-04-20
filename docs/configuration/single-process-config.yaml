@@ -33,6 +33,11 @@ ingester:
   spread_flushes: true
   chunk_age_jitter: 0
 
+  walconfig:
+    wal_enabled: true
+    recover_from_wal: true
+    wal_dir: /tmp/cortex/wal
+
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by
     # looking up address on eth0 or en0; can be specified if this fails.
@@ -43,6 +48,7 @@ ingester:
     min_ready_duration: 0s
     final_sleep: 0s
     num_tokens: 512
+    tokens_file_path: /tmp/cortex/wal/tokens
 
     # Use an in memory ring store, so we don't need to launch a Consul.
     ring:

@@ -31,7 +31,7 @@ type blocksStoreReplicationSet struct {
 func newBlocksStoreReplicationSet(storesRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:  storesRing,
-		clientsPool: newStoreGatewayClientPool(storesRing, logger, reg),
+		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), logger, reg),
 	}
 
 	var err error

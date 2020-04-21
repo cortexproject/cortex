@@ -126,12 +126,12 @@ func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string
 	err := o.bucket.Iter(ctx, generateRuleObjectKey(userID, namespace, ""), func(s string) error {
 		level.Debug(util.Logger).Log("msg", "listing rule group", "key", s)
 
-		rg, err := o.getRuleGroup(ctx, s)
+		rgs, err := o.getNamespace(ctx, s)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to retrieve rule group", "err", err, "key", s)
 			return err
 		}
-		groups = append(groups, rg)
+		groups = append(groups, rgs...)
 
 		return nil
 	})
@@ -187,6 +187,7 @@ func generateRuleObjectKey(id, namespace, name string) string {
 	if namespace == "" {
 		return prefix
 	}
+
 	prefix = prefix + base64.URLEncoding.EncodeToString([]byte(namespace)) + "/"
 	if name == "" {
 		return prefix

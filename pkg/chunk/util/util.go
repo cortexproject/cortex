@@ -12,11 +12,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+// Callback from an IndexQuery.
+type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
+
 // DoSingleQuery is the interface for indexes that don't support batching yet.
-type DoSingleQuery func(
-	ctx context.Context, query chunk.IndexQuery,
-	callback func(chunk.IndexQuery, chunk.ReadBatch) bool,
-) error
+type DoSingleQuery func(context.Context, chunk.IndexQuery, Callback) error
 
 // QueryParallelism is the maximum number of subqueries run in
 // parallel per higher-level query
@@ -26,7 +26,7 @@ var QueryParallelism = 100
 // and indexes that don't yet support batching.
 func DoParallelQueries(
 	ctx context.Context, doSingleQuery DoSingleQuery, queries []chunk.IndexQuery,
-	callback func(chunk.IndexQuery, chunk.ReadBatch) bool,
+	callback Callback,
 ) error {
 	if len(queries) == 1 {
 		return doSingleQuery(ctx, queries[0], callback)
@@ -68,9 +68,6 @@ func DoParallelQueries(
 	}
 	return lastErr
 }
-
-// Callback from an IndexQuery.
-type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
 
 type filteringBatch struct {
 	query chunk.IndexQuery

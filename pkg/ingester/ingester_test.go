@@ -159,7 +159,7 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	return res, req, nil
 }
 
-func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, offset int) ([]string, map[string]model.Matrix) {
+func pushTestSamples(t testing.TB, ing *Ingester, numSeries, samplesPerSeries, offset int) ([]string, map[string]model.Matrix) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.

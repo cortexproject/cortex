@@ -42,7 +42,7 @@ func (r *retryer) RetryRules(req *request.Request) time.Duration {
 
 // ShouldRetry returns if the failed request is retryable.
 func (r *retryer) ShouldRetry(req *request.Request) bool {
-	return req.IsErrorRetryable() || req.IsErrorThrottle()
+	return r.Ongoing() && (req.IsErrorRetryable() || req.IsErrorThrottle())
 }
 
 // MaxRetries is the number of times a request may be retried before

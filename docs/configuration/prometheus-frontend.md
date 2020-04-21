@@ -62,4 +62,5 @@ query_range:
 frontend:
   log_queries_longer_than: 1s
   compress_responses: true
+  downstream_url: prometheus.mydomain.com
 ```

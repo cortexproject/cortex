@@ -147,6 +147,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Register the metrics of the WAL. #2295
 * [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
+* [BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. #2503
 
 ### Known issues
 

@@ -33,6 +33,7 @@
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475
 * [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
+* [ENHANCEMENT] Experimental WAL: New metrics `cortex_ingester_wal_logged_bytes_total` and `cortex_ingester_checkpoint_logged_bytes_total` added to track total bytes logged to disk for WAL and checkpoints. #2497
   * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
   * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
 * [ENHANCEMENT] Add de-duplicated chunks counter `cortex_chunk_store_deduped_chunks_total` which counts every chunk not sent to the store because it was already sent by another replica. #2485

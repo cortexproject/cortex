@@ -72,11 +72,13 @@ type walWrapper struct {
 	checkpointMtx sync.Mutex
 
 	// Checkpoint metrics.
-	checkpointDeleteFail    prometheus.Counter
-	checkpointDeleteTotal   prometheus.Counter
-	checkpointCreationFail  prometheus.Counter
-	checkpointCreationTotal prometheus.Counter
-	checkpointDuration      prometheus.Summary
+	checkpointDeleteFail       prometheus.Counter
+	checkpointDeleteTotal      prometheus.Counter
+	checkpointCreationFail     prometheus.Counter
+	checkpointCreationTotal    prometheus.Counter
+	checkpointDuration         prometheus.Summary
+	checkpointLoggedBytesTotal prometheus.Counter
+	walLoggedBytesTotal        prometheus.Counter
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -124,6 +126,14 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
+	w.checkpointLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_checkpoint_logged_bytes_total",
+		Help: "Total number of bytes written to disk for checkpointing.",
+	})
+	w.walLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_logged_bytes_total",
+		Help: "Total number of bytes written to disk for WAL records.",
+	})
 
 	w.wait.Add(1)
 	go w.run()
@@ -148,6 +158,7 @@ func (w *walWrapper) Log(record *Record) error {
 		if err != nil {
 			return err
 		}
+		w.walLoggedBytesTotal.Add(float64(len(buf)))
 		return w.wal.Log(buf)
 	}
 }
@@ -401,7 +412,11 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		return wireChunks, err
 	}
 
-	return wireChunks, cp.Log(buf)
+	err = cp.Log(buf)
+	if err == nil {
+		w.checkpointLoggedBytesTotal.Add(float64(len(buf)))
+	}
+	return wireChunks, err
 }
 
 type walRecoveryParameters struct {

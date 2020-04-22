@@ -27,13 +27,13 @@ import (
 // each one containing all the in-memory series for a given user.
 type userStates struct {
 	states  sync.Map
-	limiter *SeriesLimiter
+	limiter *Limiter
 	cfg     Config
 	metrics *ingesterMetrics
 }
 
 type userState struct {
-	limiter             *SeriesLimiter
+	limiter             *Limiter
 	userID              string
 	fpLocker            *fingerprintLocker
 	fpToSeries          *seriesMap
@@ -64,7 +64,7 @@ type metricCounterShard struct {
 	m   map[string]int
 }
 
-func newUserStates(limiter *SeriesLimiter, cfg Config, metrics *ingesterMetrics) *userStates {
+func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics) *userStates {
 	return &userStates{
 		limiter: limiter,
 		cfg:     cfg,

@@ -196,11 +196,21 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
 
-	t.api.RegisterQuerier(queryable, engine, t.distributor)
+	// if we are not configured for single binary mode then the querier needs to register its paths externally
+	registerExternally := cfg.Target != All
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally)
+
+	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
+	//  worker we will attempt an automatic configuration here
+	if cfg.Worker.Address == "" && cfg.Target == All {
+		address := fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
+		level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
+		cfg.Worker.Address = address
+	}
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -214,8 +224,23 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 		return nil, nil
 	}
 
-	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && !cfg.TSDB.StoreGatewayEnabled {
 		storeQueryable, err := querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+		t.storeQueryable = storeQueryable
+		return storeQueryable, nil
+	}
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && cfg.TSDB.StoreGatewayEnabled {
+		// When running in single binary, if the blocks sharding is disabled and no custom
+		// store-gateway address has been configured, we can set it to the running process.
+		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
+		}
+
+		storeQueryable, err := querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +254,7 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+	cfg.Ingester.LifecyclerConfig.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
@@ -268,7 +293,7 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -453,7 +478,10 @@ func (t *Cortex) initStoreGateway(cfg *Config) (serv services.Service, err error
 	cfg.StoreGateway.ShardingRing.ListenPort = cfg.Server.GRPCListenPort
 	cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 
-	t.storeGateway = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
+	t.storeGateway, err = storegateway.NewStoreGateway(cfg.StoreGateway, cfg.TSDB, cfg.Server.LogLevel, util.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
 
 	// Expose HTTP endpoints.
 	t.api.RegisterStoreGateway(t.storeGateway)
@@ -484,7 +512,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 		return nil, err
 	}
 
-	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient)
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -611,6 +639,6 @@ var modules = map[ModuleName]module{
 	},
 
 	All: {
-		deps: []ModuleName{Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	},
 }

@@ -31,22 +31,30 @@ func TestWAL(t *testing.T) {
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
 	cfg.WALConfig.Dir = dirname
-	cfg.WALConfig.CheckpointDuration = 100 * time.Millisecond
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+	cfg.WALConfig.checkpointDuringShutdown = true
 
 	numSeries := 100
 	numSamplesPerSeriesPerPush := 10
-	numRestarts := 3
+	numRestarts := 5
 
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	userIDs, testData := pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, 0)
+	// Checkpoint happens when stopping.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	for r := 0; r < numRestarts; r++ {
+		if r == 2 {
+			// From 3rd restart onwards, we are disabling checkpointing during shutdown
+			// to test both checkpoint+WAL replay.
+			cfg.WALConfig.checkpointDuringShutdown = false
+		}
 		if r == numRestarts-1 {
 			cfg.WALConfig.WALEnabled = false
 			cfg.WALConfig.CheckpointEnabled = false
 		}
+
 		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 
@@ -214,14 +222,14 @@ func TestMigrationToTypedRecord(t *testing.T) {
 
 	// Test decoding of old record.
 	record, walRecord := &Record{}, &WALRecord{}
-	err = decodeWALRecord(oldRecordBytes, &Record{}, &WALRecord{})
+	err = decodeWALRecord(oldRecordBytes, record, walRecord)
 	require.NoError(t, err)
 	require.Equal(t, walRecordOld, record)
 	require.Equal(t, &WALRecord{}, walRecord)
 
 	// Test series and samples of new record separately.
 	record, walRecord = &Record{}, &WALRecord{}
-	err = decodeWALRecord(newRecordSeriesBytes, &Record{}, &WALRecord{})
+	err = decodeWALRecord(newRecordSeriesBytes, record, walRecord)
 	require.NoError(t, err)
 	require.Equal(t, &Record{}, record)
 	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
@@ -229,7 +237,7 @@ func TestMigrationToTypedRecord(t *testing.T) {
 	require.Equal(t, 0, len(walRecord.Samples))
 
 	record, walRecord = &Record{}, &WALRecord{}
-	err = decodeWALRecord(newRecordSamples, &Record{}, &WALRecord{})
+	err = decodeWALRecord(newRecordSamples, record, walRecord)
 	require.NoError(t, err)
 	require.Equal(t, &Record{}, record)
 	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
@@ -275,4 +283,48 @@ func TestMigrationToTypedRecord(t *testing.T) {
 
 	require.Equal(t, checkpointRecord, oldCheckpointRecordDecoded)
 	require.Equal(t, checkpointRecord, newCheckpointRecordDecoded)
+}
+
+func BenchmarkWALReplay(b *testing.B) {
+	dirname, err := ioutil.TempDir("", "cortex-wal")
+	require.NoError(b, err)
+	defer func() {
+		require.NoError(b, os.RemoveAll(dirname))
+	}()
+
+	cfg := defaultIngesterTestConfig()
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.CheckpointEnabled = true
+	cfg.WALConfig.Recover = true
+	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+	cfg.WALConfig.checkpointDuringShutdown = false
+
+	numSeries := 10
+	numSamplesPerSeriesPerPush := 2
+	numPushes := 100000
+
+	_, ing := newTestStore(b, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+
+	// Add samples for the checkpoint.
+	for r := 0; r < numPushes; r++ {
+		_, _ = pushTestSamples(b, ing, numSeries, numSamplesPerSeriesPerPush, r*numSamplesPerSeriesPerPush)
+	}
+	w, ok := ing.wal.(*walWrapper)
+	require.True(b, ok)
+	require.NoError(b, w.performCheckpoint(true))
+
+	// Add samples for the additional WAL not in checkpoint.
+	for r := 0; r < numPushes; r++ {
+		_, _ = pushTestSamples(b, ing, numSeries, numSamplesPerSeriesPerPush, (numPushes+r)*numSamplesPerSeriesPerPush)
+	}
+
+	require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	var ing2 *Ingester
+	b.Run("wal replay", func(b *testing.B) {
+		// Replay will happen here.
+		_, ing2 = newTestStore(b, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	})
+	require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ing2))
 }

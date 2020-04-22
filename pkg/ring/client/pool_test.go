@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -35,14 +34,6 @@ func (i mockClient) Close() error {
 
 func (i mockClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
 	return nil, status.Error(codes.Unimplemented, "Watching is not supported")
-}
-
-type mockReadRing struct {
-	ring.ReadRing
-}
-
-func (mockReadRing) GetAll() (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{}, nil
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -81,7 +72,7 @@ func TestPoolCache(t *testing.T) {
 		CheckInterval:      10 * time.Second,
 	}
 
-	pool := NewPool("test", cfg, mockReadRing{}, factory, nil, log.NewNopLogger())
+	pool := NewPool("test", cfg, nil, factory, nil, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
 	defer services.StopAndAwaitTerminated(context.Background(), pool) //nolint:errcheck
 

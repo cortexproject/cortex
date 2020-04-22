@@ -24,45 +24,45 @@ func TestInMemoryIndexCacheMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_querier_blocks_index_cache_items_evicted_total Total number of items that were evicted from the index cache.
-			# TYPE cortex_querier_blocks_index_cache_items_evicted_total counter
-			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Postings"} 5328
-			cortex_querier_blocks_index_cache_items_evicted_total{item_type="Series"} 10656
+			# HELP blocks_index_cache_items_evicted_total Total number of items that were evicted from the index cache.
+			# TYPE blocks_index_cache_items_evicted_total counter
+			blocks_index_cache_items_evicted_total{item_type="Postings"} 5328
+			blocks_index_cache_items_evicted_total{item_type="Series"} 10656
 
-			# HELP cortex_querier_blocks_index_cache_requests_total Total number of requests to the cache.
-			# TYPE cortex_querier_blocks_index_cache_requests_total counter
-			cortex_querier_blocks_index_cache_requests_total{item_type="Postings"} 15984
-			cortex_querier_blocks_index_cache_requests_total{item_type="Series"} 21312
+			# HELP blocks_index_cache_requests_total Total number of requests to the cache.
+			# TYPE blocks_index_cache_requests_total counter
+			blocks_index_cache_requests_total{item_type="Postings"} 15984
+			blocks_index_cache_requests_total{item_type="Series"} 21312
 
-			# HELP cortex_querier_blocks_index_cache_hits_total Total number of requests to the cache that were a hit.
-			# TYPE cortex_querier_blocks_index_cache_hits_total counter
-			cortex_querier_blocks_index_cache_hits_total{item_type="Postings"} 26640
-			cortex_querier_blocks_index_cache_hits_total{item_type="Series"} 31968
+			# HELP blocks_index_cache_hits_total Total number of requests to the cache that were a hit.
+			# TYPE blocks_index_cache_hits_total counter
+			blocks_index_cache_hits_total{item_type="Postings"} 26640
+			blocks_index_cache_hits_total{item_type="Series"} 31968
 
-			# HELP cortex_querier_blocks_index_cache_items_added_total Total number of items that were added to the index cache.
-			# TYPE cortex_querier_blocks_index_cache_items_added_total counter
-			cortex_querier_blocks_index_cache_items_added_total{item_type="Postings"} 37296
-			cortex_querier_blocks_index_cache_items_added_total{item_type="Series"} 42624
+			# HELP blocks_index_cache_items_added_total Total number of items that were added to the index cache.
+			# TYPE blocks_index_cache_items_added_total counter
+			blocks_index_cache_items_added_total{item_type="Postings"} 37296
+			blocks_index_cache_items_added_total{item_type="Series"} 42624
 
-			# HELP cortex_querier_blocks_index_cache_items Current number of items in the index cache.
-			# TYPE cortex_querier_blocks_index_cache_items gauge
-			cortex_querier_blocks_index_cache_items{item_type="Postings"} 47952
-			cortex_querier_blocks_index_cache_items{item_type="Series"} 53280
+			# HELP blocks_index_cache_items Current number of items in the index cache.
+			# TYPE blocks_index_cache_items gauge
+			blocks_index_cache_items{item_type="Postings"} 47952
+			blocks_index_cache_items{item_type="Series"} 53280
 
-			# HELP cortex_querier_blocks_index_cache_items_size_bytes Current byte size of items in the index cache.
-			# TYPE cortex_querier_blocks_index_cache_items_size_bytes gauge
-			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Postings"} 58608
-			cortex_querier_blocks_index_cache_items_size_bytes{item_type="Series"} 63936
+			# HELP blocks_index_cache_items_size_bytes Current byte size of items in the index cache.
+			# TYPE blocks_index_cache_items_size_bytes gauge
+			blocks_index_cache_items_size_bytes{item_type="Postings"} 58608
+			blocks_index_cache_items_size_bytes{item_type="Series"} 63936
 
-			# HELP cortex_querier_blocks_index_cache_total_size_bytes Current byte size of items (both value and key) in the index cache.
-			# TYPE cortex_querier_blocks_index_cache_total_size_bytes gauge
-			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Postings"} 69264
-			cortex_querier_blocks_index_cache_total_size_bytes{item_type="Series"} 74592
+			# HELP blocks_index_cache_total_size_bytes Current byte size of items (both value and key) in the index cache.
+			# TYPE blocks_index_cache_total_size_bytes gauge
+			blocks_index_cache_total_size_bytes{item_type="Postings"} 69264
+			blocks_index_cache_total_size_bytes{item_type="Series"} 74592
 
-			# HELP cortex_querier_blocks_index_cache_items_overflowed_total Total number of items that could not be added to the cache due to being too big.
-			# TYPE cortex_querier_blocks_index_cache_items_overflowed_total counter
-			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Postings"} 79920
-			cortex_querier_blocks_index_cache_items_overflowed_total{item_type="Series"} 85248
+			# HELP blocks_index_cache_items_overflowed_total Total number of items that could not be added to the cache due to being too big.
+			# TYPE blocks_index_cache_items_overflowed_total counter
+			blocks_index_cache_items_overflowed_total{item_type="Postings"} 79920
+			blocks_index_cache_items_overflowed_total{item_type="Series"} 85248
 `))
 	require.NoError(t, err)
 }
@@ -175,57 +175,57 @@ func TestMemcachedIndexCacheMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_querier_blocks_index_cache_requests_total Total number of requests to the cache.
-			# TYPE cortex_querier_blocks_index_cache_requests_total counter
-			cortex_querier_blocks_index_cache_requests_total{item_type="Postings"} 1
-			cortex_querier_blocks_index_cache_requests_total{item_type="Series"} 2
+			# HELP blocks_index_cache_requests_total Total number of requests to the cache.
+			# TYPE blocks_index_cache_requests_total counter
+			blocks_index_cache_requests_total{item_type="Postings"} 1
+			blocks_index_cache_requests_total{item_type="Series"} 2
 
-			# HELP cortex_querier_blocks_index_cache_hits_total Total number of requests to the cache that were a hit.
-			# TYPE cortex_querier_blocks_index_cache_hits_total counter
-			cortex_querier_blocks_index_cache_hits_total{item_type="Postings"} 3
-			cortex_querier_blocks_index_cache_hits_total{item_type="Series"} 4
+			# HELP blocks_index_cache_hits_total Total number of requests to the cache that were a hit.
+			# TYPE blocks_index_cache_hits_total counter
+			blocks_index_cache_hits_total{item_type="Postings"} 3
+			blocks_index_cache_hits_total{item_type="Series"} 4
 
-			# HELP cortex_querier_blocks_index_cache_memcached_operations_total Total number of operations against memcached.
-			# TYPE cortex_querier_blocks_index_cache_memcached_operations_total counter
-			cortex_querier_blocks_index_cache_memcached_operations_total{operation="set"} 5
-			cortex_querier_blocks_index_cache_memcached_operations_total{operation="getmulti"} 6
+			# HELP blocks_index_cache_memcached_operations_total Total number of operations against memcached.
+			# TYPE blocks_index_cache_memcached_operations_total counter
+			blocks_index_cache_memcached_operations_total{operation="set"} 5
+			blocks_index_cache_memcached_operations_total{operation="getmulti"} 6
 
-			# HELP cortex_querier_blocks_index_cache_memcached_operation_failures_total Total number of operations against memcached that failed.
-			# TYPE cortex_querier_blocks_index_cache_memcached_operation_failures_total counter
-			cortex_querier_blocks_index_cache_memcached_operation_failures_total{operation="set"} 7
-			cortex_querier_blocks_index_cache_memcached_operation_failures_total{operation="getmulti"} 8
+			# HELP blocks_index_cache_memcached_operation_failures_total Total number of operations against memcached that failed.
+			# TYPE blocks_index_cache_memcached_operation_failures_total counter
+			blocks_index_cache_memcached_operation_failures_total{operation="set"} 7
+			blocks_index_cache_memcached_operation_failures_total{operation="getmulti"} 8
 
-			# HELP cortex_querier_blocks_index_cache_memcached_operation_duration_seconds Duration of operations against memcached.
-			# TYPE cortex_querier_blocks_index_cache_memcached_operation_duration_seconds histogram
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.001"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.005"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.01"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.025"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.05"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.1"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.2"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.5"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="1"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="+Inf"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_sum{operation="set"} 0.1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_count{operation="set"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.001"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.005"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.01"} 0
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.025"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.05"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.1"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.2"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.5"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="1"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="+Inf"} 1
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_sum{operation="getmulti"} 0.025
-			cortex_querier_blocks_index_cache_memcached_operation_duration_seconds_count{operation="getmulti"} 1
+			# HELP blocks_index_cache_memcached_operation_duration_seconds Duration of operations against memcached.
+			# TYPE blocks_index_cache_memcached_operation_duration_seconds histogram
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.001"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.005"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.01"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.025"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.05"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.1"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.2"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="0.5"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="1"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="set",le="+Inf"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_sum{operation="set"} 0.1
+			blocks_index_cache_memcached_operation_duration_seconds_count{operation="set"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.001"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.005"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.01"} 0
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.025"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.05"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.1"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.2"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="0.5"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="1"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_bucket{operation="getmulti",le="+Inf"} 1
+			blocks_index_cache_memcached_operation_duration_seconds_sum{operation="getmulti"} 0.025
+			blocks_index_cache_memcached_operation_duration_seconds_count{operation="getmulti"} 1
 
-			# HELP cortex_querier_blocks_index_cache_memcached_operation_skipped_total Total number of operations against memcached that have been skipped.
-			# TYPE cortex_querier_blocks_index_cache_memcached_operation_skipped_total counter
-			cortex_querier_blocks_index_cache_memcached_operation_skipped_total{operation="getmulti",reason="spoiled"} 10
-			cortex_querier_blocks_index_cache_memcached_operation_skipped_total{operation="set",reason="too_big"} 9
+			# HELP blocks_index_cache_memcached_operation_skipped_total Total number of operations against memcached that have been skipped.
+			# TYPE blocks_index_cache_memcached_operation_skipped_total counter
+			blocks_index_cache_memcached_operation_skipped_total{operation="getmulti",reason="spoiled"} 10
+			blocks_index_cache_memcached_operation_skipped_total{operation="set",reason="too_big"} 9
 `))
 	require.NoError(t, err)
 }

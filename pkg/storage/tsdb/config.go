@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
@@ -57,6 +58,7 @@ type Config struct {
 	HeadCompactionInterval    time.Duration     `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int               `yaml:"head_compaction_concurrency"`
 	StripeSize                int               `yaml:"stripe_size"`
+	StoreGatewayEnabled       bool              `yaml:"store_gateway_enabled"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -127,6 +129,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionInterval, "experimental.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "experimental.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
 	f.IntVar(&cfg.StripeSize, "experimental.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
+	f.BoolVar(&cfg.StoreGatewayEnabled, "experimental.tsdb.store-gateway-enabled", false, "True if the Cortex cluster is running the store-gateway service and the querier should query the bucket store via the store-gateway.")
 }
 
 // Validate the config.
@@ -168,6 +171,13 @@ type BucketStoreConfig struct {
 	ConsistencyDelay         time.Duration    `yaml:"consistency_delay"`
 	IndexCache               IndexCacheConfig `yaml:"index_cache"`
 	IgnoreDeletionMarksDelay time.Duration    `yaml:"ignore_deletion_mark_delay"`
+
+	// Controls what is the ratio of postings offsets store will hold in memory.
+	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
+	// It's meant for setups that want low baseline memory pressure and where less traffic is expected.
+	// On the contrary, smaller value will increase baseline memory usage, but improve latency slightly.
+	// 1 will keep all in memory. Default value is the same as in Prometheus which gives a good balance.
+	PostingOffsetsInMemSampling int `yaml:"postings_offsets_in_mem_sampling" doc:"hidden"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -187,6 +197,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.IgnoreDeletionMarksDelay, "experimental.tsdb.bucket-store.ignore-deletion-marks-delay", time.Hour*6, "Duration after which the blocks marked for deletion will be filtered out while fetching blocks. "+
 		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet."+
 		"Default is 6h, half of the default value for -compactor.deletion-delay.")
+	f.IntVar(&cfg.PostingOffsetsInMemSampling, "experimental.tsdb.bucket-store.posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
 }
 
 // Validate the config.

@@ -32,7 +32,12 @@ type BucketStoresService struct {
 }
 
 func NewBucketStoresService(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*BucketStoresService, error) {
-	stores, err := storegateway.NewBucketStores(cfg, nil, bucketClient, logLevel, logger, registerer)
+	var storesReg prometheus.Registerer
+	if registerer != nil {
+		storesReg = prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer)
+	}
+
+	stores, err := storegateway.NewBucketStores(cfg, nil, bucketClient, logLevel, logger, storesReg)
 	if err != nil {
 		return nil, err
 	}

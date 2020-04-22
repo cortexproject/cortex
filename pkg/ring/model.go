@@ -126,13 +126,19 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	switch op {
 	case Write:
-		healthy = (i.State == ACTIVE)
+		healthy = i.State == ACTIVE
 
 	case Read:
 		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
 
 	case Reporting:
 		healthy = true
+
+	case BlocksSync:
+		healthy = (i.State == JOINING) || (i.State == ACTIVE) || (i.State == LEAVING)
+
+	case BlocksRead:
+		healthy = i.State == ACTIVE
 	}
 
 	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
@@ -382,7 +388,7 @@ type TokenDesc struct {
 	Zone     string
 }
 
-// Returns sorted list of tokens with ingester names.
+// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
 func (d *Desc) getTokens() []TokenDesc {
 	numTokens := 0
 	for _, ing := range d.Ingesters {
@@ -399,7 +405,24 @@ func (d *Desc) getTokens() []TokenDesc {
 	return tokens
 }
 
-func getOrCreateRingDesc(d interface{}) *Desc {
+// TokenDescs holds a sorted list of TokenDesc.
+type TokenDescs []TokenDesc
+
+func (t TokenDescs) Equals(other TokenDescs) bool {
+	if len(t) != len(other) {
+		return false
+	}
+
+	for i := 0; i < len(t); i++ {
+		if (t[i].Token != other[i].Token) || (t[i].Ingester != other[i].Ingester) || (t[i].Zone != other[i].Zone) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func GetOrCreateRingDesc(d interface{}) *Desc {
 	if d == nil {
 		return NewDesc()
 	}

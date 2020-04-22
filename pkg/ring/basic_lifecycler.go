@@ -228,7 +228,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 	var instanceDesc IngesterDesc
 
 	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		ringDesc := getOrCreateRingDesc(in)
+		ringDesc := GetOrCreateRingDesc(in)
 
 		var exists bool
 		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
@@ -367,7 +367,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 	var instanceDesc IngesterDesc
 
 	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		ringDesc := getOrCreateRingDesc(in)
+		ringDesc := GetOrCreateRingDesc(in)
 
 		var ok bool
 		instanceDesc, ok = ringDesc.Ingesters[l.cfg.ID]

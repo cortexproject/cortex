@@ -4,6 +4,9 @@ output:
 linters:
   enable:
     - goimports
+    - golint
+    - gofmt
+    - misspell
 
 linters-settings:
   errcheck:
@@ -12,3 +15,11 @@ linters-settings:
     exclude: ./.errcheck-exclude
   goimports:
     local-prefixes: "github.com/cortexproject/cortex"
+
+run:
+  timeout: 5m
+
+  # List of build tags, all linters use it.
+  build-tags:
+    - netgo
+    - requires_docker

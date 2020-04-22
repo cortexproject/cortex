@@ -39,7 +39,7 @@ func main() {
 }
 
 var (
-	ref    = regexp.MustCompile(`\[(.*)\](\(.*?\))`)
+	ref    = regexp.MustCompile(`\[([^\\\]]+?)\](\(.*?\))`)
 	link   = regexp.MustCompile(`(\(.*?\))`)
 	prRef  = regexp.MustCompile(`#(\d+)`)
 	images = regexp.MustCompile(`\..*images/(.*)\.(png|gif|jpeg|jpg|pdf)`)

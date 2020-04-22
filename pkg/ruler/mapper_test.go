@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"encoding/base64"
 	"os"
 	"testing"
 
@@ -14,6 +15,12 @@ import (
 
 var (
 	testUser = "user1"
+
+	fileOneEncoded = base64.URLEncoding.EncodeToString([]byte("file_one"))
+	fileTwoEncoded = base64.URLEncoding.EncodeToString([]byte("file_two"))
+
+	fileOnePath = "/rules/user1/" + fileOneEncoded
+	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
 	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file_one": {
@@ -107,10 +114,10 @@ func Test_mapper_MapRules(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -121,7 +128,7 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -132,7 +139,7 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -141,10 +148,10 @@ func Test_mapper_MapRules(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, updatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -256,10 +263,10 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -268,14 +275,14 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, "/rules/user1/file_one", files))
-		require.True(t, sliceContains(t, "/rules/user1/file_two", files))
+		require.True(t, sliceContains(t, fileOnePath, files))
+		require.True(t, sliceContains(t, fileTwoPath, files))
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -284,14 +291,14 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesUpdatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, "/rules/user1/file_one", files))
-		require.True(t, sliceContains(t, "/rules/user1/file_two", files))
+		require.True(t, sliceContains(t, fileOnePath, files))
+		require.True(t, sliceContains(t, fileTwoPath, files))
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -300,13 +307,13 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesDeletedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.False(t, exists)
 		require.NoError(t, err)
 	})

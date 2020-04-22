@@ -38,8 +38,8 @@ Based on tests in real world:
 * At any given point, we have 2 complete checkpoints present on the disk and a 2 sets of WAL files between checkpoints (and now).
 * This peaks at 3 checkpoints and 3 lots of WAL momentarily, as we remove the old checkpoints.
 
-|  |  |
-|:-|:-|
+| Observation | Disk utilisation |
+|---|---|
 | Size of 1 checkpoint for 1.2M series | 1410 MiB |
 | Avg checkpoint size per series | 1.2 KiB |
 | No. of WAL files between checkpoints (30m checkpoint) | 30 mins x 87 / 20mins = 130 |
@@ -50,8 +50,8 @@ Based on tests in real world:
 
 For 1M series at 15s scrape interval with checkpoint duration of 30m
 
-|  |  |
-|:-|:-|
+| Usage | Disk utilisation |
+|---|---|
 | Steady state usage | 11 GiB / 1.2 = ~9.2 GiB |
 | Peak usage | 17 GiB / 1.2 = ~13.6 GiB |
 

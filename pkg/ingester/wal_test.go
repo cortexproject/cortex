@@ -270,7 +270,7 @@ func TestMigrationToTypedRecord(t *testing.T) {
 
 	oldRecordBytes, err = proto.Marshal(checkpointRecord)
 	require.NoError(t, err)
-	newRecordBytes, err := encodeWithTypeHeader(checkpointRecord, CheckpointRecordType1, nil)
+	newRecordBytes, err := encodeWithTypeHeader(checkpointRecord, CheckpointRecord, nil)
 	require.NoError(t, err)
 
 	m, err := decodeCheckpointRecord(oldRecordBytes, &Series{})

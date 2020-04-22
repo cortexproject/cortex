@@ -69,13 +69,13 @@ const (
 	// The old record will be removed in the future releases, hence the record type should not cross
 	// '7' till then.
 
-	// WALRecordSeriesType1 is the type for the WAL record on Prometheus TSDB record for series.
-	WALRecordSeriesType1 RecordType = 1
-	// WALRecordSamplesType1 is the type for the WAL record based on Prometheus TSDB record for samples.
-	WALRecordSamplesType1 RecordType = 2
+	// WALRecordSeries is the type for the WAL record on Prometheus TSDB record for series.
+	WALRecordSeries RecordType = 1
+	// WALRecordSamples is the type for the WAL record based on Prometheus TSDB record for samples.
+	WALRecordSamples RecordType = 2
 
-	// CheckpointRecordType1 is the type for the Checkpoint record based on protos.
-	CheckpointRecordType1 RecordType = 3
+	// CheckpointRecord is the type for the Checkpoint record based on protos.
+	CheckpointRecord RecordType = 3
 )
 
 type noopWAL struct{}
@@ -446,7 +446,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		Fingerprint: uint64(fp),
 		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
-	}, CheckpointRecordType1, b)
+	}, CheckpointRecord, b)
 	if err != nil {
 		return wireChunks, b, err
 	}
@@ -1058,7 +1058,7 @@ func SegmentRange(dir string) (int, int, error) {
 
 func decodeCheckpointRecord(rec []byte, m proto.Message) (_ proto.Message, err error) {
 	switch RecordType(rec[0]) {
-	case CheckpointRecordType1:
+	case CheckpointRecord:
 		if err := proto.Unmarshal(rec[1:], m); err != nil {
 			return m, err
 		}
@@ -1094,7 +1094,7 @@ type WALRecord struct {
 
 func (record *WALRecord) encodeSeries(b []byte) []byte {
 	buf := encoding.Encbuf{B: b}
-	buf.PutByte(byte(WALRecordSeriesType1))
+	buf.PutByte(byte(WALRecordSeries))
 	buf.PutUvarintStr(record.UserID)
 
 	var enc tsdb_record.Encoder
@@ -1108,7 +1108,7 @@ func (record *WALRecord) encodeSeries(b []byte) []byte {
 
 func (record *WALRecord) encodeSamples(b []byte) []byte {
 	buf := encoding.Encbuf{B: b}
-	buf.PutByte(byte(WALRecordSamplesType1))
+	buf.PutByte(byte(WALRecordSamples))
 	buf.PutUvarintStr(record.UserID)
 
 	var enc tsdb_record.Encoder
@@ -1134,10 +1134,10 @@ func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (err error) {
 	walRec.Series = walRec.Series[:0]
 	walRec.Samples = walRec.Samples[:0]
 	switch t {
-	case WALRecordSamplesType1:
+	case WALRecordSamples:
 		userID = decbuf.UvarintStr()
 		rsamples, err = dec.Samples(decbuf.B, walRec.Samples)
-	case WALRecordSeriesType1:
+	case WALRecordSeries:
 		userID = decbuf.UvarintStr()
 		rseries, err = dec.Series(decbuf.B, walRec.Series)
 	default:

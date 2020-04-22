@@ -35,6 +35,7 @@
 * [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
   * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
   * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
+* [ENHANCEMENT] Add de-duplicated chunks counter `cortex_chunk_store_deduped_chunks_total` which counts every chunk not sent to the store because it was already sent by another replica. #2485
 * [ENHANCEMENT] query-frontend now also logs the POST data of long queries. #2481
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

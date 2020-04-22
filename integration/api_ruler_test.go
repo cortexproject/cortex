@@ -34,9 +34,9 @@ func TestRulerAPI(t *testing.T) {
 
 	// Create example namespace and rule group to use for tests, using strings that
 	// require url escaping.
-	namespace := "test_encoded_+namespace?"
+	namespace := "test_encoded_+namespace/?"
 	rg := rulefmt.RuleGroup{
-		Name:     "test_encoded_+\"+group_name?",
+		Name:     "test_encoded_+\"+group_name/?",
 		Interval: 100,
 		Rules: []rulefmt.Rule{
 			{

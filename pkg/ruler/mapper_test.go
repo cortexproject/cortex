@@ -22,6 +22,7 @@ var (
 	fileOnePath = "/rules/user1/" + fileOneEncoded
 	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
+
 	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
 		"file /one": {
 			{

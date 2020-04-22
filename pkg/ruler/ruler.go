@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"hash/fnv"

@@ -408,7 +408,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 	for _, shardByAllLabels := range []bool{true, false} {
 
 		// Test with between 3 and 10 ingesters.
-		for numIngesters := 3; numIngesters < 10; numIngesters++ {
+		for numIngesters := 2; numIngesters < 10; numIngesters++ {
 
 			// Test with between 0 and numIngesters "happy" ingesters.
 			for happyIngesters := 0; happyIngesters <= numIngesters; happyIngesters++ {
@@ -416,6 +416,20 @@ func TestDistributor_PushQuery(t *testing.T) {
 				// When we're not sharding by metric name, queriers with more than one
 				// failed ingester should fail.
 				if shardByAllLabels && numIngesters-happyIngesters > 1 {
+					testcases = append(testcases, testcase{
+						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
+						numIngesters:     numIngesters,
+						happyIngesters:   happyIngesters,
+						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
+						expectedError:    promql.ErrStorage{Err: errFail},
+						shardByAllLabels: shardByAllLabels,
+					})
+					continue
+				}
+
+				// When we have less ingesters than replication factor, any failed ingester
+				// will cause a failure.
+				if shardByAllLabels && numIngesters < 3 && happyIngesters < 2 {
 					testcases = append(testcases, testcase{
 						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
 						numIngesters:     numIngesters,

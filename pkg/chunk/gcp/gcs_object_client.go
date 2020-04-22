@@ -108,9 +108,9 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 }
 
 // List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []string, error) {
+func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
-	var commonPrefixes []string
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: s.delimiter})
 	for {
@@ -128,7 +128,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
 		if attr.Name == "" {
-			commonPrefixes = append(commonPrefixes, attr.Prefix)
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
 

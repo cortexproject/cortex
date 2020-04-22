@@ -168,9 +168,9 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 }
 
 // List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []string, error) {
+func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
-	var commonPrefixes []string
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		if ctx.Err() != nil {
@@ -194,7 +194,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 
 		// Process the BlobPrefixes so called commonPrefixes or synthetic directories in the listed synthetic directory
 		for _, blobPrefix := range listBlob.Segment.BlobPrefixes {
-			commonPrefixes = append(commonPrefixes, blobPrefix.Name)
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(blobPrefix.Name))
 		}
 	}
 

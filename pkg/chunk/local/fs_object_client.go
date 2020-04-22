@@ -91,9 +91,9 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 }
 
 // List objects and common-prefixes i.e directories from the store non-recursively
-func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []string, error) {
+func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
-	var commonPrefixes []string
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	folderPath := filepath.Join(f.cfg.Directory, prefix)
 
@@ -114,7 +114,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 		nameWithPrefix := filepath.Join(prefix, fileInfo.Name())
 
 		if fileInfo.IsDir() {
-			commonPrefixes = append(commonPrefixes, nameWithPrefix)
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+chunk.DirDelim))
 			continue
 		}
 		storageObjects = append(storageObjects, chunk.StorageObject{

@@ -351,24 +351,25 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 
 	t.Run("create special characters rulegroup", func(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, specialCharactersRuleSet)
+		require.NoError(t, err)
 		require.True(t, updated)
 		require.Len(t, files, 1)
 		require.Equal(t, specialCharFilePath, files[0])
-		require.NoError(t, err)
 
 		exists, err := afero.Exists(m.FS, specialCharFilePath)
-		require.True(t, exists)
 		require.NoError(t, err)
+		require.True(t, exists)
 	})
 
 	t.Run("delete special characters rulegroup", func(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, map[string][]legacy_rulefmt.RuleGroup{})
+		require.NoError(t, err)
 		require.True(t, updated)
 		require.Len(t, files, 0)
 
 		exists, err := afero.Exists(m.FS, specialCharFilePath)
-		require.False(t, exists)
 		require.NoError(t, err)
+		require.False(t, exists)
 	})
 }
 

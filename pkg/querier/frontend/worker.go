@@ -125,6 +125,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
 				if mgr, ok := w.managers[update.Addr]; ok {
 					mgr.stop()
+					delete(w.managers, update.Addr)
 				}
 
 			default:

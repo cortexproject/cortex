@@ -5460,6 +5460,7 @@ replica: replica2
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[FEATURE] Ingesters can now have an optional availability zone set, to ensure metric replication is distributed across zones. This is set via the &lt;code&gt;-ingester.availability-zone&lt;/code&gt; flag or the &lt;code&gt;availability_zone&lt;/code&gt; field in the config file. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2317&#34;&gt;#2317&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Better re-use of connections to DynamoDB and S3. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2268&#34;&gt;#2268&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[ENHANCEMENT] Reduce number of goroutines used while executing a single index query. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2280&#34;&gt;#2280&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Add support for local &lt;code&gt;filesystem&lt;/code&gt; backend. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2245&#34;&gt;#2245&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2290&#34;&gt;#2290&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[ENHANCEMENT] Experimental TSDB: Removed gRPC server to communicate between querier and BucketStore. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2324&#34;&gt;#2324&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;

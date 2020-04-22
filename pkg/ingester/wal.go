@@ -65,8 +65,6 @@ const (
 	// will produce an error if the first byte is less than 7 (thus we know its not the old record).
 	// The old record will be removed in the future releases, hence the record type should not cross
 	// '7' till then.
-	// Relevant code to verify this is https://github.com/cortexproject/cortex/blob/90516410b9e1fe2fe3ae9041260c02d2a6f0468d/pkg/ingester/wal.pb.go#L894-L917
-	// (with error at line 916).
 
 	// WALRecordSeriesType1 is the type for the WAL record on Prometheus TSDB record for series.
 	WALRecordSeriesType1 RecordType = 1
@@ -98,7 +96,6 @@ type walWrapper struct {
 	checkpointCreationFail  prometheus.Counter
 	checkpointCreationTotal prometheus.Counter
 	checkpointDuration      prometheus.Summary
-	walLoggedBytes          prometheus.Counter
 	walRecordsLogged        prometheus.Counter
 }
 
@@ -152,13 +149,9 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
-	w.walLoggedBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_wal_logged_bytes_total",
-		Help: "Total number of checkpoint creations that failed.",
-	})
 	w.walRecordsLogged = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_wal_records_logged_total",
-		Help: "Total number of checkpoint creations that failed.",
+		Help: "Total number of WAL records logged.",
 	})
 
 	w.wait.Add(1)
@@ -191,7 +184,6 @@ func (w *walWrapper) Log(record *WALRecord) error {
 				return err
 			}
 			w.walRecordsLogged.Inc()
-			w.walLoggedBytes.Add(float64(len(buf)))
 			buf = buf[:0]
 		}
 		if len(record.Samples) > 0 {
@@ -200,7 +192,6 @@ func (w *walWrapper) Log(record *WALRecord) error {
 				return err
 			}
 			w.walRecordsLogged.Inc()
-			w.walLoggedBytes.Add(float64(len(buf)))
 		}
 
 		return nil
@@ -813,8 +804,7 @@ Loop:
 		record.Samples = record.Samples[:0]
 		record.Labels = record.Labels[:0]
 		// Only one of 'record' or 'walRecord' will have the data.
-		record, walRecord, err = decodeWALRecord(reader.Record(), record, walRecord)
-		if err != nil {
+		if err := decodeWALRecord(reader.Record(), record, walRecord); err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
@@ -1125,7 +1115,7 @@ func (record *WALRecord) encodeSamples(b []byte) []byte {
 	return encoded
 }
 
-func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (_ *Record, _ *WALRecord, err error) {
+func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (err error) {
 	var (
 		userID   string
 		dec      tsdb_record.Decoder
@@ -1149,12 +1139,12 @@ func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (_ *Record, _ *WA
 		// The legacy proto record will have it's first byte >7.
 		// Hence it does not match any of the existing record types.
 		err = proto.Unmarshal(b, rec)
-		return rec, walRec, err
+		return err
 	}
 
 	// We reach here only if its a record with type header.
 	if decbuf.Err() != nil {
-		return rec, walRec, decbuf.Err()
+		return decbuf.Err()
 	}
 
 	if err == nil {
@@ -1164,5 +1154,5 @@ func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (_ *Record, _ *WA
 		walRec.Series = rseries
 	}
 
-	return rec, walRec, err
+	return err
 }

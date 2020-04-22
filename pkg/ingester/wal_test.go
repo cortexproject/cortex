@@ -213,20 +213,23 @@ func TestMigrationToTypedRecord(t *testing.T) {
 	newRecordSamples := walRecordNew.encodeSamples(nil)
 
 	// Test decoding of old record.
-	record, walRecord, err := decodeWALRecord(oldRecordBytes, &Record{}, &WALRecord{})
+	record, walRecord := &Record{}, &WALRecord{}
+	err = decodeWALRecord(oldRecordBytes, &Record{}, &WALRecord{})
 	require.NoError(t, err)
 	require.Equal(t, walRecordOld, record)
 	require.Equal(t, &WALRecord{}, walRecord)
 
 	// Test series and samples of new record separately.
-	record, walRecord, err = decodeWALRecord(newRecordSeriesBytes, &Record{}, &WALRecord{})
+	record, walRecord = &Record{}, &WALRecord{}
+	err = decodeWALRecord(newRecordSeriesBytes, &Record{}, &WALRecord{})
 	require.NoError(t, err)
 	require.Equal(t, &Record{}, record)
 	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
 	require.Equal(t, walRecordNew.Series, walRecord.Series)
 	require.Equal(t, 0, len(walRecord.Samples))
 
-	record, walRecord, err = decodeWALRecord(newRecordSamples, &Record{}, &WALRecord{})
+	record, walRecord = &Record{}, &WALRecord{}
+	err = decodeWALRecord(newRecordSamples, &Record{}, &WALRecord{})
 	require.NoError(t, err)
 	require.Equal(t, &Record{}, record)
 	require.Equal(t, walRecordNew.UserID, walRecord.UserID)

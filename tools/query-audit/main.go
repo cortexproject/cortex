@@ -71,7 +71,7 @@ func Run(conf Config) error {
 			return err
 		}
 
-		fmt.Sprintf(
+		fmt.Printf(
 			"\n%f%% avg diff for:\n\tquery: %s\n\tseries: %d\n\tsamples: %d\n\tstart: %v\n\tend: %v\n\tstep: %v\n",
 			diff.Diff*100,
 			query.Query,

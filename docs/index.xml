@@ -5475,6 +5475,7 @@ replica: replica2
 &lt;li&gt;&lt;p&gt;[BUGFIX] Fixed etcd client keepalive settings. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2278&#34;&gt;#2278&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUGFIX] Register the metrics of the WAL. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2295&#34;&gt;#2295&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;[BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2342&#34;&gt;#2342&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;[BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2503&#34;&gt;#2503&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;known-issues&#34;&gt;Known issues&lt;/h3&gt;
 &lt;ul&gt;

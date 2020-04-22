@@ -434,7 +434,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 
 				// When we have less ingesters than replication factor, any failed ingester
 				// will cause a failure.
-				if shardByAllLabels && numIngesters < 3 && happyIngesters < 2 {
+				if numIngesters < 3 && happyIngesters < 2 {
 					testcases = append(testcases, testcase{
 						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
 						numIngesters:     numIngesters,

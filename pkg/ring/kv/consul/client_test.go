@@ -21,7 +21,7 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 		defer close(ch)
 		for i := start; i <= end; i++ {
 			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
-			_, _ = client.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
+			_, _ = client.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			time.Sleep(sleep)
 		}
 	}()
@@ -92,7 +92,7 @@ func TestReset(t *testing.T) {
 		defer close(ch)
 		for i := 0; i <= max; i++ {
 			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
-			_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
+			_, _ = c.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			if i == 1 {
 				c.kv.(*mockKV).ResetIndex()
 			}
@@ -142,11 +142,11 @@ func TestWatchKeyWithNoStartValue(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		_, err := c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
+		_, err := c.kv.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
 		require.NoError(t, err)
 
 		time.Sleep(100 * time.Millisecond)
-		_, err = c.Put(&consul.KVPair{Key: key, Value: []byte("end")}, nil)
+		_, err = c.kv.Put(&consul.KVPair{Key: key, Value: []byte("end")}, nil)
 		require.NoError(t, err)
 	}()
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"sort"
@@ -823,25 +824,36 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		})
 	}
 
-	// Mock the ingesters ring
-	ingesterDescs := []ring.IngesterDesc{}
+	// Use a real ring with a mock KV store to test ring RF logic.
+	ingesterDescs := map[string]ring.IngesterDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
 		addr := fmt.Sprintf("%d", i)
-		ingesterDescs = append(ingesterDescs, ring.IngesterDesc{
+		ingesterDescs[addr] = ring.IngesterDesc{
 			Addr:      addr,
+			Zone:      addr,
+			State:     ring.ACTIVE,
 			Timestamp: time.Now().Unix(),
-		})
+			Tokens:    []uint32{uint32((math.MaxUint32 / numIngesters) * i)},
+		}
 		ingestersByAddr[addr] = &ingesters[i]
 	}
 
-	ingestersRing := mockRing{
-		Counter: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "foo",
-		}),
-		ingesters:         ingesterDescs,
-		replicationFactor: 3,
-	}
+	store := consul.NewInMemoryClient(ring.GetCodec())
+	err := store.Put(context.Background(), ring.IngesterRingKey, &ring.Desc{
+		Ingesters: ingesterDescs,
+	})
+	require.NoError(t, err)
+
+	ingestersRing, err := ring.New(ring.Config{
+		KVStore: kv.Config{
+			Mock: store,
+		},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 3,
+	}, ring.IngesterRingKey, ring.IngesterRingKey)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return ingestersByAddr[addr], nil
@@ -957,45 +969,6 @@ func mustEqualMatcher(k, v string) *labels.Matcher {
 		panic(err)
 	}
 	return m
-}
-
-// mockRing doesn't do virtual nodes, just returns mod(key) + replicationFactor
-// ingesters.
-type mockRing struct {
-	prometheus.Counter
-	ingesters         []ring.IngesterDesc
-	replicationFactor uint32
-}
-
-func (r mockRing) Subring(key uint32, n int) (ring.ReadRing, error) {
-	return nil, fmt.Errorf("unimplemented")
-}
-
-func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
-	result := ring.ReplicationSet{
-		MaxErrors: 1,
-		Ingesters: buf[:0],
-	}
-	for i := uint32(0); i < r.replicationFactor; i++ {
-		n := (key + i) % uint32(len(r.ingesters))
-		result.Ingesters = append(result.Ingesters, r.ingesters[n])
-	}
-	return result, nil
-}
-
-func (r mockRing) GetAll() (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{
-		Ingesters: r.ingesters,
-		MaxErrors: 1,
-	}, nil
-}
-
-func (r mockRing) ReplicationFactor() int {
-	return int(r.replicationFactor)
-}
-
-func (r mockRing) IngesterCount() int {
-	return len(r.ingesters)
 }
 
 type mockIngester struct {

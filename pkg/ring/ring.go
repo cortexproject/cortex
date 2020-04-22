@@ -262,7 +262,8 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 	if numRequired < r.cfg.ReplicationFactor {
 		numRequired = r.cfg.ReplicationFactor
 	}
-	numRequired -= r.cfg.ReplicationFactor / 2
+	maxUnavailable := r.cfg.ReplicationFactor / 2
+	numRequired -= maxUnavailable
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {

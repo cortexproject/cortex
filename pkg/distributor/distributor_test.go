@@ -727,24 +727,27 @@ func TestSlowQueries(t *testing.T) {
 	nIngesters := 3
 	for _, shardByAllLabels := range []bool{true, false} {
 		for happy := 0; happy <= nIngesters; happy++ {
-			var expectedErr error
-			if nIngesters-happy > 1 {
-				expectedErr = promql.ErrStorage{Err: errFail}
-			}
-			ds, _, r := prepare(t, prepConfig{
-				numIngesters:     nIngesters,
-				happyIngesters:   happy,
-				numDistributors:  1,
-				queryDelay:       100 * time.Millisecond,
-				shardByAllLabels: shardByAllLabels,
+			t.Run(fmt.Sprintf("%t/%d", shardByAllLabels, happy), func(t *testing.T) {
+				var expectedErr error
+				if nIngesters-happy > 1 {
+					expectedErr = promql.ErrStorage{Err: errFail}
+				}
+
+				ds, _, r := prepare(t, prepConfig{
+					numIngesters:     nIngesters,
+					happyIngesters:   happy,
+					numDistributors:  1,
+					queryDelay:       100 * time.Millisecond,
+					shardByAllLabels: shardByAllLabels,
+				})
+				defer stopAll(ds, r)
+
+				_, err := ds[0].Query(ctx, 0, 10, nameMatcher)
+				assert.Equal(t, expectedErr, err)
+
+				_, err = ds[0].QueryStream(ctx, 0, 10, nameMatcher)
+				assert.Equal(t, expectedErr, err)
 			})
-			defer stopAll(ds, r)
-
-			_, err := ds[0].Query(ctx, 0, 10, nameMatcher)
-			assert.Equal(t, expectedErr, err)
-
-			_, err = ds[0].QueryStream(ctx, 0, 10, nameMatcher)
-			assert.Equal(t, expectedErr, err)
 		}
 	}
 }
@@ -861,8 +864,6 @@ type prepConfig struct {
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring) {
-	//	util.Logger = log.NewLogfmtLogger(os.Stderr)
-
 	ingesters := []mockIngester{}
 	for i := 0; i < cfg.happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -962,7 +963,9 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 	for _, d := range ds {
 		services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 	}
-	//services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	// Mock consul doesn't stop quickly, so don't wait.
+	r.StopAsync()
 }
 
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *client.WriteRequest {

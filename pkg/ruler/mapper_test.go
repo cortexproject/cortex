@@ -320,6 +320,58 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 
 }
 
+var (
+	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
+	specialCharFileEncoded = base64.URLEncoding.EncodeToString([]byte(specialCharFile))
+	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
+
+	specialCharactersRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+		specialCharFile: {
+			{
+				Name: "rulegroup_one",
+				Rules: []legacy_rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+	}
+)
+
+func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+	m := &mapper{
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: l,
+	}
+
+	t.Run("create special characters rulegroup", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, specialCharactersRuleSet)
+		require.True(t, updated)
+		require.Len(t, files, 1)
+		require.Equal(t, specialCharFilePath, files[0])
+		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, specialCharFilePath)
+		require.True(t, exists)
+		require.NoError(t, err)
+	})
+
+	t.Run("delete special characters rulegroup", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, map[string][]legacy_rulefmt.RuleGroup{})
+		require.True(t, updated)
+		require.Len(t, files, 0)
+
+		exists, err := afero.Exists(m.FS, specialCharFilePath)
+		require.False(t, exists)
+		require.NoError(t, err)
+	})
+}
+
 func sliceContains(t *testing.T, find string, in []string) bool {
 	t.Helper()
 

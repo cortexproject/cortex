@@ -16,6 +16,7 @@ package tracker
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -51,6 +52,8 @@ type Progress struct {
 	// RecentActive is true if the progress is recently active. Receiving any messages
 	// from the corresponding follower indicates the progress is active.
 	// RecentActive can be reset to false after an election timeout.
+	//
+	// TODO(tbg): the leader should always have this set to true.
 	RecentActive bool
 
 	// ProbeSent is used while this follower is in StateProbe. When ProbeSent is
@@ -232,6 +235,25 @@ func (pr *Progress) String() string {
 		if pr.Inflights.Full() {
 			fmt.Fprint(&buf, "[full]")
 		}
+	}
+	return buf.String()
+}
+
+// ProgressMap is a map of *Progress.
+type ProgressMap map[uint64]*Progress
+
+// String prints the ProgressMap in sorted key order, one Progress per line.
+func (m ProgressMap) String() string {
+	ids := make([]uint64, 0, len(m))
+	for k := range m {
+		ids = append(ids, k)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i] < ids[j]
+	})
+	var buf strings.Builder
+	for _, id := range ids {
+		fmt.Fprintf(&buf, "%d: %s\n", id, m[id])
 	}
 	return buf.String()
 }

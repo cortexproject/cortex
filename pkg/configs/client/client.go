@@ -88,14 +88,14 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since userconfig.ID) (*Co
 	return response, err
 }
 
-func doRequest(endpoint string, clientConfig httpclient.Config, since userconfig.ID) (*ConfigsResponse, error) {
+func doRequest(endpoint string, clientOpts httpclient.Config, since userconfig.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: clientConfig.HTTPClientTimeout}
-	if tlsConfig := clientConfig.GetTLSConfig(); tlsConfig != nil {
+	client := &http.Client{Timeout: clientOpts.HTTPClientTimeout}
+	if tlsConfig := clientOpts.GetTLSConfig(); tlsConfig != nil {
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}
 

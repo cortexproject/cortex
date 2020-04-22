@@ -12,12 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 // RuleStoreConfig conigures a rule store
 type RuleStoreConfig struct {
-	Type     string        `yaml:"type"`
-	ConfigDB client.Config `yaml:"configdb"`
+	Type     string            `yaml:"type"`
+	ConfigDB httpclient.Config `yaml:"configdb"`
 
 	// Object Storage Configs
 	Azure azure.BlobStorageConfig `yaml:"azure"`
@@ -29,7 +30,6 @@ type RuleStoreConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ConfigDB.RegisterFlagsWithPrefix("ruler.", f)
 	cfg.Azure.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)

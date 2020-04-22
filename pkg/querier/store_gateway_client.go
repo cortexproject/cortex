@@ -31,8 +31,7 @@ func newStoreGatewayClientFactory(cfg grpcclient.Config, reg prometheus.Register
 }
 
 func dialStoreGatewayClient(cfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
-	opts := []grpc.DialOption{grpc.WithInsecure()}
-	opts = append(opts, cfg.DialOption(grpcclient.Instrument(requestDuration))...)
+	opts := cfg.DialOption(grpcclient.Instrument(requestDuration))
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to dial store-gateway %s", addr)

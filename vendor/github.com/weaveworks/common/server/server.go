@@ -2,10 +2,8 @@ package server
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -18,6 +16,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	node_https "github.com/prometheus/node_exporter/https"
 	"golang.org/x/net/context"
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
@@ -38,12 +37,12 @@ type Config struct {
 	HTTPListenAddress string `yaml:"http_listen_address"`
 	HTTPListenPort    int    `yaml:"http_listen_port"`
 	HTTPConnLimit     int    `yaml:"http_listen_conn_limit"`
-	HTTPCertPath      string `yaml:"http_cert_path"`
-	HTTPKeyPath       string `yaml:"http_key_path"`
-	HTTPCAPath        string `yaml:"http_ca_path"`
 	GRPCListenAddress string `yaml:"grpc_listen_address"`
 	GRPCListenPort    int    `yaml:"grpc_listen_port"`
 	GRPCConnLimit     int    `yaml:"grpc_listen_conn_limit"`
+
+	HTTPTLSConfig node_https.TLSStruct `yaml:"http_tls_config"`
+	GRPCTLSConfig node_https.TLSStruct `yaml:"grpc_tls_config"`
 
 	RegisterInstrumentation bool `yaml:"register_instrumentation"`
 	ExcludeRequestInLog     bool `yaml:"-"`
@@ -78,9 +77,14 @@ var infinty = time.Duration(math.MaxInt64)
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenAddress, "server.http-listen-address", "", "HTTP server listen address.")
-	f.StringVar(&cfg.HTTPCertPath, "server.http-cert-path", "", "HTTP server cert path.")
-	f.StringVar(&cfg.HTTPKeyPath, "server.http-key-path", "", "HTTP server key path.")
-	f.StringVar(&cfg.HTTPKeyPath, "server.http-ca-path", "", "HTTP CA path.")
+	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
+	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
+	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
+	f.StringVar(&cfg.HTTPTLSConfig.ClientCAs, "server.http-tls-ca-path", "", "HTTP TLS Client CA path.")
+	f.StringVar(&cfg.GRPCTLSConfig.TLSCertPath, "server.grpc-tls-cert-path", "", "GRPC TLS server cert path.")
+	f.StringVar(&cfg.GRPCTLSConfig.TLSKeyPath, "server.grpc-tls-key-path", "", "GRPC TLS server key path.")
+	f.StringVar(&cfg.GRPCTLSConfig.ClientAuth, "server.grpc-tls-client-auth", "", "GRPC TLS Client Auth type.")
+	f.StringVar(&cfg.GRPCTLSConfig.ClientCAs, "server.grpc-tls-ca-path", "", "GRPC TLS Client CA path.")
 	f.IntVar(&cfg.HTTPListenPort, "server.http-listen-port", 80, "HTTP server listen port.")
 	f.IntVar(&cfg.HTTPConnLimit, "server.http-conn-limit", 0, "Maximum number of simultaneous http connections, <=0 to disable")
 	f.StringVar(&cfg.GRPCListenAddress, "server.grpc-listen-address", "", "gRPC server listen address.")
@@ -146,31 +150,20 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	// Setup TLS
-	var cert tls.Certificate
-	if cfg.HTTPCertPath != "" && cfg.HTTPKeyPath != "" {
-		cert, err = tls.LoadX509KeyPair(cfg.HTTPCertPath, cfg.HTTPKeyPath)
+	var httpTLSConfig *tls.Config
+	if len(cfg.HTTPTLSConfig.TLSCertPath) > 0 && len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 {
+		// Note: ConfigToTLSConfig from prometheus/node_exporter is awaiting security review.
+		httpTLSConfig, err = node_https.ConfigToTLSConfig(&cfg.HTTPTLSConfig)
 		if err != nil {
-			log.Warnf("error loading cert %s or key %s, tls disabled", cfg.HTTPCertPath, cfg.HTTPKeyPath)
+			return nil, fmt.Errorf("error generating http tls config: %v", err)
 		}
 	}
-
-	var caCertPool *x509.CertPool
-	if cfg.HTTPCAPath != "" {
-		caCert, err := ioutil.ReadFile(cfg.HTTPCAPath)
+	var grpcTLSConfig *tls.Config
+	if len(cfg.GRPCTLSConfig.TLSCertPath) > 0 && len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 {
+		// Note: ConfigToTLSConfig from prometheus/node_exporter is awaiting security review.
+		grpcTLSConfig, err = node_https.ConfigToTLSConfig(&cfg.GRPCTLSConfig)
 		if err != nil {
-			log.Warnf("error loading ca cert %s, tls disabled", cfg.HTTPCAPath)
-		} else {
-			caCertPool = x509.NewCertPool()
-			caCertPool.AppendCertsFromPEM(caCert)
-		}
-	}
-
-	var tlsConfig *tls.Config
-	if len(cert.Certificate) > 0 && caCertPool != nil {
-		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.RequireAndVerifyClientCert,
-			ClientCAs:    caCertPool,
+			return nil, fmt.Errorf("error generating grpc tls config: %v", err)
 		}
 	}
 
@@ -225,8 +218,8 @@ func New(cfg Config) (*Server, error) {
 		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
 	}
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
-	if tlsConfig != nil {
-		grpcCreds := credentials.NewTLS(tlsConfig)
+	if grpcTLSConfig != nil {
+		grpcCreds := credentials.NewTLS(grpcTLSConfig)
 		grpcOptions = append(grpcOptions, grpc.Creds(grpcCreds))
 	}
 	grpcServer := grpc.NewServer(grpcOptions...)
@@ -261,8 +254,8 @@ func New(cfg Config) (*Server, error) {
 		IdleTimeout:  cfg.HTTPServerIdleTimeout,
 		Handler:      middleware.Merge(httpMiddleware...).Wrap(router),
 	}
-	if tlsConfig != nil {
-		httpServer.TLSConfig = tlsConfig
+	if httpTLSConfig != nil {
+		httpServer.TLSConfig = httpTLSConfig
 	}
 
 	return &Server{
@@ -302,7 +295,7 @@ func (s *Server) Run() error {
 		if s.HTTPServer.TLSConfig == nil {
 			err = s.HTTPServer.Serve(s.httpListener)
 		} else {
-			err = s.HTTPServer.ServeTLS(s.httpListener, s.cfg.HTTPCertPath, s.cfg.HTTPKeyPath)
+			err = s.HTTPServer.ServeTLS(s.httpListener, s.cfg.HTTPTLSConfig.TLSCertPath, s.cfg.HTTPTLSConfig.TLSKeyPath)
 		}
 		if err == http.ErrServerClosed {
 			err = nil

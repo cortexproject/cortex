@@ -34,6 +34,7 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -59,6 +60,8 @@ var (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// Config parameters for the GRPC Client
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// Delay the evaluation of all rules by a set interval to give a buffer
@@ -95,6 +98,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
 
@@ -607,7 +611,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 	rgs := []*GroupStateDesc{}
 
 	for _, rlr := range rulers.Ingesters {
-		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())
+		conn, err := grpc.Dial(rlr.Addr, r.cfg.GRPCClientConfig.DialOption(nil, nil)...)
 		if err != nil {
 			return nil, err
 		}

@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
 	"path"
 	"time"
 
@@ -16,10 +15,9 @@ import (
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
-	name     string
-	endpoint *url.URL
-	client   *http.Client
-	timeout  time.Duration
+	name         string
+	clientConfig *httpclient.Config
+	client       *http.Client
 
 	// Whether this is the preferred backend from which picking up
 	// the response and sending it back to the client.
@@ -43,10 +41,9 @@ func NewProxyBackend(name string, config *httpclient.Config, preferred bool) *Pr
 	}
 
 	return &ProxyBackend{
-		name:      name,
-		endpoint:  config.HTTPEndpoint.URL,
-		timeout:   config.HTTPClientTimeout,
-		preferred: preferred,
+		name:         name,
+		clientConfig: config,
+		preferred:    preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
@@ -72,19 +69,19 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	}
 
 	// Replace the endpoint with the backend one.
-	req.URL.Scheme = b.endpoint.Scheme
-	req.URL.Host = b.endpoint.Host
+	req.URL.Scheme = b.clientConfig.HTTPEndpoint.Scheme
+	req.URL.Host = b.clientConfig.HTTPEndpoint.Host
 
 	// Prepend the endpoint path to the request path.
-	req.URL.Path = path.Join(b.endpoint.Path, req.URL.Path)
+	req.URL.Path = path.Join(b.clientConfig.HTTPEndpoint.Path, req.URL.Path)
 
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.
 	// - If the endpoint has user only, keep it and use the request password (if any).
 	// - If the endpoint has no user and no password, use the request auth (if any).
 	clientUser, clientPass, clientAuth := orig.BasicAuth()
-	endpointUser := b.endpoint.User.Username()
-	endpointPass, _ := b.endpoint.User.Password()
+	endpointUser := b.clientConfig.HTTPEndpoint.User.Username()
+	endpointPass, _ := b.clientConfig.HTTPEndpoint.User.Password()
 
 	if endpointUser != "" && endpointPass != "" {
 		req.SetBasicAuth(endpointUser, endpointPass)
@@ -99,7 +96,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
 	// Honor the read timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), b.clientConfig.HTTPClientTimeout)
 	defer cancel()
 
 	// Execute the request.

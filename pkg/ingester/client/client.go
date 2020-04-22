@@ -34,8 +34,7 @@ type closableHealthAndIngesterClient struct {
 
 // MakeIngesterClient makes a new IngesterClient
 func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	opts := []grpc.DialOption{grpc.WithInsecure()}
-	opts = append(opts, cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))...)
+	opts := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err

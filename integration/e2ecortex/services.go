@@ -74,14 +74,50 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 			"-target":                         "querier",
 			"-log.level":                      "warn",
 			"-distributor.replication-factor": "1",
-			// Configure the ingesters ring backend
+			// Ingesters ring backend.
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
-			// Query-frontend worker
+			// Query-frontend worker.
 			"-querier.frontend-client.backoff-min-period": "100ms",
 			"-querier.frontend-client.backoff-max-period": "100ms",
 			"-querier.frontend-client.backoff-retries":    "1",
 			"-querier.worker-parallelism":                 "1",
+			// Store-gateway ring backend.
+			"-experimental.store-gateway.sharding-enabled":              "true",
+			"-experimental.store-gateway.sharding-ring.store":           "consul",
+			"-experimental.store-gateway.sharding-ring.consul.hostname": consulAddress,
+			"-experimental.store-gateway.replication-factor":            "1",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+	)
+}
+
+func NewStoreGateway(name string, consulAddress string, flags map[string]string, image string) *CortexService {
+	return NewStoreGatewayWithConfigFile(name, consulAddress, "", flags, image)
+}
+
+func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "store-gateway",
+			"-log.level": "warn",
+			// Store-gateway ring backend.
+			"-experimental.store-gateway.sharding-enabled":              "true",
+			"-experimental.store-gateway.sharding-ring.store":           "consul",
+			"-experimental.store-gateway.sharding-ring.consul.hostname": consulAddress,
+			"-experimental.store-gateway.replication-factor":            "1",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -175,7 +211,7 @@ func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]st
 	)
 }
 
-func NewSingleBinary(name string, flags map[string]string, image string, httpPort, grpcPort int, otherPorts ...int) *CortexService {
+func NewSingleBinary(name string, flags map[string]string, image string, otherPorts ...int) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -184,7 +220,44 @@ func NewSingleBinary(name string, flags map[string]string, image string, httpPor
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
-			"-log.level": "warn",
+			"-target":       "all",
+			"-log.level":    "warn",
+			"-auth.enabled": "true",
+			// Query-frontend worker.
+			"-querier.frontend-client.backoff-min-period": "100ms",
+			"-querier.frontend-client.backoff-max-period": "100ms",
+			"-querier.frontend-client.backoff-retries":    "1",
+			"-querier.worker-parallelism":                 "1",
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Ingester.
+			"-ingester.final-sleep":          "0s",
+			"-ingester.join-after":           "0s",
+			"-ingester.min-ready-duration":   "0s",
+			"-ingester.concurrent-flushes":   "10",
+			"-ingester.max-transfer-retries": "10",
+			"-ingester.num-tokens":           "512",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+		otherPorts...,
+	)
+}
+
+func NewSingleBinaryWithConfigFile(name string, configFile string, flags map[string]string, image string, httpPort, grpcPort int, otherPorts ...int) *CortexService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			// Do not pass any extra default flags because the config should be drive by the config file.
+			"-target":      "all",
+			"-log.level":   "warn",
+			"-config.file": filepath.Join(e2e.ContainerSharedDir, configFile),
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

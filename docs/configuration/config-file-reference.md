@@ -125,6 +125,10 @@ api:
 # storage.
 [compactor: <compactor_config>]
 
+# The store_gateway_config configures the store-gateway service used by the
+# experimental blocks storage.
+[store_gateway: <store_gateway_config>]
+
 # The purger_config configures the purger which takes care of delete requests
 [purger: <purger_config>]
 
@@ -596,6 +600,13 @@ The `querier_config` configures the Cortex querier.
 # tracker, which also disables -querier.max-concurrent option.
 # CLI flag: -querier.active-query-tracker-dir
 [active_query_tracker_dir: <string> | default = "./active-query-tracker"]
+
+# Comma separated list of store-gateway addresses in DNS Service Discovery
+# format. This option should be set when using the experimental blocks storage
+# and the store-gateway sharding is disabled (when enabled, the store-gateway
+# instances form a ring and addresses are picked from the ring).
+# CLI flag: -experimental.querier.store-gateway-addresses
+[store_gateway_addresses: <string> | default = ""]
 ```
 
 ### `query_frontend_config`
@@ -1856,6 +1867,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `experimental.store-gateway.sharding-ring`
 - `ruler.ring`
 
 &nbsp;
@@ -1882,6 +1894,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `experimental.store-gateway.sharding-ring`
 - `ruler.ring`
 
 &nbsp;
@@ -2476,6 +2489,11 @@ bucket_store:
 # CLI flag: -experimental.tsdb.stripe-size
 [stripe_size: <int> | default = 16384]
 
+# True if the Cortex cluster is running the store-gateway service and the
+# querier should query the bucket store via the store-gateway.
+# CLI flag: -experimental.tsdb.store-gateway-enabled
+[store_gateway_enabled: <boolean> | default = false]
+
 # limit the number of concurrently opening TSDB's on startup
 # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
 [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
@@ -2640,6 +2658,72 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+```
+
+### `store_gateway_config`
+
+The `store_gateway_config` configures the store-gateway service used by the experimental blocks storage.
+
+```yaml
+# Shard blocks across multiple store gateway instances.
+# CLI flag: -experimental.store-gateway.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+sharding_ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, multi, memberlist (experimental).
+    # CLI flag: -experimental.store-gateway.sharding-ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -experimental.store-gateway.sharding-ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is:
+    # experimental.store-gateway.sharding-ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is:
+    # experimental.store-gateway.sharding-ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -experimental.store-gateway.sharding-ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which store gateways are considered unhealthy
+  # within the ring.
+  # CLI flag: -experimental.store-gateway.sharding-ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # The replication factor to use when sharding blocks.
+  # CLI flag: -experimental.store-gateway.replication-factor
+  [replication_factor: <int> | default = 3]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -experimental.store-gateway.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
 ```
 
 ### `purger_config`

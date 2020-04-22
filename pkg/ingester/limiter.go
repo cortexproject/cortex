@@ -18,18 +18,18 @@ type RingCount interface {
 	HealthyInstancesCount() int
 }
 
-// SeriesLimiter implements primitives to get the maximum number of series
+// Limiter implements primitives to get the maximum number of series
 // an ingester can handle for a specific tenant
-type SeriesLimiter struct {
+type Limiter struct {
 	limits            *validation.Overrides
 	ring              RingCount
 	replicationFactor int
 	shardByAllLabels  bool
 }
 
-// NewSeriesLimiter makes a new in-memory series limiter
-func NewSeriesLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int, shardByAllLabels bool) *SeriesLimiter {
-	return &SeriesLimiter{
+// NewLimiter makes a new in-memory series limiter
+func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int, shardByAllLabels bool) *Limiter {
+	return &Limiter{
 		limits:            limits,
 		ring:              ring,
 		replicationFactor: replicationFactor,
@@ -39,7 +39,7 @@ func NewSeriesLimiter(limits *validation.Overrides, ring RingCount, replicationF
 
 // AssertMaxSeriesPerMetric limit has not been reached compared to the current
 // number of series in input and returns an error if so.
-func (l *SeriesLimiter) AssertMaxSeriesPerMetric(userID string, series int) error {
+func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int) error {
 	actualLimit := l.maxSeriesPerMetric(userID)
 	if series < actualLimit {
 		return nil
@@ -53,7 +53,7 @@ func (l *SeriesLimiter) AssertMaxSeriesPerMetric(userID string, series int) erro
 
 // AssertMaxSeriesPerUser limit has not been reached compared to the current
 // number of series in input and returns an error if so.
-func (l *SeriesLimiter) AssertMaxSeriesPerUser(userID string, series int) error {
+func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
 	actualLimit := l.maxSeriesPerUser(userID)
 	if series < actualLimit {
 		return nil
@@ -66,11 +66,11 @@ func (l *SeriesLimiter) AssertMaxSeriesPerUser(userID string, series int) error 
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
-func (l *SeriesLimiter) MaxSeriesPerQuery(userID string) int {
+func (l *Limiter) MaxSeriesPerQuery(userID string) int {
 	return l.limits.MaxSeriesPerQuery(userID)
 }
 
-func (l *SeriesLimiter) maxSeriesPerMetric(userID string) int {
+func (l *Limiter) maxSeriesPerMetric(userID string) int {
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
 
@@ -96,7 +96,7 @@ func (l *SeriesLimiter) maxSeriesPerMetric(userID string) int {
 	return localLimit
 }
 
-func (l *SeriesLimiter) maxSeriesPerUser(userID string) int {
+func (l *Limiter) maxSeriesPerUser(userID string) int {
 	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
 
 	// The global limit is supported only when shard-by-all-labels is enabled,
@@ -118,7 +118,7 @@ func (l *SeriesLimiter) maxSeriesPerUser(userID string) int {
 	return localLimit
 }
 
-func (l *SeriesLimiter) convertGlobalToLocalLimit(globalLimit int) int {
+func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
 	if globalLimit == 0 {
 		return 0
 	}
@@ -138,7 +138,7 @@ func (l *SeriesLimiter) convertGlobalToLocalLimit(globalLimit int) int {
 	return 0
 }
 
-func (l *SeriesLimiter) minNonZero(first, second int) int {
+func (l *Limiter) minNonZero(first, second int) int {
 	if first == 0 || (second != 0 && first > second) {
 		return second
 	}

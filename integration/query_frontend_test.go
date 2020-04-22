@@ -159,6 +159,8 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	wg.Wait()
 
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser), "cortex_query_frontend_queries_total"))
+
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
 	assertServiceMetricsPrefixes(t, Ingester, ingester)

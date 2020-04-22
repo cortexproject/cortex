@@ -323,13 +323,15 @@ func main() {
 
 	// Generate documentation markdown.
 	data := struct {
-		ConfigFile           string
-		TSDBConfigBlock      string
-		CompactorConfigBlock string
+		ConfigFile              string
+		TSDBConfigBlock         string
+		StoreGatewayConfigBlock string
+		CompactorConfigBlock    string
 	}{
-		ConfigFile:           generateBlocksMarkdown(blocks),
-		TSDBConfigBlock:      generateBlockMarkdown(blocks, "tsdb_config", "tsdb"),
-		CompactorConfigBlock: generateBlockMarkdown(blocks, "compactor_config", "compactor"),
+		ConfigFile:              generateBlocksMarkdown(blocks),
+		TSDBConfigBlock:         generateBlockMarkdown(blocks, "tsdb_config", "tsdb"),
+		StoreGatewayConfigBlock: generateBlockMarkdown(blocks, "store_gateway_config", "store_gateway"),
+		CompactorConfigBlock:    generateBlockMarkdown(blocks, "compactor_config", "compactor"),
 	}
 
 	// Load the template file.

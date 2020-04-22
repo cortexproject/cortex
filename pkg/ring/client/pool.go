@@ -146,6 +146,11 @@ func (p *Pool) Count() int {
 }
 
 func (p *Pool) removeStaleClients() {
+	// Only if this pool is based on the ring.
+	if p.ring == nil {
+		return
+	}
+
 	clients := map[string]struct{}{}
 	replicationSet, err := p.ring.GetAll()
 	if err != nil {

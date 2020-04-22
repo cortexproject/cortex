@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
-func TestNewStoreGatewayClientFactory(t *testing.T) {
+func Test_newStoreGatewayClientFactory(t *testing.T) {
 	// Create a GRPC server used to query the mocked service.
 	grpcServer := grpc.NewServer()
 	defer grpcServer.GracefulStop()
@@ -39,7 +39,7 @@ func TestNewStoreGatewayClientFactory(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := NewStoreGatewayClientFactory(cfg, reg)
+	factory := newStoreGatewayClientFactory(cfg, reg)
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())

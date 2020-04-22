@@ -35,6 +35,8 @@ type WALConfig struct {
 	Recover            bool          `yaml:"recover_from_wal"`
 	Dir                string        `yaml:"wal_dir"`
 	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+	// We always checkpoint during shutdown. This option exists for the tests.
+	checkpointDuringShutdown bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -44,6 +46,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", true, "Enable checkpointing of in-memory chunks. It should always be true when using normally. Set it to false iff you are doing some small tests as there is no mechanism to delete the old WAL yet if checkpoint is disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
+	cfg.checkpointDuringShutdown = true
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -172,9 +175,11 @@ func (w *walWrapper) run() {
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
-			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
-			if err := w.performCheckpoint(true); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+			if w.cfg.checkpointDuringShutdown {
+				level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
+				if err := w.performCheckpoint(true); err != nil {
+					level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+				}
 			}
 			return
 		}

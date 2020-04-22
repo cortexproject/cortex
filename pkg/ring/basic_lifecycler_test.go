@@ -68,7 +68,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 				require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 					desc := testData.initialInstanceDesc
 
-					ringDesc := getOrCreateRingDesc(in)
+					ringDesc := GetOrCreateRingDesc(in)
 					ringDesc.AddIngester(testData.initialInstanceID, desc.Addr, desc.Zone, desc.Tokens, desc.State)
 					return ringDesc, true, nil
 				}))
@@ -288,7 +288,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 
 		// Remove some tokens.
 		return store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
-			ringDesc := getOrCreateRingDesc(in)
+			ringDesc := GetOrCreateRingDesc(in)
 			ringDesc.AddIngester(testInstanceID, desc.Addr, desc.Zone, Tokens{4, 5}, desc.State)
 			return ringDesc, true, nil
 		}) == nil

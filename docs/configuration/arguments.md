@@ -126,6 +126,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Set this flag to `true` for the new behaviour.
 
+   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier. If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
+
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
 - `-distributor.extra-query-delay`

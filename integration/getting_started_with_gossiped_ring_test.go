@@ -3,7 +3,6 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -32,13 +31,11 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	}
 
 	// This cortex will fail to join the cluster configured in yaml file. That's fine.
-	cortex1 := e2ecortex.NewSingleBinary("cortex-1", e2e.MergeFlags(flags, map[string]string{
-		"-config.file":              filepath.Join(e2e.ContainerSharedDir, "config1.yaml"),
+	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", "config1.yaml", e2e.MergeFlags(flags, map[string]string{
 		"-ingester.lifecycler.addr": networkName + "-cortex-1", // Ingester's hostname in docker setup
 	}), "", 9109, 9195)
 
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", e2e.MergeFlags(flags, map[string]string{
-		"-config.file":              filepath.Join(e2e.ContainerSharedDir, "config2.yaml"),
+	cortex2 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-2", "config2.yaml", e2e.MergeFlags(flags, map[string]string{
 		"-ingester.lifecycler.addr": networkName + "-cortex-2", // Ingester's hostname in docker setup
 		"-memberlist.join":          networkName + "-cortex-1:7946",
 	}), "", 9209, 9295)

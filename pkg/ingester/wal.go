@@ -386,7 +386,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 // checkpointSeries write the chunks of the series to the checkpoint.
 func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	var err error
-	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
+	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
 	if err != nil {
 		return wireChunks, err
 	}

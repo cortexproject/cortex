@@ -407,7 +407,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 	// Run every test in both sharding modes.
 	for _, shardByAllLabels := range []bool{true, false} {
 
-		// Test with between 3 and 10 ingesters.
+		// Test with between 2 and 10 ingesters.
 		for numIngesters := 2; numIngesters < 10; numIngesters++ {
 
 			// Test with between 0 and numIngesters "happy" ingesters.

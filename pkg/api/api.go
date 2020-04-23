@@ -305,6 +305,12 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true, "GET", "POST", "DELETE")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true, "GET")
 
+	// if we have externally registered routes then we need to return the server handler
+	//  so that we continue to use all standard middleware
+	if registerRoutesExternally {
+		return a.server.HTTPServer.Handler
+	}
+
 	return router
 }
 

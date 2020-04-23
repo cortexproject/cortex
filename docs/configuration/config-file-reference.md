@@ -540,6 +540,11 @@ lifecycler:
 # CLI flag: -ingester.spread-flushes
 [spread_flushes: <boolean> | default = true]
 
+# Period at which metadata we have not seen will remain in memory before being
+# deleted.
+# CLI flag: -ingester.metadata-retain-period
+[metadata_retain_period: <duration> | default = 10m]
+
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
@@ -2112,6 +2117,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # care, if chunks are less than this size they will be discarded.
 # CLI flag: -ingester.min-chunk-length
 [min_chunk_length: <int> | default = 0]
+
+# The maximum number of active metrics with metadata per user, per ingester. 0
+# to disable.
+# CLI flag: -ingester.max-metadata-per-user
+[max_metadata_per_user: <int> | default = 8000]
+
+# The maximum number of metadata per metric, per ingester. 0 to disable.
+# CLI flag: -ingester.max-metadata-per-metric
+[max_metadata_per_metric: <int> | default = 10]
+
+# The maximum number of active metrics with metadata per user, across the
+# cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is
+# true.
+# CLI flag: -ingester.max-global-metadata-per-user
+[max_global_metadata_per_user: <int> | default = 0]
+
+# The maximum number of metadata per metric, across the cluster. 0 to disable.
+# CLI flag: -ingester.max-global-metadata-per-metric
+[max_global_metadata_per_metric: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query.
 # CLI flag: -store.query-chunk-limit

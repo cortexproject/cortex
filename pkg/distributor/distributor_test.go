@@ -836,7 +836,6 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 }
 
 func TestDistributor_MetricsMetadata(t *testing.T) {
-
 	// Create distributor
 	ds, _, _ := prepare(t, prepConfig{
 		numIngesters:     3,

@@ -30,6 +30,7 @@ services:
     image: jaegertracing/all-in-one
     ports:
       - 16686:16686
+      - "14268"
 
   cortex-1:
     build:
@@ -41,8 +42,9 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_COLLECTOR_URL=http://jaeger:14268
-      - JAEGER_TAGS=cortex=1
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=cortex-1
       - JAEGER_SAMPLER_TYPE=const
       - JAEGER_SAMPLER_PARAM=1
     ports:
@@ -61,8 +63,9 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_COLLECTOR_URL=http://jaeger:14268
-      - JAEGER_TAGS=cortex=1
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=cortex-2
       - JAEGER_SAMPLER_TYPE=const
       - JAEGER_SAMPLER_PARAM=1
     ports:

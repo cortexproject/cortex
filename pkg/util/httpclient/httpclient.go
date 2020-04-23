@@ -39,9 +39,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.HTTPEndpoint, prefix+".http-endpoint", "Endpoint to connect to")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+".http-client-timeout", 5*time.Second, "Timeout for connecting to the endpoint.")
 
-	f.StringVar(&cfg.TLSCertPath, prefix+".tls-cert-path", "", "HTTP TLS cert path.")
-	f.StringVar(&cfg.TLSKeyPath, prefix+".tls-key-path", "", "HTTP TLS key path.")
-	f.StringVar(&cfg.TLSCAPath, prefix+".tls-ca-path", "", "HTTP TLS CA path.")
+	f.StringVar(&cfg.TLSCertPath, prefix+".http-tls-cert-path", "", "TLS cert path for the HTTP client")
+	f.StringVar(&cfg.TLSKeyPath, prefix+".http-tls-key-path", "", "TLS key path for the HTTP client")
+	f.StringVar(&cfg.TLSCAPath, prefix+".http-tls-ca-path", "", "TLS CA path for the HTTP client")
 }
 
 // GetTLSConfig initialises tls.Config from config options.

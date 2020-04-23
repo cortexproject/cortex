@@ -46,9 +46,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	cfg.BackoffConfig.RegisterFlags(prefix, f)
 
-	f.StringVar(&cfg.TLSCertPath, prefix+".tls-cert-path", "", "gRPC TLS cert path.")
-	f.StringVar(&cfg.TLSKeyPath, prefix+".tls-key-path", "", "gRPC TLS key path.")
-	f.StringVar(&cfg.TLSCAPath, prefix+".tls-ca-path", "", "gRPC TLS CA path.")
+	f.StringVar(&cfg.TLSCertPath, prefix+".grpc-tls-cert-path", "", "TLS cert path for the GRPC client")
+	f.StringVar(&cfg.TLSKeyPath, prefix+".grpc-tls-key-path", "", "TLS key path for the GRPC client")
+	f.StringVar(&cfg.TLSCAPath, prefix+".grpc-tls-ca-path", "", "TLS CA path for the GRPC client")
 }
 
 // CallOptions returns the config in terms of CallOptions.

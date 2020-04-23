@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/go-kit/kit/log"
@@ -311,7 +313,9 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		return a.server.HTTPServer.Handler
 	}
 
-	return router
+	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
+		return "httpGRPCBridge"
+	}))
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the

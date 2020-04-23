@@ -26,6 +26,11 @@ services:
     ports:
       - 9090:9090
 
+  jaeger:
+    image: jaegertracing/all-in-one
+    ports:
+      - 16686:16686
+
   cortex-1:
     build:
       context:    .
@@ -35,6 +40,11 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_COLLECTOR_URL=http://jaeger:14268
+      - JAEGER_TAGS=cortex=1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8001:8001
     volumes:
@@ -50,6 +60,11 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_COLLECTOR_URL=http://jaeger:14268
+      - JAEGER_TAGS=cortex=1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8002:8002
     volumes:

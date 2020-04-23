@@ -836,19 +836,26 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 }
 
 func TestDistributor_MetricsMetadata(t *testing.T) {
+
 	// Create distributor
-	d, _ := prepare(t, 3, 3, time.Duration(0), false, nil, nil)
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	ds, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           nil,
+	})
+	defer services.StopAndAwaitTerminated(context.Background(), ds[0]) //nolint:errcheck
 
 	// Push metadata
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	req := makeWriteRequest(0, 0, 10)
-	_, err := d.Push(ctx, req)
+	_, err := ds[0].Push(ctx, req)
 	require.NoError(t, err)
 
 	// Asert on metric metadata
-	metadata, err := d.MetricsMetadata(ctx)
+	metadata, err := ds[0].MetricsMetadata(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 10, len(metadata))
 }

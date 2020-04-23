@@ -153,7 +153,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				ServerServicePort: 0,
 				ServerMetricsPort: 0,
 				ClientConfig: httpclient.Config{
-					HTTPClientTimeout: time.Second,
+					ClientTimeout: time.Second,
 				},
 			}
 

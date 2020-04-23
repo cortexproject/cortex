@@ -52,7 +52,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since userconfig.ID) (map[
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.Config.HTTPEndpoint.URL.String(), suffix)
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.Config.Endpoint.URL.String(), suffix)
 	var response *ConfigsResponse
 	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
@@ -78,7 +78,7 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since userconfig.ID) (*Co
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.Config.HTTPEndpoint.URL.String(), suffix)
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.Config.Endpoint.URL.String(), suffix)
 	var response *ConfigsResponse
 	err := instrument.CollectedRequest(ctx, "GetAlerts", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
@@ -94,7 +94,7 @@ func doRequest(endpoint string, clientOpts httpclient.Config, since userconfig.I
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: clientOpts.HTTPClientTimeout}
+	client := &http.Client{Timeout: clientOpts.ClientTimeout}
 	if tlsConfig := clientOpts.GetTLSConfig(); tlsConfig != nil {
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}

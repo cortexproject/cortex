@@ -14,8 +14,9 @@ import (
 
 // Config is the config for the HTTP client
 type Config struct {
-	HTTPEndpoint      flagext.URLValue `yaml:"http_endpoint"`
-	HTTPClientTimeout time.Duration    `yaml:"http_client_timeout"`
+	Endpoint           flagext.URLValue `yaml:"endpoint"`
+	ClientTimeout      time.Duration    `yaml:"client_timeout"`
+	BackendReadTimeout time.Duration    `yaml:"backend_read_timeout"`
 
 	TLSCertPath string `yaml:"tls_cert_path"`
 	TLSKeyPath  string `yaml:"tls_key_path"`
@@ -29,15 +30,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func ConfigFromURLAndTimeout(u *url.URL, timeout time.Duration) *Config {
 	return &Config{
-		HTTPEndpoint:      flagext.URLValue{URL: u},
-		HTTPClientTimeout: timeout,
+		Endpoint:      flagext.URLValue{URL: u},
+		ClientTimeout: timeout,
 	}
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.Var(&cfg.HTTPEndpoint, prefix+".http-endpoint", "Endpoint to connect to")
-	f.DurationVar(&cfg.HTTPClientTimeout, prefix+".http-client-timeout", 5*time.Second, "Timeout for connecting to the endpoint.")
+	f.Var(&cfg.Endpoint, prefix+".http-endpoint", "Endpoint to connect to")
+	f.DurationVar(&cfg.ClientTimeout, prefix+".http-client-timeout", 5*time.Second, "Timeout for connecting to the endpoint")
+	f.DurationVar(&cfg.BackendReadTimeout, prefix+".http-backend-read-timeout", 90*time.Second, "Timeout for reading from backend")
 
 	f.StringVar(&cfg.TLSCertPath, prefix+".http-tls-cert-path", "", "TLS cert path for the HTTP client")
 	f.StringVar(&cfg.TLSKeyPath, prefix+".http-tls-key-path", "", "TLS key path for the HTTP client")

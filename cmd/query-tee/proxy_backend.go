@@ -29,12 +29,12 @@ func NewProxyBackend(name string, config *httpclient.Config, preferred bool) *Pr
 	roundTripper := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
+			Timeout:   config.ClientTimeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
-		IdleConnTimeout:     90 * time.Second,
+		IdleConnTimeout:     config.BackendReadTimeout,
 	}
 	if tlsConfig := config.GetTLSConfig(); tlsConfig != nil {
 		roundTripper.TLSClientConfig = tlsConfig
@@ -69,19 +69,19 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	}
 
 	// Replace the endpoint with the backend one.
-	req.URL.Scheme = b.clientConfig.HTTPEndpoint.Scheme
-	req.URL.Host = b.clientConfig.HTTPEndpoint.Host
+	req.URL.Scheme = b.clientConfig.Endpoint.Scheme
+	req.URL.Host = b.clientConfig.Endpoint.Host
 
 	// Prepend the endpoint path to the request path.
-	req.URL.Path = path.Join(b.clientConfig.HTTPEndpoint.Path, req.URL.Path)
+	req.URL.Path = path.Join(b.clientConfig.Endpoint.Path, req.URL.Path)
 
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.
 	// - If the endpoint has user only, keep it and use the request password (if any).
 	// - If the endpoint has no user and no password, use the request auth (if any).
 	clientUser, clientPass, clientAuth := orig.BasicAuth()
-	endpointUser := b.clientConfig.HTTPEndpoint.User.Username()
-	endpointPass, _ := b.clientConfig.HTTPEndpoint.User.Password()
+	endpointUser := b.clientConfig.Endpoint.User.Username()
+	endpointPass, _ := b.clientConfig.Endpoint.User.Password()
 
 	if endpointUser != "" && endpointPass != "" {
 		req.SetBasicAuth(endpointUser, endpointPass)
@@ -96,7 +96,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
 	// Honor the read timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), b.clientConfig.HTTPClientTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), b.clientConfig.ClientTimeout)
 	defer cancel()
 
 	// Execute the request.

@@ -71,7 +71,7 @@ func NewProxy(cfg Config, logger log.Logger, registerer prometheus.Registerer) (
 		}
 
 		clientConfig := cfg.ClientConfig
-		clientConfig.HTTPEndpoint = flagext.URLValue{URL: u}
+		clientConfig.Endpoint = flagext.URLValue{URL: u}
 		p.backends = append(p.backends, NewProxyBackend(name, &clientConfig, preferred))
 	}
 

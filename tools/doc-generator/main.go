@@ -18,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
@@ -33,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -162,7 +162,7 @@ var (
 		},
 		{
 			name:       "configstore_config",
-			structType: reflect.TypeOf(config_client.Config{}),
+			structType: reflect.TypeOf(httpclient.Config{}),
 			desc:       "The configstore_config configures the config database storing rules and alerts, and is used by the Cortex alertmanager.",
 		},
 		{

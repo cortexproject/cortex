@@ -13,6 +13,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 func Test_NewProxy(t *testing.T) {
@@ -150,7 +152,9 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:  0,
 				ServerMetricsPort:  0,
-				BackendReadTimeout: time.Second,
+				ClientConfig: httpclient.Config{
+					HTTPClientTimeout: time.Second,
+				},
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), nil)

@@ -94,6 +94,8 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 			}
 			opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 		}
+	} else {
+		opts = append(opts, grpc.WithInsecure())
 	}
 
 	return append(opts, grpc.WithDefaultCallOptions(cfg.CallOptions()...),

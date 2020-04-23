@@ -34,8 +34,10 @@
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475
 * [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
+* [ENHANCEMENT] Experimental WAL: New metrics `cortex_ingester_wal_logged_bytes_total` and `cortex_ingester_checkpoint_logged_bytes_total` added to track total bytes logged to disk for WAL and checkpoints. #2497
   * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
   * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
+* [ENHANCEMENT] Add de-duplicated chunks counter `cortex_chunk_store_deduped_chunks_total` which counts every chunk not sent to the store because it was already sent by another replica. #2485
 * [ENHANCEMENT] query-frontend now also logs the POST data of long queries. #2481
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
@@ -133,6 +135,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
 * [FEATURE] Ingesters can now have an optional availability zone set, to ensure metric replication is distributed across zones. This is set via the `-ingester.availability-zone` flag or the `availability_zone` field in the config file. #2317
 * [ENHANCEMENT] Better re-use of connections to DynamoDB and S3. #2268
+* [ENHANCEMENT] Reduce number of goroutines used while executing a single index query. #2280
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
 * [ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. #2290
 * [ENHANCEMENT] Experimental TSDB: Removed gRPC server to communicate between querier and BucketStore. #2324
@@ -145,6 +148,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Register the metrics of the WAL. #2295
 * [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
+* [BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. #2503
 
 ### Known issues
 

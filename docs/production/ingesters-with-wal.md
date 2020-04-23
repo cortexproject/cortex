@@ -29,6 +29,34 @@ _The WAL is currently considered experimental._
 
 2. As there are no transfers between ingesters, the tokens are stored and recovered from disk between rollout/restarts. This is [not a new thing](https://github.com/cortexproject/cortex/pull/1750) but it is effective when using statefulsets.
 
+## Disk space requirements
+
+Based on tests in real world:
+
+* Numbers from an ingester with 1.2M series, ~80k samples/s ingested and ~15s scrape interval.
+* Checkpoint period was 20mins, so we need to scale up the number of WAL files to account for the default of 30mins. There were 87 WAL files (an upper estimate) in 20 mins.
+* At any given point, we have 2 complete checkpoints present on the disk and a 2 sets of WAL files between checkpoints (and now).
+* This peaks at 3 checkpoints and 3 lots of WAL momentarily, as we remove the old checkpoints.
+
+| Observation | Disk utilisation |
+|---|---|
+| Size of 1 checkpoint for 1.2M series | 1410 MiB |
+| Avg checkpoint size per series | 1.2 KiB |
+| No. of WAL files between checkpoints (30m checkpoint) | 30 mins x 87 / 20mins = 130 |
+| Size per WAL file | 32 MiB (reduced from Prometheus) |
+| Total size of WAL | 4160 MiB |
+| Steady state usage | 2 x 1410 MiB + 2 x 4160 MiB = ~11 GiB |
+| Peak usage | 3 x 1410 MiB + 3  x 4160 MiB = ~16.3 GiB |
+
+For 1M series at 15s scrape interval with checkpoint duration of 30m
+
+| Usage | Disk utilisation |
+|---|---|
+| Steady state usage | 11 GiB / 1.2 = ~9.2 GiB |
+| Peak usage | 17 GiB / 1.2 = ~13.6 GiB |
+
+You should not target 100% disk utilisation; 70% is a safer margin, hence for a 1M active series ingester, a 20GiB disk should suffice.
+
 ## Migrating from stateless deployments
 
 The ingester _deployment without WAL_ and _statefulset with WAL_ should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.

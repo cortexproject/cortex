@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -58,7 +57,7 @@ func (c *storeGatewayClient) String() string {
 	return c.conn.Target()
 }
 
-func newStoreGatewayClientPool(r ring.ReadRing, clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) *client.Pool {
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
 		HealthCheckEnabled: true,
@@ -72,5 +71,5 @@ func newStoreGatewayClientPool(r ring.ReadRing, clientCfg grpcclient.Config, log
 		ConstLabels: map[string]string{"client": "querier"},
 	})
 
-	return client.NewPool("store-gateway", poolCfg, r, newStoreGatewayClientFactory(clientCfg, reg), clientsCount, logger)
+	return client.NewPool("store-gateway", poolCfg, discovery, newStoreGatewayClientFactory(clientCfg, reg), clientsCount, logger)
 }

@@ -148,10 +148,10 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 
 			// Start the proxy.
 			cfg := Config{
-				BackendEndpoints:   strings.Join(backendURLs, ","),
-				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
-				ServerServicePort:  0,
-				ServerMetricsPort:  0,
+				BackendEndpoints:  strings.Join(backendURLs, ","),
+				PreferredBackend:  strconv.Itoa(testData.preferredBackendIdx),
+				ServerServicePort: 0,
+				ServerMetricsPort: 0,
 				ClientConfig: httpclient.Config{
 					HTTPClientTimeout: time.Second,
 				},

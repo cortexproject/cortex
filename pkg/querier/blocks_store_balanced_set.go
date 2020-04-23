@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -29,7 +30,7 @@ type blocksStoreBalancedSet struct {
 	dnsProvider      *dns.Provider
 }
 
-func newBlocksStoreBalancedSet(serviceAddresses []string, logger log.Logger, reg prometheus.Registerer) *blocksStoreBalancedSet {
+func newBlocksStoreBalancedSet(serviceAddresses []string, clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) *blocksStoreBalancedSet {
 	const dnsResolveInterval = 10 * time.Second
 
 	dnsProviderReg := extprom.WrapRegistererWithPrefix("cortex_storegateway_client_", reg)
@@ -37,7 +38,7 @@ func newBlocksStoreBalancedSet(serviceAddresses []string, logger log.Logger, reg
 	s := &blocksStoreBalancedSet{
 		serviceAddresses: serviceAddresses,
 		dnsProvider:      dns.NewProvider(logger, dnsProviderReg, dns.GolangResolverType),
-		clientsPool:      newStoreGatewayClientPool(nil, logger, reg),
+		clientsPool:      newStoreGatewayClientPool(nil, clientCfg, logger, reg),
 	}
 
 	s.Service = services.NewTimerService(dnsResolveInterval, s.starting, s.resolve, nil)

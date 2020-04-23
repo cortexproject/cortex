@@ -58,17 +58,7 @@ func (c *storeGatewayClient) String() string {
 	return c.conn.Target()
 }
 
-func newStoreGatewayClientPool(r ring.ReadRing, logger log.Logger, reg prometheus.Registerer) *client.Pool {
-	// We prefer sane defaults instead of exposing further config options.
-	clientCfg := grpcclient.Config{
-		MaxRecvMsgSize:      100 << 20,
-		MaxSendMsgSize:      16 << 20,
-		UseGzipCompression:  false,
-		RateLimit:           0,
-		RateLimitBurst:      0,
-		BackoffOnRatelimits: false,
-	}
-
+func newStoreGatewayClientPool(r ring.ReadRing, clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) *client.Pool {
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
 		HealthCheckEnabled: true,

@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -28,10 +29,10 @@ type blocksStoreReplicationSet struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func newBlocksStoreReplicationSet(storesRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
+func newBlocksStoreReplicationSet(storesRing *ring.Ring, clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:  storesRing,
-		clientsPool: newStoreGatewayClientPool(storesRing, logger, reg),
+		clientsPool: newStoreGatewayClientPool(storesRing, clientCfg, logger, reg),
 	}
 
 	var err error

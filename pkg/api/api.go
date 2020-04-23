@@ -314,7 +314,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	}
 
 	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
-		return "httpGRPCBridge"
+		return "internalQuerier"
 	}))
 }
 

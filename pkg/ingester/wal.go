@@ -94,12 +94,14 @@ type walWrapper struct {
 	bytesPool     sync.Pool
 
 	// Metrics.
-	checkpointDeleteFail    prometheus.Counter
-	checkpointDeleteTotal   prometheus.Counter
-	checkpointCreationFail  prometheus.Counter
-	checkpointCreationTotal prometheus.Counter
-	checkpointDuration      prometheus.Summary
-	walRecordsLogged        prometheus.Counter
+	checkpointDeleteFail       prometheus.Counter
+	checkpointDeleteTotal      prometheus.Counter
+	checkpointCreationFail     prometheus.Counter
+	checkpointCreationTotal    prometheus.Counter
+	checkpointDuration         prometheus.Summary
+	checkpointLoggedBytesTotal prometheus.Counter
+	walLoggedBytesTotal        prometheus.Counter
+	walRecordsLogged           prometheus.Counter
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -156,6 +158,14 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Name: "cortex_ingester_wal_records_logged_total",
 		Help: "Total number of WAL records logged.",
 	})
+	w.checkpointLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_checkpoint_logged_bytes_total",
+		Help: "Total number of bytes written to disk for checkpointing.",
+	})
+	w.walLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_logged_bytes_total",
+		Help: "Total number of bytes written to disk for WAL records.",
+	})
 
 	w.wait.Add(1)
 	go w.run()
@@ -187,6 +197,7 @@ func (w *walWrapper) Log(record *WALRecord) error {
 				return err
 			}
 			w.walRecordsLogged.Inc()
+			w.walLoggedBytesTotal.Add(float64(len(buf)))
 			buf = buf[:0]
 		}
 		if len(record.Samples) > 0 {
@@ -195,8 +206,8 @@ func (w *walWrapper) Log(record *WALRecord) error {
 				return err
 			}
 			w.walRecordsLogged.Inc()
+			w.walLoggedBytesTotal.Add(float64(len(buf)))
 		}
-
 		return nil
 	}
 }
@@ -451,7 +462,11 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		return wireChunks, b, err
 	}
 
-	return wireChunks, b, cp.Log(b)
+	err = cp.Log(b)
+	if err == nil {
+		w.checkpointLoggedBytesTotal.Add(float64(len(b)))
+	}
+	return wireChunks, b, err
 }
 
 type walRecoveryParameters struct {

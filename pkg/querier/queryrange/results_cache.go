@@ -56,7 +56,6 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
 	Extract(start, end int64, from Response) Response
-	ExtractCacheGenNumbersFromHeaders(from Response) []string
 	ResponseWithoutHeaders(resp Response) Response
 }
 
@@ -74,11 +73,6 @@ func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Resp
 		},
 		Headers: promRes.Headers,
 	}
-}
-
-// ExtractCacheGenNumbersFromHeaders extracts gen numbers from a response.
-func (PrometheusResponseExtractor) ExtractCacheGenNumbersFromHeaders(from Response) []string {
-	return getHeaderValuesWithName(from, ResultsCacheGenNumberHeaderName)
 }
 
 // ResponseWithoutHeaders is useful in caching data without headers since
@@ -201,12 +195,29 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(r Response) bool {
+func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
 	headerValues := getHeaderValuesWithName(r, cachecontrolHeader)
 	for _, v := range headerValues {
 		if v == noCacheValue {
 			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
 			return false
+		}
+	}
+
+	if s.cacheGenNumberLoader != nil {
+		genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
+		genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+
+		if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+			return false
+		}
+
+		for _, gen := range genNumbersFromResp {
+			if gen != genNumberFromCtx {
+				level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+				return false
+			}
 		}
 	}
 
@@ -233,20 +244,8 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheResponse(response) {
+	if !s.shouldCacheResponse(ctx, response) {
 		return response, []Extent{}, nil
-	}
-
-	if s.cacheGenNumberLoader != nil {
-		genNumbersFromResp := s.extractor.ExtractCacheGenNumbersFromHeaders(response)
-		genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
-
-		for _, gen := range genNumbersFromResp {
-			if gen != genNumberFromCtx {
-				level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
-				return response, []Extent{}, nil
-			}
-		}
 	}
 
 	extent, err := toExtent(ctx, r, s.extractor.ResponseWithoutHeaders(response))
@@ -285,7 +284,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		if !s.shouldCacheResponse(reqResp.Response) {
+		if !s.shouldCacheResponse(ctx, reqResp.Response) {
 			continue
 		}
 		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))

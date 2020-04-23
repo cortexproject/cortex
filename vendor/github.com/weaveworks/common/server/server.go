@@ -104,6 +104,7 @@ type Server struct {
 
 	HTTP       *mux.Router
 	HTTPServer *http.Server
+	HTTPMiddleware middleware.Interface
 	GRPC       *grpc.Server
 	Log        logging.Interface
 }
@@ -198,7 +199,7 @@ func New(cfg Config) (*Server, error) {
 	if cfg.RegisterInstrumentation {
 		RegisterInstrumentation(router)
 	}
-	httpMiddleware := []middleware.Interface{
+	httpMiddlewares := []middleware.Interface{
 		middleware.Tracer{
 			RouteMatcher: router,
 		},
@@ -211,12 +212,12 @@ func New(cfg Config) (*Server, error) {
 		},
 	}
 
-	httpMiddleware = append(httpMiddleware, cfg.HTTPMiddleware...)
+	httpMiddleware := middleware.Merge(append(httpMiddlewares, cfg.HTTPMiddleware...)...)
 	httpServer := &http.Server{
 		ReadTimeout:  cfg.HTTPServerReadTimeout,
 		WriteTimeout: cfg.HTTPServerWriteTimeout,
 		IdleTimeout:  cfg.HTTPServerIdleTimeout,
-		Handler:      middleware.Merge(httpMiddleware...).Wrap(router),
+		Handler:      httpMiddleware.Wrap(router),
 	}
 
 	return &Server{
@@ -227,6 +228,7 @@ func New(cfg Config) (*Server, error) {
 
 		HTTP:       router,
 		HTTPServer: httpServer,
+		HTTPMiddleware: httpMiddleware,
 		GRPC:       grpcServer,
 		Log:        log,
 	}, nil

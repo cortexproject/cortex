@@ -8,8 +8,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/log"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config is the config for the HTTP client

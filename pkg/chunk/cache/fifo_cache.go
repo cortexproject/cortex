@@ -8,7 +8,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -86,20 +88,32 @@ const (
 
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
-	MaxSizeBytes int           `yaml:"max_size_bytes"`
-	MaxSizeItems int           `yaml:"max_size_items"`
-	Validity     time.Duration `yaml:"validity"`
+	MaxSizeBytesStr string        `yaml:"max_size_bytes"`
+	MaxSizeItems    int           `yaml:"max_size_items"`
+	Validity        time.Duration `yaml:"validity"`
 
 	DeprecatedSize int `yaml:"size"`
+
+	MaxSizeBytes uint64
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", 0, description+"Maximum memory size of the cache.")
+	f.StringVar(&cfg.MaxSizeBytesStr, prefix+"fifocache.max-size-bytes", "", description+"Maximum memory size of the cache.")
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 
 	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "Deprecated (use max-size-items or max-size-bytes instead): "+description+"The number of entries to cache. ")
+}
+
+func (cfg *FifoCacheConfig) Validate() error {
+	if len(cfg.MaxSizeBytesStr) > 0 {
+		var err error
+		if cfg.MaxSizeBytes, err = humanize.ParseBytes(cfg.MaxSizeBytesStr); err != nil {
+			return errors.Wrap(err, "invalid FifoCache config")
+		}
+	}
+	return nil
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
@@ -107,8 +121,8 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 type FifoCache struct {
 	lock          sync.RWMutex
 	maxSizeItems  int
-	maxSizeBytes  int
-	currSizeBytes int
+	maxSizeBytes  uint64
+	currSizeBytes uint64
 	validity      time.Duration
 
 	entries map[string]*list.Element
@@ -281,10 +295,10 @@ func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
 	return nil, false
 }
 
-func sizeOf(item *cacheEntry) int {
-	return int(unsafe.Sizeof(*item)) + // size of cacheEntry
+func sizeOf(item *cacheEntry) uint64 {
+	return uint64(int(unsafe.Sizeof(*item)) + // size of cacheEntry
 		len(item.key) + // size of key
 		cap(item.value) + // size of value
 		elementSize + // size of the element in linked list
-		elementPrtSize // size of the pointer to an element in the map
+		elementPrtSize) // size of the pointer to an element in the map
 }

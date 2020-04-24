@@ -168,7 +168,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 			"time_taken", queryResponseTime.String(),
 		}
 		for k, v := range r.URL.Query() {
-			append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
+			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
 		}
 		pf := r.PostForm.Encode()
 		if pf != "" {

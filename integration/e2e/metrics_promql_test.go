@@ -92,6 +92,10 @@ func TestEvaluatePromQLWithTextMetrics(t *testing.T) {
 			expr: "blocks_index_cache_items[1m]",
 			err:  errNotScalarOrVector,
 		},
+		{
+			expr: "unknown_metric",
+			val:  0,
+		},
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			val, err := evaluatePromQLWithTextMetrics(tc.expr, metrics)

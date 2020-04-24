@@ -17,7 +17,7 @@ For the original design behind the query frontend, you should read [Cortex Query
 
 ## Reasoning
 
-Query frontend scaling is becoming increasingly important for two primary reasons.  
+Query frontend scaling is becoming increasingly important for two primary reasons.
 
 The Cortex team is working toward a scalable single binary solution.  Recently the query-frontend was [added](https://github.com/cortexproject/cortex/pull/2437) to the Cortex single binary mode and, therefore, needs to seamlessly scale.  Technically, nothing immediately breaks when scaling the query-frontend, but there are a number of concerns detailed in [Challenges And Proposals](#challenges-and-proposals).
 
@@ -27,7 +27,7 @@ As the query-frontend continues to [support additional features](https://github.
 
 ### Load Shedding
 
-The query frontend maintains a queue per tenant of configurable length (default 100) in which it stores a series of requests from that tenant.  If this queue fills up then the frontend will return 429’s thus load shedding the rest of the system.  
+The query frontend maintains a queue per tenant of configurable length (default 100) in which it stores a series of requests from that tenant.  If this queue fills up then the frontend will return 429’s thus load shedding the rest of the system.
 
 This is particularly effective due to the “pull” based model from query frontend to queriers.
 
@@ -55,9 +55,9 @@ For clarity, tenancy fairness only comes into play when queries are actually bei
 
 #### Challenge
 
-For every query frontend the querier adds a [configurable number of goroutines](https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/worker.go#L146) which are each capable of executing a query.  Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.  
+For every query frontend the querier adds a [configurable number of goroutines](https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/worker.go#L146) which are each capable of executing a query.  Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
 
-Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits. Additionally, the promql engine itself is limited in the number of queries it can do as configured by the `-max-concurrent` parameter.  Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.  
+Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits. Additionally, the promql engine itself is limited in the number of queries it can do as configured by the `-max-concurrent` parameter.  Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.
 
 For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively.  This will lower effective resource utilization.  Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.
 
@@ -77,7 +77,7 @@ If #frontends > promql concurrency then the queriers are incapable of devoting e
 
 #### Proposal
 
-When #frontends > promql concurrency then each querier will maintain [exactly one connection](https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/worker.go#L194-L200) to every frontend.  As the query frontend is [currently coded](https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L279-L332) it will attempt to use every open GRPC connection to execute a query in the attached queriers.  Therefore, in this situation where #frontends > promql concurrency, the querier is exposing itself to more work then it is actually configured to perform.  
+When #frontends > promql concurrency then each querier will maintain [exactly one connection](https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/worker.go#L194-L200) to every frontend.  As the query frontend is [currently coded](https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L279-L332) it will attempt to use every open GRPC connection to execute a query in the attached queriers.  Therefore, in this situation where #frontends > promql concurrency, the querier is exposing itself to more work then it is actually configured to perform.
 
 To prevent this we will add “flow control” information to the [ProcessResponse message](https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21) that is used to return query results from the querier to the query frontend.  In an active system this message is passed multiple times per second from the queriers to the query frontends and would be a reliable way for the frontends to track the state of queriers and balance load.
 
@@ -94,7 +94,7 @@ message ProcessResponse {
 }
 ```
 
-**currentConcurrency** - The current number of queries being executed by the querier.  
+**currentConcurrency** - The current number of queries being executed by the querier.
 
 **desiredConcurrency** - The total number of queries that a querier is capable of executing.
 
@@ -130,7 +130,7 @@ Currently we are not proposing any changes to alleviate this concern.  We believ
 
 #### Challenge
 
-Queriers have a configurable parameter that controls how often they refresh their query frontend list.  The default value is 10 seconds.  After a new query frontend is added the average querier will take 5 seconds (after DNS is updated) to become aware of it and begin requesting queries from it. 
+Queriers have a configurable parameter that controls how often they refresh their query frontend list.  The default value is 10 seconds.  After a new query frontend is added the average querier will take 5 seconds (after DNS is updated) to become aware of it and begin requesting queries from it.
 
 #### Proposal
 
@@ -203,7 +203,7 @@ This approach would be equivalent to Weighted Round Robin proposed above but wit
 
 ## Alternative
 
-The proposals in this document have preferred augmenting existing components to make decisions with local knowledge.  The unstated goal of these proposals is to build a distributed queue across a scaled query frontend that reliably and fairly serves our tenants.  
+The proposals in this document have preferred augmenting existing components to make decisions with local knowledge.  The unstated goal of these proposals is to build a distributed queue across a scaled query frontend that reliably and fairly serves our tenants.
 
 Overall, these proposals will create a robust system that is resistant to network partitions and failures of individual pieces.  However, it will also create a complex system that could be difficult to reason about, contain hard to ascertain edge cases and nuanced failure modes.
 

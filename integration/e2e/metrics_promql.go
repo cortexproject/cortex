@@ -258,10 +258,9 @@ func newSampleIterator(ts int64, val float64) storage.SeriesIterator {
 
 // Seek implements storage.SeriesIterator.
 func (c *singleSampleIterator) Seek(t int64) bool {
-	if t <= c.ts {
-		return true
-	}
-	return false
+	// If requested timestamp is before what we have, we can "advance".
+	// If it is past it, we cannot.
+	return t <= c.ts
 }
 
 // At implements storage.SeriesIterator.

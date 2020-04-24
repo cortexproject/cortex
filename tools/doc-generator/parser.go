@@ -150,7 +150,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 					blockDesc = rootDesc
 				} else {
 					blockName = fieldName
-					blockDesc = ""
+					blockDesc = getFieldDescription(field, "")
 				}
 
 				subBlock = &configBlock{
@@ -199,7 +199,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 			name:         fieldName,
 			required:     isFieldRequired(field),
 			fieldFlag:    fieldFlag.Name,
-			fieldDesc:    fieldFlag.Usage,
+			fieldDesc:    getFieldDescription(field, fieldFlag.Usage),
 			fieldType:    fieldType,
 			fieldDefault: fieldFlag.DefValue,
 		})
@@ -371,15 +371,23 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 }
 
 func isFieldHidden(f reflect.StructField) bool {
-	return strings.Contains(f.Tag.Get("doc"), "hidden")
+	return getDocTagFlag(f, "hidden")
 }
 
 func isFieldRequired(f reflect.StructField) bool {
-	return strings.Contains(f.Tag.Get("doc"), "required")
+	return getDocTagFlag(f, "required")
 }
 
 func isFieldInline(f reflect.StructField) bool {
 	return yamlFieldInlineParser.MatchString(f.Tag.Get("yaml"))
+}
+
+func getFieldDescription(f reflect.StructField, fallback string) string {
+	if desc := getDocTagValue(f, "description"); desc != "" {
+		return desc
+	}
+
+	return fallback
 }
 
 func isRootBlock(t reflect.Type) (string, string, bool) {
@@ -390,4 +398,37 @@ func isRootBlock(t reflect.Type) (string, string, bool) {
 	}
 
 	return "", "", false
+}
+
+func getDocTagFlag(f reflect.StructField, name string) bool {
+	cfg := parseDocTag(f)
+	_, ok := cfg[name]
+	return ok
+}
+
+func getDocTagValue(f reflect.StructField, name string) string {
+	cfg := parseDocTag(f)
+	return cfg[name]
+}
+
+func parseDocTag(f reflect.StructField) map[string]string {
+	cfg := map[string]string{}
+	tag := f.Tag.Get("doc")
+
+	if tag == "" {
+		return cfg
+	}
+
+	for _, entry := range strings.Split(tag, "|") {
+		parts := strings.SplitN(entry, "=", 2)
+
+		switch len(parts) {
+		case 1:
+			cfg[parts[0]] = ""
+		case 2:
+			cfg[parts[0]] = parts[1]
+		}
+	}
+
+	return cfg
 }

@@ -376,6 +376,17 @@ func TestQueryshardingCorrectness(t *testing.T) {
 			query:  `histogram_quantile(0.5, sum(rate(cortex_cache_value_size_bytes_bucket[5m])) by (le))`,
 			mapped: `histogram_quantile(0.5, sum by(le) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(le, __cortex_shard__) (rate(cortex_cache_value_size_bytes_bucket{__cortex_shard__=\\\"0_of_2\\\"}[5m]))\",\"sum by(le, __cortex_shard__) (rate(cortex_cache_value_size_bytes_bucket{__cortex_shard__=\\\"1_of_2\\\"}[5m]))\"]}"}))`,
 		},
+		{
+			desc: "ensure sharding sub aggregations are skipped to avoid non-associative series merging across shards",
+			query: `sum(
+				  count(
+				    count(
+				      bar1
+				    )  by (drive,instance)
+				  )  by (instance)
+				)`,
+			mapped: `__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum(count by(instance) (count by(drive, instance) (bar1)))\"]}"}`,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			shardingConf := ShardingConfigs{

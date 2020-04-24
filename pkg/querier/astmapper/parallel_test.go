@@ -106,6 +106,16 @@ func TestCanParallel_String(t *testing.T) {
 			)`,
 			false,
 		},
+		{
+			`sum(
+				count(
+					count(
+						foo{bar="baz"}
+					)  by (a,b)
+				)  by (instance)
+			)`,
+			false,
+		},
 	}
 
 	for i, c := range testExpr {

@@ -42,7 +42,17 @@ func CanParallelize(node promql.Node) bool {
 
 	case *promql.AggregateExpr:
 		_, ok := summableAggregates[n.Op]
-		return ok && CanParallelize(n.Expr)
+		if !ok {
+			return ok
+		}
+
+		// Ensure there are no nested aggregations
+		nestedAggs, err := Predicate(n.Expr, func(node promql.Node) (bool, error) {
+			_, ok := node.(*promql.AggregateExpr)
+			return ok, nil
+		})
+
+		return err == nil && !nestedAggs && CanParallelize(n.Expr)
 
 	case *promql.BinaryExpr:
 		// since binary exprs use each side for merging, they cannot be parallelized

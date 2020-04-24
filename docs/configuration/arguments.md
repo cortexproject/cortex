@@ -16,7 +16,7 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 - `-querier.max-concurrent`
 
    The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
-   If using the query frontend, this should be set to at least (`querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+   If using the query frontend, this should be set to at least (`-querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.  Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
 
 - `-querier.query-parallelism`
 
@@ -42,8 +42,14 @@ The next three options only apply when the querier is used together with the Que
 
 - `-querier.worker-parallelism`
 
-   Number of simultaneous queries to process, per worker process.
+   Number of simultaneous queries to process, per query frontend.
    See note on `-querier.max-concurrent`
+
+- `-querier.worker-match-max-concurrent`
+
+   Force worker concurrency to match the -querier.max-concurrent option.  Overrides `-querier.worker-parallelism`.
+   See note on `-querier.max-concurrent`
+
 
 ## Querier and Ruler
 

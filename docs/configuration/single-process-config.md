@@ -71,4 +71,9 @@ storage:
 
   filesystem:
     directory: /tmp/cortex/chunks
+
+# Configure the frontend worker in the querier to match worker count
+#  to max_concurrent on the queriers.
+frontend_worker:
+  match_max_concurrent: true
 ```

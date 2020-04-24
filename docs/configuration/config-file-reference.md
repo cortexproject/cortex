@@ -1937,9 +1937,14 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.frontend-address
 [frontend_address: <string> | default = ""]
 
-# Number of simultaneous queries to process.
+# Number of simultaneous queries to process per query frontend.
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
+
+# Force worker concurrency to match the -querier.max-concurrent option.
+# Overrides querier.worker-parallelism.
+# CLI flag: -querier.worker-match-max-concurrent
+[match_max_concurrent: <boolean> | default = false]
 
 # How often to query DNS.
 # CLI flag: -querier.dns-lookup-period

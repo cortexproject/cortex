@@ -819,6 +819,66 @@ storage:
     # CLI flag: -ruler.storage.s3.force-path-style
     [s3forcepathstyle: <boolean> | default = false]
 
+  swift:
+    # Openstack authentication URL.
+    # CLI flag: -ruler.storage.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # Openstack username for the api.
+    # CLI flag: -ruler.storage.swift.username
+    [username: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # Openstack user's domain id.
+    # CLI flag: -ruler.storage.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # Openstack userid for the api.
+    # CLI flag: -ruler.storage.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # Openstack api key.
+    # CLI flag: -ruler.storage.swift.password
+    [password: <string> | default = ""]
+
+    # Openstack user's domain id.
+    # CLI flag: -ruler.storage.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # Openstack project id (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # Openstack project name (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # Id of the project's domain (v3 auth only), only needed if it differs the
+    # from user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the project's domain (v3 auth only), only needed if it differs
+    # from the user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+    # auth only)
+    # CLI flag: -ruler.storage.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the Swift container to put chunks in.
+    # CLI flag: -ruler.storage.swift.container-name
+    [container_name: <string> | default = "cortex"]
+
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
@@ -1600,6 +1660,66 @@ filesystem:
   # Directory to store chunks in.
   # CLI flag: -local.chunk-directory
   [directory: <string> | default = ""]
+
+swift:
+  # Openstack authentication URL.
+  # CLI flag: -swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # Openstack username for the api.
+  # CLI flag: -swift.username
+  [username: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # Openstack userid for the api.
+  # CLI flag: -swift.user-id
+  [user_id: <string> | default = ""]
+
+  # Openstack api key.
+  # CLI flag: -swift.password
+  [password: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # Openstack project id (v2,v3 auth only).
+  # CLI flag: -swift.project-id
+  [project_id: <string> | default = ""]
+
+  # Openstack project name (v2,v3 auth only).
+  # CLI flag: -swift.project-name
+  [project_name: <string> | default = ""]
+
+  # Id of the project's domain (v3 auth only), only needed if it differs the
+  # from user domain.
+  # CLI flag: -swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the project's domain (v3 auth only), only needed if it differs from
+  # the user domain.
+  # CLI flag: -swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+  # auth only)
+  # CLI flag: -swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the Swift container to put chunks in.
+  # CLI flag: -swift.container-name
+  [container_name: <string> | default = "cortex"]
 
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.

@@ -3,16 +3,35 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	thanos "github.com/thanos-io/thanos/pkg/objstore/swift"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/chunk/openstack"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	userID = "e2e-user"
 )
 
 func TestChunksStorageAllIndexBackends(t *testing.T) {
@@ -121,4 +140,196 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
 	assertServiceMetricsPrefixes(t, Ingester, ingester)
 	assertServiceMetricsPrefixes(t, Querier, querier)
+}
+
+func TestSwiftChunkStorage(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+	swift := e2edb.NewSwiftStorage()
+
+	require.NoError(t, s.StartAndWaitReady(swift))
+
+	var (
+		cfg          storage.Config
+		storeConfig  chunk.StoreConfig
+		schemaConfig chunk.SchemaConfig
+		defaults     validation.Limits
+	)
+	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
+
+	cfg.Swift = swiftConfig(swift)
+	schemaConfig.Configs = []chunk.PeriodConfig{
+		{
+			From:       chunk.DayTime{Time: model.Time(0)},
+			IndexType:  "inmemory",
+			ObjectType: "swift",
+			Schema:     "v10",
+			RowShards:  16,
+		},
+	}
+
+	// inject a memory store so we can create table without a table manager.
+	inmemory := chunk.NewMockStorage()
+	err = inmemory.CreateTable(context.Background(), chunk.TableDesc{})
+	require.NoError(t, err)
+
+	storage.RegisterIndexStore("inmemory", func() (chunk.IndexClient, error) {
+		return inmemory, nil
+	}, func() (chunk.TableClient, error) {
+		return inmemory, nil
+	})
+
+	limits, err := validation.NewOverrides(defaults, nil)
+	require.NoError(t, err)
+
+	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil)
+	require.NoError(t, err)
+
+	defer store.Stop()
+
+	ctx := user.InjectUserID(context.Background(), userID)
+
+	lbls := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "buzz", Value: "fuzz"},
+	}
+
+	c1 := newChunk(model.Time(1), lbls, 10)
+	c2 := newChunk(model.Time(2), lbls, 10)
+	// Add two chunks.
+	err = store.PutOne(ctx, c1.From, c1.Through, c1)
+	require.NoError(t, err)
+	err = store.PutOne(ctx, c2.From, c2.Through, c2)
+	require.NoError(t, err)
+
+	ctx = user.InjectOrgID(ctx, userID)
+
+	// Get the first chunk.
+	chunks, err := store.Get(ctx, userID, model.Time(1), model.Time(1), labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "foo"))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(chunks))
+
+	// Get both chunk and verify their content.
+	chunks, err = store.Get(ctx, userID, model.Time(1), model.Time(2), labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "foo"))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(chunks))
+
+	sort.Slice(chunks, func(i, j int) bool { return chunks[i].From < chunks[j].From })
+	require.Equal(t, c1.Checksum, chunks[0].Checksum)
+	require.Equal(t, c2.Checksum, chunks[1].Checksum)
+
+	// Delete the first chunk
+	err = store.DeleteChunk(ctx, c1.From, c1.Through, userID, c1.ExternalKey(), lbls, nil)
+	require.NoError(t, err)
+
+	// Verify we get now only the second chunk.
+	chunks, err = store.Get(ctx, userID, model.Time(1), model.Time(2), labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "foo"))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(chunks))
+	require.Equal(t, c2.Metric, chunks[0].Metric)
+
+}
+
+func TestSwiftRuleStorage(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+	swift := e2edb.NewSwiftStorage()
+
+	require.NoError(t, s.StartAndWaitReady(swift))
+
+	store, err := ruler.NewRuleStorage(ruler.RuleStoreConfig{
+		Type:  "swift",
+		Swift: swiftConfig(swift),
+	})
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Add 2 rule group.
+	r1 := newRule(userID, "1")
+	err = store.SetRuleGroup(ctx, userID, "foo", r1)
+	require.NoError(t, err)
+
+	r2 := newRule(userID, "2")
+	err = store.SetRuleGroup(ctx, userID, "bar", r2)
+	require.NoError(t, err)
+
+	// Get rules back.
+	rls, err := store.ListAllRuleGroups(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(rls[userID]))
+
+	userRules := rls[userID]
+	sort.Slice(userRules, func(i, j int) bool { return userRules[i].Name < userRules[j].Name })
+	require.Equal(t, r1, userRules[0])
+	require.Equal(t, r2, userRules[1])
+
+	// Delete the first rule group
+	err = store.DeleteRuleGroup(ctx, userID, "foo", r1.Name)
+	require.NoError(t, err)
+
+	//Verify we only have the second rule group
+	rls, err = store.ListAllRuleGroups(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(rls[userID]))
+	require.Equal(t, r2, rls[userID][0])
+}
+
+func newRule(userID, name string) *rules.RuleGroupDesc {
+	return &rules.RuleGroupDesc{
+		Name:      name + "rule",
+		Interval:  time.Minute,
+		Namespace: name + "namespace",
+		Rules: []*rules.RuleDesc{
+			{
+				Expr:   fmt.Sprintf(`{%s="bar"}`, name),
+				Record: name + ":bar",
+			},
+		},
+		User: userID,
+	}
+}
+
+func swiftConfig(s *e2e.HTTPService) openstack.SwiftConfig {
+	return openstack.SwiftConfig{
+		SwiftConfig: thanos.SwiftConfig{
+			AuthUrl:       "http://" + s.HTTPEndpoint() + "/auth/v1.0",
+			Password:      "testing",
+			ContainerName: "e2e",
+			Username:      "test:tester",
+		},
+	}
+}
+
+func newChunk(from model.Time, metric labels.Labels, samples int) chunk.Chunk {
+	c, _ := encoding.NewForEncoding(encoding.Varbit)
+	chunkStart := from
+	ts := from
+	for i := 0; i < samples; i++ {
+		ts = chunkStart.Add(time.Duration(i) * 15 * time.Second)
+		nc, err := c.Add(model.SamplePair{Timestamp: ts, Value: model.SampleValue(i)})
+		if err != nil {
+			panic(err)
+		}
+		if nc != nil {
+			panic("returned chunk was not nil")
+		}
+	}
+
+	chunk := chunk.NewChunk(
+		userID,
+		client.Fingerprint(metric),
+		metric,
+		c,
+		chunkStart,
+		ts,
+	)
+	// Force checksum calculation.
+	err := chunk.Encode()
+	if err != nil {
+		panic(err)
+	}
+	return chunk
 }

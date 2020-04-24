@@ -182,7 +182,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 
 			// Wait until the ring client has initialised the state.
 			test.Poll(t, time.Second, true, func() interface{} {
-				all, err := r.GetAll()
+				all, err := r.GetAll(ring.Read)
 				return err == nil && len(all.Ingesters) > 0
 			})
 

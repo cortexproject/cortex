@@ -9,13 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -344,135 +340,4 @@ func TestZoneAwareIngesterAssignmentFailure(t *testing.T) {
 		t.Fail()
 	}
 
-}
-
-func TestRing_GetAllTokens_ForStoreGatewayOperations(t *testing.T) {
-	tests := map[string]struct {
-		instances     map[string]IngesterDesc
-		syncExpected  TokenDescs
-		queryExpected TokenDescs
-	}{
-		"a single instance in JOINING state": {
-			instances: map[string]IngesterDesc{
-				"instance-1": {
-					Timestamp: time.Now().Unix(),
-					State:     JOINING,
-					Tokens:    []uint32{1, 6},
-				},
-			},
-			syncExpected: TokenDescs{
-				{Token: 1, Ingester: "instance-1"},
-				{Token: 6, Ingester: "instance-1"},
-			},
-			queryExpected: TokenDescs{},
-		},
-		"multiple instances in JOINING state": {
-			instances: map[string]IngesterDesc{
-				"instance-1": {
-					Timestamp: time.Now().Unix(),
-					State:     JOINING,
-					Tokens:    []uint32{1, 6},
-				},
-				"instance-2": {
-					Timestamp: time.Now().Unix(),
-					State:     JOINING,
-					Tokens:    []uint32{3, 8},
-				},
-			},
-			syncExpected: TokenDescs{
-				{Token: 1, Ingester: "instance-1"},
-				{Token: 3, Ingester: "instance-2"},
-				{Token: 6, Ingester: "instance-1"},
-				{Token: 8, Ingester: "instance-2"},
-			},
-			queryExpected: TokenDescs{},
-		},
-		"multiple instances in JOINING and ACTIVE state": {
-			instances: map[string]IngesterDesc{
-				"instance-1": {
-					Timestamp: time.Now().Unix(),
-					State:     JOINING,
-					Tokens:    []uint32{1, 6},
-				},
-				"instance-2": {
-					Timestamp: time.Now().Unix(),
-					State:     ACTIVE,
-					Tokens:    []uint32{3, 8},
-				},
-			},
-			syncExpected: TokenDescs{
-				{Token: 1, Ingester: "instance-1"},
-				{Token: 3, Ingester: "instance-2"},
-				{Token: 6, Ingester: "instance-1"},
-				{Token: 8, Ingester: "instance-2"},
-			},
-			queryExpected: TokenDescs{
-				{Token: 3, Ingester: "instance-2"},
-				{Token: 8, Ingester: "instance-2"},
-			},
-		},
-		"multiple instances in ACTIVE and LEAVING state": {
-			instances: map[string]IngesterDesc{
-				"instance-1": {
-					Timestamp: time.Now().Unix(),
-					State:     LEAVING,
-					Tokens:    []uint32{1, 6},
-				},
-				"instance-2": {
-					Timestamp: time.Now().Unix(),
-					State:     ACTIVE,
-					Tokens:    []uint32{3, 8},
-				},
-			},
-			syncExpected: TokenDescs{
-				{Token: 1, Ingester: "instance-1"},
-				{Token: 3, Ingester: "instance-2"},
-				{Token: 6, Ingester: "instance-1"},
-				{Token: 8, Ingester: "instance-2"},
-			},
-			queryExpected: TokenDescs{
-				{Token: 3, Ingester: "instance-2"},
-				{Token: 8, Ingester: "instance-2"},
-			},
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			t.Parallel()
-
-			cfg := Config{
-				HeartbeatTimeout:  time.Minute,
-				ReplicationFactor: 3,
-			}
-
-			ctx := context.Background()
-			store := consul.NewInMemoryClient(GetCodec())
-			r, err := NewWithStoreClientAndStrategy(cfg, "test", "test", store, &DefaultReplicationStrategy{})
-			require.NoError(t, err)
-
-			// Initialize the store.
-			require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
-				d := NewDesc()
-				d.Ingesters = testData.instances
-				return d, true, nil
-			}))
-
-			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
-			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
-
-			// Wait until the initial sync succeeded.
-			test.Poll(t, time.Second, true, func() interface{} {
-				return r.IngesterCount() > 0
-			})
-
-			tokens := r.GetAllTokens(BlocksSync)
-			assert.Equal(t, testData.syncExpected, tokens)
-
-			tokens = r.GetAllTokens(BlocksRead)
-			assert.Equal(t, testData.queryExpected, tokens)
-		})
-	}
 }

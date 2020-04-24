@@ -74,7 +74,7 @@ func TestEvaluatePromQLWithTextMetrics(t *testing.T) {
 		},
 		{
 			expr: "blocks_index_cache_items > 50000",
-			val:  53280, // returns blocks_index_cache_items{item_type="Series"} 53280
+			val:  53280, // Returns blocks_index_cache_items{item_type="Series"} 53280.
 		},
 		{
 			expr: "blocks_index_cache_items{item_type='Series'} >bool 50000",
@@ -94,6 +94,14 @@ func TestEvaluatePromQLWithTextMetrics(t *testing.T) {
 		},
 		{
 			expr: "unknown_metric",
+			val:  0,
+		},
+		{
+			expr: "increase(blocks_index_cache_items[1m])",
+			val:  0,
+		},
+		{
+			expr: "rate(blocks_index_cache_items[1h])",
 			val:  0,
 		},
 	} {

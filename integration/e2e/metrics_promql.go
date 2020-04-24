@@ -36,7 +36,7 @@ func evaluatePromQLWithTextMetrics(expr string, metrics string) (float64, error)
 		Logger:             nil,
 		Reg:                nil,
 		MaxSamples:         1e6,
-		Timeout:            time.Hour, // time.Second,
+		Timeout:            time.Second,
 		ActiveQueryTracker: nil,
 	})
 
@@ -68,12 +68,6 @@ func evaluatePromQLWithTextMetrics(expr string, metrics string) (float64, error)
 	}
 
 	return 0, errNotScalarOrVector
-}
-
-type sample struct {
-	labels map[string]string
-	ts     int64
-	val    float64
 }
 
 func convertMetricFamiliesToSamples(ts int64, mfs map[string]*dto.MetricFamily) []sample {
@@ -166,10 +160,14 @@ func getLabelsExt(name string, pairs []*dto.LabelPair, bucket bool, upperBound f
 	return result
 }
 
-// implements Queryable and Querier
+var (
+	_ storage.Queryable = samplesQueryable{}
+	_ storage.Querier   = samplesQueryable{}
+)
+
 type samplesQueryable []sample
 
-func (sq *samplesQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (sq samplesQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return sq, nil
 }
 
@@ -190,19 +188,20 @@ func (sq samplesQueryable) Select(params *storage.SelectParams, matcher ...*labe
 	return sq.SelectSorted(params, matcher...)
 }
 
-func (sq *samplesQueryable) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (sq samplesQueryable) LabelValues(name string) ([]string, storage.Warnings, error) {
 	panic("implement me")
 }
 
-func (sq *samplesQueryable) LabelNames() ([]string, storage.Warnings, error) {
+func (sq samplesQueryable) LabelNames() ([]string, storage.Warnings, error) {
 	panic("implement me")
 }
 
-func (sq *samplesQueryable) Close() error {
+func (sq samplesQueryable) Close() error {
 	return nil
 }
 
-// seriesSet implements storage.SeriesSet.
+var _ storage.SeriesSet = &seriesSet{}
+
 type seriesSet struct {
 	cur    int
 	series []storage.Series
@@ -221,7 +220,14 @@ func (c *seriesSet) Err() error {
 	return nil
 }
 
-// sample implements storage.Series
+var _ storage.Series = sample{}
+
+type sample struct {
+	labels map[string]string
+	ts     int64
+	val    float64
+}
+
 func (c sample) Labels() labels.Labels {
 	b := labels.NewBuilder(nil)
 	for k, v := range c.labels {
@@ -244,7 +250,8 @@ func (c sample) matches(matcher ...*labels.Matcher) bool {
 	return true
 }
 
-// concreteSeriesIterator implements storage.SeriesIterator.
+var _ storage.SeriesIterator = &singleSampleIterator{}
+
 type singleSampleIterator struct {
 	nextCalled bool
 	ts         int64
@@ -258,19 +265,16 @@ func newSampleIterator(ts int64, val float64) storage.SeriesIterator {
 	}
 }
 
-// Seek implements storage.SeriesIterator.
 func (c *singleSampleIterator) Seek(t int64) bool {
 	// If requested timestamp is before what we have, we can "advance".
 	// If it is past it, we cannot.
 	return t <= c.ts
 }
 
-// At implements storage.SeriesIterator.
 func (c *singleSampleIterator) At() (t int64, v float64) {
 	return c.ts, c.val
 }
 
-// Next implements storage.SeriesIterator.
 func (c *singleSampleIterator) Next() bool {
 	if c.nextCalled {
 		return false
@@ -279,7 +283,6 @@ func (c *singleSampleIterator) Next() bool {
 	return true
 }
 
-// Err implements storage.SeriesIterator.
 func (c *singleSampleIterator) Err() error {
 	return nil
 }

@@ -174,7 +174,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		if pf != "" {
 			logMessage = append(logMessage, "body", pf)
 		}
-		level.Info(util.WithContext(r.Context(), util.Logger)).Log(logMessage...)
+		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
 
 	if err != nil {

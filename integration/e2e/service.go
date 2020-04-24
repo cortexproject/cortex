@@ -587,8 +587,6 @@ func (s *HTTPService) WaitForPromQL(expr string) error {
 			return err
 		}
 
-		fmt.Println(expr, "returned", val)
-
 		if val > 0 {
 			return nil
 		}

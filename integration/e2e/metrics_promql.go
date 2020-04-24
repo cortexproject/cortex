@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -172,7 +173,7 @@ func (sq *samplesQueryable) Querier(ctx context.Context, mint, maxt int64) (stor
 	return sq, nil
 }
 
-func (sq samplesQueryable) SelectSorted(params *storage.SelectParams, matcher ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (sq samplesQueryable) SelectSorted(_ *storage.SelectParams, matcher ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	var series []storage.Series
 
 	for _, s := range sq {
@@ -181,7 +182,8 @@ func (sq samplesQueryable) SelectSorted(params *storage.SelectParams, matcher ..
 		}
 	}
 
-	return &seriesSet{series: series}, nil, nil
+	sort.Sort(byLabels(series))
+	return &seriesSet{cur: -1, series: series}, nil, nil
 }
 
 func (sq samplesQueryable) Select(params *storage.SelectParams, matcher ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
@@ -208,11 +210,11 @@ type seriesSet struct {
 
 func (c *seriesSet) Next() bool {
 	c.cur++
-	return c.cur-1 < len(c.series)
+	return c.cur < len(c.series)
 }
 
 func (c *seriesSet) At() storage.Series {
-	return c.series[c.cur-1]
+	return c.series[c.cur]
 }
 
 func (c *seriesSet) Err() error {
@@ -281,3 +283,9 @@ func (c *singleSampleIterator) Next() bool {
 func (c *singleSampleIterator) Err() error {
 	return nil
 }
+
+type byLabels []storage.Series
+
+func (b byLabels) Len() int           { return len(b) }
+func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }

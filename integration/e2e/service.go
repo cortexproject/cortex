@@ -572,8 +572,8 @@ func (s *HTTPService) SumMetrics(metricNames ...string) ([]float64, error) {
 	return sums, nil
 }
 
-// Waits until promQL expression returns scalar (or vector with single value) with non-zero value.
-func (s *HTTPService) WaitForPromQL(expr string) error {
+// Waits until promQL expression returns scalar (or vector with single value) with positive value.
+func (s *HTTPService) WaitForPromQL(matcher func(sums ...float64) bool, expr string) error {
 	lastVal := 0.0
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
@@ -587,7 +587,7 @@ func (s *HTTPService) WaitForPromQL(expr string) error {
 			return err
 		}
 
-		if val > 0 {
+		if matcher(val) {
 			return nil
 		}
 
@@ -595,7 +595,7 @@ func (s *HTTPService) WaitForPromQL(expr string) error {
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("expression %q did not evaluate to positive number, last value: %g", expr, lastVal)
+	return fmt.Errorf("expression %q did not return expected value, last value: %g", expr, lastVal)
 }
 
 // WaitForMetricWithLabels waits until given metric with matching labels passes `okFn`. If function returns false,

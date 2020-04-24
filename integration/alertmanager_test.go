@@ -21,7 +21,7 @@ func TestAlertmanager(t *testing.T) {
 
 	alertmanager := e2ecortex.NewAlertmanager("alertmanager", AlertmanagerFlags, "")
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
-	require.NoError(t, alertmanager.WaitForPromQL("cortex_alertmanager_configs{status='valid'} == 1"))
+	require.NoError(t, alertmanager.WaitForPromQL(e2e.Equals(1), "cortex_alertmanager_configs{status='valid'}"))
 
 	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)

@@ -276,8 +276,8 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/chunks", querier.ChunksHandler(queryable), true)
 
 	// these routes are either registered the default server OR to an internal mux.  The internal mux is
-	//  for use in a single binary mode when both the query frontend and the querier would attempt to claim these routes
-	//  TODO:  Add support to expose querier paths with a configurable prefix in single binary mode.
+	// for use in a single binary mode when both the query frontend and the querier would attempt to claim these routes
+	// TODO:  Add support to expose querier paths with a configurable prefix in single binary mode.
 	router := mux.NewRouter()
 	if registerRoutesExternally {
 		router = a.server.HTTP
@@ -308,11 +308,14 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true, "GET")
 
 	// if we have externally registered routes then we need to return the server handler
-	//  so that we continue to use all standard middleware
+	// so that we continue to use all standard middleware
 	if registerRoutesExternally {
 		return a.server.HTTPServer.Handler
 	}
 
+	// Since we have a new router and the request will not go trough the default server
+	// HTTP middleware stack, we need to add a middleware to extract the trace context
+	// from the HTTP headers and inject it into the Go context.
 	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
 		return "internalQuerier"
 	}))

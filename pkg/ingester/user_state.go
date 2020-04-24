@@ -44,6 +44,7 @@ type userState struct {
 
 	seriesInMetric []metricCounterShard
 
+	// Series metrics.
 	memSeries             prometheus.Gauge
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter

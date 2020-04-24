@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/thanos-io/thanos/pkg/testutil"
 )
 
 func TestQueryRequest(t *testing.T) {
@@ -78,6 +80,37 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 	}
 	sort.Sort(m)
 	return m
+}
+
+func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
+	tc := []struct {
+		desc     string
+		input    MetricMetadata_MetricType
+		expected textparse.MetricType
+	}{
+		{
+			desc:     "with a single-word metric",
+			input:    COUNTER,
+			expected: textparse.MetricTypeCounter,
+		},
+		{
+			desc:     "with a two-word metric",
+			input:    STATESET,
+			expected: textparse.MetricTypeStateset,
+		},
+		{
+			desc:     "with an unknown metric",
+			input:    MetricMetadata_MetricType(100),
+			expected: textparse.MetricTypeUnknown,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.desc, func(t *testing.T) {
+			m := MetricMetadataMetricTypeToMetricType(tt.input)
+			testutil.Equals(t, tt.expected, m)
+		})
+	}
 }
 
 func TestQueryResponse(t *testing.T) {

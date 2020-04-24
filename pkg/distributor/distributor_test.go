@@ -835,6 +835,30 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
+func TestDistributor_MetricsMetadata(t *testing.T) {
+	// Create distributor
+	ds, _, r := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           nil,
+	})
+	defer stopAll(ds, r)
+
+	// Push metadata
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	req := makeWriteRequest(0, 0, 10)
+	_, err := ds[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Asert on metric metadata
+	metadata, err := ds[0].MetricsMetadata(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 10, len(metadata))
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
@@ -1061,6 +1085,7 @@ type mockIngester struct {
 	happy      bool
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*client.PreallocTimeseries
+	metadata   map[uint32]map[client.MetricMetadata]struct{}
 	queryDelay time.Duration
 }
 
@@ -1095,6 +1120,10 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		i.timeseries = map[uint32]*client.PreallocTimeseries{}
 	}
 
+	if i.metadata == nil {
+		i.metadata = map[uint32]map[client.MetricMetadata]struct{}{}
+	}
+
 	orgid, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -1118,6 +1147,16 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		} else {
 			existing.Samples = append(existing.Samples, series.Samples...)
 		}
+	}
+
+	for _, m := range req.Metadata {
+		hash := shardByMetricName(orgid, m.MetricName)
+		set, ok := i.metadata[hash]
+		if !ok {
+			set = map[client.MetricMetadata]struct{}{}
+			i.metadata[hash] = set
+		}
+		set[*m] = struct{}{}
 	}
 
 	return &client.WriteResponse{}, nil
@@ -1231,6 +1270,24 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 		}
 	}
 	return &response, nil
+}
+
+func (i *mockIngester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest, opts ...grpc.CallOption) (*client.MetricsMetadataResponse, error) {
+	i.Lock()
+	defer i.Unlock()
+
+	if !i.happy {
+		return nil, errFail
+	}
+
+	resp := &client.MetricsMetadataResponse{}
+	for _, sets := range i.metadata {
+		for m := range sets {
+			resp.Metadata = append(resp.Metadata, &m)
+		}
+	}
+
+	return resp, nil
 }
 
 type stream struct {

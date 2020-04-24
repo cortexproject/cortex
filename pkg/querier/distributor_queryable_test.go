@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -123,5 +124,9 @@ func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
 	return nil, nil
 }
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, nil
+}
+
+func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	return nil, nil
 }

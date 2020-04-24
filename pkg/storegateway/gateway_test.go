@@ -353,6 +353,18 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: true,
 		},
+		"should sync when an instance changes state": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING)
+			},
+			updateRing: func(desc *ring.Desc) {
+				instance := desc.Ingesters["instance-2"]
+				instance.State = ring.ACTIVE
+				desc.Ingesters["instance-2"] = instance
+			},
+			expectedSync: true,
+		},
 		"should sync when an healthy instance becomes unhealthy": {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)

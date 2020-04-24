@@ -602,7 +602,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetAll()
+	rulers, err := r.ring.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}

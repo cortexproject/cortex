@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -104,4 +105,31 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 		TokensObservePeriod: 0,
 		NumTokens:           RingNumTokens,
 	}, nil
+}
+
+func hasRingTopologyChanged(before, after ring.ReplicationSet) bool {
+	beforeInstances := before.Ingesters
+	afterInstances := after.Ingesters
+
+	if len(beforeInstances) != len(afterInstances) {
+		return true
+	}
+
+	sort.Sort(ring.ByAddr(beforeInstances))
+	sort.Sort(ring.ByAddr(afterInstances))
+
+	for i := 0; i < len(beforeInstances); i++ {
+		b := beforeInstances[i]
+		a := afterInstances[i]
+
+		// Exclude the heartbeat timestamp from the comparison.
+		b.Timestamp = 0
+		a.Timestamp = 0
+
+		if !b.Equal(a) {
+			return true
+		}
+	}
+
+	return false
 }

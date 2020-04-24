@@ -27,19 +27,23 @@ const (
 	syncReasonInitial    = "initial"
 	syncReasonPeriodic   = "periodic"
 	syncReasonRingChange = "ring-change"
+
+	// sharedOptionWithQuerier is a message appended to all config options that should be also
+	// set on the querier in order to work correct.
+	sharedOptionWithQuerier = " This option needs be set both on the store-gateway and querier when running in microservices mode."
 )
 
 // Config holds the store gateway config.
 type Config struct {
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
-	ShardingRing    RingConfig `yaml:"sharding_ring"`
+	ShardingRing    RingConfig `yaml:"sharding_ring" doc:"description=The hash ring configuration. This option is required only if blocks sharding is enabled."`
 }
 
 // RegisterFlags registers the Config flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ShardingRing.RegisterFlags(f)
 
-	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances.")
+	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances."+sharedOptionWithQuerier)
 }
 
 // StoreGateway is the Cortex service responsible to expose an API over the bucket

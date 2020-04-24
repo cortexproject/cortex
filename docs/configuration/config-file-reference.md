@@ -2814,11 +2814,17 @@ sharding_ring:
 The `store_gateway_config` configures the store-gateway service used by the experimental blocks storage.
 
 ```yaml
-# Shard blocks across multiple store gateway instances.
+# Shard blocks across multiple store gateway instances. This option needs be set
+# both on the store-gateway and querier when running in microservices mode.
 # CLI flag: -experimental.store-gateway.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
 
+# The hash ring configuration. This option is required only if blocks sharding
+# is enabled.
 sharding_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  # This option needs be set both on the store-gateway and querier when running
+  # in microservices mode.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, multi, memberlist (experimental).
@@ -2861,11 +2867,13 @@ sharding_ring:
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring.
+  # within the ring. This option needs be set both on the store-gateway and
+  # querier when running in microservices mode.
   # CLI flag: -experimental.store-gateway.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
-  # The replication factor to use when sharding blocks.
+  # The replication factor to use when sharding blocks. This option needs be set
+  # both on the store-gateway and querier when running in microservices mode.
   # CLI flag: -experimental.store-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 

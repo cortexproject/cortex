@@ -181,7 +181,7 @@ func TestSwiftChunkStorage(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits)
+	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil)
 	require.NoError(t, err)
 
 	defer store.Stop()

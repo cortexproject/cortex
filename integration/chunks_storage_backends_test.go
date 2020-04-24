@@ -171,7 +171,9 @@ func TestSwiftChunkStorage(t *testing.T) {
 
 	// inject a memory store so we can create table without a table manager.
 	inmemory := chunk.NewMockStorage()
-	inmemory.CreateTable(context.Background(), chunk.TableDesc{})
+	err = inmemory.CreateTable(context.Background(), chunk.TableDesc{})
+	require.NoError(t, err)
+
 	storage.RegisterIndexStore("inmemory", func() (chunk.IndexClient, error) {
 		return inmemory, nil
 	}, func() (chunk.TableClient, error) {
@@ -281,7 +283,7 @@ func newRule(userID, name string) *rules.RuleGroupDesc {
 		Interval:  time.Minute,
 		Namespace: name + "namespace",
 		Rules: []*rules.RuleDesc{
-			&rules.RuleDesc{
+			{
 				Expr:   fmt.Sprintf(`{%s="bar"}`, name),
 				Record: name + ":bar",
 			},
@@ -292,7 +294,7 @@ func newRule(userID, name string) *rules.RuleGroupDesc {
 
 func swiftConfig(s *e2e.HTTPService) openstack.SwiftConfig {
 	return openstack.SwiftConfig{
-		thanos.SwiftConfig{
+		SwiftConfig: thanos.SwiftConfig{
 			AuthUrl:       "http://" + s.HTTPEndpoint() + "/auth/v1.0",
 			Password:      "testing",
 			ContainerName: "e2e",

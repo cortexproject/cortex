@@ -522,13 +522,17 @@ func (s *HTTPService) NetworkHTTPEndpointFor(networkName string) string {
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
 // when passed to given isExpected(...).
 func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
+	return s.WaitSumMetricsWithOptions(isExpected, metricNames)
+}
+
+func (s *HTTPService) WaitSumMetricsWithOptions(isExpected func(sums ...float64) bool, metricNames []string, opts ...MetricsOption) error {
 	var (
 		sums []float64
 		err  error
 	)
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		sums, err = s.SumMetrics(metricNames...)
+		sums, err = s.SumMetrics(metricNames, opts...)
 		if err != nil {
 			return err
 		}
@@ -544,7 +548,8 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
-func (s *HTTPService) SumMetrics(metricNames ...string) ([]float64, error) {
+func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
+	options := buildMetricsOptions(opts)
 	sums := make([]float64, len(metricNames))
 
 	metrics, err := s.Metrics()
@@ -563,7 +568,7 @@ func (s *HTTPService) SumMetrics(metricNames ...string) ([]float64, error) {
 
 		// Check if the metric is exported.
 		if mf, ok := families[m]; ok {
-			sums[i] = sumValues(mf)
+			sums[i] = sumValues(getValues(mf, options.GetValue))
 			continue
 		}
 		return nil, errors.Errorf("metric %s not found in %s metric page", m, s.name)
@@ -582,7 +587,7 @@ func (s *HTTPService) WaitForMetricWithLabels(okFn func(v float64) bool, metricN
 		}
 
 		for _, m := range ms {
-			if okFn(getValue(m)) {
+			if okFn(getMetricValue(m)) {
 				return nil
 			}
 		}
@@ -602,7 +607,7 @@ func (s *HTTPService) SumMetricWithLabels(metricName string, expectedLabels map[
 	}
 
 	for _, m := range ms {
-		sum += getValue(m)
+		sum += getMetricValue(m)
 	}
 	return sum, nil
 }

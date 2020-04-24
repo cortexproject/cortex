@@ -45,7 +45,7 @@ func (s *CompositeHTTPService) WaitSumMetrics(isExpected func(sums ...float64) b
 	)
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		sums, err = s.SumMetrics(metricNames...)
+		sums, err = s.SumMetrics(metricNames)
 		if err != nil {
 			return err
 		}
@@ -80,11 +80,11 @@ func (s *CompositeHTTPService) WaitSumMetricWithLabels(isExpected func(sums floa
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
-func (s *CompositeHTTPService) SumMetrics(metricNames ...string) ([]float64, error) {
+func (s *CompositeHTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
 	sums := make([]float64, len(metricNames))
 
 	for _, service := range s.services {
-		partials, err := service.SumMetrics(metricNames...)
+		partials, err := service.SumMetrics(metricNames, opts...)
 		if err != nil {
 			return nil, err
 		}

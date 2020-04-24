@@ -6,7 +6,7 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-func getValue(m *io_prometheus_client.Metric) float64 {
+func getMetricValue(m *io_prometheus_client.Metric) float64 {
 	if m.GetGauge() != nil {
 		return m.GetGauge().GetValue()
 	} else if m.GetCounter() != nil {
@@ -20,10 +20,28 @@ func getValue(m *io_prometheus_client.Metric) float64 {
 	}
 }
 
-func sumValues(family *io_prometheus_client.MetricFamily) float64 {
-	sum := 0.0
+func getMetricCount(m *io_prometheus_client.Metric) float64 {
+	if m.GetHistogram() != nil {
+		return float64(m.GetHistogram().GetSampleCount())
+	} else if m.GetSummary() != nil {
+		return float64(m.GetSummary().GetSampleCount())
+	} else {
+		return 0
+	}
+}
+
+func getValues(family *io_prometheus_client.MetricFamily, get GetMetricValueFunc) []float64 {
+	values := make([]float64, 0, len(family.Metric))
 	for _, m := range family.Metric {
-		sum += getValue(m)
+		values = append(values, get(m))
+	}
+	return values
+}
+
+func sumValues(values []float64) float64 {
+	sum := 0.0
+	for _, v := range values {
+		sum += v
 	}
 	return sum
 }

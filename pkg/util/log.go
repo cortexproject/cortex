@@ -103,9 +103,6 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
 	// even though the code-base generally uses `userID` to refer to the same thing.
 	userID, err := user.ExtractOrgID(ctx)
-	if err != nil && err != user.ErrNoOrgID {
-		return l
-	}
 	if err == nil {
 		l = WithUserID(userID, l)
 	}

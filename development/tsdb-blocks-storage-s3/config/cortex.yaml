@@ -82,6 +82,8 @@ store_gateway:
   sharding_enabled: true
   sharding_ring:
     replication_factor: 1
+    heartbeat_period:   5s
+    heartbeat_timeout:  15s
     kvstore:
       store: consul
       consul:

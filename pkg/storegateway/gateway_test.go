@@ -404,6 +404,22 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: false,
 		},
+		"should NOT sync when an instance is auto-forgotten in the ring but was already unhealthy in the previous state": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+
+				// Set it already unhealthy.
+				instance := desc.Ingesters["instance-2"]
+				instance.Timestamp = time.Now().Add(-time.Hour).Unix()
+				desc.Ingesters["instance-2"] = instance
+			},
+			updateRing: func(desc *ring.Desc) {
+				// Remove the unhealthy instance from the ring.
+				desc.RemoveIngester("instance-2")
+			},
+			expectedSync: false,
+		},
 	}
 
 	for testName, testData := range tests {

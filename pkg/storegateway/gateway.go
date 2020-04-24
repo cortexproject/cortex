@@ -116,6 +116,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		delegate := ring.BasicLifecyclerDelegate(g)
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 		delegate = ring.NewTokensPersistencyDelegate(gatewayCfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, logger)
+		delegate = ring.NewAutoForgetDelegate(10*gatewayCfg.ShardingRing.HeartbeatTimeout, delegate, logger)
 
 		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, logger, reg)
 		if err != nil {
@@ -293,8 +294,10 @@ func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 	return ring.JOINING, tokens
 }
 
-func (g *StoreGateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, tokens ring.Tokens) {}
-func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)                   {}
+func (g *StoreGateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
+func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
+func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.IngesterDesc) {
+}
 
 func createBucketClient(cfg cortex_tsdb.Config, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", logger)

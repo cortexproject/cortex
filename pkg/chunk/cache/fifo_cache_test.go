@@ -27,7 +27,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}{
 		{
 			name: "test-memory-eviction",
-			cfg:  FifoCacheConfig{MaxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
+			cfg:  FifoCacheConfig{maxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
 		},
 		{
 			name: "test-items-eviction",
@@ -175,7 +175,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	}{
 		{
 			name: "test-memory-expiry",
-			cfg:  FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond},
+			cfg:  FifoCacheConfig{maxSizeBytes: memorySz, Validity: 5 * time.Millisecond},
 		},
 		{
 			name: "test-items-expiry",

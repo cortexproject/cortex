@@ -94,12 +94,12 @@ type FifoCacheConfig struct {
 
 	DeprecatedSize int `yaml:"size"`
 
-	MaxSizeBytes uint64
+	maxSizeBytes uint64
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.MaxSizeBytesStr, prefix+"fifocache.max-size-bytes", "", description+"Maximum memory size of the cache.")
+	f.StringVar(&cfg.MaxSizeBytesStr, prefix+"fifocache.max-size-bytes", "", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 
@@ -109,7 +109,7 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 func (cfg *FifoCacheConfig) Validate() error {
 	if len(cfg.MaxSizeBytesStr) > 0 {
 		var err error
-		if cfg.MaxSizeBytes, err = humanize.ParseBytes(cfg.MaxSizeBytesStr); err != nil {
+		if cfg.maxSizeBytes, err = humanize.ParseBytes(cfg.MaxSizeBytesStr); err != nil {
 			return errors.Wrap(err, "invalid FifoCache config")
 		}
 	}
@@ -154,14 +154,14 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
 		cfg.MaxSizeItems = cfg.DeprecatedSize
 	}
-	if cfg.MaxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
+	if cfg.maxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
 		// zero cache capacity - no need to create cache
 		level.Warn(util.Logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
 		return nil
 	}
 	return &FifoCache{
 		maxSizeItems: cfg.MaxSizeItems,
-		maxSizeBytes: cfg.MaxSizeBytes,
+		maxSizeBytes: cfg.maxSizeBytes,
 		validity:     cfg.Validity,
 		entries:      make(map[string]*list.Element),
 		lru:          list.New(),

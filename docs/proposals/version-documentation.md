@@ -11,7 +11,7 @@ slug: documentation-versioning
 
 ## Problem
 
-In Cortex, currently, we are missing versioning of documentation. The idea is to have version documentation just like Prometheus.[`Prometheus`](https://prometheus.io/docs/introduction/overview/). Documentation is the main source of information for current contributors and first-timers. A properly versioned documentation will help everyone to have a proper place to look for answers before flagging it in the community. 
+In Cortex, currently, we are missing versioning of documentation. The idea is to have version documentation just like Prometheus.[`Prometheus`](https://prometheus.io/docs/introduction/overview/). Documentation is the main source of information for current contributors and first-timers. A properly versioned documentation will help everyone to have a proper place to look for answers before flagging it in the community.
 
 In this proposal, we want to solve this. In particular, we want to:
 
@@ -37,14 +37,14 @@ For `master` version we would be able to use the above links via the following p
 
 ```
 /docs/running-cortex/master/configuration/
-/docs/running-cortex/master/api/ 
+/docs/running-cortex/master/api/
 ```
 
 And for a minor version like `1.x`:
 
 ```
 /docs/running-cortex/1.0/configuration/
-/docs/running-cortex/1.0/apis/ 
+/docs/running-cortex/1.0/apis/
 ```
 
 we'll have versioned documentation only under the /docs/running-cortex/ prefix and, as a starting point, all versioned pages should go there.

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Ruler: Better handling of special characters in filenames when mapping them onto the filesystem. #2506
 * [CHANGE] Added v1 API routes documented in #2327. #2372
   * Added `-http.alertmanager-http-prefix` flag which allows the configuration of the path where the Alertmanager API and UI can be reached. The default is set to `/alertmanager`.
   * Added `-http.prometheus-http-prefix` flag which allows the configuration of the path where the Prometheus API and UI can be reached. The default is set to `/prometheus`.
@@ -23,7 +24,6 @@
 * [CHANGE] Experimental WAL: WAL and checkpoint compression is now disabled. #2436
 * [FEATURE] Ruler: The `-ruler.evaluation-delay` flag was added to allow users to configure a default evaluation delay for all rules in cortex. The default value is 0 which is the current behavior. #2423
 * [FEATURE] Experimental: Added a new object storage client for OpenStack Swift. #2440
-* [ENHANCEMENT] Ruler: Better handling of special characters in filenames when mapping them onto the filesystem. #2506
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392

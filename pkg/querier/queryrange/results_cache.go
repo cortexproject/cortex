@@ -204,20 +204,22 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 		}
 	}
 
-	if s.cacheGenNumberLoader != nil {
-		genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
-		genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+	if s.cacheGenNumberLoader == nil {
+		return true
+	}
 
-		if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
+	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+
+	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
+		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		return false
+	}
+
+	for _, gen := range genNumbersFromResp {
+		if gen != genNumberFromCtx {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
 			return false
-		}
-
-		for _, gen := range genNumbersFromResp {
-			if gen != genNumberFromCtx {
-				level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
-				return false
-			}
 		}
 	}
 

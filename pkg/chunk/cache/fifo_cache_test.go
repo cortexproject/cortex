@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}{
 		{
 			name: "test-memory-eviction",
-			cfg:  FifoCacheConfig{maxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
+			cfg:  FifoCacheConfig{MaxSizeBytes: strconv.FormatInt(int64(cnt*sizeOf(itemTemplate)), 10), Validity: 1 * time.Minute},
 		},
 		{
 			name: "test-items-eviction",
@@ -175,7 +176,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	}{
 		{
 			name: "test-memory-expiry",
-			cfg:  FifoCacheConfig{maxSizeBytes: memorySz, Validity: 5 * time.Millisecond},
+			cfg:  FifoCacheConfig{MaxSizeBytes: strconv.FormatInt(int64(memorySz), 10), Validity: 5 * time.Millisecond},
 		},
 		{
 			name: "test-items-expiry",

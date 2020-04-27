@@ -325,7 +325,7 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 
 	// Run a noop update instance, but since the instance is not in the ring we do expect
 	// it will added back anyway.
-	require.NoError(t, lifecycler.updateInstance(ctx, func(_ Desc, desc *IngesterDesc) bool {
+	require.NoError(t, lifecycler.updateInstance(ctx, func(_ *Desc, desc *IngesterDesc) bool {
 		return false
 	}))
 
@@ -363,6 +363,7 @@ type mockDelegate struct {
 	onRegister      func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens)
 	onTokensChanged func(lifecycler *BasicLifecycler, tokens Tokens)
 	onStopping      func(lifecycler *BasicLifecycler)
+	onHeartbeat     func(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc)
 }
 
 func (m *mockDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
@@ -382,6 +383,12 @@ func (m *mockDelegate) OnRingInstanceTokens(lifecycler *BasicLifecycler, tokens 
 func (m *mockDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler) {
 	if m.onStopping != nil {
 		m.onStopping(lifecycler)
+	}
+}
+
+func (m *mockDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+	if m.onHeartbeat != nil {
+		m.onHeartbeat(lifecycler, ringDesc, instanceDesc)
 	}
 }
 

@@ -97,13 +97,16 @@ func mkExtent(start, end int64) Extent {
 }
 
 func TestShouldCache(t *testing.T) {
-	c := &resultsCache{logger: util.Logger}
-	for i, tc := range []struct {
-		input    Response
-		expected bool
+	c := &resultsCache{logger: util.Logger, cacheGenNumberLoader: newMockCacheGenNumberLoader()}
+	for _, tc := range []struct {
+		name                   string
+		input                  Response
+		cacheGenNumberToInject string
+		expected               bool
 	}{
-		// Does not contain the needed header.
+		// Tests only for cacheControlHeader
 		{
+			name: "does not contain the cacheControl header",
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -114,8 +117,8 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: true,
 		},
-		// Does contain the header which has the value.
 		{
+			name: "does contain the cacheControl header which has the value",
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -126,8 +129,8 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: false,
 		},
-		// Header contains extra values but still good.
 		{
+			name: "cacheControl header contains extra values but still good",
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -138,27 +141,112 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: false,
 		},
-		// some broken responses
 		{
+			name:     "broken response",
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
+			name: "nil headers",
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{nil},
 			}),
 			expected: true,
 		},
 		{
+			name: "had cacheControl header but no values",
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{{Name: cachecontrolHeader}},
 			}),
 			expected: true,
 		},
+
+		// Tests only for cacheGenNumber header
+		{
+			name: "cacheGenNumber not set in both header and store",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+			}),
+			expected: true,
+		},
+		{
+			name: "cacheGenNumber set in store but not in header",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   "meaninglessheader",
+						Values: []string{},
+					},
+				},
+			}),
+			cacheGenNumberToInject: "1",
+			expected:               false,
+		},
+		{
+			name: "cacheGenNumber set in header but not in store",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   ResultsCacheGenNumberHeaderName,
+						Values: []string{"1"},
+					},
+				},
+			}),
+			expected: false,
+		},
+		{
+			name: "cacheGenNumber in header and store are the same",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   ResultsCacheGenNumberHeaderName,
+						Values: []string{"1", "1"},
+					},
+				},
+			}),
+			cacheGenNumberToInject: "1",
+			expected:               true,
+		},
+		{
+			name: "inconsistency between cacheGenNumber in header and store",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   ResultsCacheGenNumberHeaderName,
+						Values: []string{"1", "2"},
+					},
+				},
+			}),
+			cacheGenNumberToInject: "1",
+			expected:               false,
+		},
+		{
+			name: "cacheControl header says not to catch and cacheGenNumbers in store and headers have consistency",
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					{
+						Name:   cachecontrolHeader,
+						Values: []string{noCacheValue},
+					},
+					{
+						Name:   ResultsCacheGenNumberHeaderName,
+						Values: []string{"1", "1"},
+					},
+				},
+			}),
+			cacheGenNumberToInject: "1",
+			expected:               false,
+		},
 	} {
 		{
-			t.Run(strconv.Itoa(i), func(t *testing.T) {
-				ret := c.shouldCacheResponse(tc.input)
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
+				ret := c.shouldCacheResponse(ctx, tc.input)
 				require.Equal(t, tc.expected, ret)
 			})
 		}
@@ -246,7 +334,7 @@ func TestPartiton(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor)
+			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{})
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
@@ -277,7 +365,8 @@ func TestResultsCache(t *testing.T) {
 		constSplitter(day),
 		fakeLimits{},
 		PrometheusCodec,
-		PrometheusResponseExtractor,
+		PrometheusResponseExtractor{},
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -308,7 +397,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -346,7 +435,8 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		constSplitter(day),
 		fakeLimits{},
 		PrometheusCodec,
-		PrometheusResponseExtractor,
+		PrometheusResponseExtractor{},
+		nil,
 	)
 	require.NoError(t, err)
 	rc := rm.Wrap(nil).(*resultsCache)
@@ -407,4 +497,15 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 
 func toMs(t time.Duration) int64 {
 	return int64(t / time.Millisecond)
+}
+
+type mockCacheGenNumberLoader struct {
+}
+
+func newMockCacheGenNumberLoader() CacheGenNumberLoader {
+	return mockCacheGenNumberLoader{}
+}
+
+func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(userID string) string {
+	return ""
 }

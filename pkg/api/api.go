@@ -249,7 +249,7 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 // RegisterQuerier registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the QueryFrontend.
-func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor, registerRoutesExternally bool) http.Handler {
+func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor, registerRoutesExternally bool, tombstonesLoader *purger.TombstonesLoader) http.Handler {
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -285,7 +285,8 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 
 	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
 	api.Register(promRouter)
-	promHandler := fakeRemoteAddr(promRouter)
+	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
+	promHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(promRouter))
 
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true, "GET", "POST")
@@ -297,7 +298,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 
 	legacyPromRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.LegacyHTTPPrefix + "/api/v1")
 	api.Register(legacyPromRouter)
-	legacyPromHandler := fakeRemoteAddr(legacyPromRouter)
+	legacyPromHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(legacyPromRouter))
 
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true, "GET", "POST")

@@ -187,20 +187,21 @@ type Cortex struct {
 	// set during initialization
 	serviceMap map[ModuleName]services.Service
 
-	api           *api.API
-	server        *server.Server
-	ring          *ring.Ring
-	overrides     *validation.Overrides
-	distributor   *distributor.Distributor
-	ingester      *ingester.Ingester
-	flusher       *flusher.Flusher
-	store         chunk.Store
-	deletesStore  *purger.DeleteStore
-	frontend      *frontend.Frontend
-	tableManager  *chunk.TableManager
-	cache         cache.Cache
-	runtimeConfig *runtimeconfig.Manager
-	dataPurger    *purger.DataPurger
+	api              *api.API
+	server           *server.Server
+	ring             *ring.Ring
+	overrides        *validation.Overrides
+	distributor      *distributor.Distributor
+	ingester         *ingester.Ingester
+	flusher          *flusher.Flusher
+	store            chunk.Store
+	deletesStore     *purger.DeleteStore
+	frontend         *frontend.Frontend
+	tableManager     *chunk.TableManager
+	cache            cache.Cache
+	runtimeConfig    *runtimeconfig.Manager
+	dataPurger       *purger.DataPurger
+	tombstonesLoader *purger.TombstonesLoader
 
 	ruler        *ruler.Ruler
 	configAPI    *configAPI.API

@@ -2,7 +2,7 @@ package ruler
 
 import (
 	"crypto/md5"
-	"encoding/base64"
+	"net/url"
 	"path/filepath"
 	"sort"
 
@@ -35,7 +35,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	anyUpdated := false
 	filenames := []string{}
 
-	// user rule files will be stored as `/<path>/<userid>/filename`
+	// user rule files will be stored as `/<path>/<userid>/<encoded filename>`
 	path := filepath.Join(m.Path, user)
 	err := m.FS.MkdirAll(path, 0777)
 	if err != nil {
@@ -45,7 +45,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	// write all rule configs to disk
 	for filename, groups := range ruleConfigs {
 		// Store the encoded file name to better handle `/` characters
-		encodedFileName := base64.URLEncoding.EncodeToString([]byte(filename))
+		encodedFileName := url.PathEscape(filename)
 		fullFileName := filepath.Join(path, encodedFileName)
 
 		fileUpdated, err := m.writeRuleGroupsIfNewer(groups, fullFileName)
@@ -65,8 +65,8 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	for _, existingFile := range existingFiles {
 		fullFileName := filepath.Join(path, existingFile.Name())
 
-		// Ensure the namespace is decoded from base64 to see if it is still required
-		decodedNamespace, err := base64.URLEncoding.DecodeString(existingFile.Name())
+		// Ensure the namespace is decoded from a url path encoding to see if it is still required
+		decodedNamespace, err := url.PathUnescape(existingFile.Name())
 		if err != nil {
 			level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", existingFile.Name(), "err", err)
 			continue

@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -533,7 +532,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 		interval := group.Interval()
 
 		// The mapped filename is base64 encoded to make handling `/` characters easier
-		decodedNamespace, err := base64.URLEncoding.DecodeString(strings.TrimPrefix(group.File(), prefix))
+		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to decode rule filename")
 		}

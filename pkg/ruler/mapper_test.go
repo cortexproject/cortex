@@ -1,7 +1,7 @@
 package ruler
 
 import (
-	"encoding/base64"
+	"net/url"
 	"os"
 	"testing"
 
@@ -16,14 +16,14 @@ import (
 var (
 	testUser = "user1"
 
-	fileOneEncoded = base64.URLEncoding.EncodeToString([]byte("file_one"))
-	fileTwoEncoded = base64.URLEncoding.EncodeToString([]byte("file_two"))
+	fileOneEncoded = url.PathEscape("file /one")
+	fileTwoEncoded = url.PathEscape("file /two")
 
 	fileOnePath = "/rules/user1/" + fileOneEncoded
 	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
 	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -46,7 +46,7 @@ var (
 	}
 
 	outOfOrderRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_two",
 				Rules: []legacy_rulefmt.Rule{
@@ -69,7 +69,7 @@ var (
 	}
 
 	updatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -159,7 +159,7 @@ func Test_mapper_MapRules(t *testing.T) {
 
 var (
 	twoFilesRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -179,7 +179,7 @@ var (
 				},
 			},
 		},
-		"file_two": {
+		"file /two": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -193,7 +193,7 @@ var (
 	}
 
 	twoFilesUpdatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -213,7 +213,7 @@ var (
 				},
 			},
 		},
-		"file_two": {
+		"file /two": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -227,7 +227,7 @@ var (
 	}
 
 	twoFilesDeletedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -322,7 +322,7 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 
 var (
 	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
-	specialCharFileEncoded = base64.URLEncoding.EncodeToString([]byte(specialCharFile))
+	specialCharFileEncoded = url.PathEscape(specialCharFile)
 	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
 
 	specialCharactersRuleSet = map[string][]legacy_rulefmt.RuleGroup{

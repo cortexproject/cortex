@@ -198,6 +198,7 @@ func TestDelegatesChain(t *testing.T) {
 
 	chain = NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, chain, log.NewNopLogger())
 	chain = NewLeaveOnStoppingDelegate(chain, log.NewNopLogger())
+	chain = NewAutoForgetDelegate(time.Minute, chain, log.NewNopLogger())
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
@@ -284,7 +285,7 @@ func TestAutoForgetDelegate(t *testing.T) {
 			require.NotNil(t, v)
 
 			var actualInstances []string
-			for id, _ := range GetOrCreateRingDesc(v).GetIngesters() {
+			for id := range GetOrCreateRingDesc(v).GetIngesters() {
 				actualInstances = append(actualInstances, id)
 			}
 

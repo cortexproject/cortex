@@ -105,14 +105,8 @@ func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, 
 }
 
 func (cfg *FifoCacheConfig) Validate() error {
-	maxSizeBytes, err := parsebytes(cfg.MaxSizeBytes)
-	if err != nil {
-		return err
-	}
-	if maxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
-		return errors.New("neither fifocache.max-size-bytes nor fifocache.max-size-items is set")
-	}
-	return nil
+	_, err := parsebytes(cfg.MaxSizeBytes)
+	return err
 }
 
 func parsebytes(s string) (uint64, error) {
@@ -166,6 +160,11 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 	}
 	maxSizeBytes, _ := parsebytes(cfg.MaxSizeBytes)
 
+	if maxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
+		// zero cache capacity - no need to create cache
+		level.Warn(util.Logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
+		return nil
+	}
 	return &FifoCache{
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: maxSizeBytes,

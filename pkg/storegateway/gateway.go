@@ -31,6 +31,10 @@ const (
 	// sharedOptionWithQuerier is a message appended to all config options that should be also
 	// set on the querier in order to work correct.
 	sharedOptionWithQuerier = " This option needs be set both on the store-gateway and querier when running in microservices mode."
+
+	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
+	// in the ring will be automatically removed.
+	ringAutoForgetUnhealthyPeriods = 10
 )
 
 // Config holds the store gateway config.
@@ -116,7 +120,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		delegate := ring.BasicLifecyclerDelegate(g)
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 		delegate = ring.NewTokensPersistencyDelegate(gatewayCfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, logger)
-		delegate = ring.NewAutoForgetDelegate(10*gatewayCfg.ShardingRing.HeartbeatTimeout, delegate, logger)
+		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*gatewayCfg.ShardingRing.HeartbeatTimeout, delegate, logger)
 
 		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, logger, reg)
 		if err != nil {

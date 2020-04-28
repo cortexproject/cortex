@@ -52,7 +52,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since userconfig.ID) (map[
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.Config.Endpoint.URL.String(), suffix)
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.Config.Endpoint.String(), suffix)
 	var response *ConfigsResponse
 	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error

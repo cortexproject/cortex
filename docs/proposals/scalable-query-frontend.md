@@ -140,7 +140,7 @@ Currently query frontends (along with all Cortex components) have a `/ready` end
 
 #### Challenge
 
-Given `f` query frontends, `n` tenants and an average of `q` queries in the frontend per tenant.  The number of tenants per instance would be:
+Given `f` query frontends, `n` tenants and an average of `q` queries in the frontend per tenant.  The following assumes that queries are perfectly distributed across query frontends.  The number of tenants per instance would be:
 
 <img src="https://render.githubusercontent.com/render/math?math=m = floor(n * \frac{min(q,f)}{f})">
 
@@ -148,7 +148,7 @@ The chance that a query by a tenant with `Q` queries in the frontend is serviced
 
 <img src="https://render.githubusercontent.com/render/math?math=min(Q,f)* \frac{1}{min(q * n %2b Q,f)}*\frac{1}{m %2b 1}">
 
-This assumes that queries are perfectly distributed across query frontends.  Note that fewer query frontends caps the impact of the number of active queries per tenant.  If there is only one query frontend then the equation reduces to:
+Note that fewer query frontends caps the impact of the number of active queries per tenant.  If there is only one query frontend then the equation reduces to:
 
 <img src="https://render.githubusercontent.com/render/math?math=\frac{1}{n}">
 

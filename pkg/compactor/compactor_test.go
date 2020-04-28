@@ -591,7 +591,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 10*time.Second, len(compactors), func() interface{} {
 			// it is safe to access c.ring here, since we know that all compactors are Running now
-			rs, err := c.ring.GetAll()
+			rs, err := c.ring.GetAll(ring.Read)
 			if err != nil {
 				return 0
 			}

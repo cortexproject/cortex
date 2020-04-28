@@ -131,6 +131,7 @@ func NewTripperware(
 	engineOpts promql.EngineOpts,
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
+	cacheGenNumberLoader CacheGenNumberLoader,
 ) (frontend.Tripperware, cache.Cache, error) {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -152,7 +153,7 @@ func NewTripperware(
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader)
 		if err != nil {
 			return nil, nil, err
 		}

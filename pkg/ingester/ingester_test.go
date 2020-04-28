@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -159,6 +161,34 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	return res, req, nil
 }
 
+func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetric int) ([]string, map[string][]*client.MetricMetadata) {
+	userIDs := []string{"1", "2", "3"}
+
+	// Create test metadata.
+	// Map of userIDs, to map of metric => metadataSet
+	testData := map[string][]*client.MetricMetadata{}
+	for _, userID := range userIDs {
+		metadata := make([]*client.MetricMetadata, 0, metadataPerMetric)
+		for i := 0; i < numMetadata; i++ {
+			metricName := fmt.Sprintf("testmetric_%d", i)
+			for j := 0; j < metadataPerMetric; j++ {
+				m := &client.MetricMetadata{MetricName: metricName, Help: fmt.Sprintf("a help for %d", j), Unit: "", Type: client.COUNTER}
+				metadata = append(metadata, m)
+			}
+		}
+		testData[userID] = metadata
+	}
+
+	// Append metadata.
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		_, err := ing.Push(ctx, client.ToWriteRequest(nil, nil, testData[userID], client.API))
+		require.NoError(t, err)
+	}
+
+	return userIDs, testData
+}
+
 func pushTestSamples(t testing.TB, ing *Ingester, numSeries, samplesPerSeries, offset int) ([]string, map[string]model.Matrix) {
 	userIDs := []string{"1", "2", "3"}
 
@@ -206,6 +236,115 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, userIDs, testData)
+}
+
+func TestIngesterMetadataAppend(t *testing.T) {
+	for _, tc := range []struct {
+		desc              string
+		numMetadata       int
+		metadataPerMetric int
+		expectedMetrics   int
+		expectedMetadata  int
+		err               error
+	}{
+		{"with no metadata", 0, 0, 0, 0, nil},
+		{"with one metadata per metric", 10, 1, 10, 10, nil},
+		{"with multiple metadata per metric", 10, 3, 10, 30, nil},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			limits := defaultLimitsTestConfig()
+			limits.MaxLocalMetadataPerMetric = 50
+			_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
+			userIDs, _ := pushTestMetadata(t, ing, tc.numMetadata, tc.metadataPerMetric)
+
+			for _, userID := range userIDs {
+				ctx := user.InjectOrgID(context.Background(), userID)
+				resp, err := ing.MetricsMetadata(ctx, nil)
+
+				if tc.err != nil {
+					require.Equal(t, tc.err, err)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, resp)
+
+					metricTracker := map[string]bool{}
+					for _, m := range resp.Metadata {
+						_, ok := metricTracker[m.GetMetricName()]
+						if !ok {
+							metricTracker[m.GetMetricName()] = true
+						}
+					}
+
+					require.Equal(t, tc.expectedMetrics, len(metricTracker))
+					require.Equal(t, tc.expectedMetadata, len(resp.Metadata))
+				}
+			}
+		})
+	}
+}
+
+func TestIngesterPurgeMetadata(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.MetadataRetainPeriod = 20 * time.Millisecond
+	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	userIDs, _ := pushTestMetadata(t, ing, 10, 3)
+
+	time.Sleep(40 * time.Millisecond)
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		ing.purgeUserMetricsMetadata()
+
+		resp, err := ing.MetricsMetadata(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(resp.GetMetadata()))
+	}
+}
+
+func TestIngesterMetadataMetrics(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	cfg := defaultIngesterTestConfig()
+	cfg.MetadataRetainPeriod = 20 * time.Millisecond
+	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), reg)
+	_, _ = pushTestMetadata(t, ing, 10, 3)
+
+	pushTestMetadata(t, ing, 10, 3)
+	pushTestMetadata(t, ing, 10, 3) // We push the _exact_ same metrics again to ensure idempotency. Metadata is kept as a set so there shouldn't be a change of metrics.
+
+	metricNames := []string{
+		"cortex_ingester_memory_metadata_created_total",
+		"cortex_ingester_memory_metadata_removed_total",
+		"cortex_ingester_memory_metadata",
+	}
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+		# TYPE cortex_ingester_memory_metadata gauge
+		cortex_ingester_memory_metadata 90
+		# HELP cortex_ingester_memory_metadata_created_total The total number of metadata that were created per user
+		# TYPE cortex_ingester_memory_metadata_created_total counter
+		cortex_ingester_memory_metadata_created_total{user="1"} 30
+		cortex_ingester_memory_metadata_created_total{user="2"} 30
+		cortex_ingester_memory_metadata_created_total{user="3"} 30
+	`), metricNames...))
+
+	time.Sleep(40 * time.Millisecond)
+	ing.purgeUserMetricsMetadata()
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+		# TYPE cortex_ingester_memory_metadata gauge
+		cortex_ingester_memory_metadata 0
+		# HELP cortex_ingester_memory_metadata_created_total The total number of metadata that were created per user
+		# TYPE cortex_ingester_memory_metadata_created_total counter
+		cortex_ingester_memory_metadata_created_total{user="1"} 30
+		cortex_ingester_memory_metadata_created_total{user="2"} 30
+		cortex_ingester_memory_metadata_created_total{user="3"} 30
+		# HELP cortex_ingester_memory_metadata_removed_total The total number of metadata that were removed per user.
+		# TYPE cortex_ingester_memory_metadata_removed_total counter
+		cortex_ingester_memory_metadata_removed_total{user="1"} 30
+		cortex_ingester_memory_metadata_removed_total{user="2"} 30
+		cortex_ingester_memory_metadata_removed_total{user="3"} 30
+	`), metricNames...))
+
 }
 
 func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
@@ -362,14 +501,16 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 	assert.Equal(t, expected, res)
 }
 
-func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
+func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerUser = 1
+	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	userID := "1"
+	// Series
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
 	sample1 := client.Sample{
 		TimestampMs: 0,
@@ -384,10 +525,13 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 		TimestampMs: 1,
 		Value:       3,
 	}
+	// Metadata
+	metadata1 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
+	metadata2 := &client.MetricMetadata{MetricName: "testmetric2", Help: "a help for testmetric2", Type: client.COUNTER}
 
-	// Append only one series first, expect no error.
+	// Append only one series and one metadata first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, nil, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
@@ -395,6 +539,9 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
+	// Append two metadata, expect no error since metadata is a best effort approach.
+	_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+	require.NoError(t, err)
 
 	// Read samples back via ingester queries.
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
@@ -416,12 +563,19 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, expected, res)
+	// Verify samples
+	require.Equal(t, expected, res)
+
+	// Verify metadata
+	m, err := ing.MetricsMetadata(ctx, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
 }
 
-func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
+func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerMetric = 1
+	limits.MaxLocalMetadataPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -442,21 +596,30 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 		Value:       3,
 	}
 
-	// Append only one series first, expect no error.
+	// Metadata
+	metadata1 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
+	metadata2 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric2", Type: client.COUNTER}
+
+	// Append only one series and one metadata first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, nil, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 	require.NoError(t, err)
 
-	// Append to two series, expect series-exceeded error.
+	// Append two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
 
+	// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
+	_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+	require.NoError(t, err)
+
 	// Read samples back via ingester queries.
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
+	// Verify Series
 	expected := model.Matrix{
 		{
 			Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
@@ -474,6 +637,11 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, res)
+
+	// Verify metadata
+	m, err := ing.MetricsMetadata(ctx, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
 }
 
 func TestIngesterValidation(t *testing.T) {

@@ -265,5 +265,5 @@ func exactMatch(k, v string) *labels.Matcher {
 }
 
 func mkQuerier(handler Handler) *ShardedQuerier {
-	return &ShardedQuerier{context.Background(), &PrometheusRequest{}, handler}
+	return &ShardedQuerier{Ctx: context.Background(), Req: &PrometheusRequest{}, Handler: handler, ResponseHeaders: map[string][]string{}}
 }

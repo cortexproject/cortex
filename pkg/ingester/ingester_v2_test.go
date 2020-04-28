@@ -50,29 +50,58 @@ func TestIngester_v2Push(t *testing.T) {
 	userID := "test"
 
 	tests := map[string]struct {
-		reqs             []*client.WriteRequest
-		expectedErr      error
-		expectedIngested []client.TimeSeries
-		expectedMetrics  string
+		reqs                     []*client.WriteRequest
+		expectedErr              error
+		expectedIngested         []client.TimeSeries
+		expectedMetadataIngested []*client.MetricMetadata
+		expectedMetrics          string
+		additionalMetrics        []string
 	}{
-		"should succeed on valid series": {
+		"should succeed on valid series and metadata": {
 			reqs: []*client.WriteRequest{
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
-					nil,
+					[]*client.MetricMetadata{
+						{MetricName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+					},
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 10}},
-					nil,
+					[]*client.MetricMetadata{
+						{MetricName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
+					},
 					client.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
 			},
+			expectedMetadataIngested: []*client.MetricMetadata{
+				{MetricName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
+				{MetricName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+			},
+			additionalMetrics: []string{
+				// Metadata.
+				"cortex_ingester_memory_metadata",
+				"cortex_ingester_memory_metadata_created_total",
+				"cortex_ingester_ingested_metadata_total",
+				"cortex_ingester_ingested_metadata_failures_total",
+			},
 			expectedMetrics: `
+				# HELP cortex_ingester_ingested_metadata_failures_total The total number of metadata that errored on ingestion.
+				# TYPE cortex_ingester_ingested_metadata_failures_total counter
+				cortex_ingester_ingested_metadata_failures_total 0
+				# HELP cortex_ingester_ingested_metadata_total The total number of metadata ingested.
+				# TYPE cortex_ingester_ingested_metadata_total counter
+				cortex_ingester_ingested_metadata_total 2
+				# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+				# TYPE cortex_ingester_memory_metadata gauge
+				cortex_ingester_memory_metadata 2
+				# HELP cortex_ingester_memory_metadata_created_total The total number of metadata that were created per user
+				# TYPE cortex_ingester_memory_metadata_created_total counter
+				cortex_ingester_memory_metadata_created_total{user="test"} 2
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
 				cortex_ingester_ingested_samples_total 2
@@ -266,8 +295,20 @@ func TestIngester_v2Push(t *testing.T) {
 			require.NotNil(t, res)
 			assert.Equal(t, testData.expectedIngested, res.Timeseries)
 
+			// Read back metadata to see what has been really ingested.
+			mres, err := i.MetricsMetadata(ctx, &client.MetricsMetadataRequest{})
+
+			require.NoError(t, err)
+			require.NotNil(t, res)
+
+			// Order is never guaranteed.
+			assert.ElementsMatch(t, testData.expectedMetadataIngested, mres.Metadata)
+
+			// Append additional metrics to assert on.
+			mn := append(metricNames, testData.additionalMetrics...)
+
 			// Check tracked Prometheus metrics
-			err = testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), metricNames...)
+			err = testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), mn...)
 			assert.NoError(t, err)
 		})
 	}

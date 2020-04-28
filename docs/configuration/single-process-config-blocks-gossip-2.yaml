@@ -79,3 +79,6 @@ tsdb:
   backend: filesystem # s3, gcs, azure or filesystem are valid options
   filesystem:
     dir: /tmp/cortex/storage
+
+frontend_worker:
+  match_max_concurrent: true

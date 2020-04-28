@@ -1,7 +1,6 @@
 package ring
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -185,79 +184,5 @@ func TestDesc_Ready(t *testing.T) {
 
 	if err := r.Ready(now, 10*time.Second); err != nil {
 		t.Fatal("expected ready, got", err)
-	}
-}
-
-func TestTokenDescs_Equals(t *testing.T) {
-	tests := []struct {
-		first    TokenDescs
-		second   TokenDescs
-		expected bool
-	}{
-		{
-			first:    nil,
-			second:   nil,
-			expected: true,
-		}, {
-			first:    TokenDescs{},
-			second:   TokenDescs{},
-			expected: true,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-			},
-			second:   nil,
-			expected: false,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-				{Token: 2, Ingester: "2", Zone: "2"},
-			},
-			second: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-				{Token: 2, Ingester: "2", Zone: "2"},
-			},
-			expected: true,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-				{Token: 2, Ingester: "2", Zone: "2"},
-			},
-			second: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-			},
-			expected: false,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-			},
-			second: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "different"},
-			},
-			expected: false,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-			},
-			second: TokenDescs{
-				{Token: 1, Ingester: "different", Zone: "1"},
-			},
-			expected: false,
-		}, {
-			first: TokenDescs{
-				{Token: 1, Ingester: "1", Zone: "1"},
-			},
-			second: TokenDescs{
-				{Token: 0, Ingester: "1", Zone: "1"},
-			},
-			expected: false,
-		},
-	}
-
-	for testID, testData := range tests {
-		t.Run(fmt.Sprintf("Test %d", testID), func(t *testing.T) {
-			assert.Equal(t, testData.expected, testData.first.Equals(testData.second))
-			assert.Equal(t, testData.expected, testData.second.Equals(testData.first))
-		})
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -598,7 +599,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -701,6 +702,42 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	return result, nil
 }
 
+// MetricMetadata returns all metric metadata of a user.
+func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	req := &ingester_client.MetricsMetadataRequest{}
+	// TODO: We only need to look in all the ingesters if we're shardByAllLabels is enabled.
+	// Look into distributor/query.go
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+		return client.MetricsMetadata(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := []scrape.MetricMetadata{}
+	dedupTracker := map[ingester_client.MetricMetadata]struct{}{}
+	for _, resp := range resps {
+		r := resp.(*client.MetricsMetadataResponse)
+		for _, m := range r.Metadata {
+			// Given we look across all ingesters - dedup the metadata.
+			_, ok := dedupTracker[*m]
+			if ok {
+				continue
+			}
+			dedupTracker[*m] = struct{}{}
+
+			result = append(result, scrape.MetricMetadata{
+				Metric: m.MetricName,
+				Help:   m.Help,
+				Unit:   m.Unit,
+				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),
+			})
+		}
+	}
+
+	return result, nil
+}
+
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
@@ -741,7 +778,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}

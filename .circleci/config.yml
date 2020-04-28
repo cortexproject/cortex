@@ -155,6 +155,7 @@ jobs:
           docker pull shopify/bigtable-emulator:0.1.0
           docker pull rinscy/cassandra:3.11.0
           docker pull memcached:1.6.1
+          docker pull bouncestorage/swift-aio:55ba4331
     - run:
         name: Integration Tests
         command: |

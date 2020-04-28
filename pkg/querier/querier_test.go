@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -143,7 +144,7 @@ func TestQuerier(t *testing.T) {
 						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
+						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
 						testQuery(t, queryable, through, query)
 					})
 				}
@@ -216,7 +217,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -306,7 +307,7 @@ func TestNoFutureQueries(t *testing.T) {
 				chunkStore := &errChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, chunkStore, purger.NewTombstonesLoader(nil), nil)
+				queryable, _ := New(cfg, distributor, chunkStore, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -413,6 +414,10 @@ func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, thro
 	return nil, errDistributorError
 }
 
+func (m *errDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	return nil, errDistributorError
+}
+
 type emptyChunkStore struct {
 	sync.Mutex
 	called bool
@@ -493,7 +498,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil), nil)
+				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 

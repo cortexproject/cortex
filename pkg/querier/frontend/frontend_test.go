@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -55,7 +56,8 @@ func TestFrontend(t *testing.T) {
 
 		assert.Equal(t, "Hello World", string(body))
 	}
-	testFrontend(t, handler, test)
+	testFrontend(t, handler, test, false)
+	testFrontend(t, handler, test, true)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -104,7 +106,8 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		// Query should do one calls.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	testFrontend(t, handler, test)
+	testFrontend(t, handler, test, false)
+	testFrontend(t, handler, test, true)
 }
 
 // TestFrontendCancel ensures that when client requests are cancelled,
@@ -135,7 +138,9 @@ func TestFrontendCancel(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
 	}
-	testFrontend(t, handler, test)
+	testFrontend(t, handler, test, false)
+	tries = 0
+	testFrontend(t, handler, test, true)
 }
 
 func TestFrontendCancelStatusCode(t *testing.T) {
@@ -156,15 +161,18 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
-func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
+func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
 	logger := log.NewNopLogger()
 
 	var (
-		config       Config
-		workerConfig WorkerConfig
+		config        Config
+		workerConfig  WorkerConfig
+		querierConfig querier.Config
 	)
 	flagext.DefaultValues(&config, &workerConfig)
 	workerConfig.Parallelism = 1
+	workerConfig.MatchMaxConcurrency = matchMaxConcurrency
+	querierConfig.MaxConcurrent = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")
@@ -196,7 +204,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	go httpServer.Serve(httpListen) //nolint:errcheck
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
-	worker, err := NewWorker(workerConfig, httpgrpc_server.NewServer(handler), logger)
+	worker, err := NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

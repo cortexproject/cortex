@@ -34,6 +34,7 @@ require (
 	github.com/json-iterator/go v1.1.9
 	github.com/lib/pq v1.3.0
 	github.com/mitchellh/go-wordwrap v1.0.0
+	github.com/ncw/swift v1.0.50
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9

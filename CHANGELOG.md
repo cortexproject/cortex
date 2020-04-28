@@ -52,6 +52,7 @@
 * [BUGFIX] Distributor: `/all_user_stats` now show API and Rule Ingest Rate correctly. #2457
 * [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2483
+* [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 
 ## 1.0.0 / 2020-04-02
 

@@ -57,7 +57,7 @@ For clarity, tenancy fairness only comes into play when queries are actually bei
 
 For every query frontend the querier adds a [configurable number of goroutines](https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/worker.go#L146) which are each capable of executing a query.  Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
 
-Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits. Additionally, the promql engine itself is limited in the number of queries it can do as configured by the `-max-concurrent` parameter.  Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.
+Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits. Additionally, the promql engine itself is limited in the number of queries it can do as configured by the `-querier.max-concurrent` parameter.  Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.
 
 For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively.  This will lower effective resource utilization.  Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.
 

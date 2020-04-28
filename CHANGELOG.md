@@ -21,7 +21,6 @@
 * [CHANGE] `trace_id` field in log files has been renamed to `traceID`. #2518
 * [CHANGE] Slow query log has a different output now. Previously used `url` field has been replaced with `host` and `path`, and query parameters are logged as individual log fields with `qs_` prefix. #2520
 * [CHANGE] Experimental WAL: WAL and checkpoint compression is now disabled. #2436
-* [CHANGE] Updated weaveworks/common dependency to `v0.0.0-20200422083114-5790e7482ff8`. The latest changes in weaveworks/common/server allow to speficy TLS options for the server. #2535
 * [FEATURE] Ruler: The `-ruler.evaluation-delay` flag was added to allow users to configure a default evaluation delay for all rules in cortex. The default value is 0 which is the current behavior. #2423
 * [FEATURE] Experimental: Added a new object storage client for OpenStack Swift. #2440
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370

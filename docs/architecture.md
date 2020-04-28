@@ -244,7 +244,7 @@ If all of the alertmanager nodes failed simultaneously there would be a loss of 
 ### Configs API
 
 The **configs API** is an **optional service** managing the configuration of Rulers and Alertmanagers.
-It provides APIs to get/set/update the rules and alertmanager configurations and store them into backend.
+It provides APIs to get/set/update the ruler and alertmanager configurations and store them into backend.
 Current supported backend are PostgreSQL and in-memory.
 
 Configs API is **stateless**.

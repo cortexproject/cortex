@@ -134,6 +134,8 @@ Queriers have a configurable parameter that controls how often they refresh thei
 
 It is recommended to add a readiness/health check to the query frontend to prevent it from receiving queries while it is waiting for queriers to connect.   HTTP health checks are supported by [envoy](https://www.envoyproxy.io/learn/health-check), [k8s](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/), [nginx](https://docs.nginx.com/nginx/admin-guide/load-balancer/http-health-check/), and basically any commodity load balancer.  The query frontend would not indicate healthy on its health check until at least one querier had connected.
 
+In a k8s enviroment this will require two services.  One service for discovery with `publishNotReadyAddresses` set to true and one service for load balancing which honors the healthcheck/readiness probe.  After a new query-frontend instance is created the "discovery service" would immediately have the ip of the new instance which would allow queriers to discover and attach to it.  After queriers had connected it would then raise its readiness probe and appear on the "load balancing" service and begin receiving traffic.
+
 
 ### Dilutes Tenant Fairness
 

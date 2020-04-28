@@ -132,8 +132,9 @@ Queriers have a configurable parameter that controls how often they refresh thei
 
 #### Proposal
 
-It is recommended to add a readiness/health check to the query frontend to prevent it from receiving queries while it is waiting for queriers to connect.   HTTP health checks are supported by [envoy](https://www.envoyproxy.io/learn/health-check), [k8s](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/), [nginx](https://docs.nginx.com/nginx/admin-guide/load-balancer/http-health-check/), and basically any commodity load balancer.  The query frontend would not indicate healthy on its health check until at least one querier had connected.
+It is recommended to add a readiness/health check to the query frontend to prevent it from receiving queries while it is waiting for queriers to connect.   HTTP health checks are supported by [envoy](https://www.envoyproxy.io/learn/health-check), [nginx](https://docs.nginx.com/nginx/admin-guide/load-balancer/http-health-check/), and basically any commodity load balancer.  The query frontend would not indicate healthy on its health check until at least one querier had connected.
 
+Currently query frontends (along with all Cortex components) have a `/ready` endpoint that is often used for [k8s readiness probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-readiness-probes).  In a k8s deployment this new health check would need to be distinct from any endpoint used for readiness.  This is because k8s will not add a pod to a service until it is ready and the querier uses the service (through DNS) for discovery.  Essentially:  A querier would never connect because the the new frontend would never be listed in DNS.  The new frontend would never be listed in DNS because a querier would never connect.
 
 ### Dilutes Tenant Fairness
 

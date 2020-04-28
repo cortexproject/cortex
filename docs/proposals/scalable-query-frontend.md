@@ -116,9 +116,7 @@ Passing flow control information from the querier to the frontend would also ope
 
 Scaling the query frontend also increases the per tenant queue length by creating more queues.  This could result in increased latencies where failing fast (429) would have been preferred.
 
-The operator could reduce the queue length per query frontend in response to scaling out, but
-
-then they would run the risk of unnecessarily failing a request due to unbalanced distribution across query frontends.  Also, shorter queues run the risk of failing to properly service heavily sharded queries.
+The operator could reduce the queue length per query frontend in response to scaling out, but then they would run the risk of unnecessarily failing a request due to unbalanced distribution across query frontends.  Also, shorter queues run the risk of failing to properly service heavily sharded queries.
 
 Another concern is that a system with more queues will take longer to recover from an production event as it will have queued up more work.
 

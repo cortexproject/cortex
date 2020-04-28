@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/etcd/clientv3"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -41,6 +42,7 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
+		DialOptions: []grpc.DialOption{grpc.WithBlock()},
 		// Configure the keepalive to make sure that the client reconnects
 		// to the etcd service endpoint(s) in case the current connection is
 		// dead (ie. the node where etcd is running is dead or a network

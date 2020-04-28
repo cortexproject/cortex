@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -155,7 +156,12 @@ func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 		return nil
 	}
 
-	return os.RemoveAll(parentDir)
+	err = os.Remove(parentDir)
+	if err != nil && isNotEmptyErr(err) {
+		return nil
+	}
+
+	return err
 }
 
 // DeleteChunksBefore implements BucketClient
@@ -183,4 +189,13 @@ func isDirEmpty(name string) (ok bool, err error) {
 		return true, nil
 	}
 	return false, err
+}
+
+func isNotEmptyErr(err error) bool {
+	pathErr, ok := err.(*os.PathError)
+	if ok && pathErr.Err == syscall.ENOTEMPTY {
+		return true
+	}
+
+	return false
 }

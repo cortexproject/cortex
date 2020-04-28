@@ -157,11 +157,11 @@ func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 	}
 
 	err = os.Remove(parentDir)
-	if err != nil && isNotEmptyErr(err) {
-		return nil
+	if err != nil && !isNotEmptyErr(err) {
+		return err
 	}
 
-	return err
+	return nil
 }
 
 // DeleteChunksBefore implements BucketClient

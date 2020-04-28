@@ -3836,7 +3836,7 @@ The Alertmanager persists information about silences and active alerts to its di
 If all of the alertmanager nodes failed simultaneously there would be a loss of data.&lt;/p&gt;
 &lt;h3 id=&#34;configs-api&#34;&gt;Configs API&lt;/h3&gt;
 &lt;p&gt;The &lt;strong&gt;configs API&lt;/strong&gt; is an &lt;strong&gt;optional service&lt;/strong&gt; managing the configuration of Rulers and Alertmanagers.
-It provides APIs to get/set/update the rules and alertmanager configurations and store them into backend.
+It provides APIs to get/set/update the ruler and alertmanager configurations and store them into backend.
 Current supported backend are PostgreSQL and in-memory.&lt;/p&gt;
 &lt;p&gt;Configs API is &lt;strong&gt;stateless&lt;/strong&gt;.&lt;/p&gt;</description></item><item><title>Docs: Getting Started with Blocks Storage (experimental)</title><link>/docs/getting-started/getting-started-blocks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-blocks-storage/</guid><description>
 &lt;p&gt;Cortex can be run as a single binary or as multiple independent microservices.

@@ -2,7 +2,6 @@
 
 ## master / unreleased
 
-* [CHANGE] Ruler: Better handling of special characters in filenames when mapping them onto the filesystem. #2506
 * [CHANGE] Added v1 API routes documented in #2327. #2372
   * Added `-http.alertmanager-http-prefix` flag which allows the configuration of the path where the Alertmanager API and UI can be reached. The default is set to `/alertmanager`.
   * Added `-http.prometheus-http-prefix` flag which allows the configuration of the path where the Prometheus API and UI can be reached. The default is set to `/prometheus`.
@@ -45,6 +44,7 @@
 * [ENHANCEMENT] Add de-duplicated chunks counter `cortex_chunk_store_deduped_chunks_total` which counts every chunk not sent to the store because it was already sent by another replica. #2485
 * [ENHANCEMENT] query-frontend now also logs the POST data of long queries. #2481
 * [ENHANCEMENT] Experimental WAL: Ingester WAL records now have type header and the custom WAL records have been replaced by Prometheus TSDB's WAL records. Old records will not be supported from 1.3 onwards. Note: once this is deployed, you cannot downgrade without data loss. #2436
+* [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
 * [BUGFIX] Cassandra Storage: Fix endpoint TLS host verification. #2109

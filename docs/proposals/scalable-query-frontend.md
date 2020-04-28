@@ -174,7 +174,7 @@ This would be a very minor improvement, but would give some guarantees to low vo
 
 **Do Nothing**
 
-As is noted above tenancy fairness only comes into play when queries start queueing up in the query frontend.  Referencing internal metrics this has only happened 5 times in the past week significantly enough to have been caught by Prometheus.
+As is noted above tenancy fairness only comes into play when queries start queueing up in the query frontend.  Internal Metrics for multi-tenant Cortex at Grafana show that this has only happened 5 times in the past week significantly enough to have been caught by Prometheus.
 
 Right now doing nothing is a viable option that will, almost always, fairly serve our tenants.  There is, however, some concern that as sharding becomes more commonplace queueing will become more common and QOS will suffer due to reasons outlined in [Dilutes Tenant Fairness](#dilutes-tenant-fairness).
 

@@ -68,7 +68,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 		// Ensure the namespace is decoded from a url path encoding to see if it is still required
 		decodedNamespace, err := url.PathUnescape(existingFile.Name())
 		if err != nil {
-			level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", existingFile.Name(), "err", err)
+			level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
 			continue
 		}
 

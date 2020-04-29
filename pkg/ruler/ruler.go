@@ -96,9 +96,6 @@ type Config struct {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if err := cfg.StoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
 	return nil
 }
 

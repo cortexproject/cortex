@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -24,8 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -230,66 +227,6 @@ func TestSwiftChunkStorage(t *testing.T) {
 	require.Equal(t, 1, len(chunks))
 	require.Equal(t, c2.Metric, chunks[0].Metric)
 
-}
-
-func TestSwiftRuleStorage(t *testing.T) {
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
-	swift := e2edb.NewSwiftStorage()
-
-	require.NoError(t, s.StartAndWaitReady(swift))
-
-	store, err := ruler.NewRuleStorage(ruler.RuleStoreConfig{
-		Type:  "swift",
-		Swift: swiftConfig(swift),
-	})
-	require.NoError(t, err)
-	ctx := context.Background()
-
-	// Add 2 rule group.
-	r1 := newRule(userID, "1")
-	err = store.SetRuleGroup(ctx, userID, "foo", r1)
-	require.NoError(t, err)
-
-	r2 := newRule(userID, "2")
-	err = store.SetRuleGroup(ctx, userID, "bar", r2)
-	require.NoError(t, err)
-
-	// Get rules back.
-	rls, err := store.ListAllRuleGroups(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 2, len(rls[userID]))
-
-	userRules := rls[userID]
-	sort.Slice(userRules, func(i, j int) bool { return userRules[i].Name < userRules[j].Name })
-	require.Equal(t, r1, userRules[0])
-	require.Equal(t, r2, userRules[1])
-
-	// Delete the first rule group
-	err = store.DeleteRuleGroup(ctx, userID, "foo", r1.Name)
-	require.NoError(t, err)
-
-	//Verify we only have the second rule group
-	rls, err = store.ListAllRuleGroups(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 1, len(rls[userID]))
-	require.Equal(t, r2, rls[userID][0])
-}
-
-func newRule(userID, name string) *rules.RuleGroupDesc {
-	return &rules.RuleGroupDesc{
-		Name:      name + "rule",
-		Interval:  time.Minute,
-		Namespace: name + "namespace",
-		Rules: []*rules.RuleDesc{
-			{
-				Expr:   fmt.Sprintf(`{%s="bar"}`, name),
-				Record: name + ":bar",
-			},
-		},
-		User: userID,
-	}
 }
 
 func swiftConfig(s *e2e.HTTPService) openstack.SwiftConfig {

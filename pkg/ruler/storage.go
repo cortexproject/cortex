@@ -41,7 +41,7 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Swift.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.FileSystem.RegisterFlagsWithPrefix("ruler.storage.", f)
-	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3)")
+	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift)")
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
@@ -57,7 +57,6 @@ func NewRuleStorage(cfg RuleStoreConfig, logger log.Logger) (rules.RuleStore, er
 		if err != nil {
 			return nil, err
 		}
-
 		return rules.NewConfigRuleStore(c), nil
 	case "azure":
 		return newObjRuleStore(azure.NewBucketClient(cfg.Azure, "cortex-ruler", logger))
@@ -65,6 +64,8 @@ func NewRuleStorage(cfg RuleStoreConfig, logger log.Logger) (rules.RuleStore, er
 		return newObjRuleStore(gcs.NewBucketClient(context.Background(), cfg.GCS, "cortex-ruler", logger))
 	case "s3":
 		return newObjRuleStore(s3.NewBucketClient(cfg.S3, "cortex-ruler", logger))
+	case "swift":
+		return newObjRuleStore(swift.NewBucketClient(cfg.Swift, "cortex-ruler", logger))
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
 	}

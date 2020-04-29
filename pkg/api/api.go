@@ -147,9 +147,9 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 
 	// MultiTenant Alertmanager Experimental API routes
 	if apiEnabled {
-		a.registerRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
-		a.registerRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
-		a.registerRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
 	}
 }
 

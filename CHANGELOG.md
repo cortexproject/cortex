@@ -15,7 +15,7 @@
   * Changed `-ruler.storage.s3.buckets` > `-ruler.storage.s3.bucket-name`, multiple buckets can no longer be specified
   * Added `-ruler.storage.s3.secret-access-key`
   * Added `-ruler.storage.s3.access-key-id`
-  * Added `-ruler.storage.s3.insecure` 
+  * Added `-ruler.storage.s3.insecure`
 * [CHANGE] Added v1 API routes documented in #2327. #2372
   * Added `-http.alertmanager-http-prefix` flag which allows the configuration of the path where the Alertmanager API and UI can be reached. The default is set to `/alertmanager`.
   * Added `-http.prometheus-http-prefix` flag which allows the configuration of the path where the Prometheus API and UI can be reached. The default is set to `/prometheus`.

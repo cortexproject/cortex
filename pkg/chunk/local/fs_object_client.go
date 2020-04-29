@@ -40,6 +40,10 @@ type FSObjectClient struct {
 
 // NewFSObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
 func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
+	// filepath.Clean cleans up the path by removing unwanted duplicate slashes, dots etc.
+	// This is needed because DeleteObject works on paths which are already cleaned up and it
+	// checks whether it is about to delete the configured directory when it becomes empty
+	cfg.Directory = filepath.Clean(cfg.Directory)
 	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
@@ -135,30 +139,23 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 }
 
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	filePath := filepath.Join(f.cfg.Directory, objectKey)
+	// inspired from copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
+	file := filepath.Join(f.cfg.Directory, objectKey)
 
-	err := os.Remove(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return chunk.ErrStorageObjectNotFound
+	for file != f.cfg.Directory {
+		if err := os.RemoveAll(file); err != nil {
+			return err
 		}
-		return err
-	}
 
-	// remove the parent directory when it is empty
-	parentDir := filepath.Dir(filePath)
-	ok, err := isDirEmpty(parentDir)
-	if err != nil {
-		return err
-	}
+		file = filepath.Dir(file)
+		empty, err := isDirEmpty(file)
+		if err != nil {
+			return err
+		}
 
-	if !ok {
-		return nil
-	}
-
-	err = os.Remove(parentDir)
-	if err != nil && !isNotEmptyErr(err) {
-		return err
+		if !empty {
+			break
+		}
 	}
 
 	return nil

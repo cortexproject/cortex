@@ -137,7 +137,6 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 
 	foldersWithFiles := make(map[string][]string)
 	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
-	foldersWithFiles["folder2/"] = []string{"file3", "file4", "file5"}
 
 	for folder, files := range foldersWithFiles {
 		for _, filename := range files {
@@ -163,6 +162,15 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.NoError(t, bucketClient.DeleteObject(context.Background(), "folder1/file2"))
 	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1"))
 	require.True(t, os.IsNotExist(err))
+
+	_, err = os.Stat(fsObjectsDir)
+	require.NoError(t, err)
+
+	// let us see ensure folder2 is still there will all the files:
+	/*files, commonPrefixes, err := bucketClient.List(context.Background(), "folder2/")
+	require.NoError(t, err)
+	require.Len(t, commonPrefixes, 0)
+	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
 }
 
 func TestIsNotEmptyErr(t *testing.T) {

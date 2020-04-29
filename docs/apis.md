@@ -24,13 +24,143 @@ The API for reads also accepts HTTP/protobuf/snappy, and the path is `/api/prom/
 
 See the Prometheus documentation for [more information on the Prometheus remote write format](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations).
 
-## Alerts & Rules API
+## Ruler
+
+### Prometheus Endpoints
 
 Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
 
 `GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
 
 `GET /api/prom/api/v1/alerts` - List of all active alerts
+
+### Experimental API
+
+The ruler supports operations using a configured object storage client as a backend for the storage and management of user rule groups. In order to use this API the `experimental.ruler.enable-api` must be set and a valid object storage backend must be configured for the ruler. The ruler API uses the concept of a namespace when creating rule groups. This is a stand in for the name of the rule file in Prometheus and rule groups must be named uniquely within a namespace.
+
+#### List Rule Groups
+
+**Path**: `/api/v1/rules(/{namespace})` _namespace path segment is optional_
+
+**Method**: `GET`
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Data**:
+```yaml
+---
+<namespace1>:
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - record: <string>
+      expr: <string>
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - record: <string>
+      expr: <string>
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+<namespace2>:
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - record: <string>
+      expr: <string>
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+```
+
+The success response for the list operation returns a yaml dictionary with all of the rule groups for each rule namespace.
+
+#### Get Rule Group
+
+**Path**: `/api/v1/rules/{namespace}/{group_name}
+
+**Method**: `GET`
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Data**:
+```yaml
+name: <string>
+interval: <duration;optional>
+rules:
+  - record: <string>
+    expr: <string>
+  - alert: <string>
+    expr: <string>
+    for: <duration>
+    annotations:
+      <annotation_name>: <string>
+    labels:
+      <label_name>: <string>
+```
+
+#### Set Rule Group
+
+**Path**: `/api/v1/rules/{namespace}
+
+**Method**: `POST`
+
+**Content-Type**: `application/yaml`
+
+**Body**:
+
+```yaml
+name: <string>
+interval: <duration;optional>
+rules:
+  - record: <string>
+    expr: <string>
+  - alert: <string>
+    expr: <string>
+    for: <duration>
+    annotations:
+      <annotation_name>: <string>
+    labels:
+      <label_name>: <string>
+```
+
+##### Success Response
+
+**Code**: `202 ACCEPTED`
+
+**Body**: None
+
+#### Delete Rule Group
+
+**Path**: `/api/v1/rules/{namespace}/{group_name}`
+
+**Method**: `DELETE`
+
+##### Success Response
+
+**Code**: `202 ACCEPTED`
+
+**Body**: None
 
 ## Configs API
 

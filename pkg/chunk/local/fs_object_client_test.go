@@ -180,4 +180,9 @@ func TestIsNotEmptyErr(t *testing.T) {
 	err = os.Remove(outerDir)
 	require.Error(t, err)
 	require.True(t, isNotEmptyErr(err))
+
+	// try removing a non-existent directory and see if it does not throw syscall.ENOTEMPTY error
+	err = os.Remove(filepath.Join(outerDir, "non-existent"))
+	require.Error(t, err)
+	require.False(t, isNotEmptyErr(err))
 }

@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -143,7 +142,7 @@ func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 	file := filepath.Join(f.cfg.Directory, objectKey)
 
 	for file != f.cfg.Directory {
-		if err := os.RemoveAll(file); err != nil {
+		if err := os.Remove(file); err != nil {
 			return err
 		}
 
@@ -186,13 +185,4 @@ func isDirEmpty(name string) (ok bool, err error) {
 		return true, nil
 	}
 	return false, err
-}
-
-func isNotEmptyErr(err error) bool {
-	pathErr, ok := err.(*os.PathError)
-	if ok && pathErr.Err == syscall.ENOTEMPTY {
-		return true
-	}
-
-	return false
 }

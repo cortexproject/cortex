@@ -172,25 +172,3 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.Len(t, commonPrefixes, 0)
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
 }
-
-func TestIsNotEmptyErr(t *testing.T) {
-	outerDir, err := ioutil.TempDir(os.TempDir(), "empty-dir-err-check")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(outerDir))
-	}()
-
-	// create a directory inside the outer dir
-	require.NoError(t, os.Mkdir(filepath.Join(outerDir, "nested"), 0700))
-
-	// try removing the outer directory and see if it throws syscall.ENOTEMPTY error
-	err = os.Remove(outerDir)
-	require.Error(t, err)
-	require.True(t, isNotEmptyErr(err))
-
-	// try removing a non-existent directory and see if it does not throw syscall.ENOTEMPTY error
-	err = os.Remove(filepath.Join(outerDir, "non-existent"))
-	require.Error(t, err)
-	require.False(t, isNotEmptyErr(err))
-}

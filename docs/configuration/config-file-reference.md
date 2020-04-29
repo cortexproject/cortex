@@ -896,6 +896,11 @@ storage:
     # CLI flag: -ruler.storage.swift.container-name
     [container_name: <string> | default = "cortex"]
 
+  filesystem:
+    # Local filesystem storage directory.
+    # CLI flag: -ruler.storage.filesystem.dir
+    [dir: <string> | default = ""]
+
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]

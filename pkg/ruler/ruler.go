@@ -531,7 +531,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	for _, group := range groups {
 		interval := group.Interval()
 
-		// The mapped filename is base64 encoded to make handling `/` characters easier
+		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to decode rule filename")

@@ -106,7 +106,7 @@ func (cfg *Config) Validate() error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
 

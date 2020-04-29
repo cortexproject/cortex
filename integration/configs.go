@@ -46,15 +46,18 @@ var (
 	cortexSchemaConfigYaml = buildSchemaConfigWith([]storeConfig{{From: "2019-03-20", IndexStore: "aws-dynamo"}})
 
 	AlertmanagerFlags = map[string]string{
+		"-server.tls-cert-path":            filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
+		"-server.tls-key-path":             filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
+		"-server.tls-ca-path":              filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
 		"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 		"-alertmanager.storage.type":       "local",
 		"-alertmanager.web.external-url":   "http://localhost/api/prom",
 	}
 
 	RulerConfigs = map[string]string{
-		"--ruler.client.tls-cert-path":       "certs/client.crt",
-		"--ruler.client.tls-key-path":        "certs/client.key",
-		"--ruler.client.tls-ca-path":         "certs/root.crt",
+		"--ruler.client.tls-cert-path":       filepath.Join(e2e.ContainerSharedDir, "certs/client.crt"),
+		"--ruler.client.tls-key-path":        filepath.Join(e2e.ContainerSharedDir, "certs/client.key"),
+		"--ruler.client.tls-ca-path":         filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
 		"-ruler.enable-sharding":             "false",
 		"-ruler.poll-interval":               "2s",
 		"-experimental.ruler.enable-api":     "true",

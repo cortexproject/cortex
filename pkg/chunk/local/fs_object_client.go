@@ -139,7 +139,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 }
 
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	// inspired from copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
+	// inspired from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
 	file := filepath.Join(f.cfg.Directory, objectKey)
 
 	for file != f.cfg.Directory {

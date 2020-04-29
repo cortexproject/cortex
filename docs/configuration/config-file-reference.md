@@ -2411,9 +2411,10 @@ The `fifo_cache_config` configures the local in-memory cache. The supported CLI 
 &nbsp;
 
 ```yaml
-# Maximum memory size of the cache.
+# Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+# applied.
 # CLI flag: -<prefix>.fifocache.max-size-bytes
-[max_size_bytes: <int> | default = 0]
+[max_size_bytes: <string> | default = ""]
 
 # Maximum number of entries in the cache.
 # CLI flag: -<prefix>.fifocache.max-size-items

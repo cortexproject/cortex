@@ -77,8 +77,13 @@ func (cfg *Config) Validate(log log.Logger) error {
 		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 	}
 
-	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
-		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+	if cfg.CacheResults {
+		if cfg.SplitQueriesByInterval <= 0 {
+			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+		}
+		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid ResultsCache config")
+		}
 	}
 	return nil
 }

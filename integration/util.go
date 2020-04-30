@@ -51,3 +51,19 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 
 	return writeFileToSharedDir(s, dst, content)
 }
+
+func generateClientTLSConfig(prefix string) map[string]string {
+	return map[string]string{
+		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/client.crt"),
+		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/client.key"),
+		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+	}
+}
+
+func generateServerTLSConfig() map[string]string {
+	return map[string]string{
+		"-server.tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
+		"-server.tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
+		"-server.tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+	}
+}

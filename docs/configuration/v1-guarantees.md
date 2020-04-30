@@ -45,3 +45,4 @@ Currently experimental features are:
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
 - Openstack Swift storage.
+- gRPC Store.

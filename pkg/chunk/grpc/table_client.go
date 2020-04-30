@@ -3,9 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/pkg/errors"
-
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )

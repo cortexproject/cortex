@@ -6,17 +6,13 @@ import (
 	"net"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
-
 	"google.golang.org/grpc"
-
 	"google.golang.org/grpc/keepalive"
-
 	"google.golang.org/grpc/reflection"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-
-	"github.com/golang/protobuf/ptypes/empty"
 )
 
 type server struct {

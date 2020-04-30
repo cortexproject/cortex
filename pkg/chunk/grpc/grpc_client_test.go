@@ -1,18 +1,14 @@
 package grpc
 
 import (
+	"context"
 	"testing"
 
-	"context"
-
 	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 

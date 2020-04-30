@@ -1,19 +1,15 @@
 package grpc
 
 import (
+	"context"
 	"io"
 
-	"context"
-
+	"github.com/go-kit/kit/log/level"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
 
-	"github.com/go-kit/kit/log/level"
-
-	"github.com/cortexproject/cortex/pkg/util"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
-
-	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type StorageClient struct {

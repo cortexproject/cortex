@@ -11,22 +11,22 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/armon/go-metrics v0.3.0
-	github.com/aws/aws-sdk-go v1.25.48
+	github.com/aws/aws-sdk-go v1.27.0
 	github.com/blang/semver v3.5.0+incompatible
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fsouza/fake-gcs-server v1.7.0
-	github.com/go-kit/kit v0.9.0
+	github.com/go-kit/kit v0.10.0
 	github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
 	github.com/golang-migrate/migrate/v4 v4.7.0
-	github.com/golang/protobuf v1.3.2
+	github.com/golang/protobuf v1.3.3
 	github.com/golang/snappy v0.0.1
 	github.com/gomodule/redigo v2.0.0+incompatible
-	github.com/gorilla/mux v1.7.1
+	github.com/gorilla/mux v1.7.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/hashicorp/consul/api v1.3.0
 	github.com/hashicorp/go-cleanhttp v0.5.1
@@ -52,16 +52,16 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/thanos-io/thanos v0.12.1-0.20200416112106-b391ca115ed8
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
-	github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
+	github.com/weaveworks/common v0.0.0-20200429090833-ac38719f57dd
 	go.etcd.io/bbolt v1.3.3
-	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
-	go.uber.org/atomic v1.5.0
+	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
+	go.uber.org/atomic v1.5.1
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0
-	google.golang.org/grpc v1.25.1
-	gopkg.in/yaml.v2 v2.2.7
+	google.golang.org/grpc v1.26.0
+	gopkg.in/yaml.v2 v2.2.8
 	sigs.k8s.io/yaml v1.1.0
 )
 

@@ -29,7 +29,7 @@ As the query-frontend continues to [support additional features](https://github.
 
 The query frontend maintains a queue per tenant of configurable length (default 100) in which it stores a series of requests from that tenant.  If this queue fills up then the frontend will return 429’s thus load shedding the rest of the system.
 
-This is particularly effective due to the “pull” based model from query frontend to queriers.
+This is particularly effective due to the “pull” based model in which queriers pull requests from query frontends.
 
 ### Query Retries
 
@@ -45,7 +45,7 @@ Queries are aligned to their own step and then stored/retrieved from cache.
 
 ### Tenancy Fairness
 
-By maintaining one queue per tenant a low demand tenant will have the same opportunity to have a query serviced as a high demand tenant.  See [Dilutes Tenant Fairness](#dilutes-tenant-fairness) for additional discussion.
+By maintaining one queue per tenant, a low demand tenant will have the same opportunity to have a query serviced as a high demand tenant.  See [Dilutes Tenant Fairness](#dilutes-tenant-fairness) for additional discussion.
 
 For clarity, tenancy fairness only comes into play when queries are actually being queued in the query frontend.  Currently this rarely occurs, but as [query sharding](https://github.com/cortexproject/cortex/pull/1878) becomes more aggressive this may become the norm.
 
@@ -67,7 +67,7 @@ Currently queriers are configured to have a [max parallelism per query frontend]
 
 Total Max Concurrency would then be evenly divided amongst all available query frontends. This would decouple the amount of work a querier is attempting to do with the number of query frontends that happen to exist at this moment.  Consequently this would allow allocated resources (e.g. k8s cpu/memory limits) to remain balanced with the work the querier was attempting as the query frontend is scaled up or down.
 
-An [issue](https://github.com/cortexproject/cortex/issues/1883) and a [PR](https://github.com/cortexproject/cortex/pull/2456) have already been opened to address this.
+A [PR](https://github.com/cortexproject/cortex/pull/2456) has already been merged to address this.
 
 ### Overwhelming PromQL Concurrency
 

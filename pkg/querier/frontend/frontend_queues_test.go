@@ -16,16 +16,16 @@ func TestFrontendQueues(t *testing.T) {
 
 	// add queues
 	qOne := getOrAddQueue(t, m, "one")
+
+	confirmOrder(t, m, qOne, qOne)
+
 	qTwo := getOrAddQueue(t, m, "two")
 	assert.NotEqual(t, qOne, qTwo)
 
-	// confirm they come back in order and exhibit round robin
 	confirmOrder(t, m, qOne, qTwo, qOne)
 
 	// confirm fifo by adding a third queue and iterating to it
 	qThree := getOrAddQueue(t, m, "three")
-	assert.NotEqual(t, qOne, qThree)
-	assert.NotEqual(t, qTwo, qThree)
 
 	confirmOrder(t, m, qTwo, qOne, qThree)
 
@@ -35,11 +35,20 @@ func TestFrontendQueues(t *testing.T) {
 
 	confirmOrder(t, m, qTwo, qThree, qTwo)
 
-	// remove all
+	qFour := getOrAddQueue(t, m, "four")
+
+	confirmOrder(t, m, qThree, qTwo, qFour, qThree)
+
+	// remove current and confirm round robin continues
 	m.deleteQueue("two")
 	assert.NoError(t, m.isConsistent())
 
+	confirmOrder(t, m, qFour, qThree, qFour)
+
 	m.deleteQueue("three")
+	assert.NoError(t, m.isConsistent())
+
+	m.deleteQueue("four")
 	assert.NoError(t, m.isConsistent())
 
 	assert.Nil(t, m.getNextQueue())

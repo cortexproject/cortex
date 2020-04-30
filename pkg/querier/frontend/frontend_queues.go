@@ -41,11 +41,11 @@ func (q *queueManager) deleteQueue(tenant string) {
 
 	// remove from linked list
 	if element != nil {
-		q.l.Remove(element)
-	}
+		if element == q.current {
+			q.current = element.Next()
+		}
 
-	if element == q.current {
-		q.current = nil
+		q.l.Remove(element)
 	}
 
 	// remove from map

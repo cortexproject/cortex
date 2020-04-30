@@ -69,7 +69,25 @@ images = ["/images/logo-twitter-card.jpg"]
 
 # Menu title if your navbar has a versions selector to access old versions of your site.
 # This menu appears only if you have at least one [params.versions] set.
-version_menu = "Releases"
+version_menu = "v1.0"
+
+# The major.minor version tag for the version of the docs represented in this
+# branch of the repository. Used in the "version-banner" partial to display a
+# version number for this doc set.
+version = "v1.0"
+
+# A link to latest version of the docs. Used in the "version-banner" partial to
+# point people to the main doc site.
+url_latest_version = "https://cortexmetrics.io/docs/"
+
+# A variable used in various docs to determine URLs for config files etc.
+# To find occurrences, search the repo for 'params "githubbranch"'.
+githubbranch = "v1.0-branch"
+
+[[params.versions]]
+  version = "master"
+  githubbranch = "master"
+  url = "https://master.cortexmetrics.io"
 
 # Repository configuration (URLs for in-page links to opening issues and suggesting changes)
 github_repo = "https://github.com/cortexproject/cortex"

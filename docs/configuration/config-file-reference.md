@@ -1138,14 +1138,6 @@ The `table_manager_config` configures the Cortex table-manager.
 [creation_grace_period: <duration> | default = 10m]
 
 index_tables_provisioning:
-  # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.index-table.inactive-write-throughput.scale-last-n
-  [inactive_write_scale_lastn: <int> | default = 4]
-
-  # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.index-table.inactive-read-throughput.scale-last-n
-  [inactive_read_scale_lastn: <int> | default = 4]
-
   # Enables on demand throughput provisioning for the storage provider (if
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
@@ -1290,15 +1282,15 @@ index_tables_provisioning:
     # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.target-value
     [target: <float> | default = 80]
 
-chunk_tables_provisioning:
   # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale-last-n
+  # CLI flag: -table-manager.index-table.inactive-write-throughput.scale-last-n
   [inactive_write_scale_lastn: <int> | default = 4]
 
   # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
+  # CLI flag: -table-manager.index-table.inactive-read-throughput.scale-last-n
   [inactive_read_scale_lastn: <int> | default = 4]
 
+chunk_tables_provisioning:
   # Enables on demand throughput provisioning for the storage provider (if
   # supported). Applies only to tables which are not autoscaled. Supported by
   # DynamoDB
@@ -1442,6 +1434,14 @@ chunk_tables_provisioning:
     # DynamoDB target ratio of consumed capacity to provisioned capacity.
     # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.target-value
     [target: <float> | default = 80]
+
+  # Number of last inactive tables to enable write autoscale.
+  # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale-last-n
+  [inactive_write_scale_lastn: <int> | default = 4]
+
+  # Number of last inactive tables to enable read autoscale.
+  # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
+  [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
 ### `storage_config`
@@ -1853,78 +1853,78 @@ delete_store:
     # Enables on demand throughput provisioning for the storage provider (if
     # supported). Applies only to tables which are not autoscaled. Supported by
     # DynamoDB
-    # CLI flag: -deletes.tables.enable-ondemand-throughput-mode
+    # CLI flag: -deletes.table.enable-ondemand-throughput-mode
     [enable_ondemand_throughput_mode: <boolean> | default = false]
 
     # Table default write throughput. Supported by DynamoDB
-    # CLI flag: -deletes.tables.write-throughput
+    # CLI flag: -deletes.table.write-throughput
     [provisioned_write_throughput: <int> | default = 1]
 
     # Table default read throughput. Supported by DynamoDB
-    # CLI flag: -deletes.tables.read-throughput
+    # CLI flag: -deletes.table.read-throughput
     [provisioned_read_throughput: <int> | default = 300]
 
     write_scale:
       # Should we enable autoscale for the table.
-      # CLI flag: -deletes.tables.write-throughput.scale.enabled
+      # CLI flag: -deletes.table.write-throughput.scale.enabled
       [enabled: <boolean> | default = false]
 
       # AWS AutoScaling role ARN
-      # CLI flag: -deletes.tables.write-throughput.scale.role-arn
+      # CLI flag: -deletes.table.write-throughput.scale.role-arn
       [role_arn: <string> | default = ""]
 
       # DynamoDB minimum provision capacity.
-      # CLI flag: -deletes.tables.write-throughput.scale.min-capacity
+      # CLI flag: -deletes.table.write-throughput.scale.min-capacity
       [min_capacity: <int> | default = 3000]
 
       # DynamoDB maximum provision capacity.
-      # CLI flag: -deletes.tables.write-throughput.scale.max-capacity
+      # CLI flag: -deletes.table.write-throughput.scale.max-capacity
       [max_capacity: <int> | default = 6000]
 
       # DynamoDB minimum seconds between each autoscale up.
-      # CLI flag: -deletes.tables.write-throughput.scale.out-cooldown
+      # CLI flag: -deletes.table.write-throughput.scale.out-cooldown
       [out_cooldown: <int> | default = 1800]
 
       # DynamoDB minimum seconds between each autoscale down.
-      # CLI flag: -deletes.tables.write-throughput.scale.in-cooldown
+      # CLI flag: -deletes.table.write-throughput.scale.in-cooldown
       [in_cooldown: <int> | default = 1800]
 
       # DynamoDB target ratio of consumed capacity to provisioned capacity.
-      # CLI flag: -deletes.tables.write-throughput.scale.target-value
+      # CLI flag: -deletes.table.write-throughput.scale.target-value
       [target: <float> | default = 80]
 
     read_scale:
       # Should we enable autoscale for the table.
-      # CLI flag: -deletes.tables.read-throughput.scale.enabled
+      # CLI flag: -deletes.table.read-throughput.scale.enabled
       [enabled: <boolean> | default = false]
 
       # AWS AutoScaling role ARN
-      # CLI flag: -deletes.tables.read-throughput.scale.role-arn
+      # CLI flag: -deletes.table.read-throughput.scale.role-arn
       [role_arn: <string> | default = ""]
 
       # DynamoDB minimum provision capacity.
-      # CLI flag: -deletes.tables.read-throughput.scale.min-capacity
+      # CLI flag: -deletes.table.read-throughput.scale.min-capacity
       [min_capacity: <int> | default = 3000]
 
       # DynamoDB maximum provision capacity.
-      # CLI flag: -deletes.tables.read-throughput.scale.max-capacity
+      # CLI flag: -deletes.table.read-throughput.scale.max-capacity
       [max_capacity: <int> | default = 6000]
 
       # DynamoDB minimum seconds between each autoscale up.
-      # CLI flag: -deletes.tables.read-throughput.scale.out-cooldown
+      # CLI flag: -deletes.table.read-throughput.scale.out-cooldown
       [out_cooldown: <int> | default = 1800]
 
       # DynamoDB minimum seconds between each autoscale down.
-      # CLI flag: -deletes.tables.read-throughput.scale.in-cooldown
+      # CLI flag: -deletes.table.read-throughput.scale.in-cooldown
       [in_cooldown: <int> | default = 1800]
 
       # DynamoDB target ratio of consumed capacity to provisioned capacity.
-      # CLI flag: -deletes.tables.read-throughput.scale.target-value
+      # CLI flag: -deletes.table.read-throughput.scale.target-value
       [target: <float> | default = 80]
 
     # Tag (of the form key=value) to be added to the tables. Supported by
     # DynamoDB
-    # CLI flag: -deletes.tables.tags
+    # CLI flag: -deletes.table.tags
     [tags: <map of string to string> | default = ]
 
 grpc_store:

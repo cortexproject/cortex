@@ -771,7 +771,7 @@ The `ruler_config` configures the Cortex ruler.
 [poll_interval: <duration> | default = 1m]
 
 storage:
-  # Method to use for backend rule storage (configdb, azure, gcs, s3)
+  # Method to use for backend rule storage (configdb, azure, gcs, s3, swift)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = "configdb"]
 

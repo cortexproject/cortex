@@ -23,7 +23,8 @@ type metadataResult struct {
 	Error  string                      `json:"error,omitempty"`
 }
 
-// MetadataHandler allows you to fetch metric metadata held by cortex for a given tenant.
+// MetadataHandler returns metric metadata held by Cortex for a given tenant.
+// It is kept and returned as a set.
 func MetadataHandler(d Distributor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp, err := d.MetricsMetadata(r.Context())

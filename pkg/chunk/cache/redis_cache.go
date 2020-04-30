@@ -44,7 +44,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
-	f.BoolVar(&cfg.Wait, prefix+"redis.wait", false, description+"Enables waiting if there are no idle connections.")
+	f.BoolVar(&cfg.Wait, prefix+"redis.wait", false, description+"Enables waiting if there are no idle connections. If the value is false and the pool is at the max_active_conns limit, the pool will return a connection with ErrPoolExhausted error and not wait for idle connections.")
 	f.DurationVar(&cfg.MaxConnLifetime, prefix+"redis.max-conn-lifetime", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
 }
 

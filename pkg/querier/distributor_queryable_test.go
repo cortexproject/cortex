@@ -107,8 +107,10 @@ func TestIngesterStreaming(t *testing.T) {
 }
 
 type mockDistributor struct {
-	m model.Matrix
-	r *client.QueryStreamResponse
+	metadata      []scrape.MetricMetadata
+	metadataError error
+	m             model.Matrix
+	r             *client.QueryStreamResponse
 }
 
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
@@ -128,5 +130,9 @@ func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, thr
 }
 
 func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
-	return nil, nil
+	if m.metadataError != nil {
+		return nil, m.metadataError
+	}
+
+	return m.metadata, nil
 }

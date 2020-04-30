@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -62,9 +61,9 @@ type Frontend struct {
 	log          log.Logger
 	roundTripper http.RoundTripper
 
-	mtx    sync.Mutex
-	cond   *sync.Cond
-	queues map[string]chan *request
+	mtx          sync.Mutex
+	cond         *sync.Cond
+	queueManager *queueManager
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -84,9 +83,9 @@ type request struct {
 // New creates a new frontend.
 func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
-		cfg:    cfg,
-		log:    log,
-		queues: map[string]chan *request{},
+		cfg:          cfg,
+		log:          log,
+		queueManager: newQueueManager(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -141,7 +140,7 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-	for len(f.queues) > 0 {
+	for f.queueManager.len() > 0 {
 		f.cond.Wait()
 	}
 }
@@ -343,11 +342,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue, ok := f.queues[userID]
-	if !ok {
-		queue = make(chan *request, f.cfg.MaxOutstandingPerTenant)
-		f.queues[userID] = queue
-	}
+	queue := f.queueManager.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -359,16 +354,6 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	}
 }
 
-// maintain a hashmap that points to a linked list node that points to a chan
-//  getNextRequest
-//     grab requests from current linked list node until we find a non-cancelled one
-//     if chan is empty delete linked list node and hashmap entry
-//     service request and move to next linked list node
-//  queueRequest
-//    ask for map item
-//      if exists :)
-//      if not exist add map item, add linked list node directly behind current node
-
 // getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
 func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
@@ -376,7 +361,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	defer f.mtx.Unlock()
 
 FindQueue:
-	for len(f.queues) == 0 && ctx.Err() == nil {
+	for f.queueManager.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
@@ -384,16 +369,10 @@ FindQueue:
 		return nil, err
 	}
 
-	keys := make([]string, 0, len(f.queues))
-	for k := range f.queues {
-		keys = append(keys, k)
-	}
-	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
-
-	for _, userID := range keys {
-		queue, ok := f.queues[userID]
-		if !ok {
-			continue
+	for {
+		queue, userID := f.queueManager.getNextQueue()
+		if queue == nil {
+			break
 		}
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
@@ -412,7 +391,7 @@ FindQueue:
 			lastRequest := false
 			request := <-queue
 			if len(queue) == 0 {
-				delete(f.queues, userID)
+				f.queueManager.deleteQueue(userID)
 				lastRequest = true
 			}
 

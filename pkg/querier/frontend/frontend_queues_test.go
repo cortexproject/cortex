@@ -9,7 +9,7 @@ import (
 )
 
 func TestFrontendQueues(t *testing.T) {
-	m := newQueueManager()
+	m := newQueueManager(0)
 	assert.NotNil(t, m)
 	assert.NoError(t, m.isConsistent())
 	q, _ := m.getNextQueue()
@@ -74,7 +74,7 @@ func confirmOrder(t *testing.T, m *queueManager, qs ...chan *request) {
 }
 
 func TestFrontendQueuesConsistency(t *testing.T) {
-	m := newQueueManager()
+	m := newQueueManager(0)
 	assert.NotNil(t, m)
 	assert.NoError(t, m.isConsistent())
 	q, _ := m.getNextQueue()

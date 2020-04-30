@@ -14,14 +14,21 @@ type queueManager struct {
 	l       *list.List
 	queues  map[string]*list.Element
 	current *list.Element
+
+	maxQueueSize int
 }
 
-func newQueueManager() *queueManager {
+func newQueueManager(maxQueueSize int) *queueManager {
 	return &queueManager{
-		l:       list.New(),
-		queues:  make(map[string]*list.Element),
-		current: nil,
+		l:            list.New(),
+		queues:       make(map[string]*list.Element),
+		current:      nil,
+		maxQueueSize: maxQueueSize,
 	}
+}
+
+func (q *queueManager) len() int {
+	return len(q.queues)
 }
 
 func (q *queueManager) getNextQueue() (chan *request, string) {
@@ -62,7 +69,7 @@ func (q *queueManager) getOrAddQueue(userID string) chan *request {
 
 	if element == nil {
 		qr := queueRecord{
-			q:      make(chan *request),
+			q:      make(chan *request, q.maxQueueSize),
 			userID: userID,
 		}
 

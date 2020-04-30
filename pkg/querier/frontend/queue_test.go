@@ -162,3 +162,44 @@ func BenchmarkGetNextRequest(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkQueueRequest(b *testing.B) {
+	var config Config
+	flagext.DefaultValues(&config)
+	config.MaxOutstandingPerTenant = 2
+
+	const numTenants = 50
+
+	frontends := make([]*Frontend, 0, b.N)
+	contexts := make([]context.Context, 0, numTenants)
+	requests := make([]*request, 0, numTenants)
+
+	for n := 0; n < b.N; n++ {
+		f, err := setupFrontend(config)
+		if err != nil {
+			b.Fatal(err)
+		}
+		frontends = append(frontends, f)
+
+		for j := 0; j < numTenants; j++ {
+			userID := strconv.Itoa(j)
+			ctx := user.InjectOrgID(context.Background(), userID)
+			r := testReq(ctx)
+
+			requests = append(requests, r)
+			contexts = append(contexts, ctx)
+		}
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
+			for j := 0; j < numTenants; j++ {
+				err := frontends[n].queueRequest(contexts[j], requests[j])
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	}
+}

@@ -103,7 +103,8 @@ func TestRoundRobinQueues(t *testing.T) {
 		userID := fmt.Sprint(i / 10)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
-		f.queueRequest(ctx, testReq(ctx))
+		err = f.queueRequest(ctx, testReq(ctx))
+		require.NoError(t, err)
 	}
 
 	ctx := context.Background()

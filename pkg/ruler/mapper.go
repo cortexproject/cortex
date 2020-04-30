@@ -35,7 +35,6 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	anyUpdated := false
 	filenames := []string{}
 
-
 	// user rule files will be stored as `/<path>/<userid>/<encoded filename>`
 	path := filepath.Join(m.Path, user)
 	err := m.FS.MkdirAll(path, 0777)
@@ -47,7 +46,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	for filename, groups := range ruleConfigs {
 		// Store the encoded file name to better handle `/` characters
 		encodedFileName := url.PathEscape(filename)
-		fullFileName := filepath.Join(path, encodedFileName
+		fullFileName := filepath.Join(path, encodedFileName)
 
 		fileUpdated, err := m.writeRuleGroupsIfNewer(groups, fullFileName)
 		if err != nil {

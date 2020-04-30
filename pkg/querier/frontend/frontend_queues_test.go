@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -63,22 +64,24 @@ func TestFrontendQueuesConsistency(t *testing.T) {
 	q, _ := m.getNextQueue()
 	assert.Nil(t, q)
 
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+
 	for i := 0; i < 1000; i++ {
-		switch rand.Int() % 3 {
+		switch r.Int() % 3 {
 		case 0:
-			assert.NotNil(t, m.getOrAddQueue(generateTenant()))
+			assert.NotNil(t, m.getOrAddQueue(generateTenant(r)))
 		case 1:
 			m.getNextQueue()
 		case 2:
-			m.deleteQueue(generateTenant())
+			m.deleteQueue(generateTenant(r))
 		}
 
 		assert.NoErrorf(t, isConsistent(m), "last action %d", i)
 	}
 }
 
-func generateTenant() string {
-	return fmt.Sprint("tenant-", rand.Int()%5)
+func generateTenant(r *rand.Rand) string {
+	return fmt.Sprint("tenant-", r.Int()%5)
 }
 
 func getOrAddQueue(t *testing.T, m *queueManager, tenant string) chan *request {

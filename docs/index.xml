@@ -3664,7 +3664,166 @@ See &lt;a href=&#34;/docs/production/auth/&#34;&gt;Authentication and Authorisat
 &lt;p&gt;You should use a pair of Prometheus servers to monitor your targets and send metrics to Cortex.
 This allows your monitoring system to survive the failure of one of these Prometheus instances.
 Cortex support deduping the samples on ingestion.
-For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href=&#34;/docs/production/ha-pair-handling/&#34;&gt;Config for sending HA Pairs data to Cortex&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
+For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href=&#34;/docs/production/ha-pair-handling/&#34;&gt;Config for sending HA Pairs data to Cortex&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Docs: Scalable Query Frontend</title><link>/docs/proposals/scalable-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-query-frontend/</guid><description>
+&lt;ul&gt;
+&lt;li&gt;Author: &lt;a href=&#34;https://github.com/joe-elliott&#34;&gt;Joe Elliott&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Date: April 2020&lt;/li&gt;
+&lt;li&gt;Status: Proposed&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;overview&#34;&gt;Overview&lt;/h2&gt;
+&lt;p&gt;This document aims to describe the &lt;a href=&#34;#query-frontend-role&#34;&gt;role&lt;/a&gt; that the Cortex Query Frontend plays in running multitenant Cortex at scale. It also describes the &lt;a href=&#34;#challenges-and-proposals&#34;&gt;challenges&lt;/a&gt; of horizontally scaling the query frontend component and includes several recommendations and options for creating a reliably scalable query-frontend. Finally, we conclude with a discussion of the overall philosophy of the changes and propose an &lt;a href=&#34;#alternative&#34;&gt;alternative&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;For the original design behind the query frontend, you should read &lt;a href=&#34;https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY&#34;&gt;Cortex Query Optimisations design doc from 2018-07&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;reasoning&#34;&gt;Reasoning&lt;/h2&gt;
+&lt;p&gt;Query frontend scaling is becoming increasingly important for two primary reasons.&lt;/p&gt;
+&lt;p&gt;The Cortex team is working toward a scalable single binary solution. Recently the query-frontend was &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2437&#34;&gt;added&lt;/a&gt; to the Cortex single binary mode and, therefore, needs to seamlessly scale. Technically, nothing immediately breaks when scaling the query-frontend, but there are a number of concerns detailed in &lt;a href=&#34;#challenges-and-proposals&#34;&gt;Challenges And Proposals&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;As the query-frontend continues to &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1878&#34;&gt;support additional features&lt;/a&gt; it will start to become a bottleneck of the system. Current wisdom is to run very few query-frontends in order to maximize &lt;a href=&#34;#tenancy-fairness&#34;&gt;Tenancy Fairness&lt;/a&gt; but as more features are added scaling horizontally will become necessary.&lt;/p&gt;
+&lt;h2 id=&#34;query-frontend-role&#34;&gt;Query Frontend Role&lt;/h2&gt;
+&lt;h3 id=&#34;load-shedding&#34;&gt;Load Shedding&lt;/h3&gt;
+&lt;p&gt;The query frontend maintains a queue per tenant of configurable length (default 100) in which it stores a series of requests from that tenant. If this queue fills up then the frontend will return 429’s thus load shedding the rest of the system.&lt;/p&gt;
+&lt;p&gt;This is particularly effective due to the “pull” based model in which queriers pull requests from query frontends.&lt;/p&gt;
+&lt;h3 id=&#34;query-retries&#34;&gt;Query Retries&lt;/h3&gt;
+&lt;p&gt;The query frontend is capable of retrying a query on another querier if the first should fail due to OOM or network issues.&lt;/p&gt;
+&lt;h3 id=&#34;sharding-parallelization&#34;&gt;Sharding/Parallelization&lt;/h3&gt;
+&lt;p&gt;The query frontend shards requests by interval and &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1878&#34;&gt;other factors&lt;/a&gt; to concurrently run a single query across multiple queriers.&lt;/p&gt;
+&lt;h3 id=&#34;query-alignment-caching&#34;&gt;Query Alignment/Caching&lt;/h3&gt;
+&lt;p&gt;Queries are aligned to their own step and then stored/retrieved from cache.&lt;/p&gt;
+&lt;h3 id=&#34;tenancy-fairness&#34;&gt;Tenancy Fairness&lt;/h3&gt;
+&lt;p&gt;By maintaining one queue per tenant, a low demand tenant will have the same opportunity to have a query serviced as a high demand tenant. See &lt;a href=&#34;#dilutes-tenant-fairness&#34;&gt;Dilutes Tenant Fairness&lt;/a&gt; for additional discussion.&lt;/p&gt;
+&lt;p&gt;For clarity, tenancy fairness only comes into play when queries are actually being queued in the query frontend. Currently this rarely occurs, but as &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/1878&#34;&gt;query sharding&lt;/a&gt; becomes more aggressive this may become the norm.&lt;/p&gt;
+&lt;h2 id=&#34;challenges-and-proposals&#34;&gt;Challenges And Proposals&lt;/h2&gt;
+&lt;h3 id=&#34;dynamic-querier-concurrency&#34;&gt;Dynamic Querier Concurrency&lt;/h3&gt;
+&lt;h4 id=&#34;challenge&#34;&gt;Challenge&lt;/h4&gt;
+&lt;p&gt;For every query frontend the querier adds a &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/worker.go#L146&#34;&gt;configurable number of goroutines&lt;/a&gt; which are each capable of executing a query. Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.&lt;/p&gt;
+&lt;p&gt;Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits. Additionally, the promql engine itself is limited in the number of queries it can do as configured by the &lt;code&gt;-querier.max-concurrent&lt;/code&gt; parameter. Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.&lt;/p&gt;
+&lt;p&gt;For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively. This will lower effective resource utilization. Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.&lt;/p&gt;
+&lt;h4 id=&#34;proposal&#34;&gt;Proposal&lt;/h4&gt;
+&lt;p&gt;Currently queriers are configured to have a &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/worker.go#L146&#34;&gt;max parallelism per query frontend&lt;/a&gt;. An additional “total max concurrency” flag should be added.&lt;/p&gt;
+&lt;p&gt;Total Max Concurrency would then be evenly divided amongst all available query frontends. This would decouple the amount of work a querier is attempting to do with the number of query frontends that happen to exist at this moment. Consequently this would allow allocated resources (e.g. k8s cpu/memory limits) to remain balanced with the work the querier was attempting as the query frontend is scaled up or down.&lt;/p&gt;
+&lt;p&gt;A &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2456&#34;&gt;PR&lt;/a&gt; has already been merged to address this.&lt;/p&gt;
+&lt;h3 id=&#34;overwhelming-promql-concurrency&#34;&gt;Overwhelming PromQL Concurrency&lt;/h3&gt;
+&lt;h4 id=&#34;challenge-1&#34;&gt;Challenge&lt;/h4&gt;
+&lt;p&gt;If #frontends &amp;gt; promql concurrency then the queriers are incapable of devoting even a single worker to each query frontend without risking queueing in the querier. Queuing in the querier is a highly undesirable state and one of the primary reasons the query frontend was originally created.&lt;/p&gt;
+&lt;h4 id=&#34;proposal-1&#34;&gt;Proposal&lt;/h4&gt;
+&lt;p&gt;When #frontends &amp;gt; promql concurrency then each querier will maintain &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/worker.go#L194-L200&#34;&gt;exactly one connection&lt;/a&gt; to every frontend. As the query frontend is &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L279-L332&#34;&gt;currently coded&lt;/a&gt; it will attempt to use every open GRPC connection to execute a query in the attached queriers. Therefore, in this situation where #frontends &amp;gt; promql concurrency, the querier is exposing itself to more work then it is actually configured to perform.&lt;/p&gt;
+&lt;p&gt;To prevent this we will add “flow control” information to the &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21&#34;&gt;ProcessResponse message&lt;/a&gt; that is used to return query results from the querier to the query frontend. In an active system this message is passed multiple times per second from the queriers to the query frontends and would be a reliable way for the frontends to track the state of queriers and balance load.&lt;/p&gt;
+&lt;p&gt;There are a lot of options for an exact implementation of this idea. An effective solution should be determined and chosen by modeling a set of alternatives. The details of this would be included in another design doc. A simple implementation would look something like the following:&lt;/p&gt;
+&lt;p&gt;Add two new fields to &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21&#34;&gt;ProcessResponse&lt;/a&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;message&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;ProcessResponse&lt;/span&gt; &lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;{&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;httpgrpc.HTTPResponse&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;httpResponse&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;1&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;;&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;currentConcurrency&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;int&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;2&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;;&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;desiredConcurrency&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;int&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;;&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#a40000&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;&lt;strong&gt;currentConcurrency&lt;/strong&gt; - The current number of queries being executed by the querier.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;desiredConcurrency&lt;/strong&gt; - The total number of queries that a querier is capable of executing.&lt;/p&gt;
+&lt;p&gt;Add a short backoff to the main frontend &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L288-L331&#34;&gt;processing loop&lt;/a&gt;. This would cause the frontend to briefly back off of any querier that was overloaded but continue to send queries to those that were capable of doing work.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;current&lt;/span&gt; &lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;desired&lt;/span&gt; &lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;{&lt;/span&gt;
+&lt;span style=&#34;color:#000&#34;&gt;zzz&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;(&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;current&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;desired&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;)&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;*&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;backoffDuration&lt;/span&gt;
+&lt;span style=&#34;color:#000&#34;&gt;zzz&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;*=&lt;/span&gt; &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;1&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;rand&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;.&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;Float64&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;()&lt;/span&gt; &lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;*&lt;/span&gt; &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;.1&lt;/span&gt; &lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;// jitter
+&lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;&lt;/span&gt; &lt;span style=&#34;color:#000&#34;&gt;time&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;.&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;Sleep&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;(&lt;/span&gt;&lt;span style=&#34;color:#000&#34;&gt;zzz&lt;/span&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;)&lt;/span&gt;
+&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Passing flow control information from the querier to the frontend would also open up additional future work for more sophisticated load balancing across queriers. For example by simply comparing and choosing &lt;a href=&#34;https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/&#34;&gt;the least congested of two&lt;/a&gt; queriers we could dramatically improve how well work is distributed.&lt;/p&gt;
+&lt;h3 id=&#34;increased-time-to-failure&#34;&gt;Increased Time To Failure&lt;/h3&gt;
+&lt;h4 id=&#34;challenge-2&#34;&gt;Challenge&lt;/h4&gt;
+&lt;p&gt;Scaling the query frontend also increases the per tenant queue length by creating more queues. This could result in increased latencies where failing fast (429) would have been preferred.&lt;/p&gt;
+&lt;p&gt;The operator could reduce the queue length per query frontend in response to scaling out, but then they would run the risk of unnecessarily failing a request due to unbalanced distribution across query frontends. Also, shorter queues run the risk of failing to properly service heavily sharded queries.&lt;/p&gt;
+&lt;p&gt;Another concern is that a system with more queues will take longer to recover from an production event as it will have queued up more work.&lt;/p&gt;
+&lt;h4 id=&#34;proposal-2&#34;&gt;Proposal&lt;/h4&gt;
+&lt;p&gt;Currently we are not proposing any changes to alleviate this concern. We believe this is solvable operationally. This can be revisited as more information is gathered.&lt;/p&gt;
+&lt;h3 id=&#34;querier-discovery-lag&#34;&gt;Querier Discovery Lag&lt;/h3&gt;
+&lt;h4 id=&#34;challenge-3&#34;&gt;Challenge&lt;/h4&gt;
+&lt;p&gt;Queriers have a configurable parameter that controls how often they refresh their query frontend list. The default value is 10 seconds. After a new query frontend is added the average querier will take 5 seconds (after DNS is updated) to become aware of it and begin requesting queries from it.&lt;/p&gt;
+&lt;h4 id=&#34;proposal-3&#34;&gt;Proposal&lt;/h4&gt;
+&lt;p&gt;It is recommended to add a readiness/health check to the query frontend to prevent it from receiving queries while it is waiting for queriers to connect. HTTP health checks are supported by &lt;a href=&#34;https://www.envoyproxy.io/learn/health-check&#34;&gt;envoy&lt;/a&gt;, &lt;a href=&#34;https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/&#34;&gt;k8s&lt;/a&gt;, &lt;a href=&#34;https://docs.nginx.com/nginx/admin-guide/load-balancer/http-health-check/&#34;&gt;nginx&lt;/a&gt;, and basically any commodity load balancer. The query frontend would not indicate healthy on its health check until at least one querier had connected.&lt;/p&gt;
+&lt;p&gt;In a k8s environment this will require two services. One service for discovery with &lt;code&gt;publishNotReadyAddresses&lt;/code&gt; set to true and one service for load balancing which honors the healthcheck/readiness probe. After a new query-frontend instance is created the &amp;ldquo;discovery service&amp;rdquo; would immediately have the ip of the new instance which would allow queriers to discover and attach to it. After queriers had connected it would then raise its readiness probe and appear on the &amp;ldquo;load balancing&amp;rdquo; service and begin receiving traffic.&lt;/p&gt;
+&lt;h3 id=&#34;dilutes-tenant-fairness&#34;&gt;Dilutes Tenant Fairness&lt;/h3&gt;
+&lt;h4 id=&#34;challenge-4&#34;&gt;Challenge&lt;/h4&gt;
+&lt;p&gt;Given &lt;code&gt;f&lt;/code&gt; query frontends, &lt;code&gt;n&lt;/code&gt; tenants and an average of &lt;code&gt;q&lt;/code&gt; queries in the frontend per tenant. The following assumes that queries are perfectly distributed across query frontends. The number of tenants per instance would be:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://render.githubusercontent.com/render/math?math=m = floor(n * \frac{min(q,f)}{f})&#34;&gt;&lt;/p&gt;
+&lt;p&gt;The chance that a query by a tenant with &lt;code&gt;Q&lt;/code&gt; queries in the frontend is serviced next is:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://render.githubusercontent.com/render/math?math=min(Q,f)* \frac{1}{min(q * n %2b Q,f)}*\frac{1}{m %2b 1}&#34;&gt;&lt;/p&gt;
+&lt;p&gt;Note that fewer query frontends caps the impact of the number of active queries per tenant. If there is only one query frontend then the equation reduces to:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://render.githubusercontent.com/render/math?math=\frac{1}{n}&#34;&gt;&lt;/p&gt;
+&lt;p&gt;and every tenant has an equal chance of being serviced regardless of the number of queued queries.&lt;/p&gt;
+&lt;p&gt;Adding more query frontends favors high volume tenants by giving them more slots to be picked up by the next available querier. Fewer query frontends allows for an even playing field regardless of the number of active queries.&lt;/p&gt;
+&lt;p&gt;For clarity, it should be noted that tenant fairness is only impacted if queries are being queued in the frontend. Under normal operations this is currently not occurring although this may change with increased sharding.&lt;/p&gt;
+&lt;h4 id=&#34;proposal-4&#34;&gt;Proposal&lt;/h4&gt;
+&lt;p&gt;Tenancy fairness is complex and is currently &lt;em&gt;not&lt;/em&gt; impacting our system. Therefore we are proposing a very simple improvement to the query frontend. If/when frontend queuing becomes more common this can be revisited as we will understand the problem better.&lt;/p&gt;
+&lt;p&gt;Currently the query frontend &lt;a href=&#34;https://github.com/cortexproject/cortex/blob/50f53dba8f8bd5f62c0e85cc5d85684234cd1c1c/pkg/querier/frontend/frontend.go#L362-L367&#34;&gt;picks a random tenant&lt;/a&gt; to service when a querier requests a new query. This can increase long tail latency if a tenant gets “unlucky” and is also exacerbated for low volume tenants by scaling the query frontend. Instead the query frontend could use a round robin approach to choose the next tenant to service. Round robin is a commonly used algorithm to increase fairness in scheduling.&lt;/p&gt;
+&lt;p&gt;This would be a very minor improvement, but would give some guarantees to low volume tenants that their queries would be serviced. This has been proposed in this &lt;a href=&#34;https://github.com/cortexproject/cortex/issues/2431&#34;&gt;issue&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Pros:&lt;/strong&gt; Requires local knowledge only. Easier to implement than weighted round robin.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Cons:&lt;/strong&gt; Improvement is minor.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Alternatives to Round Robin&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Do Nothing&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;As is noted above tenancy fairness only comes into play when queries start queueing up in the query frontend. Internal Metrics for multi-tenant Cortex at Grafana show that this has only happened 5 times in the past week significantly enough to have been caught by Prometheus.&lt;/p&gt;
+&lt;p&gt;Right now doing nothing is a viable option that will, almost always, fairly serve our tenants. There is, however, some concern that as sharding becomes more commonplace queueing will become more common and QOS will suffer due to reasons outlined in &lt;a href=&#34;#dilutes-tenant-fairness&#34;&gt;Dilutes Tenant Fairness&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Pros:&lt;/strong&gt; Easy!&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Cons:&lt;/strong&gt; Nothing happens!&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Weighted Round Robin&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;The query frontends could maintain a local record of throughput or work per tenant. Tenants could then be sorted in QOS bands. In its simplest form there would be two QOS bands. The band of low volume tenants would be serviced twice for every one time the band of high volume tenants would be serviced. The full details of this approach would require a separate proposal.&lt;/p&gt;
+&lt;p&gt;This solution would also open up interesting future work. For instance, we could allow operators to manually configure tenants into QOS bands.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Pros:&lt;/strong&gt; Requires local knowledge only. Can be extended later to allow tenants to be manually sorted into QOS tiers.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Cons:&lt;/strong&gt; Improvement is better than Round Robin only. Relies on even distribution of queries across frontends. Increased complexity and difficulty in reasoning about edge cases.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Weighted Round Robin With Gossiped Traffic&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;This approach would be equivalent to Weighted Round Robin proposed above but with tenant traffic volume gossiped between query frontends.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Pros:&lt;/strong&gt; Benefits of Weighted Round Robin without the requirement of even query distribution. Even though it requires distributed information a failure in gossip means it gracefully degrades to Weighted Round Robin.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Cons:&lt;/strong&gt; Requires cross instance communication. Increased complexity and difficulty in reasoning about edge cases.&lt;/p&gt;
+&lt;h2 id=&#34;alternative&#34;&gt;Alternative&lt;/h2&gt;
+&lt;p&gt;The proposals in this document have preferred augmenting existing components to make decisions with local knowledge. The unstated goal of these proposals is to build a distributed queue across a scaled query frontend that reliably and fairly serves our tenants.&lt;/p&gt;
+&lt;p&gt;Overall, these proposals will create a robust system that is resistant to network partitions and failures of individual pieces. However, it will also create a complex system that could be difficult to reason about, contain hard to ascertain edge cases and nuanced failure modes.&lt;/p&gt;
+&lt;p&gt;The alternative is, instead of building a distributed queue, to add a new cortex queueing service that sits in between the frontends and the queriers. This queueing service would pull from the frontends and distribute to the queriers. It would decouple the stateful queue from the stateless elements of the query frontend and allow us to easily scale the query frontend while keeping the queue itself a singleton. In a single binary HA mode one (or few) of the replicas would be leader elected to serve this role.&lt;/p&gt;
+&lt;p&gt;Having a singleton queue is attractive because it is simple to reason about and gives us a single place to make fair cross tenant queueing decisions. It does, however, create a single point of failure and add another network hop to the query path.&lt;/p&gt;
+&lt;h2 id=&#34;conclusion&#34;&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;In this document we reviewed the &lt;a href=&#34;#query frontend-role&#34;&gt;reasons the frontend exists&lt;/a&gt;, &lt;a href=&#34;#challenges-and-proposals&#34;&gt;challenges and proposals to scaling the frontend&lt;/a&gt; and &lt;a href=&#34;#alternative&#34;&gt;an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a&gt;&lt;/p&gt;
+&lt;table&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Challenge&lt;/strong&gt;
+&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;Proposal&lt;/strong&gt;
+&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Dynamic Querier Concurrency
+&lt;/td&gt;
+&lt;td&gt;Add Max Total Concurrency in Querier
+&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2456&#34;&gt;Pull Request&lt;/a&gt;
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Overwhelming PromQL Concurrency
+&lt;/td&gt;
+&lt;td&gt;Queriers Coordinate Concurrency with Frontends
+&lt;/td&gt;
+&lt;td&gt;Proposed
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Increased Time to Failure
+&lt;/td&gt;
+&lt;td&gt;Operational/Configuration Issue. No Changes Proposed.
+&lt;/td&gt;
+&lt;td&gt;
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Querier Discovery Lag
+&lt;/td&gt;
+&lt;td&gt;Query Frontend HTTP Health Checks
+&lt;/td&gt;
+&lt;td&gt;Proposed
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Dilutes Tenant Fairness
+&lt;/td&gt;
+&lt;td&gt;Round Robin with additional alternatives proposed
+&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;https://github.com/cortexproject/cortex/issues/2431&#34;&gt;Issue&lt;/a&gt;
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
 &lt;ul&gt;
 &lt;li&gt;Author: @gotjosh&lt;/li&gt;
 &lt;li&gt;Reviewers: @gouthamve, @pracucci&lt;/li&gt;

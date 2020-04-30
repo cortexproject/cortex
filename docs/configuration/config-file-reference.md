@@ -1849,7 +1849,7 @@ delete_store:
   # CLI flag: -deletes.requests-table-name
   [requests_table_name: <string> | default = "delete_requests"]
 
-  provisionconfig:
+  table_provisioning:
     # Enables on demand throughput provisioning for the storage provider (if
     # supported). Applies only to tables which are not autoscaled. Supported by
     # DynamoDB

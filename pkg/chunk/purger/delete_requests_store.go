@@ -75,7 +75,7 @@ type DeleteStore struct {
 type DeleteStoreConfig struct {
 	Store             string                  `yaml:"store"`
 	RequestsTableName string                  `yaml:"requests_table_name"`
-	ProvisionConfig   TableProvisioningConfig `json:"table_provisioning"`
+	ProvisionConfig   TableProvisioningConfig `yaml:"table_provisioning"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.

@@ -294,6 +294,8 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", promHandler, true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/series", promHandler, true, "GET", "POST", "DELETE")
+	//TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
+	// https://github.com/prometheus/prometheus/pull/7125/files
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", querier.MetadataHandler(distributor), true, "GET")
 
 	legacyPromRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.LegacyHTTPPrefix + "/api/v1")
@@ -306,6 +308,8 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", legacyPromHandler, true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true, "GET", "POST", "DELETE")
+	//TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
+	// https://github.com/prometheus/prometheus/pull/7125/files
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", querier.MetadataHandler(distributor), true, "GET")
 
 	// if we have externally registered routes then we need to return the server handler

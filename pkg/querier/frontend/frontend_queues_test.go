@@ -55,10 +55,10 @@ func TestFrontendQueues(t *testing.T) {
 }
 
 func getOrAddQueue(t *testing.T, m *queueManager, tenant string) requestQueue {
-	q := m.getQueue(tenant)
+	q := m.getOrAddQueue(tenant)
 	assert.NotNil(t, q)
 	assert.NoError(t, m.isConsistent())
-	assert.Equal(t, q, m.getQueue(tenant))
+	assert.Equal(t, q, m.getOrAddQueue(tenant))
 
 	return q
 }
@@ -80,7 +80,7 @@ func TestFrontendQueuesConsistency(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		switch rand.Int() % 3 {
 		case 0:
-			assert.NotNil(t, m.getQueue(generateTenant()))
+			assert.NotNil(t, m.getOrAddQueue(generateTenant()))
 		case 1:
 			m.getNextQueue()
 		case 2:

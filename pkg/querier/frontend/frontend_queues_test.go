@@ -15,55 +15,25 @@ func TestFrontendQueues(t *testing.T) {
 	assert.Nil(t, m.getNextQueue())
 
 	// add queues
-	qOne := getOrAddQueue(t, "one", m)
-	qTwo := getOrAddQueue(t, "two", m)
+	qOne := getOrAddQueue(t, m, "one")
+	qTwo := getOrAddQueue(t, m, "two")
 	assert.NotEqual(t, qOne, qTwo)
 
 	// confirm they come back in order and exhibit round robin
-	qNext := m.getNextQueue()
-	assert.Equal(t, qOne, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qTwo, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qOne, qNext)
-	assert.NoError(t, m.isConsistent())
+	confirmOrder(t, m, qOne, qTwo, qOne)
 
 	// confirm fifo by adding a third queue and iterating to it
-	qThree := getOrAddQueue(t, "three", m)
+	qThree := getOrAddQueue(t, m, "three")
 	assert.NotEqual(t, qOne, qThree)
 	assert.NotEqual(t, qTwo, qThree)
 
-	qNext = m.getNextQueue()
-	assert.Equal(t, qTwo, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qOne, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qThree, qNext)
-	assert.NoError(t, m.isConsistent())
+	confirmOrder(t, m, qTwo, qOne, qThree)
 
 	// remove one and round robin the others
 	m.deleteQueue("one")
 	assert.NoError(t, m.isConsistent())
 
-	qNext = m.getNextQueue()
-	assert.Equal(t, qTwo, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qThree, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	qNext = m.getNextQueue()
-	assert.Equal(t, qTwo, qNext)
-	assert.NoError(t, m.isConsistent())
+	confirmOrder(t, m, qTwo, qThree, qTwo)
 
 	// remove all
 	m.deleteQueue("two")
@@ -75,13 +45,21 @@ func TestFrontendQueues(t *testing.T) {
 	assert.Nil(t, m.getNextQueue())
 }
 
-func getOrAddQueue(t *testing.T, tenant string, m *queueManager) requestQueue {
+func getOrAddQueue(t *testing.T, m *queueManager, tenant string) requestQueue {
 	q := m.getQueue(tenant)
 	assert.NotNil(t, q)
 	assert.NoError(t, m.isConsistent())
 	assert.Equal(t, q, m.getQueue(tenant))
 
 	return q
+}
+
+func confirmOrder(t *testing.T, m *queueManager, qs ...requestQueue) {
+	for _, q := range qs {
+		qNext := m.getNextQueue()
+		assert.Equal(t, q, qNext)
+		assert.NoError(t, m.isConsistent())
+	}
 }
 
 func TestFrontendQueuesConsistency(t *testing.T) {

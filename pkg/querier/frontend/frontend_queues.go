@@ -10,9 +10,9 @@ type queueRecord struct {
 }
 
 type queueManager struct {
-	l       *list.List
-	queues  map[string]*list.Element
-	current *list.Element
+	l          *list.List
+	current    *list.Element
+	userLookup map[string]*list.Element
 
 	maxQueueSize int
 }
@@ -20,14 +20,14 @@ type queueManager struct {
 func newQueueManager(maxQueueSize int) *queueManager {
 	return &queueManager{
 		l:            list.New(),
-		queues:       make(map[string]*list.Element),
+		userLookup:   make(map[string]*list.Element),
 		current:      nil,
 		maxQueueSize: maxQueueSize,
 	}
 }
 
 func (q *queueManager) len() int {
-	return len(q.queues)
+	return len(q.userLookup)
 }
 
 func (q *queueManager) getNextQueue() (chan *request, string) {
@@ -48,7 +48,7 @@ func (q *queueManager) getNextQueue() (chan *request, string) {
 }
 
 func (q *queueManager) deleteQueue(userID string) {
-	element := q.queues[userID]
+	element := q.userLookup[userID]
 
 	// remove from linked list
 	if element != nil {
@@ -60,11 +60,11 @@ func (q *queueManager) deleteQueue(userID string) {
 	}
 
 	// remove from map
-	delete(q.queues, userID)
+	delete(q.userLookup, userID)
 }
 
 func (q *queueManager) getOrAddQueue(userID string) chan *request {
-	element := q.queues[userID]
+	element := q.userLookup[userID]
 
 	if element == nil {
 		qr := queueRecord{
@@ -79,7 +79,7 @@ func (q *queueManager) getOrAddQueue(userID string) chan *request {
 			element = q.l.InsertBefore(qr, q.current)
 		}
 
-		q.queues[userID] = element
+		q.userLookup[userID] = element
 	}
 
 	return element.Value.(queueRecord).ch

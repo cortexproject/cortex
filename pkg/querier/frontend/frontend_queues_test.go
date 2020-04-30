@@ -102,7 +102,7 @@ func confirmOrder(t *testing.T, m *queueManager, qs ...chan *request) {
 //  This is horribly inefficient.  Use for testing only.
 func isConsistent(q *queueManager) error {
 	// let's confirm that every element in the map is in the list and all values are request queues
-	for k, v := range q.queues {
+	for k, v := range q.userLookup {
 		found := false
 
 		for e := q.l.Front(); e != nil; e = e.Next() {
@@ -128,7 +128,7 @@ func isConsistent(q *queueManager) error {
 
 	// now check the length to make sure there's not extra list items somehow
 	listLen := q.l.Len()
-	mapLen := len(q.queues)
+	mapLen := len(q.userLookup)
 
 	if listLen != mapLen {
 		return fmt.Errorf("Length mismatch list:%d map:%d", listLen, mapLen)

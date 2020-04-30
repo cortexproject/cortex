@@ -81,13 +81,13 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.NotNil(t, req)
 
 	// ensure either one or two queues are fully drained, depending on which was requested first
-	_, ok := f.queueManager.queues[userID]
+	_, ok := f.queueManager.userLookup[userID]
 	if ok {
 		// if the second user's queue was chosen for the last request,
 		// the first queue should still contain 4 (expired) requests.
 		require.Equal(t, 4, len(f.queueManager.getOrAddQueue(userID)))
 	}
-	_, ok = f.queueManager.queues[userID2]
+	_, ok = f.queueManager.userLookup[userID2]
 	require.Equal(t, false, ok)
 }
 

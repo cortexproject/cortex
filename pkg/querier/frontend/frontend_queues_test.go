@@ -1,68 +1,109 @@
 package frontend
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-)
-
-const (
-	actionGetQueue = iota
-	actionGetNextQueue
-	actionDeleteQueue
 )
 
 func TestFrontendQueues(t *testing.T) {
 	m := newQueueManager()
 	assert.NotNil(t, m)
 	assert.NoError(t, m.isConsistent())
+	assert.Nil(t, m.getNextQueue())
 
-	q := m.getQueue("blerg")
+	// add queues
+	qOne := getOrAddQueue(t, "one", m)
+	qTwo := getOrAddQueue(t, "two", m)
+	assert.NotEqual(t, qOne, qTwo)
+
+	// confirm they come back in order and exhibit round robin
+	qNext := m.getNextQueue()
+	assert.Equal(t, qOne, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qTwo, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qOne, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	// confirm fifo by adding a third queue and iterating to it
+	qThree := getOrAddQueue(t, "three", m)
+	assert.NotEqual(t, qOne, qThree)
+	assert.NotEqual(t, qTwo, qThree)
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qTwo, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qOne, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qThree, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	// remove one and round robin the others
+	m.deleteQueue("one")
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qTwo, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qThree, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	qNext = m.getNextQueue()
+	assert.Equal(t, qTwo, qNext)
+	assert.NoError(t, m.isConsistent())
+
+	// remove all
+	m.deleteQueue("two")
+	assert.NoError(t, m.isConsistent())
+
+	m.deleteQueue("three")
+	assert.NoError(t, m.isConsistent())
+
+	assert.Nil(t, m.getNextQueue())
+}
+
+func getOrAddQueue(t *testing.T, tenant string, m *queueManager) requestQueue {
+	q := m.getQueue(tenant)
 	assert.NotNil(t, q)
 	assert.NoError(t, m.isConsistent())
+	assert.Equal(t, q, m.getQueue(tenant))
 
-	qNext := m.getNextQueue()
-	assert.Equal(t, q, qNext)
-	assert.NoError(t, m.isConsistent())
-
-	m.deleteQueue("blerg")
-	assert.NoError(t, m.isConsistent())
+	return q
 }
 
 func TestFrontendQueuesConsistency(t *testing.T) {
-	type queueAction struct {
-		action int
-		tenant string
+	m := newQueueManager()
+	assert.NotNil(t, m)
+	assert.NoError(t, m.isConsistent())
+	assert.Nil(t, m.getNextQueue())
+
+	for i := 0; i < 1000; i++ {
+		switch rand.Int() % 3 {
+		case 0:
+			assert.NotNil(t, m.getQueue(generateTenant()))
+		case 1:
+			m.getNextQueue()
+		case 2:
+			m.deleteQueue(generateTenant())
+		}
+
+		assert.NoErrorf(t, m.isConsistent(), "last action %d", i)
 	}
+}
 
-	tests := []struct {
-		name    string
-		actions []queueAction
-	}{
-		{
-			name:    "Test No Action",
-			actions: []queueAction{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := newQueueManager()
-			assert.NotNil(t, m)
-			assert.NoError(t, m.isConsistent())
-
-			for _, a := range tt.actions {
-				switch a.action {
-				case actionGetQueue:
-					assert.NotNil(t, m.getQueue(a.tenant))
-				case actionGetNextQueue:
-					assert.NotNil(t, m.getNextQueue())
-				case actionDeleteQueue:
-					m.deleteQueue(a.tenant)
-				}
-			}
-
-			assert.NoError(t, m.isConsistent())
-		})
-	}
+func generateTenant() string {
+	return fmt.Sprint("tenant-", rand.Int()%5)
 }

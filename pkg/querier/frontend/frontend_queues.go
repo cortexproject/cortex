@@ -58,7 +58,7 @@ func (q *queueManager) getQueue(tenant string) requestQueue {
 	if element == nil {
 		// need to add this tenant.  add it right before the current linked list item for fifo
 		if q.current == nil {
-			element = q.l.PushFront(make(requestQueue))
+			element = q.l.PushBack(make(requestQueue))
 		} else {
 			element = q.l.InsertBefore(make(requestQueue), q.current)
 		}

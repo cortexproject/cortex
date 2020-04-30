@@ -62,13 +62,13 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	req, err := f.getNextRequest(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 9, len(f.queueManager.getOrAddQueue(userID)))
+	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID)))
 
 	// the next unexpired request should be the 5th index
 	req, err = f.getNextRequest(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 4, len(f.queueManager.getOrAddQueue(userID)))
+	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
 
 	// add one request to a second tenant queue
 	ctx2 := user.InjectOrgID(context.Background(), userID2)
@@ -81,13 +81,13 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.NotNil(t, req)
 
 	// ensure either one or two queues are fully drained, depending on which was requested first
-	_, ok := f.queueManager.userLookup[userID]
+	_, ok := f.queues.userLookup[userID]
 	if ok {
 		// if the second user's queue was chosen for the last request,
 		// the first queue should still contain 4 (expired) requests.
-		require.Equal(t, 4, len(f.queueManager.getOrAddQueue(userID)))
+		require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
 	}
-	_, ok = f.queueManager.userLookup[userID2]
+	_, ok = f.queues.userLookup[userID2]
 	require.Equal(t, false, ok)
 }
 

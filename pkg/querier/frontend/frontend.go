@@ -61,9 +61,9 @@ type Frontend struct {
 	log          log.Logger
 	roundTripper http.RoundTripper
 
-	mtx          sync.Mutex
-	cond         *sync.Cond
-	queueManager *queueManager
+	mtx    sync.Mutex
+	cond   *sync.Cond
+	queues *queueManager
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -83,9 +83,9 @@ type request struct {
 // New creates a new frontend.
 func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
-		cfg:          cfg,
-		log:          log,
-		queueManager: newQueueManager(cfg.MaxOutstandingPerTenant),
+		cfg:    cfg,
+		log:    log,
+		queues: newQueueManager(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -140,7 +140,7 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-	for f.queueManager.len() > 0 {
+	for f.queues.len() > 0 {
 		f.cond.Wait()
 	}
 }
@@ -342,7 +342,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue := f.queueManager.getOrAddQueue(userID)
+	queue := f.queues.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -361,7 +361,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	defer f.mtx.Unlock()
 
 FindQueue:
-	for f.queueManager.len() == 0 && ctx.Err() == nil {
+	for f.queues.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
@@ -370,7 +370,7 @@ FindQueue:
 	}
 
 	for {
-		queue, userID := f.queueManager.getNextQueue()
+		queue, userID := f.queues.getNextQueue()
 		if queue == nil {
 			break
 		}
@@ -391,7 +391,7 @@ FindQueue:
 			lastRequest := false
 			request := <-queue
 			if len(queue) == 0 {
-				f.queueManager.deleteQueue(userID)
+				f.queues.deleteQueue(userID)
 				lastRequest = true
 			}
 

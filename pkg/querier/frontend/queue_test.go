@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -88,6 +89,37 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	}
 	_, ok = f.queueManager.queues[userID2]
 	require.Equal(t, false, ok)
+}
+
+func TestRoundRobinQueues(t *testing.T) {
+	var config Config
+	flagext.DefaultValues(&config)
+	config.MaxOutstandingPerTenant = 100
+
+	f, err := setupFrontend(config)
+	require.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		userID := fmt.Sprint(i / 10)
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		f.queueRequest(ctx, testReq(ctx))
+	}
+
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		// the first request shouldnt be expired
+		req, err := f.getNextRequest(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, req)
+
+		userID, err := user.ExtractOrgID(req.originalCtx)
+		require.NoError(t, err)
+		intUserID, err := strconv.Atoi(userID)
+		require.NoError(t, err)
+
+		require.Equal(t, i%10, intUserID)
+	}
 }
 
 func BenchmarkGetNextRequest(b *testing.B) {

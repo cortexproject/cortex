@@ -108,7 +108,6 @@ func TestRoundRobinQueues(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
-		// the first request shouldnt be expired
 		req, err := f.getNextRequest(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, req)

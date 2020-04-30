@@ -79,7 +79,6 @@ storage:
     store: boltdb
 
 purger:
-  enable: true
   object_store_type: filesystem
 
 frontend_worker:

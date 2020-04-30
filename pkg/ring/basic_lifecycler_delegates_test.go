@@ -5,12 +5,15 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestLeaveOnStoppingDelegate(t *testing.T) {
@@ -195,6 +198,7 @@ func TestDelegatesChain(t *testing.T) {
 
 	chain = NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, chain, log.NewNopLogger())
 	chain = NewLeaveOnStoppingDelegate(chain, log.NewNopLogger())
+	chain = NewAutoForgetDelegate(time.Minute, chain, log.NewNopLogger())
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
@@ -214,4 +218,78 @@ func TestDelegatesChain(t *testing.T) {
 	actualTokens, err := LoadTokensFromFile(tokensFile.Name())
 	require.NoError(t, err)
 	assert.Equal(t, Tokens{1, 2, 3, 4, 5}, actualTokens)
+}
+
+func TestAutoForgetDelegate(t *testing.T) {
+	const forgetPeriod = time.Minute
+
+	tests := map[string]struct {
+		setup             func(ringDesc *Desc)
+		expectedInstances []string
+	}{
+		"no unhealthy instance in the ring": {
+			setup: func(ringDesc *Desc) {
+				ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+			},
+			expectedInstances: []string{testInstanceID, "instance-1"},
+		},
+		"unhealthy instance in the ring that has NOTreached the forget period yet": {
+			setup: func(ringDesc *Desc) {
+				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+				i.Timestamp = time.Now().Add(-forgetPeriod).Add(5 * time.Second).Unix()
+				ringDesc.Ingesters["instance-1"] = i
+			},
+			expectedInstances: []string{testInstanceID, "instance-1"},
+		},
+		"unhealthy instance in the ring that has reached the forget period": {
+			setup: func(ringDesc *Desc) {
+				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+				i.Timestamp = time.Now().Add(-forgetPeriod).Add(-5 * time.Second).Unix()
+				ringDesc.Ingesters["instance-1"] = i
+			},
+			expectedInstances: []string{testInstanceID},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ctx := context.Background()
+			cfg := prepareBasicLifecyclerConfig()
+			cfg.HeartbeatPeriod = 100 * time.Millisecond
+
+			testDelegate := &mockDelegate{}
+
+			autoForgetDelegate := NewAutoForgetDelegate(forgetPeriod, testDelegate, log.NewNopLogger())
+			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(cfg, autoForgetDelegate)
+			require.NoError(t, err)
+
+			// Setup the initial state of the ring.
+			require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				ringDesc := NewDesc()
+				testData.setup(ringDesc)
+				return ringDesc, true, nil
+			}))
+
+			// Start the lifecycler.
+			require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
+			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
+
+			// Wait until an heartbeat has been sent.
+			test.Poll(t, time.Second, true, func() interface{} {
+				return testutil.ToFloat64(lifecycler.metrics.heartbeats) > 0
+			})
+
+			// Read back the ring status from the store.
+			v, err := store.Get(ctx, testRingKey)
+			require.NoError(t, err)
+			require.NotNil(t, v)
+
+			var actualInstances []string
+			for id := range GetOrCreateRingDesc(v).GetIngesters() {
+				actualInstances = append(actualInstances, id)
+			}
+
+			assert.ElementsMatch(t, testData.expectedInstances, actualInstances)
+		})
+	}
 }

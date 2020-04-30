@@ -702,11 +702,10 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	return result, nil
 }
 
-// MetricMetadata returns all metric metadata of a user.
+// MetricsMetadata returns all metric metadata of a user.
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	req := &ingester_client.MetricsMetadataRequest{}
-	// TODO: We only need to look in all the ingesters if we're shardByAllLabels is enabled.
-	// Look into distributor/query.go
+	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
 	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})

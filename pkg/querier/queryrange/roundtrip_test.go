@@ -60,6 +60,7 @@ func TestRoundTrip(t *testing.T) {
 		},
 		0,
 		nil,
+		nil,
 	)
 
 	if err != nil {
@@ -116,6 +117,7 @@ func Test_ShardingConfigError(t *testing.T) {
 		chunk.SchemaConfig{},
 		promql.EngineOpts{},
 		0,
+		nil,
 		nil,
 	)
 

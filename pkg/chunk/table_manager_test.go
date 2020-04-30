@@ -167,8 +167,8 @@ func TestTableManager(t *testing.T) {
 				InactiveWriteThroughput: inactiveWrite,
 				InactiveReadThroughput:  inactiveRead,
 				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
 			},
-			InactiveWriteScaleLastN: autoScaleLastN,
 		},
 		ChunkTables: ProvisionConfig{
 			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
@@ -360,8 +360,8 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 				InactiveWriteThroughput: inactiveWrite,
 				InactiveReadThroughput:  inactiveRead,
 				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
 			},
-			InactiveWriteScaleLastN: autoScaleLastN,
 		},
 		ChunkTables: ProvisionConfig{
 			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
@@ -455,8 +455,8 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 				InactiveReadThroughput:         inactiveRead,
 				InactiveWriteScale:             inactiveScalingConfig,
 				InactiveThroughputOnDemandMode: true,
+				InactiveWriteScaleLastN:        1,
 			},
-			InactiveWriteScaleLastN: 1,
 		},
 		ChunkTables: ProvisionConfig{
 			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
@@ -625,8 +625,8 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 				InactiveWriteThroughput: inactiveWrite,
 				InactiveReadThroughput:  inactiveRead,
 				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
 			},
-			InactiveWriteScaleLastN: autoScaleLastN,
 		},
 		ChunkTables: ProvisionConfig{
 			ActiveTableProvisionConfig: ActiveTableProvisionConfig{

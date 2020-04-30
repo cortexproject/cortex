@@ -393,7 +393,8 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 		extraTables = append(extraTables, chunk.ExtraTables{TableClient: deleteStoreTableClient, Tables: t.Cfg.Storage.DeleteStoreConfig.GetTables()})
 	}
 
-	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient, bucketClient, prometheus.DefaultRegisterer, extraTables)
+	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient,
+		bucketClient, extraTables, prometheus.DefaultRegisterer)
 	return t.TableManager, err
 }
 

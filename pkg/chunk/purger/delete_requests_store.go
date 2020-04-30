@@ -80,7 +80,7 @@ type DeleteStoreConfig struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *DeleteStoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ProvisionConfig.RegisterFlags("deletes.tables", f)
+	cfg.ProvisionConfig.RegisterFlags("deletes.table", f)
 	f.StringVar(&cfg.Store, "deletes.store", "", "Store for keeping delete request")
 	f.StringVar(&cfg.RequestsTableName, "deletes.requests-table-name", "delete_requests", "Name of the table which stores delete requests")
 }

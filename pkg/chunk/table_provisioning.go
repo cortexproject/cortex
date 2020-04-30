@@ -4,9 +4,6 @@ import "flag"
 
 // ProvisionConfig holds config for provisioning capacity for index and chunk tables (on DynamoDB for now)
 type ProvisionConfig struct {
-	InactiveWriteScaleLastN int64 `yaml:"inactive_write_scale_lastn"`
-	InactiveReadScaleLastN  int64 `yaml:"inactive_read_scale_lastn"`
-
 	ActiveTableProvisionConfig   `yaml:",inline"`
 	InactiveTableProvisionConfig `yaml:",inline"`
 }
@@ -15,9 +12,6 @@ type ProvisionConfig struct {
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	cfg.ActiveTableProvisionConfig.RegisterFlags(argPrefix, f)
 	cfg.InactiveTableProvisionConfig.RegisterFlags(argPrefix, f)
-
-	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
-	f.Int64Var(&cfg.InactiveReadScaleLastN, argPrefix+".inactive-read-throughput.scale-last-n", 4, "Number of last inactive tables to enable read autoscale.")
 }
 
 type ActiveTableProvisionConfig struct {
@@ -46,6 +40,9 @@ type InactiveTableProvisionConfig struct {
 
 	InactiveWriteScale AutoScalingConfig `yaml:"inactive_write_scale"`
 	InactiveReadScale  AutoScalingConfig `yaml:"inactive_read_scale"`
+
+	InactiveWriteScaleLastN int64 `yaml:"inactive_write_scale_lastn"`
+	InactiveReadScaleLastN  int64 `yaml:"inactive_read_scale_lastn"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -56,6 +53,9 @@ func (cfg *InactiveTableProvisionConfig) RegisterFlags(argPrefix string, f *flag
 
 	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
 	cfg.InactiveReadScale.RegisterFlags(argPrefix+".inactive-read-throughput.scale", f)
+
+	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
+	f.Int64Var(&cfg.InactiveReadScaleLastN, argPrefix+".inactive-read-throughput.scale-last-n", 4, "Number of last inactive tables to enable read autoscale.")
 }
 
 func (cfg ActiveTableProvisionConfig) BuildTableDesc(tableName string, tags Tags) TableDesc {

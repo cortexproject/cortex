@@ -36,11 +36,10 @@ func setupTestDeleteStore(t *testing.T) *DeleteStore {
 	mockStorage := chunk.NewMockStorage()
 
 	extraTables := []chunk.ExtraTables{{TableClient: mockStorage, Tables: deleteStoreConfig.GetTables()}}
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, mockStorage, nil, nil, extraTables)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, mockStorage, nil, extraTables, nil)
 	require.NoError(t, err)
 
-	require.NoError(t, tableManager.StartAsync(context.Background()))
-	require.NoError(t, tableManager.AwaitRunning(context.Background()))
+	require.NoError(t, tableManager.SyncTables(context.Background()))
 
 	deleteStore, err := NewDeleteStore(deleteStoreConfig, mockStorage)
 	require.NoError(t, err)

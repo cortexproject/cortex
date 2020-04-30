@@ -67,8 +67,8 @@ func fixtureProvisionConfig(inactLastN int64, writeScale, inactWriteScale chunk.
 			InactiveWriteThroughput: inactiveWrite,
 			InactiveReadThroughput:  inactiveRead,
 			InactiveWriteScale:      inactWriteScale,
+			InactiveWriteScaleLastN: inactLastN,
 		},
-		InactiveWriteScaleLastN: inactLastN,
 	}
 }
 

@@ -175,7 +175,7 @@ type TableManager struct {
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient, registerer prometheus.Registerer, extraTables []ExtraTables) (*TableManager, error) {
+	objectClient BucketClient, extraTables []ExtraTables, registerer prometheus.Registerer) (*TableManager, error) {
 
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -201,10 +201,6 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 
 // Start the TableManager
 func (m *TableManager) starting(ctx context.Context) error {
-	err := m.checkAndCreateExtraTables()
-	if err != nil {
-		return err
-	}
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
@@ -327,6 +323,11 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 // SyncTables will calculate the tables expected to exist, create those that do
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
+	err := m.checkAndCreateExtraTables()
+	if err != nil {
+		return err
+	}
+
 	expected := m.calculateExpectedTables()
 	level.Info(util.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 

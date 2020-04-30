@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
-type requestQueue chan *request
+type queueRecord struct {
+	q      chan *request
+	userID string
+}
 
 type queueManager struct {
 	l       *list.List
@@ -21,19 +24,21 @@ func newQueueManager() *queueManager {
 	}
 }
 
-func (q *queueManager) getNextQueue() requestQueue {
+func (q *queueManager) getNextQueue() (chan *request, string) {
 	if q.current == nil {
 		q.current = q.l.Front()
 	}
 
 	if q.current == nil {
-		return nil
+		return nil, ""
 	}
 
 	current := q.current
 	q.current = q.current.Next() // advance to the next queue
 
-	return current.Value.(requestQueue)
+	qr := current.Value.(queueRecord)
+
+	return qr.q, qr.userID
 }
 
 func (q *queueManager) deleteQueue(userID string) {
@@ -52,21 +57,26 @@ func (q *queueManager) deleteQueue(userID string) {
 	delete(q.queues, userID)
 }
 
-func (q *queueManager) getOrAddQueue(userID string) requestQueue {
+func (q *queueManager) getOrAddQueue(userID string) chan *request {
 	element := q.queues[userID]
 
 	if element == nil {
+		qr := queueRecord{
+			q:      make(chan *request),
+			userID: userID,
+		}
+
 		// need to add this userID.  add it right before the current linked list item for fifo
 		if q.current == nil {
-			element = q.l.PushBack(make(requestQueue))
+			element = q.l.PushBack(qr)
 		} else {
-			element = q.l.InsertBefore(make(requestQueue), q.current)
+			element = q.l.InsertBefore(qr, q.current)
 		}
 
 		q.queues[userID] = element
 	}
 
-	return element.Value.(requestQueue)
+	return element.Value.(queueRecord).q
 }
 
 // isConsistent() returns true if every userID in the map is also in the linked list and vice versa.
@@ -77,12 +87,16 @@ func (q *queueManager) isConsistent() error {
 		found := false
 
 		for e := q.l.Front(); e != nil; e = e.Next() {
-			_, ok := e.Value.(requestQueue)
+			qr, ok := e.Value.(queueRecord)
 			if !ok {
-				return fmt.Errorf("Element value is not requestQueue %v", e.Value)
+				return fmt.Errorf("element value is not a queueRecord %v", e.Value)
 			}
 
 			if e == v {
+				if qr.userID != k {
+					return fmt.Errorf("mismatched userID between map %s and linked list %s", k, qr.userID)
+				}
+
 				found = true
 				break
 			}

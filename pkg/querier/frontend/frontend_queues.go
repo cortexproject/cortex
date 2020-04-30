@@ -11,7 +11,7 @@ type queueRecord struct {
 
 type queueManager struct {
 	l          *list.List
-	current    *list.Element
+	next       *list.Element
 	userLookup map[string]*list.Element
 
 	maxQueueSize int
@@ -20,8 +20,8 @@ type queueManager struct {
 func newQueueManager(maxQueueSize int) *queueManager {
 	return &queueManager{
 		l:            list.New(),
+		next:         nil,
 		userLookup:   make(map[string]*list.Element),
-		current:      nil,
 		maxQueueSize: maxQueueSize,
 	}
 }
@@ -31,18 +31,18 @@ func (q *queueManager) len() int {
 }
 
 func (q *queueManager) getNextQueue() (chan *request, string) {
-	if q.current == nil {
-		q.current = q.l.Front()
+	if q.next == nil {
+		q.next = q.l.Front()
 	}
 
-	if q.current == nil {
+	if q.next == nil {
 		return nil, ""
 	}
 
-	current := q.current
-	q.current = q.current.Next() // advance to the next queue
+	var next *list.Element
+	next, q.next = q.next, q.next.Next()
 
-	qr := current.Value.(queueRecord)
+	qr := next.Value.(queueRecord)
 
 	return qr.ch, qr.userID
 }
@@ -52,8 +52,8 @@ func (q *queueManager) deleteQueue(userID string) {
 
 	// remove from linked list
 	if element != nil {
-		if element == q.current {
-			q.current = element.Next()
+		if element == q.next {
+			q.next = element.Next() // if we're deleting the current item just move to the next one
 		}
 
 		q.l.Remove(element)
@@ -72,11 +72,11 @@ func (q *queueManager) getOrAddQueue(userID string) chan *request {
 			userID: userID,
 		}
 
-		// need to add this userID.  add it right before the current linked list item for fifo
-		if q.current == nil {
+		// add the element right before the current linked list item for fifo
+		if q.next == nil {
 			element = q.l.PushBack(qr)
 		} else {
-			element = q.l.InsertBefore(qr, q.current)
+			element = q.l.InsertBefore(qr, q.next)
 		}
 
 		q.userLookup[userID] = element

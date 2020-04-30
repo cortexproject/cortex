@@ -359,6 +359,16 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	}
 }
 
+// maintain a hashmap that points to a linked list node that points to a chan
+//  getNextRequest
+//     grab requests from current linked list node until we find a non-cancelled one
+//     if chan is empty delete linked list node and hashmap entry
+//     service request and move to next linked list node
+//  queueRequest
+//    ask for map item
+//      if exists :)
+//      if not exist add map item, add linked list node directly behind current node
+
 // getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
 func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {

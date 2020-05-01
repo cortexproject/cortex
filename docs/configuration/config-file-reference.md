@@ -2338,8 +2338,8 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # Enables waiting if there are no idle connections. If the value is false and
 # the pool is at the max_active_conns limit, the pool will return a connection
 # with ErrPoolExhausted error and not wait for idle connections.
-# CLI flag: -<prefix>.redis.wait
-[wait: <boolean> | default = false]
+# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
+[wait_on_pool_exhaustion: <boolean> | default = false]
 
 # Close connections older than this duration. If the value is zero, then the
 # pool does not close connections based on age.

@@ -2363,6 +2363,22 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # Enables connecting to redis with TLS.
 # CLI flag: -<prefix>.redis.enable-tls
 [enable_tls: <boolean> | default = false]
+
+# Close connections after remaining idle for this duration. If the value is
+# zero, then idle connections are not closed.
+# CLI flag: -<prefix>.redis.idle-timeout
+[idle_timeout: <duration> | default = 0s]
+
+# Enables waiting if there are no idle connections. If the value is false and
+# the pool is at the max_active_conns limit, the pool will return a connection
+# with ErrPoolExhausted error and not wait for idle connections.
+# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
+[wait_on_pool_exhaustion: <boolean> | default = false]
+
+# Close connections older than this duration. If the value is zero, then the
+# pool does not close connections based on age.
+# CLI flag: -<prefix>.redis.max-conn-lifetime
+[max_conn_lifetime: <duration> | default = 0s]
 ```
 
 ### `memcached_config`

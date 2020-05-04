@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	// Expose some utilities form the framework so that we don't have to prefix them
+	// Expose some utilities from the framework so that we don't have to prefix them
 	// with the package name in tests.
 	mergeFlags      = e2e.MergeFlags
 	newDynamoClient = e2edb.NewDynamoClient
@@ -52,18 +52,23 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 	return writeFileToSharedDir(s, dst, content)
 }
 
-func generateClientTLSConfig(prefix string) map[string]string {
+// GetServerTLSFlags generates generic TLS flags for a server
+func GetServerTLSFlags() map[string]string {
+	return map[string]string{
+		"-server.http-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
+		"-server.http-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
+		"-server.http-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+		"-server.grpc-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
+		"-server.grpc-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
+		"-server.grpc-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+	}
+}
+
+// GetClientTLSFlagsWithPrefix generates generic TLS flags for a client
+func GetClientTLSFlagsWithPrefix(prefix string) map[string]string {
 	return map[string]string{
 		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/client.crt"),
 		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/client.key"),
 		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
-	}
-}
-
-func generateServerTLSConfig() map[string]string {
-	return map[string]string{
-		"-server.tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
-		"-server.tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
-		"-server.tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
 	}
 }

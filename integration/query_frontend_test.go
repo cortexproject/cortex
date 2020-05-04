@@ -3,6 +3,7 @@
 package main
 
 import (
+	"exec"
 	"fmt"
 	"sync"
 	"testing"
@@ -92,6 +93,15 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	configFile, flags := setup(t, s)
 
+	// setup tls
+	cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
+	require.NoError(t, cmd.Run())
+	require.NoError(t, copyFileToSharedDir(s, clientCertFile, clientCertFile))
+	require.NoError(t, copyFileToSharedDir(s, clientKeyFile, clientKeyFile))
+	require.NoError(t, copyFileToSharedDir(s, rootCertFile, rootCertFile))
+	require.NoError(t, copyFileToSharedDir(s, serverCertFile, serverCertFile))
+	require.NoError(t, copyFileToSharedDir(s, serverKeyFile, serverKeyFile))
+
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
@@ -99,9 +109,9 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	})
 
 	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
-	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, mergeFlags(flags, GetServerTLSFlags()), "")
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, GetServerTLSFlags()), "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, GetClientTLSFlagsWithPrefix("ingester.client")), "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
 
 	// Check if we're discovering memcache or not.
@@ -112,7 +122,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
+	}, GetClientTLSFlagsWithPrefix("querier.frontend-client"), GetClientTLSFlagsWithPrefix("ingester.client")), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.

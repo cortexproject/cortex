@@ -22,16 +22,22 @@ const (
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	blocksStorageEngine    = "tsdb"
+	certsFolder            = "integration/certs/"
+	clientCertFile         = "certs/client.crt"
+	clientKeyFile          = "certs/client.key"
+	rootCertFile           = "certs/root.crt"
+	serverCertFile         = "certs/server.crt"
+	serverKeyFile          = "certs/server.key"
 	storeConfigTemplate    = `
 - from: {{.From}}
   store: {{.IndexStore}}
   schema: v9
   index:
     prefix: cortex_
-    period: 168h 
+    period: 168h
   chunks:
     prefix: cortex_chunks_
-    period: 168h 
+    period: 168h
 `
 
 	cortexAlertmanagerUserConfigYaml = `route:
@@ -120,7 +126,7 @@ storage:
 
 table_manager:
   poll_interval:    1m
-  retention_period: 168h 
+  retention_period: 168h
 
 schema:
 {{.SchemaConfig}}

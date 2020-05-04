@@ -2165,50 +2165,6 @@ The `memberlist_config` configures the Gossip memberlist.
 [packet_write_timeout: <duration> | default = 5s]
 ```
 
-### `http_server_tls_config`
-
-The `http_server_tls_config` configures TLS parameters for the server.
-
-```yaml
-# Path to the TLS Cert for the HTTP Server
-# CLI flag: -server.http-tls-cert-path
-[tlsCertPath: <string> | default = ]
-
-# Path to the TLS Key for the HTTP Server
-# CLI flag: -server.http-tls-key-path
-[tlsKeyPath: <string> | default = ]
-
-# Client authentication type
-# CLI flag: -server.http-tls-client-auth
-[clientAuth: <string> | default = "NoClientCert" ]
-
-# Path to the Client CA for the HTTP Server
-# CLI flag: -server.http-tls-ca-path
-[clientCA: <string> | default = ]
-```
-
-### `grpc_server_tls_config`
-
-The `grpc_server_tls_config` configures TLS parameters for the server.
-
-```yaml
-# Path to the TLS Cert for the GRPC Server
-# CLI flag: -server.grpc-tls-cert-path
-[tlsCertPath: <string> | default = ]
-
-# Path to the TLS Key for the GRPC Server
-# CLI flag: -server.grpc-tls-key-path
-[tlsKeyPath: <string> | default = ]
-
-# Client authentication type
-# CLI flag: -server.grpc-tls-client-auth
-[clientAuth: <string> | default = "NoClientCert" ]
-
-# Path to the Client CA for the GRPC Server
-# CLI flag: -server.grpc-tls-ca-path
-[clientCA: <string> | default = ]
-```
-
 ### `limits_config`
 
 The `limits_config` configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).

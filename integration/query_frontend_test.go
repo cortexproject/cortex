@@ -3,7 +3,7 @@
 package main
 
 import (
-	"exec"
+	"os/exec"
 	"fmt"
 	"sync"
 	"testing"

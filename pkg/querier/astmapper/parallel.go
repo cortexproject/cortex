@@ -43,7 +43,7 @@ func CanParallelize(node promql.Node) bool {
 	case *promql.AggregateExpr:
 		_, ok := summableAggregates[n.Op]
 		if !ok {
-			return ok
+			return false
 		}
 
 		// Ensure there are no nested aggregations

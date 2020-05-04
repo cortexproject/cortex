@@ -40,6 +40,16 @@ services:
       - 16686:16686
       - "14268"
 
+  # Scrape the metrics also with the Grafana agent (useful to test metadata ingestion
+  # until metadata remote write is not supported by Prometheus).
+  grafana-agent:
+    image: grafana/agent:v0.2.0
+    command: ["-config.file=/etc/agent-config/grafana-agent.yaml", "-prometheus.wal-directory=/tmp"]
+    volumes:
+      - ./config:/etc/agent-config
+    ports:
+      - 9091:9091
+
   distributor:
     build:
       context:    .

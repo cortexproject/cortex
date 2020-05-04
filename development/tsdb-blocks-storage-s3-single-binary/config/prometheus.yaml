@@ -1,5 +1,7 @@
 global:
   scrape_interval: 5s
+  external_labels:
+    origin: prometheus
 
 scrape_configs:
   - job_name: cortex-1

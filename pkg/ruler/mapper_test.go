@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"net/url"
 	"os"
 	"testing"
 
@@ -15,8 +16,14 @@ import (
 var (
 	testUser = "user1"
 
+	fileOneEncoded = url.PathEscape("file /one")
+	fileTwoEncoded = url.PathEscape("file /two")
+
+	fileOnePath = "/rules/user1/" + fileOneEncoded
+	fileTwoPath = "/rules/user1/" + fileTwoEncoded
+
 	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -39,7 +46,7 @@ var (
 	}
 
 	outOfOrderRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_two",
 				Rules: []legacy_rulefmt.Rule{
@@ -62,7 +69,7 @@ var (
 	}
 
 	updatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -107,10 +114,10 @@ func Test_mapper_MapRules(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -121,7 +128,7 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -132,7 +139,7 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -141,10 +148,10 @@ func Test_mapper_MapRules(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, updatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -152,7 +159,7 @@ func Test_mapper_MapRules(t *testing.T) {
 
 var (
 	twoFilesRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -172,7 +179,7 @@ var (
 				},
 			},
 		},
-		"file_two": {
+		"file /two": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -186,7 +193,7 @@ var (
 	}
 
 	twoFilesUpdatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -206,7 +213,7 @@ var (
 				},
 			},
 		},
-		"file_two": {
+		"file /two": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -220,7 +227,7 @@ var (
 	}
 
 	twoFilesDeletedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file_one": {
+		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []legacy_rulefmt.Rule{
@@ -256,10 +263,10 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -268,14 +275,14 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, "/rules/user1/file_one", files))
-		require.True(t, sliceContains(t, "/rules/user1/file_two", files))
+		require.True(t, sliceContains(t, fileOnePath, files))
+		require.True(t, sliceContains(t, fileTwoPath, files))
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -284,14 +291,14 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesUpdatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, "/rules/user1/file_one", files))
-		require.True(t, sliceContains(t, "/rules/user1/file_two", files))
+		require.True(t, sliceContains(t, fileOnePath, files))
+		require.True(t, sliceContains(t, fileTwoPath, files))
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.True(t, exists)
 		require.NoError(t, err)
 	})
@@ -300,17 +307,70 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesDeletedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 1)
-		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, fileOnePath, files[0])
 		require.NoError(t, err)
 
-		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		exists, err := afero.Exists(m.FS, fileOnePath)
 		require.True(t, exists)
 		require.NoError(t, err)
-		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		exists, err = afero.Exists(m.FS, fileTwoPath)
 		require.False(t, exists)
 		require.NoError(t, err)
 	})
 
+}
+
+var (
+	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
+	specialCharFileEncoded = url.PathEscape(specialCharFile)
+	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
+
+	specialCharactersRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+		specialCharFile: {
+			{
+				Name: "rulegroup_one",
+				Rules: []legacy_rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+	}
+)
+
+func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+	m := &mapper{
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: l,
+	}
+
+	t.Run("create special characters rulegroup", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, specialCharactersRuleSet)
+		require.NoError(t, err)
+		require.True(t, updated)
+		require.Len(t, files, 1)
+		require.Equal(t, specialCharFilePath, files[0])
+
+		exists, err := afero.Exists(m.FS, specialCharFilePath)
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("delete special characters rulegroup", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, map[string][]legacy_rulefmt.RuleGroup{})
+		require.NoError(t, err)
+		require.True(t, updated)
+		require.Len(t, files, 0)
+
+		exists, err := afero.Exists(m.FS, specialCharFilePath)
+		require.NoError(t, err)
+		require.False(t, exists)
+	})
 }
 
 func sliceContains(t *testing.T, find string, in []string) bool {

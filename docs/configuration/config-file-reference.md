@@ -183,11 +183,39 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
-# TLS Config for the HTTP Server
-[http_tls_config: <http_server_tls_config>]
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
 
-# TLS Config for the GRPC Server
-[grpc_tls_config: <grpc_server_tls_config>]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
+grpc_tls_config:
+  # GRPC TLS server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+
+  # GRPC TLS server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # GRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # GRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
@@ -2379,6 +2407,22 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # Enables connecting to redis with TLS.
 # CLI flag: -<prefix>.redis.enable-tls
 [enable_tls: <boolean> | default = false]
+
+# Close connections after remaining idle for this duration. If the value is
+# zero, then idle connections are not closed.
+# CLI flag: -<prefix>.redis.idle-timeout
+[idle_timeout: <duration> | default = 0s]
+
+# Enables waiting if there are no idle connections. If the value is false and
+# the pool is at the max_active_conns limit, the pool will return a connection
+# with ErrPoolExhausted error and not wait for idle connections.
+# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
+[wait_on_pool_exhaustion: <boolean> | default = false]
+
+# Close connections older than this duration. If the value is zero, then the
+# pool does not close connections based on age.
+# CLI flag: -<prefix>.redis.max-conn-lifetime
+[max_conn_lifetime: <duration> | default = 0s]
 ```
 
 ### `memcached_config`

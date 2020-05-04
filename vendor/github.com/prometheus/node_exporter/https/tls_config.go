@@ -25,14 +25,14 @@ import (
 )
 
 type Config struct {
-	TLSConfig TLSStruct `yaml:"tlsConfig"`
+	TLSConfig TLSStruct `yaml:"tls_config"`
 }
 
 type TLSStruct struct {
-	TLSCertPath string `yaml:"tlsCertPath"`
-	TLSKeyPath  string `yaml:"tlsKeyPath"`
-	ClientAuth  string `yaml:"clientAuth"`
-	ClientCAs   string `yaml:"clientCAs"`
+	TLSCertPath string `yaml:"cert_file"`
+	TLSKeyPath  string `yaml:"key_file"`
+	ClientAuth  string `yaml:"client_auth_type"`
+	ClientCAs   string `yaml:"client_ca_file"`
 }
 
 func getTLSConfig(configPath string) (*tls.Config, error) {
@@ -50,7 +50,9 @@ func getTLSConfig(configPath string) (*tls.Config, error) {
 
 // ConfigToTLSConfig generates the golang tls.Config from the TLSStruct config.
 func ConfigToTLSConfig(c *TLSStruct) (*tls.Config, error) {
-	cfg := &tls.Config{}
+	cfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 	if len(c.TLSCertPath) == 0 {
 		return nil, errors.New("missing TLSCertPath")
 	}

@@ -33,13 +33,15 @@ func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandl
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteStore *DeleteStore
+	purger      *DataPurger
 	metrics     *deleteRequestHandlerMetrics
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore *DeleteStore, purger *DataPurger, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
+		purger:      purger,
 		metrics:     newDeleteRequestHandlerMetrics(registerer),
 	}
 
@@ -126,5 +128,41 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
+	}
+}
+
+// CancelDeleteRequestHandler handles delete request cancellation
+func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	params := r.URL.Query()
+	requestID := params.Get("request_id")
+
+	dm.purger.loadNewRequestsMtx.Lock()
+	defer dm.purger.loadNewRequestsMtx.Unlock()
+
+	deleteRequest, err := dm.deleteStore.GetDeleteRequest(ctx, userID, requestID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if deleteRequest == nil {
+		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
+		return
+	}
+
+	if deleteRequest.Status != StatusReceived {
+		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
+		return
+	}
+
+	if err := dm.deleteStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

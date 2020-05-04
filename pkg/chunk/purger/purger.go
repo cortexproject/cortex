@@ -97,6 +97,10 @@ type DataPurger struct {
 	// and break the purge plan for other requests
 	inProcessRequestIDs    map[string]string
 	inProcessRequestIDsMtx sync.RWMutex
+	// used mostly for avoiding a race between cancellation of delete request and picking up delete requests for processing
+	// this is based on assumption that only one instance of purger should be running and delete request handler runs with purger.
+	// current design of DataPurger does require it to be running as single instance.
+	loadNewRequestsMtx sync.Mutex
 
 	pendingPlansCount    map[string]int // per request pending plan count
 	pendingPlansCountMtx sync.Mutex
@@ -329,6 +333,9 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 // pullDeleteRequestsToPlanDeletes pulls delete requests which do not have their delete plans built yet and sends them for building delete plans
 // after pulling delete requests for building plans, it updates its status to StatusBuildingPlan status to avoid picking this up again next time
 func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
+	dp.loadNewRequestsMtx.Lock()
+	defer dp.loadNewRequestsMtx.Unlock()
+
 	deleteRequests, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return err

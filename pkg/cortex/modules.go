@@ -509,7 +509,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 		return nil, err
 	}
 
-	t.api.RegisterPurger(t.deletesStore)
+	t.api.RegisterPurger(t.deletesStore, t.dataPurger)
 
 	return t.dataPurger, nil
 }

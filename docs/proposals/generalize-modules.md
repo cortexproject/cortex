@@ -29,7 +29,7 @@ We would like to extend modules in cortex to a generic dependency management fra
 
 ### Modules package
 
-To make the modules package extensible, we need to abstract away any Cortex specific details from the module manager. The proposed design is to -
+To make the modules package extensible, we need to abstract away any Cortex specific details from the module manager. The proposed design is to:
 
 - Make a new component `Manager`, which is envisioned to be a central manager for all modules of the application. It stores modules & dependencies, and will be housed under a new package `pkg/util/modules`. `Manager` has the following methods for interaction:
 ```
@@ -49,6 +49,7 @@ To make the modules package extensible, we need to abstract away any Cortex spec
 
 
 ### Changes to `pkg/cortex`:
+
 - `WrappedService` present in the current `module` design will be deprecated. All `initFn`'s will be wrapped into `WrappedService` by default.
 
 - While the process of loading modules into `modules.Manager` should be remain as part of the `Cortex.New()` function, `InitModuleServices` should be part of `Cortex.Run()` and to enable this, `modules.Manager` would be made a member of the `Cortex` struct.
@@ -59,6 +60,7 @@ To make the modules package extensible, we need to abstract away any Cortex spec
 Following these changes, the Modules package will be a generic dependency management framework that can be used by any project.
 
 #### To use the modules framework:
+
 - Import the `pkg/util/modules` package, and initialize a new instance of the `Manager` using `modules.NewManager()`
 - Create components in the system that implement the services interface (present in `pkg/util/services`).
 - Register each of these components as a module using `Manager.RegisterModule()` by passing name of the module, dependencies, and `initFn`.

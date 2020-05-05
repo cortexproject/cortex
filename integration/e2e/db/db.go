@@ -109,3 +109,13 @@ func NewCassandra() *e2e.HTTPService {
 		9042,
 	)
 }
+
+func NewSwiftStorage() *e2e.HTTPService {
+	return e2e.NewHTTPService(
+		"swift",
+		images.SwiftEmulator,
+		nil,
+		e2e.NewHTTPReadinessProbe(8080, "/", 404, 404),
+		8080,
+	)
+}

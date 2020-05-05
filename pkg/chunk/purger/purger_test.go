@@ -53,7 +53,7 @@ func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.Object
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
-	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient)
+	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, nil)
 	require.NoError(t, err)
 
 	return deleteStore, chunkStore, storageClient, dataPurger
@@ -149,6 +149,15 @@ var purgePlanTestCases = []struct {
 		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(modelTimeDay.Add(-30 * time.Minute)),
 			EndTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute))},
 	},
+	{
+		name:                   "building multi-day chunk and deleting part of it for each day",
+		chunkStoreDataInterval: model.Interval{Start: modelTimeDay.Add(-30 * time.Minute), End: modelTimeDay.Add(30 * time.Minute)},
+		deleteRequestInterval:  model.Interval{Start: modelTimeDay.Add(-15 * time.Minute), End: modelTimeDay.Add(15 * time.Minute)},
+		expectedNumberOfPlans:  2,
+		numChunksToDelete:      1,
+		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute)),
+			EndTimestampMs: int64(modelTimeDay.Add(15 * time.Minute))},
+	},
 }
 
 func TestDataPurger_BuildPlan(t *testing.T) {
@@ -180,7 +189,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 				planPath := fmt.Sprintf("%s:%s/", userID, deleteRequest.RequestID)
 
-				plans, err := storageClient.List(context.Background(), planPath)
+				plans, _, err := storageClient.List(context.Background(), planPath)
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedNumberOfPlans, len(plans))
 
@@ -327,7 +336,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 	// create a new purger to check whether it picks up in process delete requests
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient)
+	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, nil)
 	require.NoError(t, err)
 
 	// load in process delete requests by calling Run

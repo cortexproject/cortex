@@ -71,6 +71,16 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
+func (cfg *StoreConfig) Validate() error {
+	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 type baseStore struct {
 	cfg StoreConfig
 
@@ -441,8 +451,8 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if matcher.Type == labels.MatchEqual {
 		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
-	} else if matcher.Type == labels.MatchRegexp && len(findSetMatches(matcher.Value)) > 0 {
-		set := findSetMatches(matcher.Value)
+	} else if matcher.Type == labels.MatchRegexp && len(FindSetMatches(matcher.Value)) > 0 {
+		set := FindSetMatches(matcher.Value)
 		for _, v := range set {
 			var qs []IndexQuery
 			qs, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, v)

@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,15 +22,10 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	// Start Cortex components.
+	// Start Cortex in single binary mode, reading the config from file.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
 
-	// Start Cortex in single binary mode, reading the config from file.
-	flags := map[string]string{
-		"-config.file": filepath.Join(e2e.ContainerSharedDir, cortexConfigFile),
-	}
-
-	cortex := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009, 9095)
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
@@ -75,7 +69,6 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	// Start Cortex in single binary mode, reading the config from file and overwriting
 	// the backend config to make it work with Minio.
 	flags := map[string]string{
-		"-config.file":                            filepath.Join(e2e.ContainerSharedDir, cortexConfigFile),
 		"-experimental.tsdb.s3.access-key-id":     e2edb.MinioAccessKey,
 		"-experimental.tsdb.s3.secret-access-key": e2edb.MinioSecretKey,
 		"-experimental.tsdb.s3.bucket-name":       bucketName,
@@ -83,7 +76,7 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 		"-experimental.tsdb.s3.insecure":          "true",
 	}
 
-	cortex := e2ecortex.NewSingleBinary("cortex-1", flags, "", 9009, 9095)
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")

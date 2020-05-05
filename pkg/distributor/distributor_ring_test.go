@@ -20,7 +20,7 @@ func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {
 	// The default config of the distributor ring must be the exact same
 	// of the default lifecycler config, except few options which are
 	// intentionally overridden
-	expected.ListenPort = &cfg.ListenPort
+	expected.ListenPort = cfg.ListenPort
 	expected.RingConfig.ReplicationFactor = 1
 	expected.NumTokens = 1
 	expected.MinReadyDuration = 0
@@ -53,7 +53,7 @@ func TestRingConfig_CustomConfigToLifecyclerConfig(t *testing.T) {
 	expected.InfNames = cfg.InstanceInterfaceNames
 	expected.Port = cfg.InstancePort
 	expected.Addr = cfg.InstanceAddr
-	expected.ListenPort = &cfg.ListenPort
+	expected.ListenPort = cfg.ListenPort
 
 	// Hardcoded config
 	expected.RingConfig.ReplicationFactor = 1

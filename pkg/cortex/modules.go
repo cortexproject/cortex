@@ -158,19 +158,11 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-	if t.Cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.DeletesStore)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
-	}
-
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := t.Cfg.Target != All
-	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally)
+	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -182,7 +174,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(t.Cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
+	worker, err := frontend.NewWorker(t.Cfg.Worker, cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -196,8 +188,23 @@ func (t *Cortex) initStoreQueryable() (services.Service, error) {
 		return nil, nil
 	}
 
-	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB {
+	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB && !t.Cfg.TSDB.StoreGatewayEnabled {
 		storeQueryable, err := querier.NewBlockQueryable(t.Cfg.TSDB, t.Cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+		t.StoreQueryable = storeQueryable
+		return storeQueryable, nil
+	}
+
+	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB && t.Cfg.TSDB.StoreGatewayEnabled {
+		// When running in single binary, if the blocks sharding is disabled and no custom
+		// store-gateway address has been configured, we can set it to the running process.
+		if t.Cfg.Target == All && !t.Cfg.StoreGateway.ShardingEnabled && t.Cfg.Querier.StoreGatewayAddresses == "" {
+			t.Cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
+		}
+
+		storeQueryable, err := querier.NewBlocksStoreQueryableFromConfig(t.Cfg.Querier, t.Cfg.StoreGateway, t.Cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +218,7 @@ func (t *Cortex) initStoreQueryable() (services.Service, error) {
 func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Ingester.LifecyclerConfig.ListenPort = &t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ingester.TSDBEnabled = t.Cfg.Storage.Engine == storage.StorageEngineTSDB
 	t.Cfg.Ingester.TSDBConfig = t.Cfg.TSDB
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
@@ -250,7 +257,7 @@ func (t *Cortex) initStore() (serv services.Service, err error) {
 		return
 	}
 
-	t.Store, err = storage.NewStore(t.Cfg.Storage, t.Cfg.ChunkStore, t.Cfg.Schema, t.Overrides)
+	t.Store, err = storage.NewStore(t.Cfg.Storage, t.Cfg.ChunkStore, t.Cfg.Schema, t.Overrides, prometheus.DefaultRegisterer, t.TombstonesLoader)
 	if err != nil {
 		return
 	}
@@ -263,6 +270,9 @@ func (t *Cortex) initStore() (serv services.Service, err error) {
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	if !t.Cfg.DataPurgerConfig.Enable {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		t.TombstonesLoader = purger.NewTombstonesLoader(nil, nil)
+
 		return
 	}
 
@@ -276,6 +286,8 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
+
+	t.TombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 
 	return
 }
@@ -293,12 +305,13 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
+
 	tripperware, cache, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util.Logger,
 		t.Overrides,
 		queryrange.PrometheusCodec,
-		queryrange.PrometheusResponseExtractor,
+		queryrange.PrometheusResponseExtractor{},
 		t.Cfg.Schema,
 		promql.EngineOpts{
 			Logger:     util.Logger,
@@ -308,6 +321,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		},
 		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
+		t.TombstonesLoader,
 	)
 
 	if err != nil {
@@ -367,17 +381,9 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 }
 
 func (t *Cortex) initRuler() (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-	if t.Cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.DeletesStore)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
-	}
-
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -469,7 +475,7 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.DataPurger, err = purger.NewDataPurger(t.Cfg.DataPurgerConfig, t.DeletesStore, t.Store, storageClient)
+	t.DataPurger, err = purger.NewDataPurger(t.Cfg.DataPurgerConfig, t.DeletesStore, t.Store, storageClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +491,8 @@ func (t *Cortex) createModuleManager() modules.Manager {
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
 	mm.RegisterModule(Server, t.initServer)
-	mm.RegisterModule(API, t.initRuntimeConfig)
+	mm.RegisterModule(API, t.initAPI)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)

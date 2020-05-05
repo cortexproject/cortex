@@ -62,6 +62,7 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 * [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
+* [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
 
 For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
 
@@ -243,7 +244,7 @@ If all of the alertmanager nodes failed simultaneously there would be a loss of 
 ### Configs API
 
 The **configs API** is an **optional service** managing the configuration of Rulers and Alertmanagers.
-It provides APIs to get/set/update the rules and alertmanager configurations and store them into backend.
+It provides APIs to get/set/update the ruler and alertmanager configurations and store them into backend.
 Current supported backend are PostgreSQL and in-memory.
 
 Configs API is **stateless**.

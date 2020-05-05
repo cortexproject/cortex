@@ -28,6 +28,13 @@ func TestRingReplicationStrategy(t *testing.T) {
 			ExpectedError: "at least 1 live replicas required, could only find 0",
 		},
 
+		// Ensure it works for RF=3 and 2 ingesters.
+		{
+			RF:                 3,
+			LiveIngesters:      2,
+			ExpectedMaxFailure: 0,
+		},
+
 		// Ensure it works for the default production config.
 		{
 			RF:                 3,

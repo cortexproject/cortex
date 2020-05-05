@@ -16,7 +16,7 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 - `-querier.max-concurrent`
 
    The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
-   If using the query frontend, this should be set to at least (`querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+   If using the query frontend, this should be set to at least (`-querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.  Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
 
 - `-querier.query-parallelism`
 
@@ -42,8 +42,14 @@ The next three options only apply when the querier is used together with the Que
 
 - `-querier.worker-parallelism`
 
-   Number of simultaneous queries to process, per worker process.
+   Number of simultaneous queries to process, per query frontend.
    See note on `-querier.max-concurrent`
+
+- `-querier.worker-match-max-concurrent`
+
+   Force worker concurrency to match the -querier.max-concurrent option.  Overrides `-querier.worker-parallelism`.
+   See note on `-querier.max-concurrent`
+
 
 ## Querier and Ruler
 
@@ -125,6 +131,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
    In hindsight, this seems like the wrong choice: we do many orders of magnitude more writes than reads, and ingester reads are in-memory and cheap. It seems the right thing to do is to use all the labels to shard, improving load balancing and support for very high cardinality metrics.
 
    Set this flag to `true` for the new behaviour.
+
+   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier. If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 

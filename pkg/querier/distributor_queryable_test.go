@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -106,8 +107,10 @@ func TestIngesterStreaming(t *testing.T) {
 }
 
 type mockDistributor struct {
-	m model.Matrix
-	r *client.QueryStreamResponse
+	metadata      []scrape.MetricMetadata
+	metadataError error
+	m             model.Matrix
+	r             *client.QueryStreamResponse
 }
 
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
@@ -124,4 +127,12 @@ func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
 }
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
+}
+
+func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	if m.metadataError != nil {
+		return nil, m.metadataError
+	}
+
+	return m.metadata, nil
 }

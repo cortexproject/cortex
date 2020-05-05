@@ -125,6 +125,10 @@ api:
 # storage.
 [compactor: <compactor_config>]
 
+# The store_gateway_config configures the store-gateway service used by the
+# experimental blocks storage.
+[store_gateway: <store_gateway_config>]
+
 # The purger_config configures the purger which takes care of delete requests
 [purger: <purger_config>]
 
@@ -178,6 +182,40 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Maximum number of simultaneous grpc connections, <=0 to disable
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
+
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
+grpc_tls_config:
+  # GRPC TLS server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+
+  # GRPC TLS server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # GRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # GRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
@@ -536,6 +574,11 @@ lifecycler:
 # CLI flag: -ingester.spread-flushes
 [spread_flushes: <boolean> | default = true]
 
+# Period at which metadata we have not seen will remain in memory before being
+# deleted.
+# CLI flag: -ingester.metadata-retain-period
+[metadata_retain_period: <duration> | default = 10m]
+
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
@@ -596,6 +639,13 @@ The `querier_config` configures the Cortex querier.
 # tracker, which also disables -querier.max-concurrent option.
 # CLI flag: -querier.active-query-tracker-dir
 [active_query_tracker_dir: <string> | default = "./active-query-tracker"]
+
+# Comma separated list of store-gateway addresses in DNS Service Discovery
+# format. This option should be set when using the experimental blocks storage
+# and the store-gateway sharding is disabled (when enabled, the store-gateway
+# instances form a ring and addresses are picked from the ring).
+# CLI flag: -experimental.querier.store-gateway-addresses
+[store_gateway_addresses: <string> | default = ""]
 ```
 
 ### `query_frontend_config`
@@ -802,6 +852,66 @@ storage:
     # Set this to `true` to force the request to use path-style addressing.
     # CLI flag: -ruler.storage.s3.force-path-style
     [s3forcepathstyle: <boolean> | default = false]
+
+  swift:
+    # Openstack authentication URL.
+    # CLI flag: -ruler.storage.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # Openstack username for the api.
+    # CLI flag: -ruler.storage.swift.username
+    [username: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # Openstack user's domain id.
+    # CLI flag: -ruler.storage.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # Openstack userid for the api.
+    # CLI flag: -ruler.storage.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # Openstack api key.
+    # CLI flag: -ruler.storage.swift.password
+    [password: <string> | default = ""]
+
+    # Openstack user's domain id.
+    # CLI flag: -ruler.storage.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # Openstack project id (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # Openstack project name (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # Id of the project's domain (v3 auth only), only needed if it differs the
+    # from user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the project's domain (v3 auth only), only needed if it differs
+    # from the user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+    # auth only)
+    # CLI flag: -ruler.storage.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the Swift container to put chunks in.
+    # CLI flag: -ruler.storage.swift.container-name
+    [container_name: <string> | default = "cortex"]
 
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
@@ -1585,6 +1695,66 @@ filesystem:
   # CLI flag: -local.chunk-directory
   [directory: <string> | default = ""]
 
+swift:
+  # Openstack authentication URL.
+  # CLI flag: -swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # Openstack username for the api.
+  # CLI flag: -swift.username
+  [username: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # Openstack userid for the api.
+  # CLI flag: -swift.user-id
+  [user_id: <string> | default = ""]
+
+  # Openstack api key.
+  # CLI flag: -swift.password
+  [password: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # Openstack project id (v2,v3 auth only).
+  # CLI flag: -swift.project-id
+  [project_id: <string> | default = ""]
+
+  # Openstack project name (v2,v3 auth only).
+  # CLI flag: -swift.project-name
+  [project_name: <string> | default = ""]
+
+  # Id of the project's domain (v3 auth only), only needed if it differs the
+  # from user domain.
+  # CLI flag: -swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the project's domain (v3 auth only), only needed if it differs from
+  # the user domain.
+  # CLI flag: -swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+  # auth only)
+  # CLI flag: -swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the Swift container to put chunks in.
+  # CLI flag: -swift.container-name
+  [container_name: <string> | default = "cortex"]
+
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity
@@ -1801,9 +1971,14 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.frontend-address
 [frontend_address: <string> | default = ""]
 
-# Number of simultaneous queries to process.
+# Number of simultaneous queries to process per query frontend.
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
+
+# Force worker concurrency to match the -querier.max-concurrent option.
+# Overrides querier.worker-parallelism.
+# CLI flag: -querier.worker-match-max-concurrent
+[match_max_concurrent: <boolean> | default = false]
 
 # How often to query DNS.
 # CLI flag: -querier.dns-lookup-period
@@ -1856,6 +2031,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `experimental.store-gateway.sharding-ring`
 - `ruler.ring`
 
 &nbsp;
@@ -1882,6 +2058,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `experimental.store-gateway.sharding-ring`
 - `ruler.ring`
 
 &nbsp;
@@ -2100,6 +2277,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.min-chunk-length
 [min_chunk_length: <int> | default = 0]
 
+# The maximum number of active metrics with metadata per user, per ingester. 0
+# to disable.
+# CLI flag: -ingester.max-metadata-per-user
+[max_metadata_per_user: <int> | default = 8000]
+
+# The maximum number of metadata per metric, per ingester. 0 to disable.
+# CLI flag: -ingester.max-metadata-per-metric
+[max_metadata_per_metric: <int> | default = 10]
+
+# The maximum number of active metrics with metadata per user, across the
+# cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is
+# true.
+# CLI flag: -ingester.max-global-metadata-per-user
+[max_global_metadata_per_user: <int> | default = 0]
+
+# The maximum number of metadata per metric, across the cluster. 0 to disable.
+# CLI flag: -ingester.max-global-metadata-per-metric
+[max_global_metadata_per_metric: <int> | default = 0]
+
 # Maximum number of chunks that can be fetched in a single query.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
@@ -2167,6 +2363,22 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # Enables connecting to redis with TLS.
 # CLI flag: -<prefix>.redis.enable-tls
 [enable_tls: <boolean> | default = false]
+
+# Close connections after remaining idle for this duration. If the value is
+# zero, then idle connections are not closed.
+# CLI flag: -<prefix>.redis.idle-timeout
+[idle_timeout: <duration> | default = 0s]
+
+# Enables waiting if there are no idle connections. If the value is false and
+# the pool is at the max_active_conns limit, the pool will return a connection
+# with ErrPoolExhausted error and not wait for idle connections.
+# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
+[wait_on_pool_exhaustion: <boolean> | default = false]
+
+# Close connections older than this duration. If the value is zero, then the
+# pool does not close connections based on age.
+# CLI flag: -<prefix>.redis.max-conn-lifetime
+[max_conn_lifetime: <duration> | default = 0s]
 ```
 
 ### `memcached_config`
@@ -2249,9 +2461,10 @@ The `fifo_cache_config` configures the local in-memory cache. The supported CLI 
 &nbsp;
 
 ```yaml
-# Maximum memory size of the cache.
+# Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+# applied.
 # CLI flag: -<prefix>.fifocache.max-size-bytes
-[max_size_bytes: <int> | default = 0]
+[max_size_bytes: <string> | default = ""]
 
 # Maximum number of entries in the cache.
 # CLI flag: -<prefix>.fifocache.max-size-items
@@ -2476,6 +2689,11 @@ bucket_store:
 # CLI flag: -experimental.tsdb.stripe-size
 [stripe_size: <int> | default = 16384]
 
+# True if the Cortex cluster is running the store-gateway service and the
+# querier should query the bucket store via the store-gateway.
+# CLI flag: -experimental.tsdb.store-gateway-enabled
+[store_gateway_enabled: <boolean> | default = false]
+
 # limit the number of concurrently opening TSDB's on startup
 # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
 [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
@@ -2640,6 +2858,80 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+```
+
+### `store_gateway_config`
+
+The `store_gateway_config` configures the store-gateway service used by the experimental blocks storage.
+
+```yaml
+# Shard blocks across multiple store gateway instances. This option needs be set
+# both on the store-gateway and querier when running in microservices mode.
+# CLI flag: -experimental.store-gateway.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+# The hash ring configuration. This option is required only if blocks sharding
+# is enabled.
+sharding_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  # This option needs be set both on the store-gateway and querier when running
+  # in microservices mode.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, multi, memberlist (experimental).
+    # CLI flag: -experimental.store-gateway.sharding-ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -experimental.store-gateway.sharding-ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is:
+    # experimental.store-gateway.sharding-ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is:
+    # experimental.store-gateway.sharding-ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -experimental.store-gateway.sharding-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -experimental.store-gateway.sharding-ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which store gateways are considered unhealthy
+  # within the ring. This option needs be set both on the store-gateway and
+  # querier when running in microservices mode.
+  # CLI flag: -experimental.store-gateway.sharding-ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # The replication factor to use when sharding blocks. This option needs be set
+  # both on the store-gateway and querier when running in microservices mode.
+  # CLI flag: -experimental.store-gateway.replication-factor
+  [replication_factor: <int> | default = 3]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -experimental.store-gateway.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
 ```
 
 ### `purger_config`

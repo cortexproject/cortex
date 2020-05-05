@@ -44,7 +44,7 @@ type ReadRing interface {
 	// buf is a slice to be overwritten for the return value
 	// to avoid memory allocation; can be nil.
 	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
-	GetAll() (ReplicationSet, error)
+	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
 	Subring(key uint32, n int) (ReadRing, error)
@@ -99,7 +99,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type Ring struct {
 	services.Service
 
-	name     string
 	key      string
 	cfg      Config
 	KVClient kv.Client
@@ -133,7 +132,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 	}
 
 	r := &Ring{
-		name:     name,
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
@@ -142,27 +140,32 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		numMembersDesc: prometheus.NewDesc(
 			"cortex_ring_members",
 			"Number of members in the ring",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 		totalTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_total",
 			"Number of tokens in the ring",
-			[]string{"name"}, nil,
+			nil,
+			map[string]string{"name": name},
 		),
 		numTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_owned",
 			"The number of tokens in the ring owned by the member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		oldestTimestampDesc: prometheus.NewDesc(
 			"cortex_ring_oldest_member_timestamp",
 			"Timestamp of the oldest member in the ring.",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 	}
 
@@ -245,7 +248,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 }
 
 // GetAll returns all available ingesters in the ring.
-func (r *Ring) GetAll() (ReplicationSet, error) {
+func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -253,56 +256,30 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	maxErrors := r.cfg.ReplicationFactor / 2
+	// Calculate the number of required ingesters;
+	// ensure we always require at least RF-1 when RF=3.
+	numRequired := len(r.ringDesc.Ingesters)
+	if numRequired < r.cfg.ReplicationFactor {
+		numRequired = r.cfg.ReplicationFactor
+	}
+	maxUnavailable := r.cfg.ReplicationFactor / 2
+	numRequired -= maxUnavailable
 
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(&ingester, Read) {
-			maxErrors--
-			continue
+		if r.IsHealthy(&ingester, op) {
+			ingesters = append(ingesters, ingester)
 		}
-		ingesters = append(ingesters, ingester)
 	}
 
-	if maxErrors < 0 {
+	if len(ingesters) < numRequired {
 		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
 	}
 
 	return ReplicationSet{
 		Ingesters: ingesters,
-		MaxErrors: maxErrors,
+		MaxErrors: len(ingesters) - numRequired,
 	}, nil
-}
-
-// GetAllTokens returns all ring tokens of healthy instances for the given operation.
-func (r *Ring) GetAllTokens(op Operation) TokenDescs {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	all := make([]TokenDesc, 0, len(r.ringTokens))
-	cache := map[string]bool{}
-
-	for _, token := range r.ringTokens {
-		healthy, ok := cache[token.Ingester]
-		if !ok {
-			if instance, exists := r.ringDesc.Ingesters[token.Ingester]; exists {
-				healthy = r.IsHealthy(&instance, op)
-			} else {
-				// Shouldn't never happen unless a bug but in case we consider it unhealthy.
-				healthy = false
-			}
-
-			cache[token.Ingester] = healthy
-		}
-
-		if healthy {
-			// Given ringTokens is sorted and we iterate it in order, we can simply
-			// append to the result while keeping ordering.
-			all = append(all, token)
-		}
-	}
-
-	return all
 }
 
 func (r *Ring) search(key uint32) int {
@@ -320,6 +297,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.memberOwnershipDesc
 	ch <- r.numMembersDesc
 	ch <- r.totalTokensDesc
+	ch <- r.oldestTimestampDesc
 	ch <- r.numTokensDesc
 }
 
@@ -359,14 +337,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
-			r.name,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			r.numTokensDesc,
 			prometheus.GaugeValue,
 			float64(numTokens[id]),
 			id,
-			r.name,
 		)
 	}
 
@@ -396,7 +372,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(count),
 			state,
-			r.name,
 		)
 	}
 	for state, timestamp := range oldestTimestampByState {
@@ -405,7 +380,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(timestamp),
 			state,
-			r.name,
 		)
 	}
 
@@ -413,7 +387,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringTokens)),
-		r.name,
 	)
 }
 
@@ -464,7 +437,6 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	sub := &Ring{
-		name:     "subring",
 		cfg:      r.cfg,
 		strategy: r.strategy,
 		ringDesc: &Desc{

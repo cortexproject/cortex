@@ -55,11 +55,16 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
-	flagsForOldImage := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-schema-config-file":          "",
-		"-config-yaml":                 ChunksStorageFlags["-schema-config-file"],
-		"-table-manager.poll-interval": "",
-		"-dynamodb.poll-interval":      ChunksStorageFlags["-table-manager.poll-interval"],
+	// Keep empty values because they will be used to remove default flags.
+	flagsForOldImage := e2e.MergeFlagsWithoutRemovingEmpty(ChunksStorageFlags, map[string]string{
+		"-schema-config-file":                                       "",
+		"-config-yaml":                                              ChunksStorageFlags["-schema-config-file"],
+		"-table-manager.poll-interval":                              "",
+		"-dynamodb.poll-interval":                                   ChunksStorageFlags["-table-manager.poll-interval"],
+		"-experimental.store-gateway.sharding-enabled":              "",
+		"-experimental.store-gateway.sharding-ring.store":           "",
+		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
+		"-experimental.store-gateway.replication-factor":            "",
 	})
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
@@ -123,12 +128,17 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
-	flagsForOldImage := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-schema-config-file":             "",
-		"-config-yaml":                    ChunksStorageFlags["-schema-config-file"],
-		"-table-manager.poll-interval":    "",
-		"-dynamodb.poll-interval":         ChunksStorageFlags["-table-manager.poll-interval"],
-		"-distributor.replication-factor": "3",
+	// Keep empty values because they will be used to remove default flags.
+	flagsForOldImage := e2e.MergeFlagsWithoutRemovingEmpty(ChunksStorageFlags, map[string]string{
+		"-schema-config-file":                                       "",
+		"-config-yaml":                                              ChunksStorageFlags["-schema-config-file"],
+		"-table-manager.poll-interval":                              "",
+		"-dynamodb.poll-interval":                                   ChunksStorageFlags["-table-manager.poll-interval"],
+		"-distributor.replication-factor":                           "3",
+		"-experimental.store-gateway.sharding-enabled":              "",
+		"-experimental.store-gateway.sharding-ring.store":           "",
+		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
+		"-experimental.store-gateway.replication-factor":            "",
 	})
 
 	flagsForNewImage := mergeFlags(ChunksStorageFlags, map[string]string{

@@ -34,6 +34,22 @@ services:
     ports:
       - 9090:9090
 
+  jaeger:
+    image: jaegertracing/all-in-one
+    ports:
+      - 16686:16686
+      - "14268"
+
+  # Scrape the metrics also with the Grafana agent (useful to test metadata ingestion
+  # until metadata remote write is not supported by Prometheus).
+  grafana-agent:
+    image: grafana/agent:v0.2.0
+    command: ["-config.file=/etc/agent-config/grafana-agent.yaml", "-prometheus.wal-directory=/tmp"]
+    volumes:
+      - ./config:/etc/agent-config
+    ports:
+      - 9091:9091
+
   distributor:
     build:
       context:    .
@@ -43,6 +59,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=distributor
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8001:8001
     volumes:
@@ -57,6 +79,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ingester-1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8002:8002
     volumes:
@@ -72,6 +100,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ingester-2
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8003:8003
     volumes:
@@ -87,12 +121,18 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=querier
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8004:8004
     volumes:
       - ./config:/cortex/config
 
-  store-gateway:
+  store-gateway-1:
     build:
       context:    .
       dockerfile: dev.dockerfile
@@ -101,8 +141,34 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=store-gateway-1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8008:8008
+    volumes:
+      - ./config:/cortex/config
+
+  store-gateway-2:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8009 -server.grpc-listen-port=9009"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=store-gateway-2
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8009:8009
     volumes:
       - ./config:/cortex/config
 
@@ -115,6 +181,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ruler
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8005:8005
     volumes:
@@ -129,6 +201,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=compactor
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8006:8006
     volumes:
@@ -143,6 +221,12 @@ services:
     depends_on:
       - consul
       - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=query-frontend
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8007:8007
     volumes:

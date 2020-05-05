@@ -221,6 +221,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 
 			// Start the configure number of gateways.
 			var gateways []*StoreGateway
+			var gatewayIds []string
 			registries := map[string]*prometheus.Registry{}
 
 			for i := 1; i <= testData.numGateways; i++ {
@@ -240,7 +241,21 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 				require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 
 				gateways = append(gateways, g)
+				gatewayIds = append(gatewayIds, instanceID)
 				registries[instanceID] = reg
+			}
+
+			// Wait until the ring client of each gateway has synced (to avoid flaky tests on subsequent assertions).
+			if testData.shardingEnabled {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+
+				// A gateway is ready for the test once it sees all instances ACTIVE in the ring.
+				for _, g := range gateways {
+					for _, instanceID := range gatewayIds {
+						require.NoError(t, ring.WaitInstanceState(ctx, g.ring, instanceID, ring.ACTIVE))
+					}
+				}
 			}
 
 			// Re-sync the stores because the ring topology has changed in the meanwhile
@@ -338,6 +353,18 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: true,
 		},
+		"should sync when an instance changes state": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING)
+			},
+			updateRing: func(desc *ring.Desc) {
+				instance := desc.Ingesters["instance-2"]
+				instance.State = ring.ACTIVE
+				desc.Ingesters["instance-2"] = instance
+			},
+			expectedSync: true,
+		},
 		"should sync when an healthy instance becomes unhealthy": {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
@@ -374,6 +401,22 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 				instance := desc.Ingesters["instance-2"]
 				instance.Timestamp = time.Now().Add(time.Second).Unix()
 				desc.Ingesters["instance-2"] = instance
+			},
+			expectedSync: false,
+		},
+		"should NOT sync when an instance is auto-forgotten in the ring but was already unhealthy in the previous state": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+
+				// Set it already unhealthy.
+				instance := desc.Ingesters["instance-2"]
+				instance.Timestamp = time.Now().Add(-time.Hour).Unix()
+				desc.Ingesters["instance-2"] = instance
+			},
+			updateRing: func(desc *ring.Desc) {
+				// Remove the unhealthy instance from the ring.
+				desc.RemoveIngester("instance-2")
 			},
 			expectedSync: false,
 		},
@@ -434,6 +477,51 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	const unhealthyInstanceID = "unhealthy-id"
+	const heartbeatTimeout = time.Minute
+
+	ctx := context.Background()
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = true
+	gatewayCfg.ShardingRing.HeartbeatPeriod = 100 * time.Millisecond
+	gatewayCfg.ShardingRing.HeartbeatTimeout = heartbeatTimeout
+
+	storageCfg, cleanup := mockStorageConfig(t)
+	defer cleanup()
+
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient.MockIter("", []string{}, nil)
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
+	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+
+	// Add an unhealthy instance to the ring.
+	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+		ringDesc := ring.GetOrCreateRingDesc(in)
+
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(RingNumTokens), ring.ACTIVE)
+		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
+		ringDesc.Ingesters[unhealthyInstanceID] = instance
+
+		return ringDesc, true, nil
+	}))
+
+	// Ensure the unhealthy instance is removed from the ring.
+	test.Poll(t, time.Second, false, func() interface{} {
+		d, err := ringStore.Get(ctx, RingKey)
+		if err != nil {
+			return err
+		}
+
+		_, ok := ring.GetOrCreateRingDesc(d).Ingesters[unhealthyInstanceID]
+		return ok
+	})
 }
 
 func mockGatewayConfig() Config {

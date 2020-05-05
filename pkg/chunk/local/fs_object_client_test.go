@@ -1,16 +1,20 @@
 package local
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
-func TestFsObjectClient_DeleteChunksBefore(t *testing.T) {
+func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	deleteFilesOlderThan := 10 * time.Minute
 
 	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
@@ -55,4 +59,116 @@ func TestFsObjectClient_DeleteChunksBefore(t *testing.T) {
 	// Verifying whether older file got deleted
 	files, _ = ioutil.ReadDir(".")
 	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
+}
+
+func TestFSObjectClient_List(t *testing.T) {
+	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-objects")
+	require.NoError(t, err)
+
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory: fsObjectsDir,
+	})
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(fsObjectsDir))
+	}()
+
+	foldersWithFiles := make(map[string][]string)
+	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
+	foldersWithFiles["folder2/"] = []string{"file3", "file4", "file5"}
+
+	for folder, files := range foldersWithFiles {
+		for _, filename := range files {
+			err := bucketClient.PutObject(context.Background(), folder+filename, bytes.NewReader([]byte(filename)))
+			require.NoError(t, err)
+		}
+	}
+
+	// create an empty directory which should get excluded from the list
+	require.NoError(t, util.EnsureDirectory(filepath.Join(fsObjectsDir, "empty-folder")))
+
+	files := []string{"outer-file1", "outer-file2"}
+
+	for _, fl := range files {
+		err := bucketClient.PutObject(context.Background(), fl, bytes.NewReader([]byte(fl)))
+		require.NoError(t, err)
+	}
+
+	storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), "")
+	require.NoError(t, err)
+
+	require.Len(t, storageObjects, len(files))
+	for i := range storageObjects {
+		require.Equal(t, storageObjects[i].Key, files[i])
+	}
+
+	require.Len(t, commonPrefixes, len(foldersWithFiles))
+	for _, commonPrefix := range commonPrefixes {
+		_, ok := foldersWithFiles[string(commonPrefix)]
+		require.True(t, ok)
+	}
+
+	for folder, files := range foldersWithFiles {
+		storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), folder)
+		require.NoError(t, err)
+
+		require.Len(t, storageObjects, len(files))
+		for i := range storageObjects {
+			require.Equal(t, storageObjects[i].Key, folder+files[i])
+		}
+
+		require.Len(t, commonPrefixes, 0)
+	}
+}
+
+func TestFSObjectClient_DeleteObject(t *testing.T) {
+	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-delete-object")
+	require.NoError(t, err)
+
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory: fsObjectsDir,
+	})
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(fsObjectsDir))
+	}()
+
+	foldersWithFiles := make(map[string][]string)
+	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
+
+	for folder, files := range foldersWithFiles {
+		for _, filename := range files {
+			err := bucketClient.PutObject(context.Background(), folder+filename, bytes.NewReader([]byte(filename)))
+			require.NoError(t, err)
+		}
+	}
+
+	// let us check if we have right folders created
+	_, commonPrefixes, err := bucketClient.List(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, commonPrefixes, len(foldersWithFiles))
+
+	// let us delete file1 from folder1 and check that file1 is gone but folder1 with file2 is still there
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), "folder1/file1"))
+	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1/file1"))
+	require.True(t, os.IsNotExist(err))
+
+	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1/file2"))
+	require.NoError(t, err)
+
+	// let us delete second file as well and check that folder1 also got removed
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), "folder1/file2"))
+	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1"))
+	require.True(t, os.IsNotExist(err))
+
+	_, err = os.Stat(fsObjectsDir)
+	require.NoError(t, err)
+
+	// let us see ensure folder2 is still there will all the files:
+	/*files, commonPrefixes, err := bucketClient.List(context.Background(), "folder2/")
+	require.NoError(t, err)
+	require.Len(t, commonPrefixes, 0)
+	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
 }

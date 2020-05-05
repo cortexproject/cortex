@@ -102,9 +102,17 @@ func (c MajorityConfig) Describe(l AckedIndexer) string {
 	return buf.String()
 }
 
-type uint64Slice []uint64
+// Slice returns the MajorityConfig as a sorted slice.
+func (c MajorityConfig) Slice() []uint64 {
+	var sl []uint64
+	for id := range c {
+		sl = append(sl, id)
+	}
+	sort.Slice(sl, func(i, j int) bool { return sl[i] < sl[j] })
+	return sl
+}
 
-func insertionSort(sl uint64Slice) {
+func insertionSort(sl []uint64) {
 	a, b := 0, len(sl)
 	for i := a + 1; i < b; i++ {
 		for j := i; j > a && sl[j] < sl[j-1]; j-- {
@@ -131,12 +139,12 @@ func (c MajorityConfig) CommittedIndex(l AckedIndexer) Index {
 	// performance is a lesser concern (additionally the performance
 	// implications of an allocation here are far from drastic).
 	var stk [7]uint64
-	srt := uint64Slice(stk[:])
-
-	if cap(srt) < n {
+	var srt []uint64
+	if len(stk) >= n {
+		srt = stk[:n]
+	} else {
 		srt = make([]uint64, n)
 	}
-	srt = srt[:n]
 
 	{
 		// Fill the slice with the indexes observed. Any unused slots will be

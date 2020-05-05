@@ -62,4 +62,7 @@ query_range:
 frontend:
   log_queries_longer_than: 1s
   compress_responses: true
+
+  # The Prometheus URL to which the query-frontend should connect to.
+  downstream_url: http://prometheus.mydomain.com
 ```

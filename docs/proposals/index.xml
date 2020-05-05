@@ -90,7 +90,70 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;pre&gt;&lt;code&gt;/docs/running-cortex/1.0/configuration/
 /docs/running-cortex/1.0/apis/
 &lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;we&amp;rsquo;ll have versioned documentation only under the /docs/running-cortex/ prefix and, as a starting point, all versioned pages should go there.&lt;/p&gt;</description></item><item><title>Docs: HTTP API Design</title><link>/docs/proposals/http-api-design/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/http-api-design/</guid><description>
+&lt;p&gt;we&amp;rsquo;ll have versioned documentation only under the /docs/running-cortex/ prefix and, as a starting point, all versioned pages should go there.&lt;/p&gt;</description></item><item><title>Docs: Generalize Modules Service to make it extensible</title><link>/docs/proposals/generalize-modules/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/generalize-modules/</guid><description>
+&lt;ul&gt;
+&lt;li&gt;Author: @annanay25&lt;/li&gt;
+&lt;li&gt;Reviewers: @jtlisi, @pstibrany, @cyriltovena, @pracucci&lt;/li&gt;
+&lt;li&gt;Date: April 2020&lt;/li&gt;
+&lt;li&gt;Status: Accepted&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;overview&#34;&gt;Overview&lt;/h2&gt;
+&lt;p&gt;Cortex uses modules to start and operate services with dependencies. Inter-service dependencies are specified in a map and passed to a module manager which ensures that they are initialised in the right order of dependencies. While this works really well, the implementation is tied in specifically to the Cortex struct and is not flexible for use with other projects like Loki, which also require similar forms of dependency management.&lt;/p&gt;
+&lt;p&gt;We would like to extend modules in cortex to a generic dependency management framework, that can be used by any project with no ties to cortex.&lt;/p&gt;
+&lt;h2 id=&#34;specific-goals&#34;&gt;Specific goals&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Framework should allow for reusing cortex modules and allow us to:
+&lt;ul&gt;
+&lt;li&gt;Add new modules&lt;/li&gt;
+&lt;li&gt;Overwrite the implementation of a current module&lt;/li&gt;
+&lt;li&gt;Manage dependencies&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Framework should allow for building an application from scratch using the &lt;code&gt;modules&lt;/code&gt; package, with no dependencies on Cortex. For ex: Remove code from Loki that was copied from &lt;code&gt;pkg/cortex/cortex.go&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;proposed-design&#34;&gt;Proposed Design&lt;/h2&gt;
+&lt;h3 id=&#34;modules-package&#34;&gt;Modules package&lt;/h3&gt;
+&lt;p&gt;To make the modules package extensible, we need to abstract away any Cortex specific details from the module manager. The proposed design is to:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Make a new component &lt;code&gt;Manager&lt;/code&gt;, which is envisioned to be a central manager for all modules of the application. It stores modules &amp;amp; dependencies, and will be housed under a new package &lt;code&gt;pkg/util/modules&lt;/code&gt;. &lt;code&gt;Manager&lt;/code&gt; has the following methods for interaction:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;func (m *Manager) RegisterModule(name string, initFn func() (Service, error))
+func (m *Manager) AddDependency(name string, dependsOn... string) error
+func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error)
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Modules can be created by the application and registered with &lt;code&gt;modules.Manager&lt;/code&gt; using &lt;code&gt;RegisterModule&lt;/code&gt;. The parameters are:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;name&lt;/code&gt;: Name of the module&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;initFn&lt;/code&gt;: A function that will be used to start the module. If it returns nil, and other modules depend on it, &lt;code&gt;InitModuleServices&lt;/code&gt; will return an error.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Dependencies between modules can be added using &lt;code&gt;AddDependency&lt;/code&gt;. The parameters to the function are:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;name&lt;/code&gt;: Name of the module&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;dependsOn&lt;/code&gt;: A variadic list of modules that the module depends on.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These need to be added before the call to &lt;code&gt;InitModuleServices&lt;/code&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The application can be initialized by running &lt;code&gt;initFn&lt;/code&gt;&amp;rsquo;s of all the modules in the right order of dependencies by invoking &lt;code&gt;InitModuleServices&lt;/code&gt; with the target module name.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;changes-to-pkg-cortex&#34;&gt;Changes to &lt;code&gt;pkg/cortex&lt;/code&gt;:&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;code&gt;WrappedService&lt;/code&gt; present in the current &lt;code&gt;module&lt;/code&gt; design will be deprecated. All &lt;code&gt;initFn&lt;/code&gt;&amp;rsquo;s will be wrapped into &lt;code&gt;WrappedService&lt;/code&gt; by default.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;While the process of loading modules into &lt;code&gt;modules.Manager&lt;/code&gt; should be remain as part of the &lt;code&gt;Cortex.New()&lt;/code&gt; function, &lt;code&gt;InitModuleServices&lt;/code&gt; should be part of &lt;code&gt;Cortex.Run()&lt;/code&gt; and to enable this, &lt;code&gt;modules.Manager&lt;/code&gt; would be made a member of the &lt;code&gt;Cortex&lt;/code&gt; struct.&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;usage&#34;&gt;Usage&lt;/h2&gt;
+&lt;p&gt;Following these changes, the Modules package will be a generic dependency management framework that can be used by any project.&lt;/p&gt;
+&lt;h4 id=&#34;to-use-the-modules-framework&#34;&gt;To use the modules framework:&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;Import the &lt;code&gt;pkg/util/modules&lt;/code&gt; package, and initialize a new instance of the &lt;code&gt;Manager&lt;/code&gt; using &lt;code&gt;modules.NewManager()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Create components in the system that implement the services interface (present in &lt;code&gt;pkg/util/services&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Register each of these components as a module using &lt;code&gt;Manager.RegisterModule()&lt;/code&gt; by passing name of the module and &lt;code&gt;initFn&lt;/code&gt; for the module.&lt;/li&gt;
+&lt;li&gt;To add dependencies between modules, use &lt;code&gt;Manager.AddDependency()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Once all modules are added into &lt;code&gt;modules.Manager&lt;/code&gt;, initialize the application by calling &lt;code&gt;Manager.InitModuleServices()&lt;/code&gt; which initializes modules in the right order of dependencies.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;future-work&#34;&gt;Future work&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Extend the module manager to allow specifying multiple targets as opposed to a single target name supported currently.&lt;/li&gt;
+&lt;li&gt;Factor out &lt;code&gt;Run()&lt;/code&gt; method to make it independent of Cortex. This will help reduce replicated code in the Loki project as well as help manage &lt;code&gt;modules.Manager&lt;/code&gt; outside of the Cortex struct.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: HTTP API Design</title><link>/docs/proposals/http-api-design/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/http-api-design/</guid><description>
 &lt;ul&gt;
 &lt;li&gt;Author: @jtlisi&lt;/li&gt;
 &lt;li&gt;Reviewers: @pracucci, @pstibrany, @khaines, @gouthamve&lt;/li&gt;

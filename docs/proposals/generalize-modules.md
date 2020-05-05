@@ -6,13 +6,13 @@ slug: generalize-modules
 ---
 
 - Author: @annanay25
-- Reviewers: @jtlisi, @pstibrany
+- Reviewers: @jtlisi, @pstibrany, @cyriltovena, @pracucci
 - Date: April 2020
-- Status: Review
+- Status: Accepted
 
 ## Overview
 
-Cortex uses modules to start and operate services with dependencies. Inter-service dependencies are specified in a map and passed to a module manager which ensures that they are started in the right order of dependencies. While this works really well, the implementation is tied in specifically to the Cortex struct and is not flexible for use with other projects like Loki, which also require similar forms of dependency management.
+Cortex uses modules to start and operate services with dependencies. Inter-service dependencies are specified in a map and passed to a module manager which ensures that they are initialised in the right order of dependencies. While this works really well, the implementation is tied in specifically to the Cortex struct and is not flexible for use with other projects like Loki, which also require similar forms of dependency management.
 
 We would like to extend modules in cortex to a generic dependency management framework, that can be used by any project with no ties to cortex.
 
@@ -33,19 +33,22 @@ To make the modules package extensible, we need to abstract away any Cortex spec
 
 - Make a new component `Manager`, which is envisioned to be a central manager for all modules of the application. It stores modules & dependencies, and will be housed under a new package `pkg/util/modules`. `Manager` has the following methods for interaction:
 ```
-   func (m *Manager) RegisterModule(name string, deps []string, initFn func() (Service, error))
-   func (m *Manager) AddDependency(fromModule string, toModule string) error
+   func (m *Manager) RegisterModule(name string, initFn func() (Service, error))
+   func (m *Manager) AddDependency(name string, dependsOn... string) error
    func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error)
 ```
 
 - Modules can be created by the application and registered with `modules.Manager` using `RegisterModule`. The parameters are:
   - `name`: Name of the module
-  - `deps`: A list of modules that this module depends on to run.
-  - `initFn`: A function that will be used to start the module. If it returns nil, and other modules depend on it `InitModuleServices` will return an error.
+  - `initFn`: A function that will be used to start the module. If it returns nil, and other modules depend on it, `InitModuleServices` will return an error.
 
-- Dynamic dependencies between modules can be added using `AddDependency`. These need to be added before the call to `InitModuleServices`.
+- Dependencies between modules can be added using `AddDependency`. The parameters to the function are:
+  - `name`: Name of the module
+  - `dependsOn`: A variadic list of modules that the module depends on.
 
-- The application can be initialized by running all the modules in the right order of dependencies by invoking `InitModuleServices`.
+  These need to be added before the call to `InitModuleServices`.
+
+- The application can be initialized by running `initFn`'s of all the modules in the right order of dependencies by invoking `InitModuleServices` with the target module name.
 
 
 ### Changes to `pkg/cortex`:
@@ -63,6 +66,12 @@ Following these changes, the Modules package will be a generic dependency manage
 
 - Import the `pkg/util/modules` package, and initialize a new instance of the `Manager` using `modules.NewManager()`
 - Create components in the system that implement the services interface (present in `pkg/util/services`).
-- Register each of these components as a module using `Manager.RegisterModule()` by passing name of the module, dependencies, and `initFn`.
-- To add dynamic dependencies between modules, use `Manager.AddDependency()`
+- Register each of these components as a module using `Manager.RegisterModule()` by passing name of the module and `initFn` for the module.
+- To add dependencies between modules, use `Manager.AddDependency()`
 - Once all modules are added into `modules.Manager`, initialize the application by calling `Manager.InitModuleServices()` which initializes modules in the right order of dependencies.
+
+
+## Future work
+
+- Extend the module manager to allow specifying multiple targets as opposed to a single target name supported currently.
+- Factor out `Run()` method to make it independent of Cortex. This will help reduce replicated code in the Loki project as well as help manage `modules.Manager` outside of the Cortex struct.

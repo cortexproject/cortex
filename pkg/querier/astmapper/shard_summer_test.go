@@ -66,22 +66,15 @@ func TestShardSummer(t *testing.T) {
 			  )
 			)`,
 		},
-		// This nested sum example is nonsensical, but equivalent.
+		// This nested sum example is nonsensical, but should not try to shard nested aggregations.
+		// Instead it only maps the subAggregation but not the outer one.
 		{
 			shards: 2,
 			input:  `sum(sum by(foo) (rate(bar1{baz="blip"}[1m])))`,
-			expected: `sum without(__cortex_shard__) (
-			  sum by(__cortex_shard__) (
-				sum by(foo) (
-				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
-				)
-			  ) or
-			  sum by(__cortex_shard__)(
-				sum by(foo) (
-				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
-				)
+			expected: `sum(
+			  sum by(foo) (
+			    sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			    sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			  )
 			)`,
 		},
@@ -114,6 +107,12 @@ func TestShardSummer(t *testing.T) {
 				      sum by(job, le, __cortex_shard__) (rate(alertmanager_http_request_duration_seconds_bucket{__cortex_shard__="1_of_2"}[10m]))
 				    )
 				  )`,
+		},
+		{
+			// Disallow sharding nested aggregations as they may merge series in a non-associative manner.
+			shards:   2,
+			input:    `sum(count(foo{}))`,
+			expected: `sum(count(foo{}))`,
 		},
 	}
 

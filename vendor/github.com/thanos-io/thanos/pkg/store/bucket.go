@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,6 +44,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -257,6 +259,9 @@ type BucketStore struct {
 	// When used with in-memory cache, memory usage should decrease overall, thanks to postings being smaller.
 	enablePostingsCompression   bool
 	postingOffsetsInMemSampling int
+
+	// Enables hints in the Series() response.
+	enableSeriesHints bool
 }
 
 // NewBucketStore creates a new bucket backed store that implements the store API against
@@ -278,6 +283,7 @@ func NewBucketStore(
 	enableIndexHeader bool,
 	enablePostingsCompression bool,
 	postingOffsetsInMemSampling int,
+	enableSeriesHints bool, // TODO(pracucci) Thanos 0.12 and below doesn't gracefully handle new fields in SeriesResponse. Drop this flag and always enable hints once we can drop backward compatibility.
 ) (*BucketStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -315,6 +321,7 @@ func NewBucketStore(
 		enableIndexHeader:           enableIndexHeader,
 		enablePostingsCompression:   enablePostingsCompression,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
+		enableSeriesHints:           enableSeriesHints,
 	}
 	s.metrics = metrics
 
@@ -868,6 +875,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		res     []storepb.SeriesSet
 		mtx     sync.Mutex
 		g, gctx = errgroup.WithContext(ctx)
+		hints   = &hintspb.SeriesResponseHints{}
 	)
 
 	s.mtx.RLock()
@@ -890,6 +898,11 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 		for _, b := range blocks {
 			b := b
+
+			if s.enableSeriesHints {
+				// Keep track of queried blocks.
+				hints.AddQueriedBlock(b.meta.ULID)
+			}
 
 			// We must keep the readers open until all their data has been sent.
 			indexr := b.indexReader(gctx)
@@ -1000,6 +1013,21 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 		err = nil
 	})
+
+	if s.enableSeriesHints {
+		var anyHints *types.Any
+
+		if anyHints, err = types.MarshalAny(hints); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
+			return
+		}
+
+		if err = srv.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
+			return
+		}
+	}
+
 	return err
 }
 
@@ -1485,21 +1513,15 @@ func checkNilPosting(l labels.Label, p index.Postings) index.Postings {
 	return p
 }
 
-var (
-	allPostingsGroup   = newPostingGroup(true, nil, nil)
-	emptyPostingsGroup = newPostingGroup(false, nil, nil)
-)
-
 // NOTE: Derived from tsdb.postingsForMatcher. index.Merge is equivalent to map duplication.
 func toPostingGroup(lvalsFn func(name string) ([]string, error), m *labels.Matcher) (*postingGroup, error) {
-	// This matches any label value, and also series that don't have this label at all.
-	if m.Type == labels.MatchRegexp && (m.Value == ".*" || m.Value == "^.*$") {
-		return allPostingsGroup, nil
-	}
-
-	// NOT matching any value = match nothing. We can shortcut this easily.
-	if m.Type == labels.MatchNotRegexp && (m.Value == ".*" || m.Value == "^.*$") {
-		return emptyPostingsGroup, nil
+	if m.Type == labels.MatchRegexp && len(findSetMatches(m.Value)) > 0 {
+		vals := findSetMatches(m.Value)
+		toAdd := make([]labels.Label, 0, len(vals))
+		for _, val := range vals {
+			toAdd = append(toAdd, labels.Label{Name: m.Name, Value: val})
+		}
+		return newPostingGroup(false, toAdd, nil), nil
 	}
 
 	// If the matcher selects an empty value, it selects all the series which don't

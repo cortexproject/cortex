@@ -250,6 +250,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
+		true, // Enable series hints.
 	)
 	if err != nil {
 		return nil, err

@@ -181,6 +181,7 @@ github.com/gocql/gocql/internal/streams
 github.com/gogo/googleapis/google/rpc
 # github.com/gogo/protobuf v1.3.1
 github.com/gogo/protobuf/gogoproto
+github.com/gogo/protobuf/jsonpb
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 github.com/gogo/protobuf/sortkeys
@@ -329,13 +330,13 @@ github.com/mattn/go-ieproxy
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.22
 github.com/miekg/dns
-# github.com/minio/minio-go/v6 v6.0.49
+# github.com/minio/minio-go/v6 v6.0.53
 github.com/minio/minio-go/v6
 github.com/minio/minio-go/v6/pkg/credentials
 github.com/minio/minio-go/v6/pkg/encrypt
-github.com/minio/minio-go/v6/pkg/s3signer
 github.com/minio/minio-go/v6/pkg/s3utils
 github.com/minio/minio-go/v6/pkg/set
+github.com/minio/minio-go/v6/pkg/signer
 # github.com/minio/sha256-simd v0.1.1
 github.com/minio/sha256-simd
 # github.com/mitchellh/go-homedir v1.1.0
@@ -506,7 +507,7 @@ github.com/shurcooL/httpfs/union
 github.com/shurcooL/httpfs/vfsutil
 # github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 github.com/shurcooL/vfsgen
-# github.com/sirupsen/logrus v1.4.2
+# github.com/sirupsen/logrus v1.5.0
 github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.4
 github.com/soheilhy/cmux
@@ -521,7 +522,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.12.1-0.20200416112106-b391ca115ed8
+# github.com/thanos-io/thanos v0.12.3-0.20200505050643-5a777da8dfd2
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -546,6 +547,7 @@ github.com/thanos-io/thanos/pkg/runutil
 github.com/thanos-io/thanos/pkg/shipper
 github.com/thanos-io/thanos/pkg/store
 github.com/thanos-io/thanos/pkg/store/cache
+github.com/thanos-io/thanos/pkg/store/hintspb
 github.com/thanos-io/thanos/pkg/store/storepb
 github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil

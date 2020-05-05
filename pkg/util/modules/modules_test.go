@@ -12,29 +12,29 @@ func mockInitFunc() (services.Service, error) { return nil, nil }
 func TestDependencies(t *testing.T) {
 	var testModules = map[string]module{
 		"serviceA": {
-			initService: mockInitFunc,
+			initFn: mockInitFunc,
 		},
 
 		"serviceB": {
-			deps:        []string{"serviceA"},
-			initService: mockInitFunc,
+			initFn: mockInitFunc,
 		},
 
 		"serviceC": {
-			deps:        []string{"serviceB"},
-			initService: mockInitFunc,
+			initFn: mockInitFunc,
 		},
 	}
 
-	mm := &moduleManager{}
+	mm := &Manager{}
 	for name, mod := range testModules {
-		mm.RegisterModule(name, mod.deps, mod.initService, nil)
+		mm.RegisterModule(name, mod.initFn)
 	}
-	svcs, err := mm.StartModule("serviceC")
+	mm.AddDependency("serviceB", "serviceA")
+	mm.AddDependency("serviceC", "serviceB")
+	svcs, err := mm.InitModuleServices("serviceC")
 	assert.NotNil(t, svcs)
 	assert.NoError(t, err)
 
-	invDeps := mm.findInverseDependencies("serviceB")
+	invDeps := mm.findInverseDependencies("serviceB", []string{"serviceA", "serviceC"})
 	assert.Len(t, invDeps, 1)
 	assert.Equal(t, invDeps[0], "serviceC")
 }

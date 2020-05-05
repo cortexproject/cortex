@@ -174,7 +174,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(t.Cfg.Worker, cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
+	worker, err := frontend.NewWorker(t.Cfg.Worker, t.Cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -287,7 +287,7 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 		return
 	}
 
-	t.TombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
+	t.TombstonesLoader = purger.NewTombstonesLoader(t.DeletesStore, prometheus.DefaultRegisterer)
 
 	return
 }
@@ -485,7 +485,7 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 	return t.DataPurger, nil
 }
 
-func (t *Cortex) createModuleManager() modules.Manager {
+func (t *Cortex) createModuleManager() *modules.Manager {
 	mm := modules.NewManager()
 
 	// Register all modules here.
@@ -516,27 +516,27 @@ func (t *Cortex) createModuleManager() modules.Manager {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API: []string{Server},
-		Ring: []string{API, RuntimeConfig, MemberlistKV},
-		Overrides: []string{RuntimeConfig},
-		Distributor: []string{Ring, API, Overrides},
-		Store: []string{Overrides, DeleteRequestsStore},
-		Ingester: []string{Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		Flusher: []string{Store, API},
-		Querier: []string{Distributor, Store, Ring, API, StoreQueryable},
+		API:            []string{Server},
+		Ring:           []string{API, RuntimeConfig, MemberlistKV},
+		Overrides:      []string{RuntimeConfig},
+		Distributor:    []string{Ring, API, Overrides},
+		Store:          []string{Overrides, DeleteRequestsStore},
+		Ingester:       []string{Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Flusher:        []string{Store, API},
+		Querier:        []string{Distributor, Store, Ring, API, StoreQueryable},
 		StoreQueryable: []string{Store},
-		QueryFrontend: []string{API, Overrides, DeleteRequestsStore},
-		TableManager: []string{API},
-		Ruler: []string{Distributor, Store, StoreQueryable},
-		Configs: []string{API},
-		AlertManager: []string{API},
-		Compactor: []string{API},
-		StoreGateway: []string{API},
-		DataPurger: []string{Store, DeleteRequestsStore, API},
-		All: []string{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway}
+		QueryFrontend:  []string{API, Overrides, DeleteRequestsStore},
+		TableManager:   []string{API},
+		Ruler:          []string{Distributor, Store, StoreQueryable},
+		Configs:        []string{API},
+		AlertManager:   []string{API},
+		Compactor:      []string{API},
+		StoreGateway:   []string{API},
+		DataPurger:     []string{Store, DeleteRequestsStore, API},
+		All:            []string{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	}
 	for mod, targets := range deps {
-		mm.AddDependency(m, targets...)
+		mm.AddDependency(mod, targets...)
 	}
 
 	return mm

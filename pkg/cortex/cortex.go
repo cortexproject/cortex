@@ -189,7 +189,7 @@ type Cortex struct {
 
 	// set during initialization
 	ServiceMap    map[string]services.Service
-	ModuleManager modules.Manager
+	ModuleManager *modules.Manager
 
 	API              *api.API
 	Server           *server.Server
@@ -274,7 +274,7 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	serviceMap, err := t.ModuleManager.StartModule(t.Cfg.Target)
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
 	if err != nil {
 		return err
 	}

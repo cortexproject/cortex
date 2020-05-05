@@ -34,8 +34,7 @@ func NewManager() *Manager {
 // RegisterModule registers a new module with ModuleManager
 func (m *Manager) RegisterModule(name string, initFn service) {
 	m.modules[name] = module{
-		initFn:  initFn,
-		options: options,
+		initFn: initFn,
 	}
 	return
 }
@@ -43,7 +42,7 @@ func (m *Manager) RegisterModule(name string, initFn service) {
 // AddDependency adds a dependency from name(source) to dependsOn(targets)
 func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 	if mod, ok := m.modules[name]; ok {
-		for dep := range dependsOn {
+		for _, dep := range dependsOn {
 			if _, ok := m.modules[dep]; ok {
 				mod.deps = append(mod.deps, dep)
 			} else {
@@ -58,14 +57,14 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 
 // InitModuleServices starts the target module
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {
-	servicesMap := map[ModuleName]services.Service{}
+	servicesMap := map[string]services.Service{}
 
 	// initialize all of our dependencies first
 	deps := m.orderedDeps(target)
 	deps = append(deps, target) // lastly, initialize the requested module
 
 	for ix, n := range deps {
-		mod := modules[n]
+		mod := m.modules[n]
 
 		var serv services.Service
 

@@ -202,6 +202,7 @@ load-images:
 doc: clean-doc
 	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template >> ./docs/configuration/config-file-reference.md
 	go run ./tools/doc-generator ./docs/operations/blocks-storage.template           >> ./docs/operations/blocks-storage.md
+	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 
 clean-doc:
 	rm -f ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md

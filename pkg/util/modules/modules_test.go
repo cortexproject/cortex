@@ -5,6 +5,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func mockInitFunc() (services.Service, error) { return nil, nil }
@@ -24,17 +25,19 @@ func TestDependencies(t *testing.T) {
 		},
 	}
 
-	mm := &Manager{}
+	mm := NewManager()
 	for name, mod := range testModules {
 		mm.RegisterModule(name, mod.initFn)
 	}
-	mm.AddDependency("serviceB", "serviceA")
-	mm.AddDependency("serviceC", "serviceB")
+	assert.NoError(t, mm.AddDependency("serviceB", "serviceA"))
+	assert.NoError(t, mm.AddDependency("serviceC", "serviceB"))
+	assert.Equal(t, mm.modules["serviceB"].deps, []string{"serviceA"})
+
+	invDeps := mm.findInverseDependencies("serviceA", []string{"serviceB", "serviceC"})
+	require.Len(t, invDeps, 1)
+	assert.Equal(t, invDeps[0], "serviceB")
+
 	svcs, err := mm.InitModuleServices("serviceC")
 	assert.NotNil(t, svcs)
 	assert.NoError(t, err)
-
-	invDeps := mm.findInverseDependencies("serviceB", []string{"serviceA", "serviceC"})
-	assert.Len(t, invDeps, 1)
-	assert.Equal(t, invDeps[0], "serviceC")
 }

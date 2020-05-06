@@ -3,8 +3,8 @@
 package main
 
 import (
-	"os/exec"
 	"fmt"
+	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +18,10 @@ import (
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+)
+
+const (
+	integrationHomeFolder = "integration/"
 )
 
 type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
@@ -96,11 +100,11 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	// setup tls
 	cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
 	require.NoError(t, cmd.Run())
-	require.NoError(t, copyFileToSharedDir(s, clientCertFile, clientCertFile))
-	require.NoError(t, copyFileToSharedDir(s, clientKeyFile, clientKeyFile))
-	require.NoError(t, copyFileToSharedDir(s, rootCertFile, rootCertFile))
-	require.NoError(t, copyFileToSharedDir(s, serverCertFile, serverCertFile))
-	require.NoError(t, copyFileToSharedDir(s, serverKeyFile, serverKeyFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+rootCertFile, rootCertFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
 
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",

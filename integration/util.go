@@ -55,20 +55,20 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 // GetServerTLSFlags generates generic TLS flags for a server
 func GetServerTLSFlags() map[string]string {
 	return map[string]string{
-		"-server.http-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
-		"-server.http-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
-		"-server.http-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
-		"-server.grpc-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/server.crt"),
-		"-server.grpc-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/server.key"),
-		"-server.grpc-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+		"-server.http-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.http-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.http-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, rootCertFile),
+		"-server.grpc-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.grpc-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.grpc-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, rootCertFile),
 	}
 }
 
 // GetClientTLSFlagsWithPrefix generates generic TLS flags for a client
 func GetClientTLSFlagsWithPrefix(prefix string) map[string]string {
 	return map[string]string{
-		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, "certs/client.crt"),
-		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, "certs/client.key"),
-		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, "certs/root.crt"),
+		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, clientCertFile),
+		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
+		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, rootCertFile),
 	}
 }

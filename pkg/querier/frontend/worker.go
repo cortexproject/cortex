@@ -117,6 +117,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 				client, err := w.connect(servCtx, update.Addr)
 				if err != nil {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
+					continue
 				}
 
 				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, w.cfg.GRPCClientConfig)

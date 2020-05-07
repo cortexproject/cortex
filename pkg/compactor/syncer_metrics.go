@@ -49,7 +49,7 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 
 	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collected_blocks_total",
-		Help: "TSDB Syncer: Total number of deleted blocks by compactor.",
+		Help: "TSDB Syncer: Total number of blocks marked for deletion by compactor.",
 	})
 	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_total",

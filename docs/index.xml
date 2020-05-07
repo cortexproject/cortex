@@ -6075,6 +6075,7 @@ replica: replica2
 &lt;li&gt;[BUGFIX] Fixed &lt;code&gt;version&lt;/code&gt;, &lt;code&gt;revision&lt;/code&gt; and &lt;code&gt;branch&lt;/code&gt; labels exported by the &lt;code&gt;cortex_build_info&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2468&#34;&gt;#2468&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2483&#34;&gt;#2483&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2539&#34;&gt;#2539&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2569&#34;&gt;#2569&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;1-0-0-2020-04-02&#34;&gt;1.0.0 / 2020-04-02&lt;/h2&gt;
 &lt;p&gt;This is the first major release of Cortex. We made a lot of &lt;strong&gt;breaking changes&lt;/strong&gt; in this release which have been detailed below. Please also see the stability guarantees we provide as part of a major release: &lt;a href=&#34;https://cortexmetrics.io/docs/configuration/v1guarantees/&#34;&gt;https://cortexmetrics.io/docs/configuration/v1guarantees/&lt;/a&gt;&lt;/p&gt;

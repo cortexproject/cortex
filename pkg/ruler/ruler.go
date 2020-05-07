@@ -626,7 +626,11 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 	rgs := []*GroupStateDesc{}
 
 	for _, rlr := range rulers.Ingesters {
-		conn, err := grpc.Dial(rlr.Addr, r.cfg.GRPCClientConfig.DialOption(nil, nil)...)
+		dialOpts, err := r.cfg.GRPCClientConfig.DialOption(nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		conn, err := grpc.Dial(rlr.Addr, dialOpts...)
 		if err != nil {
 			return nil, err
 		}

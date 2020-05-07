@@ -6,8 +6,8 @@ import (
 	"flag"
 	"io/ioutil"
 
+	"github.com/go-kit/kit/log/level"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -63,7 +63,7 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 }
 
 // DialOption returns the config as a grpc.DialOptions.
-func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) []grpc.DialOption {
+func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
 	if cfg.BackoffOnRatelimits {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
 	}
@@ -76,12 +76,14 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" && cfg.TLSCAPath != "" {
 		clientCert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
 		if err != nil {
-			log.Warnf("error loading cert %s or key %s, tls disabled", cfg.TLSCertPath, cfg.TLSKeyPath)
+			level.Error(util.Logger).Log("msg", "error loading certs", "error", err)
+			return nil, err
 		}
 		var caCertPool *x509.CertPool
 		caCert, err := ioutil.ReadFile(cfg.TLSCAPath)
 		if err != nil {
-			log.Warnf("error loading ca cert %s, tls disabled", cfg.TLSCAPath)
+			level.Error(util.Logger).Log("msg", "error loading ca cert", "error", err)
+			return nil, err
 		} else {
 			caCertPool = x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(caCert)
@@ -101,5 +103,5 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	return append(opts, grpc.WithDefaultCallOptions(cfg.CallOptions()...),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
 		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
-	)
+	), nil
 }

@@ -44,7 +44,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 		generateStorageBlock(t, storageDir, userID, metricName, 10, 100)
 	}
 
-	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir}, "test", nil)
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
@@ -104,7 +104,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	storageDir, err := ioutil.TempDir(os.TempDir(), "storage-*")
 	require.NoError(t, err)
 
-	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir}, "test", nil)
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()

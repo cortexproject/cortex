@@ -167,7 +167,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 	require.NoError(t, mockTSDB(path.Join(storageDir, "user-1"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
 	require.NoError(t, mockTSDB(path.Join(storageDir, "user-2"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
 
-	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir}, "test", nil)
 	require.NoError(t, err)
 
 	tests := map[string]struct {

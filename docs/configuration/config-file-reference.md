@@ -1685,6 +1685,10 @@ cassandra:
   # CLI flag: -cassandra.retry-min-backoff
   [retry_min_backoff: <duration> | default = 100ms]
 
+  # Limit number of concurrent queries to Cassandra. (Default is 0: no limit)
+  # CLI flag: -cassandra.query-concurrency
+  [query_concurrency: <int> | default = 0]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir

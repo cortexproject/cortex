@@ -111,7 +111,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
 
-		# HELP cortex_compactor_garbage_collected_blocks_total Total number of deleted blocks by compactor.
+		# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
 		# TYPE cortex_compactor_garbage_collected_blocks_total counter
 		cortex_compactor_garbage_collected_blocks_total 0
 
@@ -224,7 +224,7 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 1
 
-		# HELP cortex_compactor_garbage_collected_blocks_total Total number of deleted blocks by compactor.
+		# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
 		# TYPE cortex_compactor_garbage_collected_blocks_total counter
 		cortex_compactor_garbage_collected_blocks_total 0
 

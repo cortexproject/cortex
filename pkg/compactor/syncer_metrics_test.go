@@ -55,7 +55,7 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_meta_sync_duration_seconds_sum 33.333000000000006
 			cortex_compactor_meta_sync_duration_seconds_count 3
 
-			# HELP cortex_compactor_garbage_collected_blocks_total Total number of deleted blocks by compactor.
+			# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
 			# TYPE cortex_compactor_garbage_collected_blocks_total counter
 			cortex_compactor_garbage_collected_blocks_total 444440
 
@@ -185,7 +185,7 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 
 	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collected_blocks_total",
-		Help: "Total number of deleted blocks by compactor.",
+		Help: "Total number of blocks marked for deletion by compactor.",
 	})
 	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collection_total",

@@ -4,13 +4,16 @@ import (
 	"context"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/gcs"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/storage/backend/instrumentation"
 )
 
 // NewBucketClient creates a new GCS bucket client
-func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
 	bucketConfig := gcs.Config{
 		Bucket:         cfg.BucketName,
 		ServiceAccount: cfg.ServiceAccount.Value,
@@ -23,5 +26,10 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 		return nil, err
 	}
 
-	return gcs.NewBucket(ctx, logger, serialized, name)
+	client, err := gcs.NewBucket(ctx, logger, serialized, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return instrumentation.BucketWithMetrics(client, name, reg), nil
 }

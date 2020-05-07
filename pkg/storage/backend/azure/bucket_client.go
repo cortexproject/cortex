@@ -2,12 +2,15 @@ package azure
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/azure"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/storage/backend/instrumentation"
 )
 
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
 	bucketConfig := azure.Config{
 		StorageAccountName: cfg.StorageAccountName,
 		StorageAccountKey:  cfg.StorageAccountKey.Value,
@@ -23,5 +26,10 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	return azure.NewBucket(logger, serialized, name)
+	client, err := azure.NewBucket(logger, serialized, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return instrumentation.BucketWithMetrics(client, name, reg), nil
 }

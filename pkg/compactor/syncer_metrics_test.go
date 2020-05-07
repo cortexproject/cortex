@@ -19,19 +19,19 @@ func TestSyncerMetrics(t *testing.T) {
 	// total base = 111110
 
 	err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP cortex_compactor_meta_sync_consistency_delay_seconds TSDB Syncer: Configured consistency delay in seconds.
+			# HELP cortex_compactor_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
 			# TYPE cortex_compactor_meta_sync_consistency_delay_seconds gauge
 			cortex_compactor_meta_sync_consistency_delay_seconds 300
 
-			# HELP cortex_compactor_meta_syncs_total TSDB Syncer: Total blocks metadata synchronization attempts.
+			# HELP cortex_compactor_meta_syncs_total Total blocks metadata synchronization attempts.
 			# TYPE cortex_compactor_meta_syncs_total counter
 			cortex_compactor_meta_syncs_total 111110
 
-			# HELP cortex_compactor_meta_sync_failures_total TSDB Syncer: Total blocks metadata synchronization failures.
+			# HELP cortex_compactor_meta_sync_failures_total Total blocks metadata synchronization failures.
 			# TYPE cortex_compactor_meta_sync_failures_total counter
 			cortex_compactor_meta_sync_failures_total 222220
 
-			# HELP cortex_compactor_meta_sync_duration_seconds TSDB Syncer: Duration of the blocks metadata synchronization in seconds.
+			# HELP cortex_compactor_meta_sync_duration_seconds Duration of the blocks metadata synchronization in seconds.
 			# TYPE cortex_compactor_meta_sync_duration_seconds histogram
 			# Observed values: 3.7035, 22.9629, 6.6666 (seconds)
 			cortex_compactor_meta_sync_duration_seconds_bucket{le="0.01"} 0
@@ -55,19 +55,19 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_meta_sync_duration_seconds_sum 33.333000000000006
 			cortex_compactor_meta_sync_duration_seconds_count 3
 
-			# HELP cortex_compactor_garbage_collected_blocks_total TSDB Syncer: Total number of deleted blocks by compactor.
+			# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
 			# TYPE cortex_compactor_garbage_collected_blocks_total counter
 			cortex_compactor_garbage_collected_blocks_total 444440
 
-			# HELP cortex_compactor_garbage_collection_total TSDB Syncer: Total number of garbage collection operations.
+			# HELP cortex_compactor_garbage_collection_total Total number of garbage collection operations.
 			# TYPE cortex_compactor_garbage_collection_total counter
 			cortex_compactor_garbage_collection_total 555550
 
-			# HELP cortex_compactor_garbage_collection_failures_total TSDB Syncer: Total number of failed garbage collection operations.
+			# HELP cortex_compactor_garbage_collection_failures_total Total number of failed garbage collection operations.
 			# TYPE cortex_compactor_garbage_collection_failures_total counter
 			cortex_compactor_garbage_collection_failures_total 666660
 
-			# HELP cortex_compactor_garbage_collection_duration_seconds TSDB Syncer: Time it took to perform garbage collection iteration.
+			# HELP cortex_compactor_garbage_collection_duration_seconds Time it took to perform garbage collection iteration.
 			# TYPE cortex_compactor_garbage_collection_duration_seconds histogram
 			# Observed values: 8.6415, 53.5801, 15.5554
 			cortex_compactor_garbage_collection_duration_seconds_bucket{le="0.01"} 0
@@ -90,26 +90,26 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_garbage_collection_duration_seconds_sum 77.777
 			cortex_compactor_garbage_collection_duration_seconds_count 3
 
-			# HELP cortex_compactor_group_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block.
+			# HELP cortex_compactor_group_compactions_total Total number of group compaction attempts that resulted in a new block.
 			# TYPE cortex_compactor_group_compactions_total counter
 			# Sum across all groups
 			cortex_compactor_group_compactions_total 2999970
 
-			# HELP cortex_compactor_group_compaction_runs_started_total TSDB Syncer: Total number of group compaction attempts.
+			# HELP cortex_compactor_group_compaction_runs_started_total Total number of group compaction attempts.
 			# TYPE cortex_compactor_group_compaction_runs_started_total counter
 			# Sum across all groups
 			cortex_compactor_group_compaction_runs_started_total 3999960
 
-			# HELP cortex_compactor_group_compaction_runs_completed_total TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
+			# HELP cortex_compactor_group_compaction_runs_completed_total Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.
 			# TYPE cortex_compactor_group_compaction_runs_completed_total counter
 			# Sum across all groups
 			cortex_compactor_group_compaction_runs_completed_total 4999950
 
-			# HELP cortex_compactor_group_compactions_failures_total TSDB Syncer: Total number of failed group compactions.
+			# HELP cortex_compactor_group_compactions_failures_total Total number of failed group compactions.
 			# TYPE cortex_compactor_group_compactions_failures_total counter
 			cortex_compactor_group_compactions_failures_total 5999940
 
-			# HELP cortex_compactor_group_vertical_compactions_total TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
+			# HELP cortex_compactor_group_vertical_compactions_total Total number of group compaction attempts that resulted in a new block based on overlapping blocks.
 			# TYPE cortex_compactor_group_vertical_compactions_total counter
 			cortex_compactor_group_vertical_compactions_total 6999930
 	`))
@@ -185,7 +185,7 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 
 	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collected_blocks_total",
-		Help: "Total number of deleted blocks by compactor.",
+		Help: "Total number of blocks marked for deletion by compactor.",
 	})
 	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collection_total",

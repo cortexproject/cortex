@@ -41,7 +41,7 @@ type Config struct {
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
-	LimitQueryConcurrency    int                 `yaml:"limit_query_concurrency"`
+	QueryConcurrency         int                 `yaml:"query_concurrency"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -65,7 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
-	f.IntVar(&cfg.LimitQueryConcurrency, "cassandra.limit-query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
+	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 }
 
 func (cfg *Config) Validate() error {
@@ -211,8 +211,8 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient,
 	}
 
 	var querySemaphore *semaphore.Weighted
-	if cfg.LimitQueryConcurrency > 0 {
-		querySemaphore = semaphore.NewWeighted(int64(cfg.LimitQueryConcurrency))
+	if cfg.QueryConcurrency > 0 {
+		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
 	}
 
 	client := &StorageClient{

@@ -780,6 +780,39 @@ storage:
   # The CLI flags prefix for this block config is: ruler
   [configdb: <configstore_config>]
 
+  azure:
+    # Azure storage account name
+    # CLI flag: -ruler.storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # Azure storage account key
+    # CLI flag: -ruler.storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Azure storage container name
+    # CLI flag: -ruler.storage.azure.container-name
+    [container_name: <string> | default = ""]
+
+    # Azure storage endpoint suffix without schema. The account name will be
+    # prefixed to this value to create the FQDN
+    # CLI flag: -ruler.storage.azure.endpoint-suffix
+    [endpoint_suffix: <string> | default = ""]
+
+    # Number of retries for recoverable errors
+    # CLI flag: -ruler.storage.azure.max-retries
+    [max_retries: <int> | default = 20]
+
+  gcs:
+    # GCS bucket name
+    # CLI flag: -ruler.storage.gcs.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # JSON representing either a Google Developers Console
+    # client_credentials.json file or a Google Developers service account key
+    # file. If empty, fallback to Google default logic.
+    # CLI flag: -ruler.storage.gcs.service-account
+    [service_account: <string> | default = ""]
+
   s3:
     # S3 endpoint without schema
     # CLI flag: -ruler.storage.s3.endpoint
@@ -802,39 +835,6 @@ storage:
     # S3-compatible backend storage, like Minio.
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
-
-  gcs:
-    # GCS bucket name
-    # CLI flag: -ruler.storage.gcs.bucket-name
-    [bucket_name: <string> | default = ""]
-
-    # JSON representing either a Google Developers Console
-    # client_credentials.json file or a Google Developers service account key
-    # file. If empty, fallback to Google default logic.
-    # CLI flag: -ruler.storage.gcs.service-account
-    [service_account: <string> | default = ""]
-
-  azure:
-    # Azure storage account name
-    # CLI flag: -ruler.storage.azure.account-name
-    [account_name: <string> | default = ""]
-
-    # Azure storage account key
-    # CLI flag: -ruler.storage.azure.account-key
-    [account_key: <string> | default = ""]
-
-    # Azure storage container name
-    # CLI flag: -ruler.storage.azure.container-name
-    [container_name: <string> | default = ""]
-
-    # Azure storage endpoint suffix without schema. The account name will be
-    # prefixed to this value to create the FQDN
-    # CLI flag: -ruler.storage.azure.endpoint-suffix
-    [endpoint_suffix: <string> | default = ""]
-
-    # Number of retries for recoverable errors
-    # CLI flag: -ruler.storage.azure.max-retries
-    [max_retries: <int> | default = 20]
 
   swift:
     # Openstack authentication URL.

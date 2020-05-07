@@ -24,9 +24,9 @@ type RuleStoreConfig struct {
 	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	S3         s3.Config         `yaml:"s3"`
-	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
+	GCS        gcs.Config        `yaml:"gcs"`
+	S3         s3.Config         `yaml:"s3"`
 	Swift      swift.Config      `yaml:"swift"`
 	FileSystem filesystem.Config `yaml:"filesystem"`
 

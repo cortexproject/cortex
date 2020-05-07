@@ -59,6 +59,7 @@
 * [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2483
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
+* [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 
 ## 1.0.0 / 2020-04-02
 

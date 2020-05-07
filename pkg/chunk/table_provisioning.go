@@ -10,6 +10,11 @@ type ProvisionConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
+	// defaults for ActiveTableProvisionConfig
+	cfg.ProvisionedWriteThroughput = 1000
+	cfg.ProvisionedReadThroughput = 300
+	cfg.ProvisionedThroughputOnDemandMode = false
+
 	cfg.ActiveTableProvisionConfig.RegisterFlags(argPrefix, f)
 	cfg.InactiveTableProvisionConfig.RegisterFlags(argPrefix, f)
 }
@@ -24,10 +29,11 @@ type ActiveTableProvisionConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
+// Make sure defaults are set in the respective fields before calling RegisterFlags.
 func (cfg *ActiveTableProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1000, "Table default write throughput. Supported by DynamoDB")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "Table default read throughput. Supported by DynamoDB")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", cfg.ProvisionedWriteThroughput, "Table default write throughput. Supported by DynamoDB")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", cfg.ProvisionedReadThroughput, "Table default read throughput. Supported by DynamoDB")
+	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", cfg.ProvisionedThroughputOnDemandMode, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
 
 	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
 	cfg.ReadScale.RegisterFlags(argPrefix+".read-throughput.scale", f)

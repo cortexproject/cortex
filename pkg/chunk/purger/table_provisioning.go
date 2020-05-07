@@ -16,13 +16,13 @@ type TableProvisioningConfig struct {
 // Adding a separate RegisterFlags here instead of using it from embedded chunk.ActiveTableProvisionConfig to be able to manage defaults separately.
 // Defaults for WriteScale and ReadScale are shared for now to avoid adding further complexity since autoscaling is disabled anyways by default.
 func (cfg *TableProvisioningConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1, "Table default write throughput. Supported by DynamoDB")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "Table default read throughput. Supported by DynamoDB")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
-	f.Var(&cfg.TableTags, argPrefix+".tags", "Tag (of the form key=value) to be added to the tables. Supported by DynamoDB")
+	// default values ActiveTableProvisionConfig
+	cfg.ProvisionedWriteThroughput = 1
+	cfg.ProvisionedReadThroughput = 300
+	cfg.ProvisionedThroughputOnDemandMode = false
 
-	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
-	cfg.ReadScale.RegisterFlags(argPrefix+".read-throughput.scale", f)
+	cfg.ActiveTableProvisionConfig.RegisterFlags(argPrefix, f)
+	f.Var(&cfg.TableTags, argPrefix+".tags", "Tag (of the form key=value) to be added to the tables. Supported by DynamoDB")
 }
 
 func (cfg DeleteStoreConfig) GetTables() []chunk.TableDesc {

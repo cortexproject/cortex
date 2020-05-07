@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/httpclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T) {

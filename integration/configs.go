@@ -22,7 +22,6 @@ const (
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	blocksStorageEngine    = "tsdb"
-	certsFolder            = "integration/certs/"
 	clientCertFile         = "certs/client.crt"
 	clientKeyFile          = "certs/client.key"
 	rootCertFile           = "certs/root.crt"

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -33,15 +35,13 @@ func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandl
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteStore *DeleteStore
-	purger      *DataPurger
 	metrics     *deleteRequestHandlerMetrics
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore, purger *DataPurger, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore *DeleteStore, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
-		purger:      purger,
 		metrics:     newDeleteRequestHandlerMetrics(registerer),
 	}
 
@@ -104,6 +104,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	if err := dm.deleteStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), match); err != nil {
+		level.Error(util.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -122,11 +123,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 
 	deleteRequests, err := dm.deleteStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
+		level.Error(util.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
+		level.Error(util.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
 }
@@ -143,11 +146,9 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
 
-	dm.purger.loadNewRequestsMtx.Lock()
-	defer dm.purger.loadNewRequestsMtx.Unlock()
-
 	deleteRequest, err := dm.deleteStore.GetDeleteRequest(ctx, userID, requestID)
 	if err != nil {
+		level.Error(util.Logger).Log("msg", "error getting delete request from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -162,7 +163,13 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
+	if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Before(model.Now()) {
+		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", deleteRequestCancellationDeadline.String()), http.StatusBadRequest)
+		return
+	}
+
 	if err := dm.deleteStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+		level.Error(util.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

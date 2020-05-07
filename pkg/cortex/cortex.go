@@ -234,12 +234,12 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex.setupAuthMiddleware()
 
-	serviceMap, err := cortex.initModuleServices(&cfg, cfg.Target)
+	serviceMap, err := cortex.initModuleServices()
 	if err != nil {
 		return nil, err
 	}
 
-	cortex.ServiceMap = ServiceMap
+	cortex.ServiceMap = serviceMap
 	cortex.API.RegisterServiceMapHandler(http.HandlerFunc(cortex.servicesHandler))
 
 	return cortex, nil

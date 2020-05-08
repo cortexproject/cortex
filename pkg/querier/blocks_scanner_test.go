@@ -332,7 +332,7 @@ func prepareBlocksScanner(t *testing.T, cfg BlocksScannerConfig) (*BlocksScanner
 	storageDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-storage")
 	require.NoError(t, err)
 
-	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir}, "test", nil)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()

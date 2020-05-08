@@ -21,12 +21,12 @@ type S3Client struct {
 }
 
 func NewS3Client(cfg s3.Config) (*S3Client, error) {
-	writer, err := s3.NewBucketClient(cfg, "test", log.NewNopLogger(), nil)
+	writer, err := s3.NewBucketClient(cfg, "test", log.NewNopLogger())
 	if err != nil {
 		return nil, err
 	}
 
-	reader, err := s3.NewBucketReaderClient(cfg, "test", log.NewNopLogger(), nil)
+	reader, err := s3.NewBucketReaderClient(cfg, "test", log.NewNopLogger())
 	if err != nil {
 		return nil, err
 	}

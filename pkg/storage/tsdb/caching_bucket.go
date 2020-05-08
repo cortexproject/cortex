@@ -29,10 +29,10 @@ func (cfg *CachingBucketConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.CachingConfig = storecache.DefaultCachingBucketConfig()
-	f.IntVar(&cfg.CachingConfig.MaxChunksGetRangeRequests, prefix+"chunks.max-getrange-requests", cfg.CachingConfig.MaxChunksGetRangeRequests, "Max GetRange requests for chunks.")
-	f.Int64Var(&cfg.CachingConfig.ChunkSubrangeSize, prefix+"chunks.subrange-size", cfg.CachingConfig.ChunkSubrangeSize, "Subrange size used for caching chunks.")
-	f.DurationVar(&cfg.CachingConfig.ChunkObjectSizeTTL, prefix+"chunks.object-size-ttl", cfg.CachingConfig.ChunkObjectSizeTTL, "TTL for caching object size for chunks.")
-	f.DurationVar(&cfg.CachingConfig.ChunkSubrangeTTL, prefix+"chunks.subrange-ttl", cfg.CachingConfig.ChunkSubrangeTTL, "TTL for caching individual chunks subranges.")
+	f.IntVar(&cfg.CachingConfig.MaxChunksGetRangeRequests, prefix+"caching.max-chunks-get-range-requests", cfg.CachingConfig.MaxChunksGetRangeRequests, "Max GetRange requests for chunks.")
+	f.Int64Var(&cfg.CachingConfig.ChunkSubrangeSize, prefix+"caching.chunk-subrange-size", cfg.CachingConfig.ChunkSubrangeSize, "Subrange size used for caching chunks.")
+	f.DurationVar(&cfg.CachingConfig.ChunkObjectSizeTTL, prefix+"caching.chunk-object-size-ttl", cfg.CachingConfig.ChunkObjectSizeTTL, "TTL for caching object size for chunks.")
+	f.DurationVar(&cfg.CachingConfig.ChunkSubrangeTTL, prefix+"caching.chunk-subrange-ttl", cfg.CachingConfig.ChunkSubrangeTTL, "TTL for caching individual chunks subranges.")
 }
 
 // Validate the config.

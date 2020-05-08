@@ -2719,19 +2719,19 @@ bucket_store:
 
     caching:
       # Subrange size used for caching chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunks.subrange-size
+      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunk-subrange-size
       [chunk_subrange_size: <int> | default = 16000]
 
       # Max GetRange requests for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunks.max-getrange-requests
+      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.max-chunks-get-range-requests
       [max_chunks_get_range_requests: <int> | default = 3]
 
       # TTL for caching object size for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunks.object-size-ttl
+      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunk-object-size-ttl
       [chunk_object_size_ttl: <duration> | default = 24h]
 
       # TTL for caching individual chunks subranges.
-      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunks.subrange-ttl
+      # CLI flag: -experimental.tsdb.bucket-store.caching-bucket.chunk-subrange-ttl
       [chunk_subrange_ttl: <duration> | default = 24h]
 
   # Duration after which the blocks marked for deletion will be filtered out

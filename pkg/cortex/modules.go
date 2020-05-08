@@ -543,5 +543,5 @@ func (t *Cortex) setupModuleManager() error {
 
 	t.ModuleManager = mm
 
-	return mm
+	return nil
 }

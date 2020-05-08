@@ -19,13 +19,13 @@ type module struct {
 // Manager is a component that initialises modules of the application
 // in the right order of dependencies.
 type Manager struct {
-	modules map[string]module
+	modules map[string]*module
 }
 
 // NewManager creates a new Manager
 func NewManager() *Manager {
 	return &Manager{
-		modules: make(map[string]module),
+		modules: make(map[string]*module),
 	}
 }
 
@@ -33,7 +33,7 @@ func NewManager() *Manager {
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
-	m.modules[name] = module{
+	m.modules[name] = &module{
 		initFn: initFn,
 	}
 }

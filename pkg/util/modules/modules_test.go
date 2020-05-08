@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -38,6 +39,6 @@ func TestDependencies(t *testing.T) {
 	assert.Equal(t, invDeps[0], "serviceB")
 
 	svcs, err := mm.InitModuleServices("serviceC")
-	assert.NotNil(t, svcs)
-	assert.NoError(t, err)
+	assert.Nil(t, svcs)
+	assert.Error(t, err, fmt.Errorf("module serviceA returned nil service but has other modules dependent on it: [serviceB]"))
 }

@@ -233,7 +233,7 @@ func New(cfg Config) (*Cortex, error) {
 		Cfg: cfg,
 	}
 
-	cortex.setupAuthMiddleware(&cfg)
+	cortex.setupAuthMiddleware()
 
 	mm := cortex.createModuleManager()
 	cortex.ModuleManager = mm
@@ -241,12 +241,12 @@ func New(cfg Config) (*Cortex, error) {
 	return cortex, nil
 }
 
-func (t *Cortex) setupAuthMiddleware(cfg *Config) {
-	if cfg.AuthEnabled {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+func (t *Cortex) setupAuthMiddleware() {
+	if t.Cfg.AuthEnabled {
+		t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 			middleware.ServerUserHeaderInterceptor,
 		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 				switch info.FullMethod {
 				// Don't check auth header on TransferChunks, as we weren't originally
@@ -262,13 +262,13 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 			},
 		}
 	} else {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+		t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 			fakeGRPCAuthUniaryMiddleware,
 		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
 			fakeGRPCAuthStreamMiddleware,
 		}
-		cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
+		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 

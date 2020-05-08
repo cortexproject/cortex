@@ -5,7 +5,7 @@ defaults: &defaults
   docker:
     # IMPORTANT: whenever you change the build-image version tag, remember to replace it
     #            across the entire file (there are multiple references).
-    - image: quay.io/cortexproject/build-image:introduce-faillint-to-ci-ca69fd09b-WIP
+    - image: quay.io/cortexproject/build-image:share-traffic-mirroring-with-envoy-2af1da4d8-WIP
   working_directory: /go/src/github.com/cortexproject/cortex
 
 filters: &filters
@@ -91,7 +91,7 @@ jobs:
 
   test:
     docker:
-      - image: quay.io/cortexproject/build-image:introduce-faillint-to-ci-ca69fd09b-WIP
+      - image: quay.io/cortexproject/build-image:share-traffic-mirroring-with-envoy-2af1da4d8-WIP
       - image: cassandra:3.11
         environment:
           JVM_OPTS: "-Xms1024M -Xmx1024M"
@@ -115,7 +115,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:introduce-faillint-to-ci-ca69fd09b-WIP configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:share-traffic-mirroring-with-envoy-2af1da4d8-WIP configs-integration-test
 
   integration:
     machine:

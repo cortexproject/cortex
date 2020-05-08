@@ -57,7 +57,7 @@ require (
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.uber.org/atomic v1.5.1
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.26.0

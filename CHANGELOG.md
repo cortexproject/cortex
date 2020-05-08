@@ -26,6 +26,7 @@
 * [FEATURE] Experimental: Added a new object storage client for OpenStack Swift. #2440
 * [FEATURE] Update in dependency `weaveworks/common`. TLS config options added to the Server. #2535
 * [FEATURE] Experimental: Added support for `/api/v1/metadata` Prometheus-based endpoint. #2549
+* [FEATURE] Add ability to limit concurrent queries to Cassandra with `-cassandra.query-concurrency` flag. #2562
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392
@@ -58,6 +59,7 @@
 * [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2483
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
+* [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 
 ## 1.0.0 / 2020-04-02
 

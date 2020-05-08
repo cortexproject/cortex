@@ -118,6 +118,20 @@ func (cfg *MemcachedIndexCacheConfig) Validate() error {
 	return nil
 }
 
+func (cfg MemcachedIndexCacheConfig) ToMemcachedClientConfig() cacheutil.MemcachedClientConfig {
+	return cacheutil.MemcachedClientConfig{
+		Addresses:                 cfg.GetAddresses(),
+		Timeout:                   cfg.Timeout,
+		MaxIdleConnections:        cfg.MaxIdleConnections,
+		MaxAsyncConcurrency:       cfg.MaxAsyncConcurrency,
+		MaxAsyncBufferSize:        cfg.MaxAsyncBufferSize,
+		MaxGetMultiConcurrency:    cfg.MaxGetMultiConcurrency,
+		MaxGetMultiBatchSize:      cfg.MaxGetMultiBatchSize,
+		MaxItemSize:               model.Bytes(cfg.MaxItemSize),
+		DNSProviderUpdateInterval: 30 * time.Second,
+	}
+}
+
 // NewIndexCache creates a new index cache based on the input configuration.
 func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
 	switch cfg.Backend {
@@ -146,19 +160,7 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 }
 
 func newMemcachedIndexCache(cfg MemcachedIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
-	config := cacheutil.MemcachedClientConfig{
-		Addresses:                 cfg.GetAddresses(),
-		Timeout:                   cfg.Timeout,
-		MaxIdleConnections:        cfg.MaxIdleConnections,
-		MaxAsyncConcurrency:       cfg.MaxAsyncConcurrency,
-		MaxAsyncBufferSize:        cfg.MaxAsyncBufferSize,
-		MaxGetMultiConcurrency:    cfg.MaxGetMultiConcurrency,
-		MaxGetMultiBatchSize:      cfg.MaxGetMultiBatchSize,
-		MaxItemSize:               model.Bytes(cfg.MaxItemSize),
-		DNSProviderUpdateInterval: 30 * time.Second,
-	}
-
-	client, err := cacheutil.NewMemcachedClientWithConfig(logger, "index-cache", config, registerer)
+	client, err := cacheutil.NewMemcachedClientWithConfig(logger, "index-cache", cfg.ToMemcachedClientConfig(), registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create index cache memcached client")
 	}

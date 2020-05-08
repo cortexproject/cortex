@@ -64,7 +64,4 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, c.ServiceMap[Ingester])
 	require.NotNil(t, c.ServiceMap[Ring])
 	require.NotNil(t, c.ServiceMap[Distributor])
-
-	// check that findInverseDependencie for Ring -- querier and distributor depend on Ring, so should be returned.
-	// require.ElementsMatch(t, []ModuleName{Distributor, Querier}, findInverseDependencies(Ring, modules[cfg.Target].deps))
 }

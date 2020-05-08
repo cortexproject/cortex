@@ -485,7 +485,7 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 	return t.DataPurger, nil
 }
 
-func (t *Cortex) createModuleManager() *modules.Manager {
+func (t *Cortex) setupModuleManager() error {
 	mm := modules.NewManager()
 
 	// Register all modules here.
@@ -536,8 +536,12 @@ func (t *Cortex) createModuleManager() *modules.Manager {
 		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
 	}
 	for mod, targets := range deps {
-		mm.AddDependency(mod, targets...)
+		if err := mm.AddDependency(mod, targets...); err != nil {
+			return err
+		}
 	}
+
+	t.ModuleManager = mm
 
 	return mm
 }

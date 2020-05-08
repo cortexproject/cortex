@@ -7,15 +7,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-type service func() (services.Service, error)
-
 // module is the basic building block of the application
 type module struct {
 	// dependencies of this module
 	deps []string
 
 	// initFn for this module (can return nil)
-	initFn service
+	initFn func() (services.Service, error)
 }
 
 // Manager is a component that initialises modules of the application
@@ -31,31 +29,29 @@ func NewManager() *Manager {
 	}
 }
 
-// RegisterModule registers a new module with ModuleManager
-func (m *Manager) RegisterModule(name string, initFn service) {
+// RegisterModule registers a new module with name and init function
+// name must be unique to avoid overwriting modules
+// if initFn is nil, the module will not initialise
+func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
 	m.modules[name] = module{
 		initFn: initFn,
 	}
-	return
 }
 
 // AddDependency adds a dependency from name(source) to dependsOn(targets)
+// An error is returned if the source module name is not found
 func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 	if mod, ok := m.modules[name]; ok {
-		for _, dep := range dependsOn {
-			if _, ok := m.modules[dep]; ok {
-				mod.deps = append(mod.deps, dep)
-			} else {
-				return fmt.Errorf("no such module: %s", dep)
-			}
-		}
+		mod.deps = append(mod.deps, dependsOn...)
 	} else {
 		return fmt.Errorf("no such module: %s", name)
 	}
 	return nil
 }
 
-// InitModuleServices starts the target module
+// InitModuleServices initalises the target module by initalising all its dependencies
+// in the right order. Modules are wrapped in such a way that they start after their
+// dependencies have been started and stop before their dependencies are stopped.
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {
 	servicesMap := map[string]services.Service{}
 
@@ -76,8 +72,8 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 
 			invDeps := m.findInverseDependencies(n, deps[ix+1:])
 			if s == nil {
-				if invDeps != nil {
-					return nil, fmt.Errorf("module %s returned nil service but has other modules dependent on it", n)
+				if len(invDeps) > 0 {
+					return nil, fmt.Errorf("module %s returned nil service but has other modules dependent on it: %v", n, invDeps)
 				}
 			} else {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,

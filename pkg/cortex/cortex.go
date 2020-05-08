@@ -232,11 +232,10 @@ func New(cfg Config) (*Cortex, error) {
 	cortex := &Cortex{
 		Cfg: cfg,
 	}
-
 	cortex.setupAuthMiddleware()
-
-	mm := cortex.createModuleManager()
-	cortex.ModuleManager = mm
+	if err := cortex.setupModuleManager(); err != nil {
+		return nil, err
+	}
 
 	return cortex, nil
 }

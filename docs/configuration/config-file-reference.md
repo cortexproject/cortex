@@ -646,6 +646,56 @@ The `querier_config` configures the Cortex querier.
 # instances form a ring and addresses are picked from the ring).
 # CLI flag: -experimental.querier.store-gateway-addresses
 [store_gateway_addresses: <string> | default = ""]
+
+store_gateway_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -querier.store-gateway-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -querier.store-gateway-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages.
+  # CLI flag: -querier.store-gateway-client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -querier.store-gateway-client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -querier.store-gateway-client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -querier.store-gateway-client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -querier.store-gateway-client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -querier.store-gateway-client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -querier.store-gateway-client.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # TLS cert path for the GRPC client
+  # CLI flag: -querier.store-gateway-client.grpc-tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the GRPC client
+  # CLI flag: -querier.store-gateway-client.grpc-tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the GRPC client
+  # CLI flag: -querier.store-gateway-client.grpc-tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `query_frontend_config`
@@ -757,6 +807,56 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
 
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages.
+  # CLI flag: -ruler.client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -ruler.client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -ruler.client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -ruler.client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -ruler.client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -ruler.client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -ruler.client.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # TLS cert path for the GRPC client
+  # CLI flag: -ruler.client.grpc-tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the GRPC client
+  # CLI flag: -ruler.client.grpc-tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the GRPC client
+  # CLI flag: -ruler.client.grpc-tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
@@ -777,7 +877,7 @@ storage:
 
   # The configstore_config configures the config database storing rules and
   # alerts, and is used by the Cortex alertmanager.
-  # The CLI flags prefix for this block config is: ruler
+  # The CLI flags prefix for this block config is: ruler.
   [configdb: <configstore_config>]
 
   azure:
@@ -1064,7 +1164,7 @@ storage:
 
   # The configstore_config configures the config database storing rules and
   # alerts, and is used by the Cortex alertmanager.
-  # The CLI flags prefix for this block config is: alertmanager
+  # The CLI flags prefix for this block config is: alertmanager.client
   [configdb: <configstore_config>]
 
   local:
@@ -1584,6 +1684,18 @@ bigtable:
       # CLI flag: -bigtable.backoff-retries
       [max_retries: <int> | default = 10]
 
+    # TLS cert path for the GRPC client
+    # CLI flag: -bigtable.grpc-tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # TLS key path for the GRPC client
+    # CLI flag: -bigtable.grpc-tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # TLS CA path for the GRPC client
+    # CLI flag: -bigtable.grpc-tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
   # If enabled, once a tables info is fetched, it is cached.
   # CLI flag: -bigtable.table-cache.enabled
   [table_cache_enabled: <boolean> | default = true]
@@ -1960,6 +2072,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the GRPC client
+  # CLI flag: -ingester.client.grpc-tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the GRPC client
+  # CLI flag: -ingester.client.grpc-tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the GRPC client
+  # CLI flag: -ingester.client.grpc-tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `frontend_worker_config`
@@ -2021,6 +2145,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the GRPC client
+  # CLI flag: -querier.frontend-client.grpc-tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the GRPC client
+  # CLI flag: -querier.frontend-client.grpc-tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the GRPC client
+  # CLI flag: -querier.frontend-client.grpc-tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `etcd_config`
@@ -2513,19 +2649,35 @@ api:
 
 The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager. The supported CLI flags `<prefix>` used to reference this config block are:
 
-- `alertmanager`
-- `ruler`
+- `alertmanager.client`
+- `ruler.`
 
 &nbsp;
 
 ```yaml
-# URL of configs API server.
-# CLI flag: -<prefix>.configs.url
-[configs_api_url: <url> | default = ]
+# Endpoint to connect to
+# CLI flag: -<prefix>.http-endpoint
+[endpoint: <url> | default = ]
 
-# Timeout for requests to Weave Cloud configs service.
-# CLI flag: -<prefix>.configs.client-timeout
+# Timeout for connecting to the endpoint
+# CLI flag: -<prefix>.http-client-timeout
 [client_timeout: <duration> | default = 5s]
+
+# Timeout for reading from backend
+# CLI flag: -<prefix>.http-backend-read-timeout
+[backend_read_timeout: <duration> | default = 1m30s]
+
+# TLS cert path for the HTTP client
+# CLI flag: -<prefix>.http-tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# TLS key path for the HTTP client
+# CLI flag: -<prefix>.http-tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# TLS CA path for the HTTP client
+# CLI flag: -<prefix>.http-tls-ca-path
+[tls_ca_path: <string> | default = ""]
 ```
 
 ### `tsdb_config`

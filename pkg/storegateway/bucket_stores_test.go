@@ -89,6 +89,8 @@ func TestBucketStores_InitialSync(t *testing.T) {
 			# TYPE bucket_store_block_load_failures_total counter
 			bucket_store_block_load_failures_total 0
 	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
+
+	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -144,6 +146,8 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 			# TYPE bucket_store_block_load_failures_total counter
 			bucket_store_block_load_failures_total 0
 	`), "bucket_store_blocks_loaded", "bucket_store_block_loads_total", "bucket_store_block_load_failures_total"))
+
+	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {

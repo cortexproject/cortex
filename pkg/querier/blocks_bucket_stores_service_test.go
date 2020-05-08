@@ -70,7 +70,12 @@ func TestBucketStoresService_InitialSync(t *testing.T) {
 				defer services.StopAndAwaitTerminated(context.Background(), us) //nolint:errcheck
 			}
 
-			require.Equal(t, testData.expectedErr, err)
+			if testData.expectedErr != nil && err != nil {
+				require.Equal(t, testData.expectedErr.Error(), err.Error())
+			} else {
+				require.Equal(t, testData.expectedErr, err)
+			}
+
 			bucketClient.AssertNumberOfCalls(t, "Iter", testData.expectedIter)
 		})
 	}

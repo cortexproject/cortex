@@ -1,8 +1,8 @@
 package cassandra
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 	"testing"
 )
 

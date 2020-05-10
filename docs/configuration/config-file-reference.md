@@ -1738,6 +1738,11 @@ cassandra:
   # CLI flag: -cassandra.convict-hosts-on-failure
   [convict_hosts_on_failure: <boolean> | default = true]
 
+  # Table options used to create index or chunk tables.(Default = "": use
+  # default table options of Cassandra
+  # CLI flag: -cassandra.table-with
+  [table_with: <string> | default = ""]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir

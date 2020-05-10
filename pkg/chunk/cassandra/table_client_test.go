@@ -2,13 +2,14 @@ package cassandra
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTableClient_getCreateTableQuery_default(t *testing.T) {
 	client := &tableClient{
-		cfg:  Config{},
+		cfg: Config{},
 	}
 	desc, _, _ := client.DescribeTable(context.Background(), "test_table")
 	query := client.getCreateTableQuery(&desc)

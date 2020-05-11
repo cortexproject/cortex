@@ -4,7 +4,7 @@ This page describes the release process and the currently planned schedule for u
 
 ## Release schedule
 
-Our goal is to provide a new minor release every 4 weeks. This is a new process and everything in this document is subject to change.
+Our goal is to provide a new minor release every 6 weeks. This is a new process and everything in this document is subject to change.
 
 | release series | date of first pre-release (year-month-day) | release shepherd                            |
 |----------------|--------------------------------------------|---------------------------------------------|
@@ -15,6 +15,8 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | v0.5.0         | 2020-01-08                                 | _Abandoned_                                 |
 | v0.6.0         | 2020-01-22                                 | Marco Pracucci (@pracucci)                  |
 | v0.7.0         | 2020-03-09                                 | Marco Pracucci (@pracucci)                  |
+| v1.0.0         | 2020-03-31                                 | Goutham Veeramachaneni (@gouthamve)         |
+| v1.1.0         | 2020-05-11                                 | Peter Štibraný (@pstibrany)                 |
 
 ## Release shepherd responsibilities
 

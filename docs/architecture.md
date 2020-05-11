@@ -180,7 +180,7 @@ The **write-ahead log** (WAL) is used to write to a persistent local disk all in
 
 Contrary to the sole replication and given the persistent local disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
 
-The WAL for the chunks storage is an experimental feature (disabled by default), while it's always enabled for the blocks storage.
+The WAL for the chunks storage is disabled by default, while it's always enabled for the blocks storage.
 
 #### Ingesters write de-amplification
 

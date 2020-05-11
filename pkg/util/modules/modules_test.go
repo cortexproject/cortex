@@ -1,12 +1,12 @@
 package modules
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func mockInitFunc() (services.Service, error) { return nil, nil }
@@ -39,6 +39,6 @@ func TestDependencies(t *testing.T) {
 	assert.Equal(t, invDeps[0], "serviceB")
 
 	svcs, err := mm.InitModuleServices("serviceC")
-	assert.Nil(t, svcs)
-	assert.Error(t, err, fmt.Errorf("module serviceA returned nil service but has other modules dependent on it: [serviceB]"))
+	assert.NotNil(t, svcs)
+	assert.NoError(t, err)
 }

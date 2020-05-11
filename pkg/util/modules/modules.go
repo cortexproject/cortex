@@ -3,8 +3,9 @@ package modules
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // module is the basic building block of the application
@@ -49,7 +50,7 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 	return nil
 }
 
-// InitModuleServices initalises the target module by initalising all its dependencies
+// InitModuleServices initialises the target module by initialising all its dependencies
 // in the right order. Modules are wrapped in such a way that they start after their
 // dependencies have been started and stop before their dependencies are stopped.
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {

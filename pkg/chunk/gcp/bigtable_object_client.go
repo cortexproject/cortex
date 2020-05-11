@@ -22,11 +22,7 @@ type bigtableObjectClient struct {
 // NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
 func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
-	if err != nil {
-		return nil, err
-	}
-	opts := toOptions(dialOpts)
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err

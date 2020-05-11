@@ -54,7 +54,24 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 }
 
 // DialOption returns the config as a grpc.DialOptions.
-func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) []grpc.DialOption {
+	if cfg.BackoffOnRatelimits {
+		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
+	}
+
+	if cfg.RateLimit > 0 {
+		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
+	}
+
+	return []grpc.DialOption{
+		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
+		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
+		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
+	}
+}
+
+// DialOptionWithTLS returns the config as a grpc.DialOptions
+func (cfg *Config) DialOptionWithTLS(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
 	if cfg.BackoffOnRatelimits {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
 	}

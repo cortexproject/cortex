@@ -24,11 +24,7 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
-	if err != nil {
-		return nil, err
-	}
-	opts := toOptions(dialOpts)
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
 	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err

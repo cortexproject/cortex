@@ -30,7 +30,7 @@ func newStoreGatewayClientFactory(cfg grpcclient.Config, reg prometheus.Register
 }
 
 func dialStoreGatewayClient(cfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
-	opts, err := cfg.DialOption(grpcclient.Instrument(requestDuration))
+	opts, err := cfg.DialOptionWithTLS(grpcclient.Instrument(requestDuration))
 	if err != nil {
 		return nil, err
 	}

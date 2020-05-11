@@ -60,7 +60,6 @@ example set of command-line parameters from a fairly modest install:
    -dynamodb.periodic-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
    -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
    -dynamodb.periodic-table.read-throughput=300
-   -dynamodb.periodic-table.tag=product_area=cortex
 
    -dynamodb.chunk-table.write-throughput=800
    -dynamodb.chunk-table.write-throughput.scale.enabled=true
@@ -69,7 +68,6 @@ example set of command-line parameters from a fairly modest install:
    -dynamodb.chunk-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
    -dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode=true
    -dynamodb.chunk-table.read-throughput=300
-   -dynamodb.chunk-table.tag=product_area=cortex
 ```
 
 Several things to note here:
@@ -88,3 +86,6 @@ Several things to note here:
 - `ondemand-throughput-mode` tells AWS to charge for what you use, as
    opposed to continuous provisioning. This mode is cost-effective for
    older data, which is never written and only read sporadically.
+-  If you want to add AWS tags to the created DynamoDB tables you
+   can do it by adding a `tags` map to your schema definition. See
+   [`schema configuration`](../configuration/schema-config-reference.md)

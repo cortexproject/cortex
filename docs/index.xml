@@ -4074,7 +4074,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;p&gt;The &lt;strong&gt;replication&lt;/strong&gt; is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.&lt;/p&gt;
 &lt;p&gt;The &lt;strong&gt;write-ahead log&lt;/strong&gt; (WAL) is used to write to a persistent local disk all incoming series samples until they&amp;rsquo;re flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.&lt;/p&gt;
 &lt;p&gt;Contrary to the sole replication and given the persistent local disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.&lt;/p&gt;
-&lt;p&gt;The WAL for the chunks storage is an experimental feature (disabled by default), while it&amp;rsquo;s always enabled for the blocks storage.&lt;/p&gt;
+&lt;p&gt;The WAL for the chunks storage is disabled by default, while it&amp;rsquo;s always enabled for the blocks storage.&lt;/p&gt;
 &lt;h4 id=&#34;ingesters-write-de-amplification&#34;&gt;Ingesters write de-amplification&lt;/h4&gt;
 &lt;p&gt;Ingesters store recently received samples in-memory in order to perform write de-amplification. If the ingesters would immediately write received samples to the long-term storage, the system would be very difficult to scale due to the very high pressure on the storage. For this reason, the ingesters batch and compress samples in-memory and periodically flush them out to the storage.&lt;/p&gt;
 &lt;p&gt;Write de-amplification is the main source of Cortex&amp;rsquo;s low total cost of ownership (TCO).&lt;/p&gt;
@@ -5731,7 +5731,6 @@ The absolute path of the Cortex repository local checkout (defaults to &lt;code&
 &lt;p&gt;Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p&gt;</description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/production/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/ingesters-with-wal/</guid><description>
 &lt;p&gt;Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.&lt;/p&gt;
 &lt;p&gt;To use WAL, there are some changes that needs to be made in the deployment.&lt;/p&gt;
-&lt;p&gt;&lt;em&gt;The WAL is currently considered experimental.&lt;/em&gt;&lt;/p&gt;
 &lt;h2 id=&#34;changes-to-deployment&#34;&gt;Changes to deployment&lt;/h2&gt;
 &lt;ol&gt;
 &lt;li&gt;&lt;p&gt;Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on &lt;a href=&#34;https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/&#34;&gt;statefulset&lt;/a&gt; with fixed volumes.&lt;/p&gt;&lt;/li&gt;
@@ -5974,7 +5973,6 @@ Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</des
 &lt;p&gt;Currently experimental features are:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;TSDB block storage.&lt;/li&gt;
-&lt;li&gt;Ingester chunk WAL.&lt;/li&gt;
 &lt;li&gt;Cassandra storage engine.&lt;/li&gt;
 &lt;li&gt;Azure blob storage.&lt;/li&gt;
 &lt;li&gt;Zone awareness based replication.&lt;/li&gt;
@@ -6073,6 +6071,7 @@ replica: replica2
 &lt;li&gt;[ENHANCEMENT] query-frontend now also logs the POST data of long queries. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2481&#34;&gt;#2481&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental WAL: Ingester WAL records now have type header and the custom WAL records have been replaced by Prometheus TSDB&amp;rsquo;s WAL records. Old records will not be supported from 1.3 onwards. Note: once this is deployed, you cannot downgrade without data loss. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2436&#34;&gt;#2436&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Redis Cache: Added &lt;code&gt;idle_timeout&lt;/code&gt;, &lt;code&gt;wait_on_pool_exhaustion&lt;/code&gt; and &lt;code&gt;max_conn_lifetime&lt;/code&gt; options to redis cache configuration. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2550&#34;&gt;#2550&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2506&#34;&gt;#2506&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixes &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2411&#34;&gt;#2411&lt;/a&gt;, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code&gt;-server.path-prefix&lt;/code&gt; is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2372&#34;&gt;#2372&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;&lt;/li&gt;

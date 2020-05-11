@@ -3449,7 +3449,6 @@ and development.&lt;/p&gt;
 &lt;p&gt;Currently experimental features are:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;TSDB block storage.&lt;/li&gt;
-&lt;li&gt;Ingester chunk WAL.&lt;/li&gt;
 &lt;li&gt;Cassandra storage engine.&lt;/li&gt;
 &lt;li&gt;Azure blob storage.&lt;/li&gt;
 &lt;li&gt;Zone awareness based replication.&lt;/li&gt;

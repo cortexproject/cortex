@@ -4922,7 +4922,6 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -dynamodb.periodic-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
 -dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
 -dynamodb.periodic-table.read-throughput=300
--dynamodb.periodic-table.tag=product_area=cortex
 -dynamodb.chunk-table.write-throughput=800
 -dynamodb.chunk-table.write-throughput.scale.enabled=true
 -dynamodb.chunk-table.write-throughput.scale.min-capacity=200
@@ -4930,7 +4929,6 @@ example set of command-line parameters from a fairly modest install:&lt;/p&gt;
 -dynamodb.chunk-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
 -dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode=true
 -dynamodb.chunk-table.read-throughput=300
--dynamodb.chunk-table.tag=product_area=cortex
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;Several things to note here:&lt;/p&gt;
 &lt;ul&gt;
@@ -4948,6 +4946,9 @@ minutes to finish scaling. In the config above they are set.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ondemand-throughput-mode&lt;/code&gt; tells AWS to charge for what you use, as
 opposed to continuous provisioning. This mode is cost-effective for
 older data, which is never written and only read sporadically.&lt;/li&gt;
+&lt;li&gt;If you want to add AWS tags to the created DynamoDB tables you
+can do it by adding a &lt;code&gt;tags&lt;/code&gt; map to your schema definition. See
+&lt;a href=&#34;/docs/configuration/schema-configuration/&#34;&gt;&lt;code&gt;schema configuration&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
 &lt;p&gt;The Cortex documentation is compiled into a website published at &lt;a href=&#34;https://cortexmetrics.io/&#34;&gt;cortexmetrics.io&lt;/a&gt;. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p&gt;
 &lt;h2 id=&#34;initial-setup&#34;&gt;Initial setup&lt;/h2&gt;

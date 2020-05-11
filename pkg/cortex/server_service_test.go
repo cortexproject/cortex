@@ -47,10 +47,11 @@ func TestServerStopViaShutdown(t *testing.T) {
 	s := NewServerService(serv, func() []services.Service { return nil })
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 
-	// we stop HTTP/gRPC Servers here... that should make server stop.
+	// Shutting down HTTP/gRPC servers makes Server stop, but ServerService doesn't expect that to happen.
 	serv.Shutdown()
 
-	require.NoError(t, s.AwaitTerminated(context.Background()))
+	require.Error(t, s.AwaitTerminated(context.Background()))
+	require.Equal(t, services.Failed, s.State())
 }
 
 func TestServerStopViaStop(t *testing.T) {
@@ -69,5 +70,7 @@ func TestServerStopViaStop(t *testing.T) {
 
 	serv.Stop()
 
-	require.NoError(t, s.AwaitTerminated(context.Background()))
+	// Stop makes Server stop, but ServerService doesn't expect that to happen.
+	require.Error(t, s.AwaitTerminated(context.Background()))
+	require.Equal(t, services.Failed, s.State())
 }

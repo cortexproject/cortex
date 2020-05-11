@@ -107,6 +107,8 @@ func (t *Cortex) initAPI() (services.Service, error) {
 }
 
 func (t *Cortex) initServer() (services.Service, error) {
+	// Cortex handles signals on its own.
+	DisableSignalHandling(&t.Cfg.Server)
 	serv, err := server.New(t.Cfg.Server)
 	if err != nil {
 		return nil, err
@@ -516,20 +518,14 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 type module struct {
 	deps []ModuleName
 
-	// service for this module (can return nil)
-	service func(t *Cortex) (services.Service, error)
-
-	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
+	// Service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
 	// (can return nil)
 	wrappedService func(t *Cortex) (services.Service, error)
 }
 
 var modules = map[ModuleName]module{
 	Server: {
-		// we cannot use 'wrappedService', as stopped Server service is currently a signal to Cortex
-		// that it should shutdown. If we used wrappedService, it wouldn't stop until
-		// all services that depend on it stopped first... but there is nothing that would make them stop.
-		service: (*Cortex).initServer,
+		wrappedService: (*Cortex).initServer,
 	},
 
 	API: {

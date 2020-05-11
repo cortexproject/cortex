@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/timeutil"
 )
 
 func TestQueryshardingMiddleware(t *testing.T) {
@@ -271,23 +272,6 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 	}
 }
 
-func TestTimeFromMillis(t *testing.T) {
-	var testExpr = []struct {
-		input    int64
-		expected time.Time
-	}{
-		{input: 1000, expected: time.Unix(1, 0)},
-		{input: 1500, expected: time.Unix(1, 500*nanosecondsInMillisecond)},
-	}
-
-	for i, c := range testExpr {
-		t.Run(string(i), func(t *testing.T) {
-			res := TimeFromMillis(c.input)
-			require.Equal(t, c.expected, res)
-		})
-	}
-}
-
 func parseDate(in string) model.Time {
 	t, err := time.Parse("2006-01-02", in)
 	if err != nil {
@@ -348,8 +332,8 @@ func TestQueryshardingCorrectness(t *testing.T) {
 	shardFactor := 2
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: start.UnixNano() / nanosecondsInMillisecond,
-		End:   end.UnixNano() / nanosecondsInMillisecond,
+		Start: timeutil.TimeToMillis(start),
+		End:   timeutil.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 	}
 	for _, tc := range []struct {
@@ -444,8 +428,8 @@ func TestShardSplitting(t *testing.T) {
 
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: start.UnixNano() / nanosecondsInMillisecond,
-		End:   end.UnixNano() / nanosecondsInMillisecond,
+		Start: timeutil.TimeToMillis(start),
+		End:   timeutil.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 		Query: "sum(rate(bar1[1m]))",
 	}
@@ -619,8 +603,8 @@ func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error)
 	qry, err := h.engine.NewRangeQuery(
 		h.queryable,
 		r.GetQuery(),
-		TimeFromMillis(r.GetStart()),
-		TimeFromMillis(r.GetEnd()),
+		timeutil.TimeFromMillis(r.GetStart()),
+		timeutil.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 

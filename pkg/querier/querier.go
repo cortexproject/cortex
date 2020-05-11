@@ -58,8 +58,9 @@ type Config struct {
 	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
-	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
-	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayAddresses  string                       `yaml:"store_gateway_addresses"`
+	StoreGatewayClient     tls.ClientConfig             `yaml:"store_gateway_client"`
+	BlocksConsistencyCheck BlocksConsistencyCheckConfig `yaml:"blocks_consistency_check" doc:"description=Configures the consistency check done by the querier on queried blocks when running the experimental blocks storage."`
 }
 
 var (
@@ -73,6 +74,7 @@ const (
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
+	cfg.BlocksConsistencyCheck.RegisterFlagsWithPrefix("experimental.querier.blocks-consistency-check", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")

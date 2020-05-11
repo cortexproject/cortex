@@ -9,14 +9,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/tls"
@@ -59,7 +58,7 @@ func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
 	return nil
 }
 
-func (s *blocksStoreBalancedSet) GetClientsFor(_ []*metadata.Meta) ([]storegatewaypb.StoreGatewayClient, error) {
+func (s *blocksStoreBalancedSet) GetClientsFor(_ []ulid.ULID) ([]BlocksStoreClient, error) {
 	addresses := s.dnsProvider.Addresses()
 	if len(addresses) == 0 {
 		return nil, fmt.Errorf("no address resolved for the store-gateway service addresses %s", strings.Join(s.serviceAddresses, ","))
@@ -72,5 +71,5 @@ func (s *blocksStoreBalancedSet) GetClientsFor(_ []*metadata.Meta) ([]storegatew
 		return nil, errors.Wrapf(err, "failed to get store-gateway client for %s", addr)
 	}
 
-	return []storegatewaypb.StoreGatewayClient{c.(storegatewaypb.StoreGatewayClient)}, nil
+	return []BlocksStoreClient{c.(BlocksStoreClient)}, nil
 }

@@ -11,16 +11,13 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
-	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -187,14 +184,9 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				return err == nil && len(all.Ingesters) > 0
 			})
 
-			var metas []*metadata.Meta
-			for _, id := range testData.queryBlocks {
-				metas = append(metas, &metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: id}})
-			}
-
-			clients, err := s.GetClientsFor(metas)
+			clients, err := s.GetClientsFor(testData.queryBlocks)
 			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expectedClients, getStoreClientClientAddrs(clients))
+			assert.ElementsMatch(t, testData.expectedClients, getStoreGatewayClientAddrs(clients))
 
 			assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
 				# HELP cortex_storegateway_clients The current number of store-gateway clients in the pool.
@@ -205,10 +197,10 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 	}
 }
 
-func getStoreClientClientAddrs(clients []storegatewaypb.StoreGatewayClient) []string {
+func getStoreGatewayClientAddrs(clients []BlocksStoreClient) []string {
 	var addrs []string
 	for _, c := range clients {
-		addrs = append(addrs, c.(*storeGatewayClient).conn.Target())
+		addrs = append(addrs, c.RemoteAddress())
 	}
 	return addrs
 }

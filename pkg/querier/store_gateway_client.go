@@ -59,6 +59,10 @@ func (c *storeGatewayClient) Close() error {
 }
 
 func (c *storeGatewayClient) String() string {
+	return c.RemoteAddress()
+}
+
+func (c *storeGatewayClient) RemoteAddress() string {
 	return c.conn.Target()
 }
 

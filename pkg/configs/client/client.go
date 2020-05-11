@@ -23,9 +23,9 @@ import (
 
 // Config says where we can find the ruler userconfig.
 type Config struct {
-	ConfigsAPIURL flagext.URLValue  `yaml:"configs_api_url"`
-	ClientTimeout time.Duration     `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
-	TLSStruct     tls_cfg.TLSStruct `yaml:",inline"`
+	ConfigsAPIURL flagext.URLValue     `yaml:"configs_api_url"`
+	ClientTimeout time.Duration        `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
+	TLSStruct     tls_cfg.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

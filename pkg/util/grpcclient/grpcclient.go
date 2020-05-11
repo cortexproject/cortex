@@ -21,7 +21,7 @@ type Config struct {
 	BackoffOnRatelimits bool               `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       util.BackoffConfig `yaml:"backoff_config"`
 
-	TLSStruct tls_cfg.TLSStruct `yaml:",inline"`
+	TLSStruct tls_cfg.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.

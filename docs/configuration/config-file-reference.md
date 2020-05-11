@@ -808,15 +808,15 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 # TLS cert path for the client
-# CLI flag: -ruler.client..tls-cert-path
+# CLI flag: -ruler.client.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # TLS key path for the client
-# CLI flag: -ruler.client..tls-key-path
+# CLI flag: -ruler.client.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # TLS CA path for the client
-# CLI flag: -ruler.client..tls-ca-path
+# CLI flag: -ruler.client.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # How frequently to evaluate rules

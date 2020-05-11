@@ -47,6 +47,8 @@ Maintaining the release branches for older minor releases happens on a best effo
 
 For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
 
+To prepare release branch, first create new release branch (release-X.Y) in Cortex repository from master commit of your choice, and then do the following steps on a private branch (prepare-release-X.Y) and send PR to merge this private branch to the new release branch (prepare-release-X.Y -> release-X.Y).
+
 0. Make sure you've a GPG key associated to your GitHub account (`git tag` will be signed with that GPG key)
    - You can add a GPG key to your GitHub account following [this procedure](https://help.github.com/articles/generating-a-gpg-key/)
 1. Update the version number in the `VERSION` file

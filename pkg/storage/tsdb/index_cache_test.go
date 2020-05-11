@@ -35,7 +35,7 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 		"one memcached address should pass": {
 			cfg: IndexCacheConfig{
 				Backend: "memcached",
-				Memcached: MemcachedIndexCacheConfig{
+				Memcached: MemcachedClientConfig{
 					Addresses: "dns+localhost:11211",
 				},
 			},
@@ -45,37 +45,6 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.cfg.Validate())
-		})
-	}
-}
-
-func TestMemcachedIndexCacheConfig_GetAddresses(t *testing.T) {
-	tests := map[string]struct {
-		cfg      MemcachedIndexCacheConfig
-		expected []string
-	}{
-		"no addresses": {
-			cfg: MemcachedIndexCacheConfig{
-				Addresses: "",
-			},
-			expected: []string{},
-		},
-		"one address": {
-			cfg: MemcachedIndexCacheConfig{
-				Addresses: "dns+localhost:11211",
-			},
-			expected: []string{"dns+localhost:11211"},
-		},
-		"two addresses": {
-			cfg: MemcachedIndexCacheConfig{
-				Addresses: "dns+memcached-1:11211,dns+memcached-2:11211",
-			},
-			expected: []string{"dns+memcached-1:11211", "dns+memcached-2:11211"},
-		},
-	}
-	for testName, testData := range tests {
-		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, testData.cfg.GetAddresses())
 		})
 	}
 }

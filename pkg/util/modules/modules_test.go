@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,4 +42,8 @@ func TestDependencies(t *testing.T) {
 	svcs, err := mm.InitModuleServices("serviceC")
 	assert.NotNil(t, svcs)
 	assert.NoError(t, err)
+
+	svcs, err = mm.InitModuleServices("service_unknown")
+	assert.Nil(t, svcs)
+	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
 }

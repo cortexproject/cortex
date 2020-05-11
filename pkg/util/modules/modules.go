@@ -54,6 +54,9 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 // in the right order. Modules are wrapped in such a way that they start after their
 // dependencies have been started and stop before their dependencies are stopped.
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {
+	if _, ok := m.modules[target]; !ok {
+		return nil, fmt.Errorf("unrecognised module name: %s", target)
+	}
 	servicesMap := map[string]services.Service{}
 
 	// initialize all of our dependencies first

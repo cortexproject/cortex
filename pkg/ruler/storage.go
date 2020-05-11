@@ -34,6 +34,7 @@ type RuleStoreConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.ConfigDB.RegisterFlagsWithPrefix("ruler.", f)
 	cfg.Azure.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)

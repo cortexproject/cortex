@@ -176,7 +176,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			require.NoError(t, err)
 
 			reg := prometheus.NewPedanticRegistry()
-			s, err := newBlocksStoreReplicationSet(r, grpcclient.Config{},log.NewNopLogger(), reg)
+			s, err := newBlocksStoreReplicationSet(r, grpcclient.Config{}, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck

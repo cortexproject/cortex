@@ -5,16 +5,16 @@ weight: 5
 slug: tls
 ---
 
-Cortex is a distributed system with significant traffic between its services. 
-To allow for secure communication, Cortex supports TLS between all its 
+Cortex is a distributed system with significant traffic between its services.
+To allow for secure communication, Cortex supports TLS between all its
 components. This guide describes the process of setting up TLS.
 
 ### Generation of certs to configure TLS
 
-The first step to securing inter-service communication in Cortex with TLS is 
-generating certificates. A Certifying Authority (CA) will be used for this 
-purpose which should be private to the organization, as any certificates signed 
-by this CA will have permissions to communicate with the cluster. 
+The first step to securing inter-service communication in Cortex with TLS is
+generating certificates. A Certifying Authority (CA) will be used for this
+purpose which should be private to the organization, as any certificates signed
+by this CA will have permissions to communicate with the cluster.
 
 We will use the following script to generate self signed certs for the cluster:
 
@@ -42,13 +42,13 @@ Note that the above script generates certificates that are valid for 100000 days
 This can be changed by adjusting the `-days` option in the above commands.
 It is recommended that the certs be replaced atleast once every 2 years.
 
-The above script generates keys `client.key, server.key` and certs 
-`client.crt, server.crt` for both the client and server. The CA cert is 
-generated as `root.crt`. 
+The above script generates keys `client.key, server.key` and certs
+`client.crt, server.crt` for both the client and server. The CA cert is
+generated as `root.crt`.
 
 ### Load certs into the HTTP/GRPC server/client
 
-Every HTTP/GRPC link between Cortex components supports TLS configuration 
+Every HTTP/GRPC link between Cortex components supports TLS configuration
 through the following config parameters:
 
 #### Server flags
@@ -81,7 +81,7 @@ through the following config parameters:
 
 #### Client flags
 
-Client flags are component specific. 
+Client flags are component specific.
 
 For an HTTP client in the alertmanager:
 ```

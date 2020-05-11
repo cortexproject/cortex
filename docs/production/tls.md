@@ -83,26 +83,26 @@ through the following config parameters:
 
 Client flags are component specific.
 
-For an HTTP client in the alertmanager:
+For an HTTP client in the Alertmanager:
 ```
     # Path to the TLS Cert for the HTTP Client
-    -alertmanager.client.http-tls-cert-path=/path/to/client.crt
+    -alertmanager.configs.tls-cert-path=/path/to/client.crt
 
     # Path to the TLS Key for the HTTP Client
-    -alertmanager.client.http-tls-key-path=/path/to/client.key
+    -alertmanager.configs.tls-key-path=/path/to/client.key
 
     # Path to the TLS CA for the HTTP Client
-    -alertmanager.client.http-tls-ca-path=/path/to/root.crt
+    -alertmanager.configs.tls-ca-path=/path/to/root.crt
 ```
 
-For a GRPC client in the ruler:
+For a GRPC client in the Querier:
 ```
     # Path to the TLS Cert for the GRPC Client
-    -ruler.grpc-tls-cert-path=/path/to/client.crt
+    -querier.frontend-client.tls-cert-path=/path/to/client.crt
 
     # Path to the TLS Key for the GRPC Client
-    -ruler.grpc-tls-key-path=/path/to/client.key
+    -querier.frontend-client.tls-key-path=/path/to/client.key
 
     # Path to the TLS CA for the GRPC Client
-    -ruler.grpc-tls-ca-path=/path/to/root.crt
+    -querier.frontend-client.tls-ca-path=/path/to/root.crt
 ```

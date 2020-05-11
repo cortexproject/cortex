@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+	errors2 "github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
@@ -161,19 +162,19 @@ func (cfg *Config) Validate() error {
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier
 type BucketStoreConfig struct {
-	SyncDir                  string              `yaml:"sync_dir"`
-	SyncInterval             time.Duration       `yaml:"sync_interval"`
-	MaxChunkPoolBytes        uint64              `yaml:"max_chunk_pool_bytes"`
-	MaxSampleCount           uint64              `yaml:"max_sample_count"`
-	MaxConcurrent            int                 `yaml:"max_concurrent"`
-	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
-	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency      int                 `yaml:"meta_sync_concurrency"`
-	BinaryIndexHeader        bool                `yaml:"binary_index_header_enabled"`
-	ConsistencyDelay         time.Duration       `yaml:"consistency_delay"`
-	IndexCache               IndexCacheConfig    `yaml:"index_cache"`
-	CachingBucket            CachingBucketConfig `yaml:"caching_bucket"`
-	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
+	SyncDir                  string            `yaml:"sync_dir"`
+	SyncInterval             time.Duration     `yaml:"sync_interval"`
+	MaxChunkPoolBytes        uint64            `yaml:"max_chunk_pool_bytes"`
+	MaxSampleCount           uint64            `yaml:"max_sample_count"`
+	MaxConcurrent            int               `yaml:"max_concurrent"`
+	TenantSyncConcurrency    int               `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency     int               `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency      int               `yaml:"meta_sync_concurrency"`
+	BinaryIndexHeader        bool              `yaml:"binary_index_header_enabled"`
+	ConsistencyDelay         time.Duration     `yaml:"consistency_delay"`
+	IndexCache               IndexCacheConfig  `yaml:"index_cache"`
+	ChunksCache              ChunksCacheConfig `yaml:"chunks_cache"`
+	IgnoreDeletionMarksDelay time.Duration     `yaml:"ignore_deletion_mark_delay"`
 
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
@@ -186,7 +187,7 @@ type BucketStoreConfig struct {
 // RegisterFlags registers the BucketStore flags
 func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexCache.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.index-cache.")
-	cfg.CachingBucket.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.caching-bucket.")
+	cfg.ChunksCache.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.chunks-cache.")
 
 	f.StringVar(&cfg.SyncDir, "experimental.tsdb.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
 	f.DurationVar(&cfg.SyncInterval, "experimental.tsdb.bucket-store.sync-interval", 5*time.Minute, "How frequently scan the bucket to look for changes (new blocks shipped by ingesters and blocks removed by retention or compaction). 0 disables it.")
@@ -206,7 +207,15 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config.
 func (cfg *BucketStoreConfig) Validate() error {
-	return cfg.IndexCache.Validate()
+	err := cfg.IndexCache.Validate()
+	if err != nil {
+		return errors2.Wrapf(err, "index-cache configuration")
+	}
+	err = cfg.ChunksCache.Validate()
+	if err != nil {
+		return errors2.Wrapf(err, "chunks-cache configuration")
+	}
+	return nil
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

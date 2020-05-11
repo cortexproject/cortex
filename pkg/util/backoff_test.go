@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestBackoff_nextDelay(t *testing.T) {
+func TestBackoff_NextDelay(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -92,7 +92,7 @@ func TestBackoff_nextDelay(t *testing.T) {
 			})
 
 			for _, expectedRange := range testData.expectedRanges {
-				delay := b.nextDelay()
+				delay := b.NextDelay()
 
 				if delay < expectedRange[0] || delay > expectedRange[1] {
 					t.Errorf("%d expected to be within %d and %d", delay, expectedRange[0], expectedRange[1])

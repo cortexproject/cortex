@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T) {
@@ -63,7 +61,7 @@ func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T
 			orig := httptest.NewRequest("GET", "/test", nil)
 			orig.SetBasicAuth(testData.clientUser, testData.clientPass)
 
-			b := NewProxyBackend("test", httpclient.ConfigFromURLAndTimeout(u, time.Second), false)
+			b := NewProxyBackend("test", u, time.Second, false)
 			r, err := b.createBackendRequest(orig)
 			require.NoError(t, err)
 

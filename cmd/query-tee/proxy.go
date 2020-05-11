@@ -16,8 +16,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -71,9 +69,7 @@ func NewProxy(cfg Config, logger log.Logger, registerer prometheus.Registerer) (
 			preferred = preferredIdx == idx
 		}
 
-		clientConfig := cfg.ClientConfig
-		clientConfig.Endpoint = flagext.URLValue{URL: u}
-		p.backends = append(p.backends, NewProxyBackend(name, &clientConfig, preferred))
+		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, preferred))
 	}
 
 	// At least 1 backend is required

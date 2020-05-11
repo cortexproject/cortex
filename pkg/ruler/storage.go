@@ -15,13 +15,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
-	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 // RuleStoreConfig conigures a rule store
 type RuleStoreConfig struct {
-	Type     string            `yaml:"type"`
-	ConfigDB httpclient.Config `yaml:"configdb"`
+	Type     string        `yaml:"type"`
+	ConfigDB client.Config `yaml:"configdb"`
 
 	// Object Storage Configs
 	Azure azure.BlobStorageConfig `yaml:"azure"`

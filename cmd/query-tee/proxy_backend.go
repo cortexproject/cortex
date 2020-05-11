@@ -5,19 +5,19 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"time"
 
 	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
-	name         string
-	clientConfig *httpclient.Config
-	client       *http.Client
+	name     string
+	endpoint *url.URL
+	client   *http.Client
+	timeout  time.Duration
 
 	// Whether this is the preferred backend from which picking up
 	// the response and sending it back to the client.
@@ -25,30 +25,26 @@ type ProxyBackend struct {
 }
 
 // NewProxyBackend makes a new ProxyBackend
-func NewProxyBackend(name string, config *httpclient.Config, preferred bool) *ProxyBackend {
-	roundTripper := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   config.ClientTimeout,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
-		IdleConnTimeout:     config.BackendReadTimeout,
-	}
-	if tlsConfig := config.GetTLSConfig(); tlsConfig != nil {
-		roundTripper.TLSClientConfig = tlsConfig
-	}
-
+func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred bool) *ProxyBackend {
 	return &ProxyBackend{
-		name:         name,
-		clientConfig: config,
-		preferred:    preferred,
+		name:      name,
+		endpoint:  endpoint,
+		timeout:   timeout,
+		preferred: preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
 			},
-			Transport: roundTripper,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
+				IdleConnTimeout:     90 * time.Second,
+			},
 		},
 	}
 }
@@ -69,19 +65,19 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	}
 
 	// Replace the endpoint with the backend one.
-	req.URL.Scheme = b.clientConfig.Endpoint.Scheme
-	req.URL.Host = b.clientConfig.Endpoint.Host
+	req.URL.Scheme = b.endpoint.Scheme
+	req.URL.Host = b.endpoint.Host
 
 	// Prepend the endpoint path to the request path.
-	req.URL.Path = path.Join(b.clientConfig.Endpoint.Path, req.URL.Path)
+	req.URL.Path = path.Join(b.endpoint.Path, req.URL.Path)
 
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.
 	// - If the endpoint has user only, keep it and use the request password (if any).
 	// - If the endpoint has no user and no password, use the request auth (if any).
 	clientUser, clientPass, clientAuth := orig.BasicAuth()
-	endpointUser := b.clientConfig.Endpoint.User.Username()
-	endpointPass, _ := b.clientConfig.Endpoint.User.Password()
+	endpointUser := b.endpoint.User.Username()
+	endpointPass, _ := b.endpoint.User.Password()
 
 	if endpointUser != "" && endpointPass != "" {
 		req.SetBasicAuth(endpointUser, endpointPass)
@@ -96,7 +92,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
 	// Honor the read timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), b.clientConfig.ClientTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
 	defer cancel()
 
 	// Execute the request.

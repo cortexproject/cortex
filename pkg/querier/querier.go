@@ -62,7 +62,7 @@ var (
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.StoreGatewayGRPCClientConfig.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
+	cfg.StoreGatewayGRPCClientConfig.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	if f.Lookup("promql.lookback-delta") == nil {

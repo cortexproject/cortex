@@ -9,7 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/local"
 	"github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/util/httpclient"
 )
 
 // AlertStore stores and configures users rule configs
@@ -20,14 +19,14 @@ type AlertStore interface {
 // AlertStoreConfig configures the alertmanager backend
 type AlertStoreConfig struct {
 	Type     string            `yaml:"type"`
-	ConfigDB httpclient.Config `yaml:"configdb"`
+	ConfigDB client.Config     `yaml:"configdb"`
 	Local    local.StoreConfig `yaml:"local"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Local.RegisterFlags(f)
-	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.client", f)
+	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
 	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"local\".")
 }
 

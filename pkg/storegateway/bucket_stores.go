@@ -110,10 +110,10 @@ func (u *BucketStores) SyncBlocks(ctx context.Context) error {
 	})
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (err error) {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
-		if err == nil {
+		if returnErr == nil {
 			u.syncLastSuccess.SetToCurrentTime()
 		}
 	}(time.Now())
@@ -137,9 +137,9 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 			defer wg.Done()
 
 			for job := range jobs {
-				if jobErr := f(ctx, job.store); jobErr != nil {
+				if err := f(ctx, job.store); err != nil {
 					errsMx.Lock()
-					errs.Add(errors.Wrapf(jobErr, "failed to synchronize TSDB blocks for user %s", job.userID))
+					errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
 					errsMx.Unlock()
 				}
 			}
@@ -148,7 +148,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	// Iterate the bucket, lazily create a bucket store for each new user found
 	// and submit a sync job for each user.
-	iterErr := u.bucket.Iter(ctx, "", func(s string) error {
+	err := u.bucket.Iter(ctx, "", func(s string) error {
 		user := strings.TrimSuffix(s, "/")
 
 		bs, err := u.getOrCreateStore(user)
@@ -164,9 +164,9 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 		}
 	})
 
-	if iterErr != nil {
+	if err != nil {
 		errsMx.Lock()
-		errs.Add(iterErr)
+		errs.Add(err)
 		errsMx.Unlock()
 	}
 

@@ -73,6 +73,7 @@
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)
   * `cortex_querier_blocks_last_successful_scan_timestamp_seconds` (when store-gateway is enabled)
   * `cortex_storegateway_blocks_last_successful_sync_timestamp_seconds`
+* [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

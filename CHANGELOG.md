@@ -61,7 +61,6 @@
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
   * `cortex_ingester_tsdb_compactions_total`
-  * `cortex_ingester_tsdb_compactions_failed_total`
   * `cortex_ingester_tsdb_compaction_duration_seconds`
   * `cortex_ingester_tsdb_wal_fsync_duration_seconds`
   * `cortex_ingester_tsdb_wal_page_flushes_total`

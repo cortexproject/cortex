@@ -44,10 +44,6 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_compactions_total counter
 			cortex_ingester_tsdb_compactions_total 693917
 
-			# HELP cortex_ingester_tsdb_compactions_failed_total Total number of TSDB compactions that failed.
-			# TYPE cortex_ingester_tsdb_compactions_failed_total counter
-			cortex_ingester_tsdb_compactions_failed_total 793048
-
 			# HELP cortex_ingester_tsdb_compaction_duration_seconds Duration of TSDB compaction runs.
 			# TYPE cortex_ingester_tsdb_compaction_duration_seconds histogram
 			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="1"} 0
@@ -153,12 +149,6 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of compactions that were executed for the partition.",
 	})
 	ran.Add(7 * base)
-
-	compactionsFailed := promauto.With(r).NewCounter(prometheus.CounterOpts{
-		Name: "prometheus_tsdb_compactions_failed_total",
-		Help: "Total number of compactions that failed for the partition.",
-	})
-	compactionsFailed.Add(8 * base)
 
 	duration := promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 		Name:    "prometheus_tsdb_compaction_duration_seconds",

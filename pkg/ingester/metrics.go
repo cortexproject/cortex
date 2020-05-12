@@ -226,7 +226,6 @@ type tsdbMetrics struct {
 
 	// Metrics aggregated from TSDB.
 	tsdbCompactionsTotal   *prometheus.Desc
-	tsdbCompactionsFailed  *prometheus.Desc
 	tsdbCompactionDuration *prometheus.Desc
 	tsdbFsyncDuration      *prometheus.Desc
 	tsdbPageFlushes        *prometheus.Desc
@@ -266,10 +265,6 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbCompactionsTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_compactions_total",
 			"Total number of TSDB compactions that were executed.",
-			nil, nil),
-		tsdbCompactionsFailed: prometheus.NewDesc(
-			"cortex_ingester_tsdb_compactions_failed_total",
-			"Total number of TSDB compactions that failed.",
 			nil, nil),
 		tsdbCompactionDuration: prometheus.NewDesc(
 			"cortex_ingester_tsdb_compaction_duration_seconds",
@@ -317,7 +312,6 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.uploadFailures
 
 	out <- sm.tsdbCompactionsTotal
-	out <- sm.tsdbCompactionsFailed
 	out <- sm.tsdbCompactionDuration
 	out <- sm.tsdbFsyncDuration
 	out <- sm.tsdbPageFlushes
@@ -340,7 +334,6 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.uploadFailures, "thanos_shipper_upload_failures_total")
 
 	data.SendSumOfCounters(out, sm.tsdbCompactionsTotal, "prometheus_tsdb_compactions_total")
-	data.SendSumOfCounters(out, sm.tsdbCompactionsFailed, "prometheus_tsdb_compactions_failed_total")
 	data.SendSumOfHistograms(out, sm.tsdbCompactionDuration, "prometheus_tsdb_compaction_duration_seconds")
 	data.SendSumOfSummaries(out, sm.tsdbFsyncDuration, "prometheus_tsdb_wal_fsync_duration_seconds")
 	data.SendSumOfCounters(out, sm.tsdbPageFlushes, "prometheus_tsdb_wal_page_flushes_total")

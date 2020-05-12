@@ -158,7 +158,7 @@ func newCompactor(
 		}),
 		compactionRunsLastSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_last_successful_run_time",
-			Help: "The time of the last successful compaction run.",
+			Help: "Unix timestamp of the last successful compaction run.",
 		}),
 
 		blocksCleaned: promauto.With(registerer).NewCounter(prometheus.CounterOpts{

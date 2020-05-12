@@ -192,40 +192,50 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		logger:       logger,
 	}
 
+	if cfg.EnableSharding {
+		ringStore, err := kv.NewClient(cfg.Ring.KVStore, ring.GetCodec())
+		if err != nil {
+			return nil, errors.Wrap(err, "create KV store client")
+		}
+
+		if enableSharding(ruler, ringStore) != nil {
+			return nil, errors.Wrap(err, "setup ruler sharding ring")
+		}
+	}
+
 	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
 	return ruler, nil
 }
 
+func enableSharding(r *Ruler, ringStore kv.Client) error {
+	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig()
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's lifecycler config")
+	}
+
+	// Define lifecycler delegates in reverse order (last to be called defined first because they're
+	// chained via "next delegate").
+	delegate := ring.BasicLifecyclerDelegate(r)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
+	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout, delegate, r.logger)
+
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ring.RulerRingKey, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
+	}
+
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), ring.RulerRingKey, ring.RulerRingKey, ringStore, &ring.DefaultReplicationStrategy{})
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's ring")
+	}
+
+	return nil
+}
+
 func (r *Ruler) starting(ctx context.Context) error {
-	// If sharding is enabled, create/join a ring to distribute tokens to
-	// the ruler
+	// If sharding is enabled, start the ruler ring subservices
 	if r.cfg.EnableSharding {
-		ringStore, err := kv.NewClient(r.cfg.Ring.KVStore, ring.GetCodec())
-		if err != nil {
-			return errors.Wrap(err, "create KV store client")
-		}
-
-		lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig()
-		if err != nil {
-			return errors.Wrap(err, "failed to initialize ruler's lifecycler config")
-		}
-
-		// Define lifecycler delegates in reverse order (last to be called defined first because they're
-		// chained via "next delegate").
-		delegate := ring.BasicLifecyclerDelegate(r)
-		delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
-		delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout, delegate, r.logger)
-
-		r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ring.RulerRingKey, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
-		if err != nil {
-			return errors.Wrap(err, "failed to initialize ruler's lifecycler")
-		}
-
-		r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), ring.RulerRingKey, ring.RulerRingKey, ringStore, &ring.DefaultReplicationStrategy{})
-		if err != nil {
-			return errors.Wrap(err, "failed to initialize ruler's ring")
-		}
-
+		var err error
 		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
 		if err == nil {
 			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)

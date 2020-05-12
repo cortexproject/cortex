@@ -10,8 +10,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
@@ -233,6 +235,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupAuthMiddleware()
+	cortex.setupThanosTracing()
 
 	serviceMap, err := cortex.initModuleServices()
 	if err != nil {
@@ -247,10 +250,10 @@ func New(cfg Config) (*Cortex, error) {
 
 func (t *Cortex) setupAuthMiddleware() {
 	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
 			middleware.ServerUserHeaderInterceptor,
-		}
-		t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 				switch info.FullMethod {
 				// Don't check auth header on TransferChunks, as we weren't originally
@@ -264,16 +267,28 @@ func (t *Cortex) setupAuthMiddleware() {
 					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 				}
 			},
-		}
+		)
 	} else {
-		t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
 			fakeGRPCAuthUniaryMiddleware,
-		}
-		t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
 			fakeGRPCAuthStreamMiddleware,
-		}
+		)
 		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
+}
+
+// setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
+// context used by Thanos, in order to get Thanos spans correctly attached to our traces.
+func (t *Cortex) setupThanosTracing() {
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
+		tracing.UnaryServerInterceptor(opentracing.GlobalTracer()),
+	)
+
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
+		tracing.StreamServerInterceptor(opentracing.GlobalTracer()),
+	)
 }
 
 func (t *Cortex) initModuleServices() (map[ModuleName]services.Service, error) {

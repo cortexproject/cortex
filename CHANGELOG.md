@@ -86,6 +86,7 @@
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 * [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
+* [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
 
 ## 1.0.1 / 2020-04-23
 

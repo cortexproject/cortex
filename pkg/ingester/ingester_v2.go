@@ -239,7 +239,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				}
 
 				startTime := time.Now()
-				userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
+				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
 		case <-ctx.Done():

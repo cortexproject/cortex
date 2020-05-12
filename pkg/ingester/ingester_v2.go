@@ -79,6 +79,7 @@ type TSDBState struct {
 	walReplayTime          prometheus.Histogram
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
+	refCachePurgeDuration  prometheus.Histogram
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -125,6 +126,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 				Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
 				Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
 				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			}),
+			refCachePurgeDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_refcache_purge_duration_seconds",
+				Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
+				Buckets: prometheus.DefBuckets,
 			}),
 		},
 	}
@@ -228,9 +234,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		case <-refCachePurgeTicker.C:
 			for _, userID := range i.getTSDBUsers() {
 				userDB := i.getTSDB(userID)
-				if userDB != nil {
-					userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
+				if userDB == nil {
+					continue
 				}
+
+				startTime := time.Now()
+				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
+				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
 		case <-ctx.Done():
 			return nil

@@ -2693,6 +2693,10 @@ bucket_store:
 # CLI flag: -experimental.tsdb.stripe-size
 [stripe_size: <int> | default = 16384]
 
+# True to enable TSDB WAL compression.
+# CLI flag: -experimental.tsdb.wal-compression-enabled
+[wal_compression_enabled: <boolean> | default = false]
+
 # True if the Cortex cluster is running the store-gateway service and the
 # querier should query the bucket store via the store-gateway.
 # CLI flag: -experimental.tsdb.store-gateway-enabled

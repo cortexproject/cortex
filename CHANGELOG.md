@@ -56,7 +56,7 @@
 * [ENHANCEMENT] Redis Cache: Added `idle_timeout`, `wait_on_pool_exhaustion` and `max_conn_lifetime` options to redis cache configuration. #2550
 * [ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.
 * [ENHANCEMENT] Use newer AWS API for paginated queries - removes 'Deprecated' message from logfiles. #2452
-* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`

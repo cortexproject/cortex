@@ -140,10 +140,10 @@ func (d *BlocksScanner) scan(ctx context.Context) error {
 	return nil
 }
 
-func (d *BlocksScanner) scanBucket(ctx context.Context) (err error) {
+func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	defer func(start time.Time) {
 		d.scanDuration.Observe(time.Since(start).Seconds())
-		if err == nil {
+		if returnErr == nil {
 			d.scanLastSuccess.SetToCurrentTime()
 		}
 	}(time.Now())
@@ -164,11 +164,11 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (err error) {
 			defer wg.Done()
 
 			for userID := range jobsChan {
-				metas, scanErr := d.scanUserBlocksWithRetries(ctx, userID)
+				metas, err := d.scanUserBlocksWithRetries(ctx, userID)
 
 				resMx.Lock()
-				if scanErr != nil {
-					resErrs.Add(scanErr)
+				if err != nil {
+					resErrs.Add(err)
 				} else {
 					resMetas[userID] = metas
 				}
@@ -178,7 +178,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (err error) {
 	}
 
 	// Iterate the bucket to discover users.
-	iterErr := d.bucketClient.Iter(ctx, "", func(s string) error {
+	err := d.bucketClient.Iter(ctx, "", func(s string) error {
 		userID := strings.TrimSuffix(s, "/")
 		select {
 		case jobsChan <- userID:
@@ -188,9 +188,9 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (err error) {
 		}
 	})
 
-	if iterErr != nil {
+	if err != nil {
 		resMx.Lock()
-		resErrs.Add(iterErr)
+		resErrs.Add(err)
 		resMx.Unlock()
 	}
 

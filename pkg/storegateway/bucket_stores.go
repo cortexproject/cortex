@@ -71,7 +71,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "blocks_last_successful_sync_time",
-			Help: "The time of the last successful blocks sync.",
+			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}
 
@@ -139,7 +139,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 			for job := range jobs {
 				if jobErr := f(ctx, job.store); jobErr != nil {
 					errsMx.Lock()
-					errs.Add(errors.Wrap(jobErr, fmt.Sprintf("failed to synchronize TSDB blocks for user %s", job.userID)))
+					errs.Add(errors.Wrapf(jobErr, "failed to synchronize TSDB blocks for user %s", job.userID))
 					errsMx.Unlock()
 				}
 			}

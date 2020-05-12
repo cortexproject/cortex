@@ -112,7 +112,7 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
 		cortex_querier_blocks_meta_sync_consistency_delay_seconds 0
 
-		# HELP cortex_querier_blocks_last_successful_scan_time The time of the last successful blocks scan.
+		# HELP cortex_querier_blocks_last_successful_scan_time Unix timestamp of the last successful blocks scan.
 		# TYPE cortex_querier_blocks_last_successful_scan_time gauge
 		cortex_querier_blocks_last_successful_scan_time 0
 	`),

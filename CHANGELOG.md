@@ -59,7 +59,7 @@
 * [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
-* [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage:
+* [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_time`
   * `cortex_querier_blocks_last_successful_sync_time` (when store-gateway is disabled)
   * `cortex_querier_blocks_last_successful_scan_time` (when store-gateway is enabled)

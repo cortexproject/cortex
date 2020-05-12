@@ -97,9 +97,10 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 
 	// Metrics.
-	compactionRunsStarted   prometheus.Counter
-	compactionRunsCompleted prometheus.Counter
-	compactionRunsFailed    prometheus.Counter
+	compactionRunsStarted     prometheus.Counter
+	compactionRunsCompleted   prometheus.Counter
+	compactionRunsFailed      prometheus.Counter
+	compactionRunsLastSuccess prometheus.Gauge
 
 	blocksCleaned           prometheus.Counter
 	blockCleanupFailures    prometheus.Counter
@@ -154,6 +155,10 @@ func newCompactor(
 		compactionRunsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_failed_total",
 			Help: "Total number of compaction runs failed.",
+		}),
+		compactionRunsLastSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_last_successful_run_timestamp_seconds",
+			Help: "Unix timestamp of the last successful compaction run.",
 		}),
 
 		blocksCleaned: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -264,6 +269,7 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 	for retries.Ongoing() {
 		if success := c.compactUsers(ctx); success {
 			c.compactionRunsCompleted.Inc()
+			c.compactionRunsLastSuccess.SetToCurrentTime()
 			return
 		}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
@@ -45,7 +46,8 @@ type BucketStores struct {
 	stores   map[string]*store.BucketStore
 
 	// Metrics.
-	syncTimes prometheus.Histogram
+	syncTimes       prometheus.Histogram
+	syncLastSuccess prometheus.Gauge
 }
 
 // NewBucketStores makes a new BucketStores.
@@ -66,6 +68,10 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 			Name:    "blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
+		}),
+		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "blocks_last_successful_sync_timestamp_seconds",
+			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}
 
@@ -99,18 +105,17 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	if err := u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	return u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
+		if returnErr == nil {
+			u.syncLastSuccess.SetToCurrentTime()
+		}
 	}(time.Now())
 
 	type job struct {
@@ -120,6 +125,8 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	wg := &sync.WaitGroup{}
 	jobs := make(chan job)
+	errs := tsdb_errors.MultiError{}
+	errsMx := sync.Mutex{}
 
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
@@ -131,7 +138,9 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 			for job := range jobs {
 				if err := f(ctx, job.store); err != nil {
-					level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks for user", "user", job.userID, "err", err)
+					errsMx.Lock()
+					errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
+					errsMx.Unlock()
 				}
 			}
 		}()
@@ -155,11 +164,17 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 		}
 	})
 
+	if err != nil {
+		errsMx.Lock()
+		errs.Add(err)
+		errsMx.Unlock()
+	}
+
 	// Wait until all workers completed.
 	close(jobs)
 	wg.Wait()
 
-	return err
+	return errs.Err()
 }
 
 // Series makes a series request to the underlying user bucket store.

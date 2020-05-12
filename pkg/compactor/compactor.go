@@ -157,7 +157,7 @@ func newCompactor(
 			Help: "Total number of compaction runs failed.",
 		}),
 		compactionRunsLastSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_compactor_last_successful_run_time",
+			Name: "cortex_compactor_last_successful_run_timestamp_seconds",
 			Help: "Unix timestamp of the last successful compaction run.",
 		}),
 

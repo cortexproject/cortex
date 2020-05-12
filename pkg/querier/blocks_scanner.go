@@ -74,7 +74,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 			Buckets: []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
 		}),
 		scanLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_querier_blocks_last_successful_scan_time",
+			Name: "cortex_querier_blocks_last_successful_scan_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks scan.",
 		}),
 	}

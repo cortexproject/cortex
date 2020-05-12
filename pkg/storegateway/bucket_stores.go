@@ -70,7 +70,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "blocks_last_successful_sync_time",
+			Name: "blocks_last_successful_sync_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}

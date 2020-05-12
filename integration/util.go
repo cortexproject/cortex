@@ -55,12 +55,14 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 // GetServerTLSFlags generates generic TLS flags for a server
 func GetServerTLSFlags() map[string]string {
 	return map[string]string{
-		"-server.http-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, serverCertFile),
-		"-server.http-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
-		"-server.http-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, rootCertFile),
-		"-server.grpc-tls-cert-path": filepath.Join(e2e.ContainerSharedDir, serverCertFile),
-		"-server.grpc-tls-key-path":  filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
-		"-server.grpc-tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, rootCertFile),
+		"-server.http-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.http-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.http-tls-client-auth": "RequireAndVerifyClientCert",
+		"-server.http-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, rootCertFile),
+		"-server.grpc-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.grpc-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.grpc-tls-client-auth": "RequireAndVerifyClientCert",
+		"-server.grpc-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, rootCertFile),
 	}
 }
 

@@ -74,7 +74,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The querier supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+The querier and store-gateway support a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -102,6 +102,14 @@ For example, if you're running Memcached in Kubernetes, you may:
 1. Deploy your Memcached cluster using a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
 2. Create an [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
 3. Configure the Cortex's Memcached client address using the `dnssrvnoa+` [service discovery](../configuration/arguments.md#dns-service-discovery)
+
+## Chunks cache
+
+Store-gateway and querier also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+
+To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
+
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `experimental.tsdb.bucket-store.chunks-cache` prefix.
 
 ## Configuration
 

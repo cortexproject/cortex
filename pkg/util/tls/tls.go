@@ -4,9 +4,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
-	"fmt"
 	"io/ioutil"
 
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -30,13 +30,13 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 	if cfg.CertPath != "" && cfg.KeyPath != "" && cfg.CAPath != "" {
 		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load TLS certs: %v", err)
+			return nil, errors.Wrapf(err, "failed to load TLS certificate %s,%s", cfg.CertPath, cfg.KeyPath)
 		}
 
 		var caCertPool *x509.CertPool
 		caCert, err := ioutil.ReadFile(cfg.CAPath)
 		if err != nil {
-			return nil, fmt.Errorf("error loading ca cert: %v", err)
+			return nil, errors.Wrapf(err, "error loading ca cert: %s", cfg.CAPath)
 		}
 		caCertPool = x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -54,11 +54,9 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 // GetGRPCDialOptions creates GRPC DialOptions for TLS
 func (cfg *ClientConfig) GetGRPCDialOptions() ([]grpc.DialOption, error) {
 	if tlsConfig, err := cfg.GetTLSConfig(); err != nil {
-		return nil, fmt.Errorf("error creating grpc dial options: %v", err)
+		return nil, errors.Wrap(err, "error creating grpc dial options")
 	} else if tlsConfig != nil {
 		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}, nil
-	} else {
-		return []grpc.DialOption{grpc.WithInsecure()}, nil
 	}
-	return nil, nil
+	return []grpc.DialOption{grpc.WithInsecure()}, nil
 }

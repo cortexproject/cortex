@@ -83,6 +83,30 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
+		require.NoError(t, s.StartAndWaitReady(minio))
+
+		// setup tls
+		cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
+		require.NoError(t, cmd.Run())
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
+
+		return "", mergeFlags(
+			BlocksStorageFlags,
+			getServerTLSFlags(),
+			getClientTLSFlagsWithPrefix("ingester.client"),
+			getClientTLSFlagsWithPrefix("querier.frontend-client"),
+			getClientTLSFlagsWithPrefix("ingester.client"),
+		)
+	})
+}
+
 func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
@@ -97,15 +121,6 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	configFile, flags := setup(t, s)
 
-	// setup tls
-	cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
-	require.NoError(t, cmd.Run())
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
-
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
@@ -113,9 +128,9 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	})
 
 	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, mergeFlags(flags, getServerTLSFlags()), "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, getServerTLSFlags()), "")
-	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, getClientTLSFlagsWithPrefix("ingester.client")), "")
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
 
 	// Check if we're discovering memcache or not.
@@ -126,7 +141,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}, getClientTLSFlagsWithPrefix("querier.frontend-client"), getClientTLSFlagsWithPrefix("ingester.client")), "")
+	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.

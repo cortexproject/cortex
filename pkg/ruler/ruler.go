@@ -35,7 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 var (
@@ -61,7 +61,7 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// TLS parameters for the GRPC Client
-	ClientTLSConfig tls_cfg.ClientConfig `yaml:"ruler_client"`
+	ClientTLSConfig tls.ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// Delay the evaluation of all rules by a set interval to give a buffer

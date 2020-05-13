@@ -63,6 +63,7 @@ func (c *storeGatewayClient) String() string {
 }
 
 func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+	// We prefer sane defaults instead of exposing further config options.
 	clientCfg := grpcclient.Config{
 		MaxRecvMsgSize:      100 << 20,
 		MaxSendMsgSize:      16 << 20,

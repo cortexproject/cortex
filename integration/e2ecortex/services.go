@@ -72,7 +72,7 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                         "querier",
-			"-log.level":                      "warn",
+			"-log.level":                      "debug",
 			"-distributor.replication-factor": "1",
 			// Ingesters ring backend.
 			"-ring.store":      "consul",

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	tls "github.com/cortexproject/cortex/pkg/util/tls"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a gRPC client.

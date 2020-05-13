@@ -54,10 +54,6 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 
 func getServerTLSFlags() map[string]string {
 	return map[string]string{
-		"-server.http-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
-		"-server.http-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
-		"-server.http-tls-client-auth": "RequireAndVerifyClientCert",
-		"-server.http-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
 		"-server.grpc-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
 		"-server.grpc-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
 		"-server.grpc-tls-client-auth": "RequireAndVerifyClientCert",

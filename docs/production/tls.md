@@ -106,3 +106,6 @@ For a GRPC client in the Querier:
     # Path to the TLS CA for the GRPC Client
     -querier.frontend-client.tls-ca-path=/path/to/root.crt
 ```
+
+TLS can be configured in a similar fashion for other GRPC clients like the
+ingester client.

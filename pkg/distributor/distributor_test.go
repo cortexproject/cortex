@@ -197,10 +197,14 @@ func TestDistributor_Push(t *testing.T) {
 				assert.Equal(t, tc.expectedResponse, response)
 				assert.Equal(t, tc.expectedError, err)
 
-				// Check tracked Prometheus metrics.
+				// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum
+				// is reached, when we reach this point the 3rd ingester may not have received series/metadata
+				// yet. To avoid flaky test we retry metrics assertion until we hit the desired state (no error)
+				// within a reasonable timeout.
 				if tc.expectedMetrics != "" {
-					err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), tc.metricNames...)
-					assert.NoError(t, err)
+					test.Poll(t, time.Second, nil, func() interface{} {
+						return testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(tc.expectedMetrics), tc.metricNames...)
+					})
 				}
 			})
 		}

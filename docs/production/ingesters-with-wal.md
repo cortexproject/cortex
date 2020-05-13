@@ -9,8 +9,6 @@ Currently the ingesters running in the chunks storage mode, store all their data
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
-_The WAL is currently considered experimental._
-
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [statefulset](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.

@@ -259,7 +259,7 @@ func TestShardingMetadataFilter(t *testing.T) {
 					block4: {},
 				}
 
-				err = filter.Filter(ctx, metas, synced, false)
+				err = filter.Filter(ctx, metas, synced)
 				require.NoError(t, err)
 
 				var actualBlocks []ulid.ULID

@@ -50,14 +50,14 @@ require (
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
-	github.com/thanos-io/thanos v0.12.1-0.20200416112106-b391ca115ed8
+	github.com/thanos-io/thanos v0.12.3-0.20200507181659-b9ff23c5c31d
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200429090833-ac38719f57dd
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.uber.org/atomic v1.5.1
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.26.0

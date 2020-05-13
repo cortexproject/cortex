@@ -239,6 +239,77 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
+		{
+			// Sub aggregations must avoid non-associative series merging across shards
+			`sum(
+			  count(
+			    bar1
+			  )  by (foo,bazz)
+			)`,
+			`
+			  sum without(__cortex_shard__) (
+			    sum by(__cortex_shard__) (
+			      count by(foo, bazz) (foo{__cortex_shard__="0_of_2",bar="baz"})
+			    ) or
+			    sum by(__cortex_shard__) (
+			      count by(foo, bazz) (foo{__cortex_shard__="1_of_2",bar="baz"})
+			    )
+			  )
+`,
+			false,
+		},
+		{
+			// Note: this is a speculative optimization that we don't currently include due to mapping complexity.
+			// Certain sub aggregations may inject __cortex_shard__ for all (by) subgroupings.
+			// This is the same as the previous test with the exception that the shard label is injected to the count grouping
+			`sum(
+			  count(
+			    bar1
+			  )  by (foo,bazz)
+			)`,
+			`
+			  sum without(__cortex_shard__) (
+			    sum by(__cortex_shard__) (
+			      count by(foo, bazz, __cortex_shard__) (foo{__cortex_shard__="0_of_2",bar="baz"})
+			    ) or
+			    sum by(__cortex_shard__) (
+			      count by(foo, bazz, __cortex_shard__) (foo{__cortex_shard__="1_of_2",bar="baz"})
+			    )
+			  )
+`,
+			true,
+		},
+		{
+			// Note: this is a speculative optimization that we don't currently include due to mapping complexity
+			// This example details multiple layers of aggregations.
+			// Sub aggregations must inject __cortex_shard__ for all (by) subgroupings.
+			`sum(
+			  count(
+			    count(
+			      bar1
+			    )  by (foo,bazz)
+			  )  by (bazz)
+			)`,
+			`
+			  sum without(__cortex_shard__) (
+			    sum by(__cortex_shard__) (
+			      count by(bazz, __cortex_shard__) (
+				count by(foo, bazz, __cortex_shard__) (
+				  foo{__cortex_shard__="0_of_2", bar="baz"}
+				)
+			      )
+			    ) or
+			    sum by(__cortex_shard__) (
+			      count by(bazz, __cortex_shard__) (
+				count by(foo, bazz, __cortex_shard__) (
+				  foo{__cortex_shard__="1_of_2", bar="baz"}
+				)
+			      )
+			    )
+			  )
+`,
+			true,
+		},
 	}
 
 	for _, tt := range tests {

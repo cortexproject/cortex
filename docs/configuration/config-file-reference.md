@@ -2671,7 +2671,7 @@ bucket_store:
     [postings_compression_enabled: <boolean> | default = false]
 
   chunks_cache:
-    # Backend for chunks cache. Supported values: memcached.
+    # Backend for chunks cache, if not empty. Supported values: memcached.
     # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.backend
     [backend: <string> | default = ""]
 
@@ -2718,21 +2718,21 @@ bucket_store:
       [max_item_size: <int> | default = 1048576]
 
     # Size of each subrange that bucket object is split into for better caching.
-    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-subrange-size
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-size
     [subrange_size: <int> | default = 16000]
 
     # Maximum number of sub-GetRange requests that a single GetRange request can
     # be split into when fetching chunks. Zero or negative value = unlimited
     # number of sub-requests.
-    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-chunks-get-range-requests
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
     [max_get_range_requests: <int> | default = 3]
 
     # TTL for caching object size for chunks.
-    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-object-size-ttl
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
     [object_size_ttl: <duration> | default = 24h]
 
     # TTL for caching individual chunks subranges.
-    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-subrange-ttl
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
     [subrange_ttl: <duration> | default = 24h]
 
   # Duration after which the blocks marked for deletion will be filtered out

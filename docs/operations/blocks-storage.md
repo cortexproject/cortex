@@ -74,7 +74,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The querier and store-gateway now supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+The querier and store-gateway support a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -105,9 +105,9 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 ## Chunks cache
 
-Store-gateway and querier now also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query needs same data.
+Store-gateway and querier also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
-To enable chunks cache, please set `experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
+To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
 
 There are additional low-level options for configuring chunks cache. Please refer to other flags with `experimental.tsdb.bucket-store.chunks-cache` prefix.
 
@@ -271,7 +271,7 @@ tsdb:
       [postings_compression_enabled: <boolean> | default = false]
 
     chunks_cache:
-      # Backend for chunks cache. Supported values: memcached.
+      # Backend for chunks cache, if not empty. Supported values: memcached.
       # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
 
@@ -319,21 +319,21 @@ tsdb:
 
       # Size of each subrange that bucket object is split into for better
       # caching.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-subrange-size
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-size
       [subrange_size: <int> | default = 16000]
 
       # Maximum number of sub-GetRange requests that a single GetRange request
       # can be split into when fetching chunks. Zero or negative value =
       # unlimited number of sub-requests.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-chunks-get-range-requests
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
       [max_get_range_requests: <int> | default = 3]
 
       # TTL for caching object size for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-object-size-ttl
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
       [object_size_ttl: <duration> | default = 24h]
 
       # TTL for caching individual chunks subranges.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.chunk-subrange-ttl
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
       [subrange_ttl: <duration> | default = 24h]
 
     # Duration after which the blocks marked for deletion will be filtered out

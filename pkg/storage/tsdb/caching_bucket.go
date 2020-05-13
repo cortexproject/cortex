@@ -18,30 +18,21 @@ type ChunksCacheConfig struct {
 	Backend   string                `yaml:"backend"`
 	Memcached MemcachedClientConfig `yaml:"memcached"`
 
-	// Basic unit used to cache chunks.
-	SubrangeSize        int64 `yaml:"subrange_size"`
-	MaxGetRangeRequests int   `yaml:"max_get_range_requests"`
-
-	// TTLs for various cache items.
-	ObjectSizeTTL time.Duration `yaml:"object_size_ttl"`
-	SubrangeTTL   time.Duration `yaml:"subrange_ttl"`
+	SubrangeSize        int64         `yaml:"subrange_size"`
+	MaxGetRangeRequests int           `yaml:"max_get_range_requests"`
+	ObjectSizeTTL       time.Duration `yaml:"object_size_ttl"`
+	SubrangeTTL         time.Duration `yaml:"subrange_ttl"`
 }
 
 func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache. Supported values: %s.", storecache.MemcachedBucketCacheProvider))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s.", storecache.MemcachedBucketCacheProvider))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 
-	defaultCfg := storecache.DefaultCachingBucketConfig()
-	cfg.SubrangeSize = defaultCfg.ChunkSubrangeSize
-	cfg.ObjectSizeTTL = defaultCfg.ChunkObjectSizeTTL
-	cfg.SubrangeTTL = defaultCfg.ChunkSubrangeTTL
-	cfg.MaxGetRangeRequests = defaultCfg.MaxChunksGetRangeRequests
-
-	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-chunks-get-range-requests", cfg.MaxGetRangeRequests, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
-	f.Int64Var(&cfg.SubrangeSize, prefix+"chunk-subrange-size", cfg.SubrangeSize, "Size of each subrange that bucket object is split into for better caching.")
-	f.DurationVar(&cfg.ObjectSizeTTL, prefix+"chunk-object-size-ttl", cfg.ObjectSizeTTL, "TTL for caching object size for chunks.")
-	f.DurationVar(&cfg.SubrangeTTL, prefix+"chunk-subrange-ttl", cfg.SubrangeTTL, "TTL for caching individual chunks subranges.")
+	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
+	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
+	f.DurationVar(&cfg.ObjectSizeTTL, prefix+"object-size-ttl", 24*time.Hour, "TTL for caching object size for chunks.")
+	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual chunks subranges.")
 }
 
 // Validate the config.
@@ -71,7 +62,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, bkt objstore.Bucket, lo
 		var memcached cacheutil.MemcachedClient
 		memcached, err := cacheutil.NewMemcachedClientWithConfig(logger, "chunks-cache", chunksConfig.Memcached.ToMemcachedClientConfig(), reg)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create memcached client")
+			return nil, errors.Wrapf(err, "failed to create memcached client for chunks-cache")
 		}
 		chunksCache = cache.NewMemcachedCache("chunks-cache", logger, memcached, reg)
 

@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"path/filepath"
@@ -9,7 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
-	errors2 "github.com/pkg/errors"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
@@ -209,11 +208,11 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *BucketStoreConfig) Validate() error {
 	err := cfg.IndexCache.Validate()
 	if err != nil {
-		return errors2.Wrapf(err, "index-cache configuration")
+		return errors.Wrap(err, "index-cache configuration")
 	}
 	err = cfg.ChunksCache.Validate()
 	if err != nil {
-		return errors2.Wrapf(err, "chunks-cache configuration")
+		return errors.Wrap(err, "chunks-cache configuration")
 	}
 	return nil
 }

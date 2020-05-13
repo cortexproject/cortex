@@ -6216,7 +6216,7 @@ replica: replica2
 &lt;li&gt;[ENHANCEMENT] Redis Cache: Added &lt;code&gt;idle_timeout&lt;/code&gt;, &lt;code&gt;wait_on_pool_exhaustion&lt;/code&gt; and &lt;code&gt;max_conn_lifetime&lt;/code&gt; options to redis cache configuration. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2550&#34;&gt;#2550&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Use newer AWS API for paginated queries - removes &amp;lsquo;Deprecated&amp;rsquo; message from logfiles. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2452&#34;&gt;#2452&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2580&#34;&gt;#2580&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2583&#34;&gt;#2583&lt;/a&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2580&#34;&gt;#2580&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2583&#34;&gt;#2583&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2589&#34;&gt;#2589&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_appender_add_duration_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_appender_commit_duration_seconds&lt;/code&gt;&lt;/li&gt;
@@ -6229,6 +6229,10 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_wal_truncations_failed_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_wal_truncations_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_wal_writes_failed_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_deletions_failed_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_deletions_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_creations_failed_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_creations_total&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2573&#34;&gt;#2573&lt;/a&gt;
 &lt;ul&gt;

@@ -50,7 +50,7 @@ require (
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
-	github.com/thanos-io/thanos v0.12.3-0.20200505050643-5a777da8dfd2
+	github.com/thanos-io/thanos v0.12.3-0.20200507181659-b9ff23c5c31d
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200429090833-ac38719f57dd
 	go.etcd.io/bbolt v1.3.3

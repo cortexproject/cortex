@@ -22,6 +22,11 @@
 * [CHANGE] Slow query log has a different output now. Previously used `url` field has been replaced with `host` and `path`, and query parameters are logged as individual log fields with `qs_` prefix. #2520
 * [CHANGE] Experimental WAL: WAL and checkpoint compression is now disabled. #2436
 * [CHANGE] Update in dependency `go-kit/kit` from `v0.9.0` to `v0.10.0`. HTML escaping disabled in JSON Logger. #2535
+* [CHANGE] Experimental TSDB: Removed `cortex_<service>_` prefix from Thanos objstore metrics and added `component` label to distinguish which Cortex component is doing API calls to the object storage when running in single-binary mode: #2568
+  - `cortex_<service>_thanos_objstore_bucket_operations_total` renamed to `thanos_objstore_bucket_operations_total{component="<name>"}`
+  - `cortex_<service>_thanos_objstore_bucket_operation_failures_total` renamed to `thanos_objstore_bucket_operation_failures_total{component="<name>"}`
+  - `cortex_<service>_thanos_objstore_bucket_operation_duration_seconds` renamed to `thanos_objstore_bucket_operation_duration_seconds{component="<name>"}`
+  - `cortex_<service>_thanos_objstore_bucket_last_successful_upload_time` renamed to `thanos_objstore_bucket_last_successful_upload_time{component="<name>"}`
 * [FEATURE] Ruler: The `-ruler.evaluation-delay` flag was added to allow users to configure a default evaluation delay for all rules in cortex. The default value is 0 which is the current behavior. #2423
 * [FEATURE] Experimental: Added a new object storage client for OpenStack Swift. #2440
 * [FEATURE] Update in dependency `weaveworks/common`. TLS config options added to the Server. #2535
@@ -49,6 +54,31 @@
 * [ENHANCEMENT] query-frontend now also logs the POST data of long queries. #2481
 * [ENHANCEMENT] Experimental WAL: Ingester WAL records now have type header and the custom WAL records have been replaced by Prometheus TSDB's WAL records. Old records will not be supported from 1.3 onwards. Note: once this is deployed, you cannot downgrade without data loss. #2436
 * [ENHANCEMENT] Redis Cache: Added `idle_timeout`, `wait_on_pool_exhaustion` and `max_conn_lifetime` options to redis cache configuration. #2550
+* [ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.
+* [ENHANCEMENT] Use newer AWS API for paginated queries - removes 'Deprecated' message from logfiles. #2452
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
+  * `cortex_ingester_tsdb_appender_add_duration_seconds`
+  * `cortex_ingester_tsdb_appender_commit_duration_seconds`
+  * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
+  * `cortex_ingester_tsdb_compactions_total`
+  * `cortex_ingester_tsdb_compaction_duration_seconds`
+  * `cortex_ingester_tsdb_wal_fsync_duration_seconds`
+  * `cortex_ingester_tsdb_wal_page_flushes_total`
+  * `cortex_ingester_tsdb_wal_completed_pages_total`
+  * `cortex_ingester_tsdb_wal_truncations_failed_total`
+  * `cortex_ingester_tsdb_wal_truncations_total`
+  * `cortex_ingester_tsdb_wal_writes_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_total`
+* [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
+  * `cortex_compactor_last_successful_run_timestamp_seconds`
+  * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)
+  * `cortex_querier_blocks_last_successful_scan_timestamp_seconds` (when store-gateway is enabled)
+  * `cortex_storegateway_blocks_last_successful_sync_timestamp_seconds`
+* [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
+* [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
@@ -60,6 +90,12 @@
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2483
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
+* [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
+* [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
+
+## 1.0.1 / 2020-04-23
+
+* [BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. #2503
 
 ## 1.0.0 / 2020-04-02
 
@@ -161,7 +197,6 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
 * [BUGFIX] Fixed etcd client keepalive settings. #2278
 * [BUGFIX] Register the metrics of the WAL. #2295
 * [BUXFIX] Experimental TSDB: fixed error handling when ingesting out of bound samples. #2342
-* [BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. #2503
 
 ### Known issues
 

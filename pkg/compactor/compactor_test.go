@@ -178,7 +178,27 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
-	`)))
+	`),
+		"cortex_compactor_runs_started_total",
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_failed_total",
+		"cortex_compactor_garbage_collected_blocks_total",
+		"cortex_compactor_garbage_collection_duration_seconds",
+		"cortex_compactor_garbage_collection_failures_total",
+		"cortex_compactor_garbage_collection_total",
+		"cortex_compactor_meta_sync_consistency_delay_seconds",
+		"cortex_compactor_meta_sync_duration_seconds",
+		"cortex_compactor_meta_sync_failures_total",
+		"cortex_compactor_meta_syncs_total",
+		"cortex_compactor_group_compaction_runs_completed_total",
+		"cortex_compactor_group_compaction_runs_started_total",
+		"cortex_compactor_group_compactions_failures_total",
+		"cortex_compactor_group_compactions_total",
+		"cortex_compactor_group_vertical_compactions_total",
+		"cortex_compactor_block_cleanup_failures_total",
+		"cortex_compactor_blocks_cleaned_total",
+		"cortex_compactor_blocks_marked_for_deletion_total",
+	))
 }
 
 func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testing.T) {
@@ -291,7 +311,27 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
-	`)))
+	`),
+		"cortex_compactor_runs_started_total",
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_failed_total",
+		"cortex_compactor_garbage_collected_blocks_total",
+		"cortex_compactor_garbage_collection_duration_seconds",
+		"cortex_compactor_garbage_collection_failures_total",
+		"cortex_compactor_garbage_collection_total",
+		"cortex_compactor_meta_sync_consistency_delay_seconds",
+		"cortex_compactor_meta_sync_duration_seconds",
+		"cortex_compactor_meta_sync_failures_total",
+		"cortex_compactor_meta_syncs_total",
+		"cortex_compactor_group_compaction_runs_completed_total",
+		"cortex_compactor_group_compaction_runs_started_total",
+		"cortex_compactor_group_compactions_failures_total",
+		"cortex_compactor_group_compactions_total",
+		"cortex_compactor_group_vertical_compactions_total",
+		"cortex_compactor_block_cleanup_failures_total",
+		"cortex_compactor_blocks_cleaned_total",
+		"cortex_compactor_blocks_marked_for_deletion_total",
+	))
 }
 
 func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {

@@ -65,6 +65,8 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 		"cortex_querier_blocks_meta_sync_failures_total",
 		"cortex_querier_blocks_meta_sync_consistency_delay_seconds",
 	))
+
+	assert.Greater(t, testutil.ToFloat64(s.scanLastSuccess), float64(0))
 }
 
 func TestBlocksScanner_InitialScanFailure(t *testing.T) {
@@ -109,10 +111,15 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 		# HELP cortex_querier_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
 		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
 		cortex_querier_blocks_meta_sync_consistency_delay_seconds 0
+
+		# HELP cortex_querier_blocks_last_successful_scan_timestamp_seconds Unix timestamp of the last successful blocks scan.
+		# TYPE cortex_querier_blocks_last_successful_scan_timestamp_seconds gauge
+		cortex_querier_blocks_last_successful_scan_timestamp_seconds 0
 	`),
 		"cortex_querier_blocks_meta_syncs_total",
 		"cortex_querier_blocks_meta_sync_failures_total",
 		"cortex_querier_blocks_meta_sync_consistency_delay_seconds",
+		"cortex_querier_blocks_last_successful_scan_timestamp_seconds",
 	))
 }
 

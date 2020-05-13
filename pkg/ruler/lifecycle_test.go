@@ -39,6 +39,8 @@ func TestRulerShutdown(t *testing.T) {
 		return testutils.NumTokens(ringStore, "localhost", ring.RulerRingKey)
 	})
 
+	require.Equal(t, ring.ACTIVE, r.lifecycler.GetState())
+
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r))
 
 	// Wait until the tokens are unregistered from the ring

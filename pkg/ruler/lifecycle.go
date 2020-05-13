@@ -5,9 +5,9 @@ import (
 )
 
 func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.IngesterDesc) (ring.IngesterState, ring.Tokens) {
-	// When we initialize the store-gateway instance in the ring we want to start from
-	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
-	// tokens (if any) or the ones loaded from file.
+	// When we initialize the ruler instance in the ring we want to start from
+	// a clean situation, so whatever is the state we set it ACTIVE, while we keep existing
+	// tokens (if any).
 	var tokens []uint32
 	if instanceExists {
 		tokens = instanceDesc.GetTokens()
@@ -19,7 +19,7 @@ func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.De
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)
 
-	return ring.JOINING, tokens
+	return ring.ACTIVE, tokens
 }
 
 func (r *Ruler) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}

@@ -198,7 +198,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 			return nil, errors.Wrap(err, "create KV store client")
 		}
 
-		if enableSharding(ruler, ringStore) != nil {
+		if err = enableSharding(ruler, ringStore); err != nil {
 			return nil, errors.Wrap(err, "setup ruler sharding ring")
 		}
 	}
@@ -217,7 +217,7 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	// chained via "next delegate").
 	delegate := ring.BasicLifecyclerDelegate(r)
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
-	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout, delegate, r.logger)
+	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ring.RulerRingKey, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
 	if err != nil {

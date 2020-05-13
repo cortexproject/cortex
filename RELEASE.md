@@ -4,7 +4,7 @@ This page describes the release process and the currently planned schedule for u
 
 ## Release schedule
 
-Our goal is to provide a new minor release every 4 weeks. This is a new process and everything in this document is subject to change.
+Our goal is to provide a new minor release every 6 weeks. This is a new process and everything in this document is subject to change.
 
 | release series | date of first pre-release (year-month-day) | release shepherd                            |
 |----------------|--------------------------------------------|---------------------------------------------|
@@ -15,6 +15,8 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | v0.5.0         | 2020-01-08                                 | _Abandoned_                                 |
 | v0.6.0         | 2020-01-22                                 | Marco Pracucci (@pracucci)                  |
 | v0.7.0         | 2020-03-09                                 | Marco Pracucci (@pracucci)                  |
+| v1.0.0         | 2020-03-31                                 | Goutham Veeramachaneni (@gouthamve)         |
+| v1.1.0         | 2020-05-11                                 | Peter Štibraný (@pstibrany)                 |
 
 ## Release shepherd responsibilities
 
@@ -44,6 +46,8 @@ Maintaining the release branches for older minor releases happens on a best effo
 ### Prepare your release
 
 For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
+
+To prepare release branch, first create new release branch (release-X.Y) in Cortex repository from master commit of your choice, and then do the following steps on a private branch (prepare-release-X.Y) and send PR to merge this private branch to the new release branch (prepare-release-X.Y -> release-X.Y).
 
 0. Make sure you've a GPG key associated to your GitHub account (`git tag` will be signed with that GPG key)
    - You can add a GPG key to your GitHub account following [this procedure](https://help.github.com/articles/generating-a-gpg-key/)

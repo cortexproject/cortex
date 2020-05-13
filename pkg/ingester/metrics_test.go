@@ -88,21 +88,21 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_wal_writes_failed_total counter
 			cortex_ingester_tsdb_wal_writes_failed_total 1486965
 
-			# HELP cortex_ingester_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
-			# TYPE cortex_ingester_checkpoint_deletions_failed_total counter
-			cortex_ingester_checkpoint_deletions_failed_total 1586096
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
 
-			# HELP cortex_ingester_checkpoint_deletions_total Total number of TSDB checkpoint deletions attempted.
-			# TYPE cortex_ingester_checkpoint_deletions_total counter
-			cortex_ingester_checkpoint_deletions_total 1685227
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_total Total number of TSDB checkpoint deletions attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_total 1685227
 
-			# HELP cortex_ingester_checkpoint_creations_failed_total Total number of TSDB checkpoint creations that failed.
-			# TYPE cortex_ingester_checkpoint_creations_failed_total counter
-			cortex_ingester_checkpoint_creations_failed_total 1784358
+			# HELP cortex_ingester_tsdb_checkpoint_creations_failed_total Total number of TSDB checkpoint creations that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_failed_total counter
+			cortex_ingester_tsdb_checkpoint_creations_failed_total 1784358
 
-			# HELP cortex_ingester_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
-			# TYPE cortex_ingester_checkpoint_creations_total counter
-			cortex_ingester_checkpoint_creations_total 1883489
+			# HELP cortex_ingester_tsdb_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
+			cortex_ingester_tsdb_checkpoint_creations_total 1883489
 
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter

@@ -299,19 +299,19 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"Total number of TSDB WAL writes that failed.",
 			nil, nil),
 		checkpointDeleteFail: prometheus.NewDesc(
-			"cortex_ingester_checkpoint_deletions_failed_total",
+			"cortex_ingester_tsdb_checkpoint_deletions_failed_total",
 			"Total number of TSDB checkpoint deletions that failed.",
 			nil, nil),
 		checkpointDeleteTotal: prometheus.NewDesc(
-			"cortex_ingester_checkpoint_deletions_total",
+			"cortex_ingester_tsdb_checkpoint_deletions_total",
 			"Total number of TSDB checkpoint deletions attempted.",
 			nil, nil),
 		checkpointCreationFail: prometheus.NewDesc(
-			"cortex_ingester_checkpoint_creations_failed_total",
+			"cortex_ingester_tsdb_checkpoint_creations_failed_total",
 			"Total number of TSDB checkpoint creations that failed.",
 			nil, nil),
 		checkpointCreationTotal: prometheus.NewDesc(
-			"cortex_ingester_checkpoint_creations_total",
+			"cortex_ingester_tsdb_checkpoint_creations_total",
 			"Total number of TSDB checkpoint creations attempted.",
 			nil, nil),
 

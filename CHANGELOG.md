@@ -68,10 +68,10 @@
   * `cortex_ingester_tsdb_wal_truncations_failed_total`
   * `cortex_ingester_tsdb_wal_truncations_total`
   * `cortex_ingester_tsdb_wal_writes_failed_total`
-  * `cortex_ingester_checkpoint_deletions_failed_total`
-  * `cortex_ingester_checkpoint_deletions_total`
-  * `cortex_ingester_checkpoint_creations_failed_total`
-  * `cortex_ingester_checkpoint_creations_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_total`
 * [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_timestamp_seconds`
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)

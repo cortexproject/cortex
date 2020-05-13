@@ -192,11 +192,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-
-	if _, err = io.Copy(w, resp.Body); err != nil {
-		server.WriteError(w, err)
-		return
-	}
+	io.Copy(w, resp.Body)
 }
 
 func writeError(w http.ResponseWriter, err error) {

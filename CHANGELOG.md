@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 / 2020-05-??
+## 1.1.0-rc.0 / 2020-05-13
 
 This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!
 
@@ -12,9 +12,9 @@ Please make sure to review renamed metrics, and update your dashboards and alert
   * Updated the index hosted at the root prefix to point to the updated routes.
   * Legacy routes hardcoded with the `/api/prom` prefix now respect the `-http.prefix` flag.
 * [CHANGE] The metrics `cortex_distributor_ingester_appends_total` and `distributor_ingester_append_failures_total` now include a `type` label to differentiate between `samples` and `metadata`. #2336
-* [CHANGE] The metrics for number of chunks and bytes flushed to the chunk store are renamed from: #2463
+* [CHANGE] The metrics for number of chunks and bytes flushed to the chunk store are renamed. Note that previous metrics were counted pre-deduplication, while new metrics are counted after deduplication. #2463
   * `cortex_ingester_chunks_stored_total` > `cortex_chunk_store_stored_chunks_total`
-  * `cortex_ingester_chunk_stored_bytes_total` > `cortex_chunk_store_stored_chunk_bytes_total`
+  * `cortex_ingester_chunk_stored_bytes_total` > `cortex_chunk_store_stored_chunk_bytes_total` 
 * [CHANGE] Experimental TSDB: renamed blocks meta fetcher metrics: #2375
   * `cortex_querier_bucket_store_blocks_meta_syncs_total` > `cortex_querier_blocks_meta_syncs_total`
   * `cortex_querier_bucket_store_blocks_meta_sync_failures_total` > `cortex_querier_blocks_meta_sync_failures_total`
@@ -52,9 +52,9 @@ Please make sure to review renamed metrics, and update your dashboards and alert
 * [ENHANCEMENT] Allow 1w (where w denotes week) and 1y (where y denotes year) when setting `-store.cache-lookups-older-than` and `-store.max-look-back-period`. #2454
 * [ENHANCEMENT] Optimize index queries for matchers using "a|b|c"-type regex. #2446 #2475
 * [ENHANCEMENT] Added per tenant metrics for queries and chunks and bytes read from chunk store: #2463
-* [ENHANCEMENT] WAL: New metrics `cortex_ingester_wal_logged_bytes_total` and `cortex_ingester_checkpoint_logged_bytes_total` added to track total bytes logged to disk for WAL and checkpoints. #2497
   * `cortex_chunk_store_fetched_chunks_total` and `cortex_chunk_store_fetched_chunk_bytes_total`
   * `cortex_query_frontend_queries_total` (per tenant queries counted by the frontend)
+* [ENHANCEMENT] WAL: New metrics `cortex_ingester_wal_logged_bytes_total` and `cortex_ingester_checkpoint_logged_bytes_total` added to track total bytes logged to disk for WAL and checkpoints. #2497
 * [ENHANCEMENT] Add de-duplicated chunks counter `cortex_chunk_store_deduped_chunks_total` which counts every chunk not sent to the store because it was already sent by another replica. #2485
 * [ENHANCEMENT] Query-frontend now also logs the POST data of long queries. #2481
 * [ENHANCEMENT] WAL: Ingester WAL records now have type header and the custom WAL records have been replaced by Prometheus TSDB's WAL records. Old records will not be supported from 1.3 onwards. Note: once this is deployed, you cannot downgrade without data loss. #2436

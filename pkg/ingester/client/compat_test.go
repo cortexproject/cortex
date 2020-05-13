@@ -5,10 +5,12 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/thanos/pkg/testutil"
 )
 
@@ -111,6 +113,30 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 			testutil.Equals(t, tt.expected, m)
 		})
 	}
+}
+
+func TestFromLabelAdaptersToLabels(t *testing.T) {
+	input := []LabelAdapter{{Name: "hello", Value: "world"}}
+	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
+	actual := FromLabelAdaptersToLabels(input)
+
+	assert.Equal(t, expected, actual)
+
+	// All strings must NOT be copied.
+	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
+	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
+}
+
+func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
+	input := []LabelAdapter{{Name: "hello", Value: "world"}}
+	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
+	actual := FromLabelAdaptersToLabelsWithCopy(input)
+
+	assert.Equal(t, expected, actual)
+
+	// All strings must be copied.
+	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
+	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
 }
 
 func TestQueryResponse(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
+	tls "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a gRPC client.
@@ -20,8 +20,6 @@ type Config struct {
 
 	BackoffOnRatelimits bool               `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       util.BackoffConfig `yaml:"backoff_config"`
-
-	TLSStruct tls_cfg.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
@@ -39,7 +37,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.BackoffOnRatelimits, prefix+".backoff-on-ratelimits", false, "Enable backoff and retry when we hit ratelimits.")
 
 	cfg.BackoffConfig.RegisterFlags(prefix, f)
-	cfg.TLSStruct.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // CallOptions returns the config in terms of CallOptions.
@@ -70,23 +67,24 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	}
 }
 
-// DialOptionWithTLS returns the config as a grpc.DialOptions
-func (cfg *Config) DialOptionWithTLS(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
-	if cfg.BackoffOnRatelimits {
-		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
-	}
+// ConfigWithTLS is the config for a grpc client with tls
+type ConfigWithTLS struct {
+	GRPC Config           `yaml:",inline"`
+	TLS  tls.ClientConfig `yaml:",inline"`
+}
 
-	if cfg.RateLimit > 0 {
-		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
-	}
+// RegisterFlagsWithPrefix registers flags with prefix.
+func (cfg *ConfigWithTLS) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.GRPC.RegisterFlagsWithPrefix(prefix, f)
+	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+}
 
-	opts, err := cfg.TLSStruct.GetGRPCDialOptions()
+// DialOption returns the config as a grpc.DialOptions
+func (cfg *ConfigWithTLS) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+	opts, err := cfg.TLS.GetGRPCDialOptions()
 	if err != nil {
 		return nil, err
 	}
 
-	return append(opts, grpc.WithDefaultCallOptions(cfg.CallOptions()...),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
-	), nil
+	return append(opts, cfg.GRPC.DialOption(unaryClientInterceptors, streamClientInterceptors)...), nil
 }

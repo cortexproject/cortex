@@ -24,7 +24,7 @@ const (
 	blocksStorageEngine    = "tsdb"
 	clientCertFile         = "certs/client.crt"
 	clientKeyFile          = "certs/client.key"
-	rootCertFile           = "certs/root.crt"
+	caCertFile             = "certs/root.crt"
 	serverCertFile         = "certs/server.crt"
 	serverKeyFile          = "certs/server.key"
 	storeConfigTemplate    = `

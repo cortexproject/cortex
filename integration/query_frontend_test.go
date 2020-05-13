@@ -102,7 +102,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	require.NoError(t, cmd.Run())
 	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
 	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
-	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+rootCertFile, rootCertFile))
+	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
 	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
 	require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
 
@@ -113,9 +113,9 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	})
 
 	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, mergeFlags(flags, GetServerTLSFlags()), "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, GetServerTLSFlags()), "")
-	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, GetClientTLSFlagsWithPrefix("ingester.client")), "")
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, mergeFlags(flags, getServerTLSFlags()), "")
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, getServerTLSFlags()), "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, getClientTLSFlagsWithPrefix("ingester.client")), "")
 	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
 
 	// Check if we're discovering memcache or not.
@@ -126,7 +126,7 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 	// able to get the query-frontend network endpoint.
 	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}, GetClientTLSFlagsWithPrefix("querier.frontend-client"), GetClientTLSFlagsWithPrefix("ingester.client")), "")
+	}, getClientTLSFlagsWithPrefix("querier.frontend-client"), getClientTLSFlagsWithPrefix("ingester.client")), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.

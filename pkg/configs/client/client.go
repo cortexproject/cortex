@@ -25,14 +25,14 @@ import (
 type Config struct {
 	ConfigsAPIURL flagext.URLValue     `yaml:"configs_api_url"`
 	ClientTimeout time.Duration        `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
-	TLSStruct     tls_cfg.ClientConfig `yaml:",inline"`
+	TLS           tls_cfg.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.ConfigsAPIURL, prefix+"configs.url", "URL of configs API server.")
 	f.DurationVar(&cfg.ClientTimeout, prefix+"configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
-	cfg.TLSStruct.RegisterFlagsWithPrefix(prefix+"configs", f)
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"configs", f)
 }
 
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -59,7 +59,7 @@ func New(cfg Config) (*ConfigDBClient, error) {
 		Timeout: cfg.ClientTimeout,
 	}
 
-	tlsConfig, err := cfg.TLSStruct.GetTLSConfig()
+	tlsConfig, err := cfg.TLS.GetTLSConfig()
 	if err != nil {
 		return nil, err
 	}

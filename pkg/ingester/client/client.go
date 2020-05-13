@@ -34,7 +34,7 @@ type closableHealthAndIngesterClient struct {
 
 // MakeIngesterClient makes a new IngesterClient
 func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOptionWithTLS(grpcclient.Instrument(ingesterClientRequestDuration))
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.

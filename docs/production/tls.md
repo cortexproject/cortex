@@ -1,6 +1,6 @@
 ---
-title: "Securing communication between cortex components with TLS"
-linkTitle: "Securing communication between cortex components with TLS"
+title: "Securing communication between Cortex components with TLS"
+linkTitle: "Securing communication between Cortex components with TLS"
 weight: 5
 slug: tls
 ---
@@ -19,7 +19,7 @@ by this CA will have permissions to communicate with the cluster.
 We will use the following script to generate self signed certs for the cluster:
 
 ```
-# Refer: https://github.com/joe-elliott/cert-exporter/blob/69d3d7230378325a1de4fa313432d3d6ced4a518/test/files/genCerts.sh
+# Refer: github.com/cortexproject/cortex/integration/certs/genCerts.sh
 
 # keys
 openssl genrsa -out root.key

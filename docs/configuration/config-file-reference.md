@@ -647,44 +647,7 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -experimental.querier.store-gateway-addresses
 [store_gateway_addresses: <string> | default = ""]
 
-store_gateway_client_config:
-  # gRPC client max receive message size (bytes).
-  # CLI flag: -experimental.querier.store-gateway-client.grpc-max-recv-msg-size
-  [max_recv_msg_size: <int> | default = 104857600]
-
-  # gRPC client max send message size (bytes).
-  # CLI flag: -experimental.querier.store-gateway-client.grpc-max-send-msg-size
-  [max_send_msg_size: <int> | default = 16777216]
-
-  # Use compression when sending messages.
-  # CLI flag: -experimental.querier.store-gateway-client.grpc-use-gzip-compression
-  [use_gzip_compression: <boolean> | default = false]
-
-  # Rate limit for gRPC client; 0 means disabled.
-  # CLI flag: -experimental.querier.store-gateway-client.grpc-client-rate-limit
-  [rate_limit: <float> | default = 0]
-
-  # Rate limit burst for gRPC client.
-  # CLI flag: -experimental.querier.store-gateway-client.grpc-client-rate-limit-burst
-  [rate_limit_burst: <int> | default = 0]
-
-  # Enable backoff and retry when we hit ratelimits.
-  # CLI flag: -experimental.querier.store-gateway-client.backoff-on-ratelimits
-  [backoff_on_ratelimits: <boolean> | default = false]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -experimental.querier.store-gateway-client.backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -experimental.querier.store-gateway-client.backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -experimental.querier.store-gateway-client.backoff-retries
-    [max_retries: <int> | default = 10]
-
+store_gateway_client:
   # TLS cert path for the client
   # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
@@ -807,17 +770,18 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
 
-# TLS cert path for the client
-# CLI flag: -ruler.client.tls-cert-path
-[tls_cert_path: <string> | default = ""]
+ruler_client:
+  # TLS cert path for the client
+  # CLI flag: -ruler.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
 
-# TLS key path for the client
-# CLI flag: -ruler.client.tls-key-path
-[tls_key_path: <string> | default = ""]
+  # TLS key path for the client
+  # CLI flag: -ruler.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
 
-# TLS CA path for the client
-# CLI flag: -ruler.client.tls-ca-path
-[tls_ca_path: <string> | default = ""]
+  # TLS CA path for the client
+  # CLI flag: -ruler.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -1645,18 +1609,6 @@ bigtable:
       # Number of times to backoff and retry before failing.
       # CLI flag: -bigtable.backoff-retries
       [max_retries: <int> | default = 10]
-
-    # TLS cert path for the client
-    # CLI flag: -bigtable.tls-cert-path
-    [tls_cert_path: <string> | default = ""]
-
-    # TLS key path for the client
-    # CLI flag: -bigtable.tls-key-path
-    [tls_key_path: <string> | default = ""]
-
-    # TLS CA path for the client
-    # CLI flag: -bigtable.tls-ca-path
-    [tls_ca_path: <string> | default = ""]
 
   # If enabled, once a tables info is fetched, it is cached.
   # CLI flag: -bigtable.table-cache.enabled

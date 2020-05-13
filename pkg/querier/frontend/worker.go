@@ -27,7 +27,7 @@ type WorkerConfig struct {
 	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
 
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -138,7 +138,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 }
 
 func (w *worker) connect(ctx context.Context, address string) (FrontendClient, error) {
-	opts, err := w.cfg.GRPCClientConfig.DialOptionWithTLS([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)
+	opts, err := w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -4,13 +4,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
+	"fmt"
 	"io/ioutil"
 
-	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ClientConfig is the config for client TLS.
@@ -32,15 +30,13 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 	if cfg.CertPath != "" && cfg.KeyPath != "" && cfg.CAPath != "" {
 		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error loading certs", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to load TLS certs: %v", err)
 		}
 
 		var caCertPool *x509.CertPool
 		caCert, err := ioutil.ReadFile(cfg.CAPath)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error loading ca cert", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("error loading ca cert: %v", err)
 		}
 		caCertPool = x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -57,13 +53,12 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 
 // GetGRPCDialOptions creates GRPC DialOptions for TLS
 func (cfg *ClientConfig) GetGRPCDialOptions() ([]grpc.DialOption, error) {
-	var opts []grpc.DialOption
 	if tlsConfig, err := cfg.GetTLSConfig(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating grpc dial options: %v", err)
 	} else if tlsConfig != nil {
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}, nil
 	} else {
-		opts = append(opts, grpc.WithInsecure())
+		return []grpc.DialOption{grpc.WithInsecure()}, nil
 	}
-	return opts, nil
+	return nil, nil
 }

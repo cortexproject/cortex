@@ -225,14 +225,18 @@ type tsdbMetrics struct {
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
 
 	// Metrics aggregated from TSDB.
-	tsdbCompactionsTotal   *prometheus.Desc
-	tsdbCompactionDuration *prometheus.Desc
-	tsdbFsyncDuration      *prometheus.Desc
-	tsdbPageFlushes        *prometheus.Desc
-	tsdbPageCompletions    *prometheus.Desc
-	tsdbTruncateFail       *prometheus.Desc
-	tsdbTruncateTotal      *prometheus.Desc
-	tsdbWritesFailed       *prometheus.Desc
+	tsdbCompactionsTotal    *prometheus.Desc
+	tsdbCompactionDuration  *prometheus.Desc
+	tsdbFsyncDuration       *prometheus.Desc
+	tsdbPageFlushes         *prometheus.Desc
+	tsdbPageCompletions     *prometheus.Desc
+	tsdbTruncateFail        *prometheus.Desc
+	tsdbTruncateTotal       *prometheus.Desc
+	tsdbWritesFailed        *prometheus.Desc
+	checkpointDeleteFail    *prometheus.Desc
+	checkpointDeleteTotal   *prometheus.Desc
+	checkpointCreationFail  *prometheus.Desc
+	checkpointCreationTotal *prometheus.Desc
 
 	// These two metrics replace metrics in ingesterMetrics, as we count them differently
 	memSeriesCreatedTotal *prometheus.Desc
@@ -248,19 +252,19 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 
 		dirSyncs: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_syncs_total",
-			"TSDB: Total number of dir syncs",
+			"Total number of TSDB dir syncs",
 			nil, nil),
 		dirSyncFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_sync_failures_total",
-			"TSDB: Total number of failed dir syncs",
+			"Total number of failed TSDB dir syncs",
 			nil, nil),
 		uploads: prometheus.NewDesc(
 			"cortex_ingester_shipper_uploads_total",
-			"TSDB: Total number of uploaded blocks",
+			"Total number of uploaded TSDB blocks",
 			nil, nil),
 		uploadFailures: prometheus.NewDesc(
 			"cortex_ingester_shipper_upload_failures_total",
-			"TSDB: Total number of block upload failures",
+			"Total number of TSDB block upload failures",
 			nil, nil),
 		tsdbCompactionsTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_compactions_total",
@@ -294,6 +298,22 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
 			nil, nil),
+		checkpointDeleteFail: prometheus.NewDesc(
+			"cortex_ingester_tsdb_checkpoint_deletions_failed_total",
+			"Total number of TSDB checkpoint deletions that failed.",
+			nil, nil),
+		checkpointDeleteTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_checkpoint_deletions_total",
+			"Total number of TSDB checkpoint deletions attempted.",
+			nil, nil),
+		checkpointCreationFail: prometheus.NewDesc(
+			"cortex_ingester_tsdb_checkpoint_creations_failed_total",
+			"Total number of TSDB checkpoint creations that failed.",
+			nil, nil),
+		checkpointCreationTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_checkpoint_creations_total",
+			"Total number of TSDB checkpoint creations attempted.",
+			nil, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
 		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
@@ -319,6 +339,10 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbTruncateFail
 	out <- sm.tsdbTruncateTotal
 	out <- sm.tsdbWritesFailed
+	out <- sm.checkpointDeleteFail
+	out <- sm.checkpointDeleteTotal
+	out <- sm.checkpointCreationFail
+	out <- sm.checkpointCreationTotal
 
 	out <- sm.memSeriesCreatedTotal
 	out <- sm.memSeriesRemovedTotal
@@ -341,6 +365,10 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbTruncateFail, "prometheus_tsdb_wal_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbTruncateTotal, "prometheus_tsdb_wal_truncations_total")
 	data.SendSumOfCounters(out, sm.tsdbWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
+	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
+	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
+	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")
+	data.SendSumOfCounters(out, sm.checkpointCreationTotal, "prometheus_tsdb_checkpoint_creations_total")
 
 	data.SendSumOfCountersPerUser(out, sm.memSeriesCreatedTotal, "prometheus_tsdb_head_series_created_total")
 	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")

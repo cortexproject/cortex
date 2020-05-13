@@ -56,7 +56,7 @@
 * [ENHANCEMENT] Redis Cache: Added `idle_timeout`, `wait_on_pool_exhaustion` and `max_conn_lifetime` options to redis cache configuration. #2550
 * [ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.
 * [ENHANCEMENT] Use newer AWS API for paginated queries - removes 'Deprecated' message from logfiles. #2452
-* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
@@ -68,6 +68,10 @@
   * `cortex_ingester_tsdb_wal_truncations_failed_total`
   * `cortex_ingester_tsdb_wal_truncations_total`
   * `cortex_ingester_tsdb_wal_writes_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_total`
 * [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_timestamp_seconds`
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)

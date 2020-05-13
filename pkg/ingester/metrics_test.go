@@ -20,22 +20,22 @@ func TestTSDBMetrics(t *testing.T) {
 	tsdbMetrics.setRegistryForUser("user3", populateTSDBMetrics(999))
 
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP cortex_ingester_shipper_dir_syncs_total TSDB: Total number of dir syncs
+			# HELP cortex_ingester_shipper_dir_syncs_total Total number of TSDB dir syncs
 			# TYPE cortex_ingester_shipper_dir_syncs_total counter
 			# 12345 + 85787 + 999
 			cortex_ingester_shipper_dir_syncs_total 99131
 
-			# HELP cortex_ingester_shipper_dir_sync_failures_total TSDB: Total number of failed dir syncs
+			# HELP cortex_ingester_shipper_dir_sync_failures_total Total number of failed TSDB dir syncs
 			# TYPE cortex_ingester_shipper_dir_sync_failures_total counter
 			# 2*(12345 + 85787 + 999)
 			cortex_ingester_shipper_dir_sync_failures_total 198262
 
-			# HELP cortex_ingester_shipper_uploads_total TSDB: Total number of uploaded blocks
+			# HELP cortex_ingester_shipper_uploads_total Total number of uploaded TSDB blocks
 			# TYPE cortex_ingester_shipper_uploads_total counter
 			# 3*(12345 + 85787 + 999)
 			cortex_ingester_shipper_uploads_total 297393
 
-			# HELP cortex_ingester_shipper_upload_failures_total TSDB: Total number of block upload failures
+			# HELP cortex_ingester_shipper_upload_failures_total Total number of TSDB block upload failures
 			# TYPE cortex_ingester_shipper_upload_failures_total counter
 			# 4*(12345 + 85787 + 999)
 			cortex_ingester_shipper_upload_failures_total 396524
@@ -87,6 +87,22 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_wal_writes_failed_total Total number of TSDB WAL writes that failed.
 			# TYPE cortex_ingester_tsdb_wal_writes_failed_total counter
 			cortex_ingester_tsdb_wal_writes_failed_total 1486965
+
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
+
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_total Total number of TSDB checkpoint deletions attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_total 1685227
+
+			# HELP cortex_ingester_tsdb_checkpoint_creations_failed_total Total number of TSDB checkpoint creations that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_failed_total counter
+			cortex_ingester_tsdb_checkpoint_creations_failed_total 1784358
+
+			# HELP cortex_ingester_tsdb_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
+			cortex_ingester_tsdb_checkpoint_creations_total 1883489
 
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter
@@ -193,6 +209,30 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of WAL writes that failed.",
 	})
 	writesFailed.Add(15 * base)
+
+	checkpointDeleteFail := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_checkpoint_deletions_failed_total",
+		Help: "Total number of checkpoint deletions that failed.",
+	})
+	checkpointDeleteFail.Add(16 * base)
+
+	checkpointDeleteTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_checkpoint_deletions_total",
+		Help: "Total number of checkpoint deletions attempted.",
+	})
+	checkpointDeleteTotal.Add(17 * base)
+
+	checkpointCreationFail := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_checkpoint_creations_failed_total",
+		Help: "Total number of checkpoint creations that failed.",
+	})
+	checkpointCreationFail.Add(18 * base)
+
+	checkpointCreationTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_checkpoint_creations_total",
+		Help: "Total number of checkpoint creations attempted.",
+	})
+	checkpointCreationTotal.Add(19 * base)
 
 	return r
 }

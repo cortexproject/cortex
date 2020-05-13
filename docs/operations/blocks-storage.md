@@ -74,7 +74,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The querier supports a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+The querier and store-gateway support a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -102,6 +102,14 @@ For example, if you're running Memcached in Kubernetes, you may:
 1. Deploy your Memcached cluster using a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
 2. Create an [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
 3. Configure the Cortex's Memcached client address using the `dnssrvnoa+` [service discovery](../configuration/arguments.md#dns-service-discovery)
+
+## Chunks cache
+
+Store-gateway and querier also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+
+To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
+
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `experimental.tsdb.bucket-store.chunks-cache` prefix.
 
 ## Configuration
 
@@ -261,6 +269,72 @@ tsdb:
       # Compress postings before storing them to postings cache.
       # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
       [postings_compression_enabled: <boolean> | default = false]
+
+    chunks_cache:
+      # Backend for chunks cache, if not empty. Supported values: memcached.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.backend
+      [backend: <string> | default = ""]
+
+      memcached:
+        # Comma separated list of memcached addresses. Supported prefixes are:
+        # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
+        # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
+        # made after that).
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.addresses
+        [addresses: <string> | default = ""]
+
+        # The socket read/write timeout.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.timeout
+        [timeout: <duration> | default = 100ms]
+
+        # The maximum number of idle connections that will be maintained per
+        # address.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-idle-connections
+        [max_idle_connections: <int> | default = 16]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of concurrent connections running get operations.
+        # If set to 0, concurrency is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum number of keys a single underlying get operation should
+        # run. If more keys are specified, internally keys are splitted into
+        # multiple batches and fetched concurrently, honoring the max
+        # concurrency. If set to 0, the max batch size is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
+        [max_get_multi_batch_size: <int> | default = 0]
+
+        # The maximum size of an item stored in memcached. Bigger items are not
+        # stored. If set to 0, no maximum size is enforced.
+        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-item-size
+        [max_item_size: <int> | default = 1048576]
+
+      # Size of each subrange that bucket object is split into for better
+      # caching.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-size
+      [subrange_size: <int> | default = 16000]
+
+      # Maximum number of sub-GetRange requests that a single GetRange request
+      # can be split into when fetching chunks. Zero or negative value =
+      # unlimited number of sub-requests.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
+      [max_get_range_requests: <int> | default = 3]
+
+      # TTL for caching object size for chunks.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
+      [object_size_ttl: <duration> | default = 24h]
+
+      # TTL for caching individual chunks subranges.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
+      [subrange_ttl: <duration> | default = 24h]
 
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to

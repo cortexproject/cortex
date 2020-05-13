@@ -52,12 +52,17 @@ type BucketStores struct {
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, bucketClient, logger, reg)
+	if err != nil {
+		return nil, errors.Wrapf(err, "create caching bucket")
+	}
+
 	indexCacheRegistry := prometheus.NewRegistry()
 
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
-		bucket:             bucketClient,
+		bucket:             cachingBucket,
 		filters:            filters,
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
@@ -76,7 +81,6 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 	}
 
 	// Init the index cache.
-	var err error
 	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, indexCacheRegistry); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}

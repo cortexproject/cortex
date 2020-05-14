@@ -64,8 +64,8 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 			continue
 		}
 
-		// The store-gateway may offload blocks before the querier. If that happen, the querier will run a consistency check
-		// on blocks that can't be queried because offloaded. For this reason, we don't run the consistency check on any block
+		// The store-gateway may offload blocks before the querier. If that happens, the querier will run a consistency check
+		// on blocks that can't be queried because they were offloaded. For this reason, we don't run the consistency check on any block
 		// which has been marked for deletion more then "grace period" time ago. Basically, the grace period is the time
 		// we still expect a block marked for deletion to be still queried.
 		if mark := knownDeletionMarks[blockID]; mark != nil {

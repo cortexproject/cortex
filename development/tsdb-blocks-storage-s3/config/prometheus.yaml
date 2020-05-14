@@ -39,16 +39,16 @@ scrape_configs:
       - targets: ['query-frontend:8007']
         labels:
           container: 'query-frontend'
-- job_name: cortex-store-gateway-1
-  static_configs:
-    - targets: ['store-gateway-1:8008']
-      labels:
-        container: 'store-gateway-1'
-- job_name: cortex-store-gateway-2
-  static_configs:
-    - targets: ['store-gateway-2:8009']
-      labels:
-        container: 'store-gateway-2'
+  - job_name: cortex-store-gateway-1
+    static_configs:
+      - targets: ['store-gateway-1:8008']
+        labels:
+          container: 'store-gateway-1'
+  - job_name: cortex-store-gateway-2
+    static_configs:
+      - targets: ['store-gateway-2:8009']
+        labels:
+          container: 'store-gateway-2'
 
 remote_write:
   - url: http://distributor:8001/api/prom/push

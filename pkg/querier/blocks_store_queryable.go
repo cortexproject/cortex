@@ -85,6 +85,7 @@ type BlocksStoreQueryable struct {
 	stores      BlocksStoreSet
 	finder      BlocksFinder
 	consistency *BlocksConsistencyChecker
+	logger      log.Logger
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -94,7 +95,7 @@ type BlocksStoreQueryable struct {
 	storesHit prometheus.Histogram
 }
 
-func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
+func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
 
 	manager, err := services.NewManager(stores, finder)
@@ -106,6 +107,7 @@ func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consist
 		stores:             stores,
 		finder:             finder,
 		consistency:        consistency,
+		logger:             logger,
 		subservices:        manager,
 		subservicesWatcher: services.NewFailureWatcher(),
 		storesHit: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
@@ -178,7 +180,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		)
 	}
 
-	return NewBlocksStoreQueryable(stores, scanner, consistency, reg)
+	return NewBlocksStoreQueryable(stores, scanner, consistency, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {
@@ -226,6 +228,7 @@ func (q *BlocksStoreQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 		stores:      q.stores,
 		storesHit:   q.storesHit,
 		consistency: q.consistency,
+		logger:      q.logger,
 	}, nil
 }
 
@@ -237,6 +240,7 @@ type blocksStoreQuerier struct {
 	stores      BlocksStoreSet
 	storesHit   prometheus.Histogram
 	consistency *BlocksConsistencyChecker
+	logger      log.Logger
 }
 
 // Select implements storage.Querier interface.
@@ -380,6 +384,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	// Ensure all expected blocks have been queried.
 	if q.consistency != nil {
 		if err := q.consistency.Check(blockIDs, deletionMarks, queriedBlocks); err != nil {
+			level.Warn(q.logger).Log("msg", "failed consistency check", "err", err)
 			return nil, nil, err
 		}
 	}

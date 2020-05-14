@@ -88,7 +88,7 @@
 * [BUGFIX] Ring: Fixed a situation where upgrading from pre-1.0 cortex with a rolling strategy caused new 1.0 ingesters to lose their zone value in the ring until manually forced to re-register. #2404
 * [BUGFIX] Distributor: `/all_user_stats` now show API and Rule Ingest Rate correctly. #2457
 * [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
-* [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2483
+* [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2590
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 * [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584

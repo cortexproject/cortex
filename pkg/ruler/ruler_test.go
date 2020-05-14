@@ -55,7 +55,7 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
+func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	cleanup := func() {
@@ -82,6 +82,12 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	l = level.NewFilter(l, level.AllowInfo())
 	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
+
+	return ruler, cleanup
+}
+
+func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
+	ruler, cleanup := newRuler(t, cfg)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage

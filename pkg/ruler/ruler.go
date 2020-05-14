@@ -30,6 +30,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -147,7 +148,7 @@ type Ruler struct {
 	alertURL    *url.URL
 	notifierCfg *config.Config
 
-	lifecycler  *ring.Lifecycler
+	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
 	subservices *services.Manager
 
@@ -191,26 +192,50 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		logger:       logger,
 	}
 
+	if cfg.EnableSharding {
+		ringStore, err := kv.NewClient(cfg.Ring.KVStore, ring.GetCodec())
+		if err != nil {
+			return nil, errors.Wrap(err, "create KV store client")
+		}
+
+		if err = enableSharding(ruler, ringStore); err != nil {
+			return nil, errors.Wrap(err, "setup ruler sharding ring")
+		}
+	}
+
 	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
 	return ruler, nil
 }
 
+func enableSharding(r *Ruler, ringStore kv.Client) error {
+	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig()
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's lifecycler config")
+	}
+
+	// Define lifecycler delegates in reverse order (last to be called defined first because they're
+	// chained via "next delegate").
+	delegate := ring.BasicLifecyclerDelegate(r)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
+	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
+
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ring.RulerRingKey, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
+	}
+
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), ring.RulerRingKey, ring.RulerRingKey, ringStore, &ring.DefaultReplicationStrategy{})
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize ruler's ring")
+	}
+
+	return nil
+}
+
 func (r *Ruler) starting(ctx context.Context) error {
-	// If sharding is enabled, create/join a ring to distribute tokens to
-	// the ruler
+	// If sharding is enabled, start the ruler ring subservices
 	if r.cfg.EnableSharding {
-		lifecyclerCfg := r.cfg.Ring.ToLifecyclerConfig()
 		var err error
-		r.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, r, "ruler", ring.RulerRingKey, true)
-		if err != nil {
-			return errors.Wrap(err, "failed to initialize ruler's lifecycler")
-		}
-
-		r.ring, err = ring.New(lifecyclerCfg.RingConfig, "ruler", ring.RulerRingKey)
-		if err != nil {
-			return errors.Wrap(err, "failed to initialize ruler's ring")
-		}
-
 		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
 		if err == nil {
 			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
@@ -331,11 +356,14 @@ func (r *Ruler) ownsRule(hash uint32) (bool, error) {
 		ringCheckErrors.Inc()
 		return false, err
 	}
-	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
-		level.Debug(r.logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+
+	localAddr := r.lifecycler.GetInstanceAddr()
+
+	if rlrs.Ingesters[0].Addr == localAddr {
+		level.Debug(r.logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", localAddr)
 		return true, nil
 	}
-	level.Debug(r.logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+	level.Debug(r.logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", localAddr)
 	return false, nil
 }
 

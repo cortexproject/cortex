@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 var (
@@ -59,6 +60,8 @@ var (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// TLS parameters for the GRPC Client
+	ClientTLSConfig tls.ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// Delay the evaluation of all rules by a set interval to give a buffer
@@ -103,6 +106,7 @@ func (cfg *Config) Validate() error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
 
@@ -622,7 +626,11 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 	rgs := []*GroupStateDesc{}
 
 	for _, rlr := range rulers.Ingesters {
-		conn, err := grpc.Dial(rlr.Addr, grpc.WithInsecure())
+		dialOpts, err := r.cfg.ClientTLSConfig.GetGRPCDialOptions()
+		if err != nil {
+			return nil, err
+		}
+		conn, err := grpc.Dial(rlr.Addr, dialOpts...)
 		if err != nil {
 			return nil, err
 		}

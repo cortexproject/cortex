@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func Test_newStoreGatewayClientFactory(t *testing.T) {
@@ -36,10 +37,11 @@ func Test_newStoreGatewayClientFactory(t *testing.T) {
 	// Create a client factory and query back the mocked service
 	// with different clients.
 	cfg := grpcclient.Config{}
+	tlsCfg := tls.ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := newStoreGatewayClientFactory(cfg, reg)
+	factory := newStoreGatewayClientFactory(cfg, tlsCfg, reg)
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())

@@ -79,6 +79,8 @@ func (t *Cortex) initAPI() (services.Service, error) {
 }
 
 func (t *Cortex) initServer() (services.Service, error) {
+	// Cortex handles signals on its own.
+	DisableSignalHandling(&t.Cfg.Server)
 	serv, err := server.New(t.Cfg.Server)
 	if err != nil {
 		return nil, err

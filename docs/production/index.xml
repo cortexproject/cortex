@@ -483,7 +483,77 @@ Consider you have 4 ingesters &lt;code&gt;ingester-0 ingester-1 ingester-2 inges
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;2 ingesters should not be working with the same volume/directory for the WAL. It will cause data corruptions.&lt;/li&gt;
 &lt;li&gt;Basing from above point, rollout should include bringing down an ingester completely and then starting the new ingester. Not the other way round, i.e. bringing another ingester live and taking the old one down.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/production/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/auth/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/production/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/tls/</guid><description>
+&lt;p&gt;Cortex is a distributed system with significant traffic between its services.
+To allow for secure communication, Cortex supports TLS between all its
+components. This guide describes the process of setting up TLS.&lt;/p&gt;
+&lt;h3 id=&#34;generation-of-certs-to-configure-tls&#34;&gt;Generation of certs to configure TLS&lt;/h3&gt;
+&lt;p&gt;The first step to securing inter-service communication in Cortex with TLS is
+generating certificates. A Certifying Authority (CA) will be used for this
+purpose which should be private to the organization, as any certificates signed
+by this CA will have permissions to communicate with the cluster.&lt;/p&gt;
+&lt;p&gt;We will use the following script to generate self signed certs for the cluster:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# Refer: github.com/cortexproject/cortex/integration/certs/genCerts.sh
+# keys
+openssl genrsa -out root.key
+openssl genrsa -out client.key
+openssl genrsa -out server.key
+# root cert / certifying authority
+openssl req -x509 -new -nodes -key root.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=root&amp;quot; -sha256 -days 100000 -out root.crt
+# csrs - certificate signing requests
+openssl req -new -sha256 -key client.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=client&amp;quot; -out client.csr
+openssl req -new -sha256 -key server.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=localhost&amp;quot; -out server.csr
+# certificates
+openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -out client.crt -days 100000 -sha256
+openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note that the above script generates certificates that are valid for 100000 days.
+This can be changed by adjusting the &lt;code&gt;-days&lt;/code&gt; option in the above commands.
+It is recommended that the certs be replaced atleast once every 2 years.&lt;/p&gt;
+&lt;p&gt;The above script generates keys &lt;code&gt;client.key, server.key&lt;/code&gt; and certs
+&lt;code&gt;client.crt, server.crt&lt;/code&gt; for both the client and server. The CA cert is
+generated as &lt;code&gt;root.crt&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;load-certs-into-the-http-grpc-server-client&#34;&gt;Load certs into the HTTP/GRPC server/client&lt;/h3&gt;
+&lt;p&gt;Every HTTP/GRPC link between Cortex components supports TLS configuration
+through the following config parameters:&lt;/p&gt;
+&lt;h4 id=&#34;server-flags&#34;&gt;Server flags&lt;/h4&gt;
+&lt;pre&gt;&lt;code&gt; # Path to the TLS Cert for the HTTP Server
+-server.http-tls-cert-path=/path/to/server.crt
+# Path to the TLS Key for the HTTP Server
+-server.http-tls-key-path=/path/to/server.key
+# Type of Client Auth for the HTTP Server
+-server.http-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
+# Path to the Client CA Cert for the HTTP Server
+-server.http-tls-ca-path=&amp;quot;/path/to/root.crt&amp;quot;
+# Path to the TLS Cert for the GRPC Server
+-server.grpc-tls-cert-path=/path/to/server.crt
+# Path to the TLS Key for the GRPC Server
+-server.grpc-tls-key-path=/path/to/server.key
+# Type of Client Auth for the GRPC Server
+-server.grpc-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
+# Path to the Client CA Cert for the GRPC Server
+-server.grpc-tls-ca-path=/path/to/root.crt
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h4 id=&#34;client-flags&#34;&gt;Client flags&lt;/h4&gt;
+&lt;p&gt;Client flags are component specific.&lt;/p&gt;
+&lt;p&gt;For an HTTP client in the Alertmanager:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; # Path to the TLS Cert for the HTTP Client
+-alertmanager.configs.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the HTTP Client
+-alertmanager.configs.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the HTTP Client
+-alertmanager.configs.tls-ca-path=/path/to/root.crt
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;For a GRPC client in the Querier:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; # Path to the TLS Cert for the GRPC Client
+-querier.frontend-client.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the GRPC Client
+-querier.frontend-client.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the GRPC Client
+-querier.frontend-client.tls-ca-path=/path/to/root.crt
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;TLS can be configured in a similar fashion for other GRPC clients like the
+ingester client.&lt;/p&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/production/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls

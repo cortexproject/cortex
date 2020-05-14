@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,10 @@ import (
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+)
+
+const (
+	integrationHomeFolder = "integration/"
 )
 
 type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
@@ -75,6 +80,30 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
 		return cortexConfigFile, e2e.EmptyFlags()
+	})
+}
+
+func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
+	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
+		require.NoError(t, s.StartAndWaitReady(minio))
+
+		// setup tls
+		cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
+		require.NoError(t, cmd.Run())
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
+		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
+
+		return "", mergeFlags(
+			BlocksStorageFlags,
+			getServerTLSFlags(),
+			getClientTLSFlagsWithPrefix("ingester.client"),
+			getClientTLSFlagsWithPrefix("querier.frontend-client"),
+			getClientTLSFlagsWithPrefix("ingester.client"),
+		)
 	})
 }
 

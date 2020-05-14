@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	// Expose some utilities form the framework so that we don't have to prefix them
+	// Expose some utilities from the framework so that we don't have to prefix them
 	// with the package name in tests.
 	mergeFlags      = e2e.MergeFlags
 	newDynamoClient = e2edb.NewDynamoClient
@@ -50,4 +50,21 @@ func copyFileToSharedDir(s *e2e.Scenario, src, dst string) error {
 	}
 
 	return writeFileToSharedDir(s, dst, content)
+}
+
+func getServerTLSFlags() map[string]string {
+	return map[string]string{
+		"-server.grpc-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.grpc-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.grpc-tls-client-auth": "RequireAndVerifyClientCert",
+		"-server.grpc-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
+	}
+}
+
+func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
+	return map[string]string{
+		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, clientCertFile),
+		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
+		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, caCertFile),
+	}
 }

@@ -646,6 +646,19 @@ The `querier_config` configures the Cortex querier.
 # instances form a ring and addresses are picked from the ring).
 # CLI flag: -experimental.querier.store-gateway-addresses
 [store_gateway_addresses: <string> | default = ""]
+
+store_gateway_client:
+  # TLS cert path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `query_frontend_config`
@@ -756,6 +769,19 @@ The `ruler_config` configures the Cortex ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+ruler_client:
+  # TLS cert path for the client
+  # CLI flag: -ruler.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -ruler.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -ruler.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -1964,6 +1990,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the client
+  # CLI flag: -ingester.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -ingester.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -ingester.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `frontend_worker_config`
@@ -2025,6 +2063,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the client
+  # CLI flag: -querier.frontend-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -querier.frontend-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -querier.frontend-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `etcd_config`
@@ -2530,6 +2580,18 @@ The `configstore_config` configures the config database storing rules and alerts
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout
 [client_timeout: <duration> | default = 5s]
+
+# TLS cert path for the client
+# CLI flag: -<prefix>.configs.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# TLS key path for the client
+# CLI flag: -<prefix>.configs.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# TLS CA path for the client
+# CLI flag: -<prefix>.configs.tls-ca-path
+[tls_ca_path: <string> | default = ""]
 ```
 
 ### `tsdb_config`

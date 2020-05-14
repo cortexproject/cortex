@@ -13,6 +13,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // BlocksStoreSet implementation used when the blocks are sharded and replicated across
@@ -28,10 +29,10 @@ type blocksStoreReplicationSet struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func newBlocksStoreReplicationSet(storesRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
+func newBlocksStoreReplicationSet(storesRing *ring.Ring, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:  storesRing,
-		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), logger, reg),
+		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
 	}
 
 	var err error

@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config contains the configuration require to create a querier
@@ -51,7 +52,8 @@ type Config struct {
 	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
 
 	// Blocks storage only.
-	StoreGatewayAddresses string `yaml:"store_gateway_addresses"`
+	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
+	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
 }
 
 var (
@@ -60,6 +62,7 @@ var (
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	if f.Lookup("promql.lookback-delta") == nil {

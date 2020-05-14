@@ -69,7 +69,7 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 		// which has been marked for deletion more then "grace period" time ago. Basically, the grace period is the time
 		// we still expect a block marked for deletion to be still queried.
 		if mark := knownDeletionMarks[blockID]; mark != nil {
-			if time.Since(time.Unix(mark.DeletionTime, 0)).Seconds() > c.deletionGracePeriod.Seconds() {
+			if time.Since(time.Unix(mark.DeletionTime, 0)) > c.deletionGracePeriod {
 				continue
 			}
 		}

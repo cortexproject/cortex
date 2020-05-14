@@ -86,5 +86,5 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 	}
 
 	c.checksFailed.Inc()
-	return fmt.Errorf("consistency check failed because of non-queried blocks: %s", strings.Join(missingBlockIDs, " "))
+	return fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(missingBlockIDs, " "))
 }

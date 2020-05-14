@@ -16,6 +16,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
@@ -303,13 +304,7 @@ func (t *Cortex) initModuleServices() (map[ModuleName]services.Service, error) {
 
 		var serv services.Service
 
-		if mod.service != nil {
-			s, err := mod.service(t)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			serv = s
-		} else if mod.wrappedService != nil {
+		if mod.wrappedService != nil {
 			s, err := mod.wrappedService(t)
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
@@ -371,30 +366,25 @@ func (t *Cortex) Run() error {
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
-	// Currently it's the Server that reacts on signal handler,
-	// so get Server service, and wait until it gets to Stopping state.
-	// It will also be stopped via service manager if any service fails (see attached service listener)
-	// Attach listener before starting services, or we may miss the notification.
-	serverStopping := make(chan struct{})
-	t.ServiceMap[Server].AddListener(services.NewListener(nil, nil, func(from services.State) {
-		close(serverStopping)
-	}, nil, nil))
+	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
+	handler := signals.NewHandler(t.Server.Log)
+	go func() {
+		handler.Loop()
+		sm.StopAsync()
+	}()
 
 	// Start all services. This can really only fail if some service is already
 	// in other state than New, which should not be the case.
 	err = sm.StartAsync(context.Background())
 	if err == nil {
-		// no error starting the services, now let's just wait until Server module
-		// transitions to Stopping (after SIGTERM or when some service fails),
-		// and then initiate shutdown
-		<-serverStopping
+		// Wait until service manager stops. It can stop in two ways:
+		// 1) Signal is received and manager is stopped.
+		// 2) Any service fails.
+		err = sm.AwaitStopped(context.Background())
 	}
 
-	// Stop all the services, and wait until they are all done.
-	// We don't care about this error, as it cannot really fail.
-	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
-
-	// if any service failed, report that as an error to caller
+	// If there is no error yet (= service manager started and then stopped without problems),
+	// but any service failed, report that failure as an error to caller.
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {

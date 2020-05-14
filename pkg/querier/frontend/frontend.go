@@ -63,7 +63,7 @@ type Frontend struct {
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
-	queues *queueManager
+	queues *queueIterator
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -85,7 +85,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		queues: newQueueManager(cfg.MaxOutstandingPerTenant),
+		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",

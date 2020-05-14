@@ -9,7 +9,11 @@ type queueRecord struct {
 	userID string
 }
 
-type queueManager struct {
+// queueIterator provides round robin access to a collection of chan *request.  It is used to
+//  iterate fairly over the frontend per tenant request queues.  It uses a combination of a
+//  linked list and map to provide O(1) complexity on the getNextQueue(), deleteQueue(), and
+//  getOrAddQueue() operations.
+type queueIterator struct {
 	l          *list.List
 	next       *list.Element
 	userLookup map[string]*list.Element
@@ -17,8 +21,8 @@ type queueManager struct {
 	maxQueueSize int
 }
 
-func newQueueManager(maxQueueSize int) *queueManager {
-	return &queueManager{
+func newQueueIterator(maxQueueSize int) *queueIterator {
+	return &queueIterator{
 		l:            list.New(),
 		next:         nil,
 		userLookup:   make(map[string]*list.Element),
@@ -26,11 +30,11 @@ func newQueueManager(maxQueueSize int) *queueManager {
 	}
 }
 
-func (q *queueManager) len() int {
+func (q *queueIterator) len() int {
 	return len(q.userLookup)
 }
 
-func (q *queueManager) getNextQueue() (chan *request, string) {
+func (q *queueIterator) getNextQueue() (chan *request, string) {
 	if q.next == nil {
 		q.next = q.l.Front()
 	}
@@ -47,7 +51,7 @@ func (q *queueManager) getNextQueue() (chan *request, string) {
 	return qr.ch, qr.userID
 }
 
-func (q *queueManager) deleteQueue(userID string) {
+func (q *queueIterator) deleteQueue(userID string) {
 	element := q.userLookup[userID]
 
 	// remove from linked list
@@ -63,7 +67,7 @@ func (q *queueManager) deleteQueue(userID string) {
 	delete(q.userLookup, userID)
 }
 
-func (q *queueManager) getOrAddQueue(userID string) chan *request {
+func (q *queueIterator) getOrAddQueue(userID string) chan *request {
 	element := q.userLookup[userID]
 
 	if element == nil {

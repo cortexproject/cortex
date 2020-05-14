@@ -10,7 +10,7 @@ import (
 )
 
 func TestFrontendQueues(t *testing.T) {
-	m := newQueueManager(0)
+	m := newQueueIterator(0)
 	assert.NotNil(t, m)
 	assert.NoError(t, isConsistent(m))
 	q, _ := m.getNextQueue()
@@ -58,7 +58,7 @@ func TestFrontendQueues(t *testing.T) {
 }
 
 func TestFrontendQueuesConsistency(t *testing.T) {
-	m := newQueueManager(0)
+	m := newQueueIterator(0)
 	assert.NotNil(t, m)
 	assert.NoError(t, isConsistent(m))
 	q, _ := m.getNextQueue()
@@ -84,7 +84,7 @@ func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }
 
-func getOrAddQueue(t *testing.T, m *queueManager, tenant string) chan *request {
+func getOrAddQueue(t *testing.T, m *queueIterator, tenant string) chan *request {
 	q := m.getOrAddQueue(tenant)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(m))
@@ -93,7 +93,7 @@ func getOrAddQueue(t *testing.T, m *queueManager, tenant string) chan *request {
 	return q
 }
 
-func confirmOrder(t *testing.T, m *queueManager, qs ...chan *request) {
+func confirmOrder(t *testing.T, m *queueIterator, qs ...chan *request) {
 	for _, q := range qs {
 		qNext, _ := m.getNextQueue()
 		assert.Equal(t, q, qNext)
@@ -103,7 +103,7 @@ func confirmOrder(t *testing.T, m *queueManager, qs ...chan *request) {
 
 // isConsistent() returns true if every userID in the map is also in the linked list and vice versa.
 //  This is horribly inefficient.  Use for testing only.
-func isConsistent(q *queueManager) error {
+func isConsistent(q *queueIterator) error {
 	// let's confirm that every element in the map is in the list and all values are request queues
 	for k, v := range q.userLookup {
 		found := false

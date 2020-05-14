@@ -368,7 +368,8 @@ func (t *Cortex) Run() error {
 		err = sm.AwaitStopped(context.Background())
 	}
 
-	// If any service failed, report that as an error to caller
+	// If there is no error yet (= service manager started and then stopped without problems),
+	// but any service failed, report that failure as an error to caller.
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {

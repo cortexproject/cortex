@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -61,13 +62,13 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	req, err := f.getNextRequest(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 9, len(f.queues[userID]))
+	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID)))
 
 	// the next unexpired request should be the 5th index
 	req, err = f.getNextRequest(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 4, len(f.queues[userID]))
+	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
 
 	// add one request to a second tenant queue
 	ctx2 := user.InjectOrgID(context.Background(), userID2)
@@ -80,14 +81,45 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.NotNil(t, req)
 
 	// ensure either one or two queues are fully drained, depending on which was requested first
-	_, ok := f.queues[userID]
+	_, ok := f.queues.userLookup[userID]
 	if ok {
 		// if the second user's queue was chosen for the last request,
 		// the first queue should still contain 4 (expired) requests.
-		require.Equal(t, 4, len(f.queues[userID]))
+		require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
 	}
-	_, ok = f.queues[userID2]
+	_, ok = f.queues.userLookup[userID2]
 	require.Equal(t, false, ok)
+}
+
+func TestRoundRobinQueues(t *testing.T) {
+	var config Config
+	flagext.DefaultValues(&config)
+	config.MaxOutstandingPerTenant = 100
+
+	f, err := setupFrontend(config)
+	require.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		userID := fmt.Sprint(i / 10)
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		err = f.queueRequest(ctx, testReq(ctx))
+		require.NoError(t, err)
+	}
+
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		req, err := f.getNextRequest(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, req)
+
+		userID, err := user.ExtractOrgID(req.originalCtx)
+		require.NoError(t, err)
+		intUserID, err := strconv.Atoi(userID)
+		require.NoError(t, err)
+
+		require.Equal(t, i%10, intUserID)
+	}
 }
 
 func BenchmarkGetNextRequest(b *testing.B) {
@@ -127,6 +159,47 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			_, err := frontends[i].getNextRequest(ctx)
 			if err != nil {
 				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkQueueRequest(b *testing.B) {
+	var config Config
+	flagext.DefaultValues(&config)
+	config.MaxOutstandingPerTenant = 2
+
+	const numTenants = 50
+
+	frontends := make([]*Frontend, 0, b.N)
+	contexts := make([]context.Context, 0, numTenants)
+	requests := make([]*request, 0, numTenants)
+
+	for n := 0; n < b.N; n++ {
+		f, err := setupFrontend(config)
+		if err != nil {
+			b.Fatal(err)
+		}
+		frontends = append(frontends, f)
+
+		for j := 0; j < numTenants; j++ {
+			userID := strconv.Itoa(j)
+			ctx := user.InjectOrgID(context.Background(), userID)
+			r := testReq(ctx)
+
+			requests = append(requests, r)
+			contexts = append(contexts, ctx)
+		}
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
+			for j := 0; j < numTenants; j++ {
+				err := frontends[n].queueRequest(contexts[j], requests[j])
+				if err != nil {
+					b.Fatal(err)
+				}
 			}
 		}
 	}

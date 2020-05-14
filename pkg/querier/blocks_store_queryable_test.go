@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -267,6 +268,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				finder:      finder,
 				stores:      stores,
 				consistency: NewBlocksConsistencyChecker(0, 0, nil),
+				logger:      log.NewNopLogger(),
 			}
 
 			matchers := []*labels.Matcher{

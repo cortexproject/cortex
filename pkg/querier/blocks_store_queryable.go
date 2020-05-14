@@ -384,7 +384,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	// Ensure all expected blocks have been queried.
 	if q.consistency != nil {
 		if err := q.consistency.Check(blockIDs, deletionMarks, queriedBlocks); err != nil {
-			level.Warn(q.logger).Log("msg", "failed consistency check", "err", err)
+			level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
 			return nil, nil, err
 		}
 	}

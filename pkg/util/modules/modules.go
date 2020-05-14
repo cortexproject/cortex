@@ -74,9 +74,11 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
 			}
 
-			// We pass servicesMap, which isn't yet complete. By the time service starts,
-			// it will be fully built, so there is no need for extra synchronization.
-			serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+			if s != nil {
+				// We pass servicesMap, which isn't yet complete. By the time service starts,
+				// it will be fully built, so there is no need for extra synchronization.
+				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+			}
 		}
 
 		if serv != nil {

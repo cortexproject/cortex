@@ -55,15 +55,15 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 }
 
 func DisableSignalHandling(config *server.Config) {
-	config.SignalHandler = make(dummySignalHandler)
+	config.SignalHandler = make(ignoreSignalHandler)
 }
 
-type dummySignalHandler chan struct{}
+type ignoreSignalHandler chan struct{}
 
-func (dh dummySignalHandler) Loop() {
+func (dh ignoreSignalHandler) Loop() {
 	<-dh
 }
 
-func (dh dummySignalHandler) Stop() {
+func (dh ignoreSignalHandler) Stop() {
 	close(dh)
 }

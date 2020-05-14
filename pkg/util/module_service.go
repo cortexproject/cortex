@@ -100,7 +100,7 @@ func (w *moduleService) waitForModulesToStop() {
 			continue
 		}
 
-		level.Debug(Logger).Log("msg", "module waiting for", "module", w.name, "other_module", n)
+		level.Debug(Logger).Log("msg", "module waiting for", "module", w.name, "waiting_for", n)
 		// Passed context isn't canceled, so we can only get error here, if service
 		// fails. But we don't care *how* service stops, as long as it is done.
 		_ = s.AwaitTerminated(context.Background())

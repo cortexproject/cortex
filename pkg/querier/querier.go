@@ -181,7 +181,7 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 		now := time.Now()
 
 		if cfg.MaxQueryIntoFuture > 0 {
-			maxQueryTime := util.TimeMilliseconds(now.Add(cfg.MaxQueryIntoFuture))
+			maxQueryTime := util.TimeToMillis(now.Add(cfg.MaxQueryIntoFuture))
 
 			if mint > maxQueryTime {
 				return storage.NoopQuerier(), nil
@@ -207,12 +207,12 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 		q.metadataQuerier = dqr
 
 		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeMilliseconds(now.Add(-cfg.QueryIngestersWithin)) {
+		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeToMillis(now.Add(-cfg.QueryIngestersWithin)) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= util.TimeMilliseconds(now.Add(-cfg.QueryStoreAfter)) {
+		if cfg.QueryStoreAfter == 0 || mint <= util.TimeToMillis(now.Add(-cfg.QueryStoreAfter)) {
 			cqr, err := store.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err

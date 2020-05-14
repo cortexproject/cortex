@@ -12,7 +12,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 
-	"github.com/cortexproject/cortex/pkg/util/timeutil"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestBlocksConsistencyChecker_Check(t *testing.T) {
@@ -20,10 +20,10 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 	uploadGracePeriod := 10 * time.Minute
 	deletionGracePeriod := 5 * time.Minute
 
-	block1 := ulid.MustNew(uint64(timeutil.TimeToMillis(now.Add(-uploadGracePeriod*2))), nil)
-	block2 := ulid.MustNew(uint64(timeutil.TimeToMillis(now.Add(-uploadGracePeriod*3))), nil)
-	block3 := ulid.MustNew(uint64(timeutil.TimeToMillis(now.Add(-uploadGracePeriod*4))), nil)
-	blockRecentlyUploaded := ulid.MustNew(uint64(timeutil.TimeToMillis(now)), nil)
+	block1 := ulid.MustNew(uint64(util.TimeToMillis(now.Add(-uploadGracePeriod*2))), nil)
+	block2 := ulid.MustNew(uint64(util.TimeToMillis(now.Add(-uploadGracePeriod*3))), nil)
+	block3 := ulid.MustNew(uint64(util.TimeToMillis(now.Add(-uploadGracePeriod*4))), nil)
+	blockRecentlyUploaded := ulid.MustNew(uint64(util.TimeToMillis(now)), nil)
 
 	tests := map[string]struct {
 		expectedBlocks     []ulid.ULID
@@ -66,7 +66,7 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 				"1.1.1.1": {{Id: block1.String()}},
 				"2.2.2.2": {{Id: block3.String()}},
 			},
-			expectedErr: fmt.Errorf("consistency check failed because of non-queried blocks: %s", block2.String()),
+			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"store-gateway has queried less blocks than expected, but the missing block has been recently uploaded": {
 			expectedBlocks:     []ulid.ULID{block1, block2, blockRecentlyUploaded},
@@ -85,7 +85,7 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 				"1.1.1.1": {{Id: block1.String()}},
 				"2.2.2.2": {{Id: block2.String()}},
 			},
-			expectedErr: fmt.Errorf("consistency check failed because of non-queried blocks: %s", block3.String()),
+			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block3.String()),
 		},
 		"store-gateway has queried less blocks than expected and the missing block has been marked for deletion long time ago": {
 			expectedBlocks: []ulid.ULID{block1, block2, block3},

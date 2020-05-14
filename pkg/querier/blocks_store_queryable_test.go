@@ -226,7 +226,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 					mockHintsResponse(block1),
 				}},
 			},
-			expectedErr: fmt.Sprintf("consistency check failed because of non-queried blocks: %s", block2.String()),
+			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: []*metadata.Meta{
@@ -244,7 +244,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 					mockHintsResponse(block2),
 				}},
 			},
-			expectedErr: fmt.Sprintf("consistency check failed because of non-queried blocks: %s %s", block1.String(), block3.String()),
+			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block1.String(), block3.String()),
 		},
 	}
 

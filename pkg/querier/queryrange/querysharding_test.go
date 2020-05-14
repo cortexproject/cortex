@@ -19,7 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/timeutil"
 )
 
 func TestQueryshardingMiddleware(t *testing.T) {
@@ -332,8 +331,8 @@ func TestQueryshardingCorrectness(t *testing.T) {
 	shardFactor := 2
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: timeutil.TimeToMillis(start),
-		End:   timeutil.TimeToMillis(end),
+		Start: util.TimeToMillis(start),
+		End:   util.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 	}
 	for _, tc := range []struct {
@@ -428,8 +427,8 @@ func TestShardSplitting(t *testing.T) {
 
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: timeutil.TimeToMillis(start),
-		End:   timeutil.TimeToMillis(end),
+		Start: util.TimeToMillis(start),
+		End:   util.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 		Query: "sum(rate(bar1[1m]))",
 	}
@@ -603,8 +602,8 @@ func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error)
 	qry, err := h.engine.NewRangeQuery(
 		h.queryable,
 		r.GetQuery(),
-		timeutil.TimeFromMillis(r.GetStart()),
-		timeutil.TimeFromMillis(r.GetEnd()),
+		util.TimeFromMillis(r.GetStart()),
+		util.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 

@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	"github.com/cortexproject/cortex/pkg/util/timeutil"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -216,8 +216,8 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
 		r.GetQuery(),
-		timeutil.TimeFromMillis(r.GetStart()),
-		timeutil.TimeFromMillis(r.GetEnd()),
+		util.TimeFromMillis(r.GetStart()),
+		util.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 
@@ -311,7 +311,7 @@ func (splitter *shardSplitter) parallel(ctx context.Context, sharded, nonsharded
 // partitionQuery splits a request into potentially multiple requests, one including the request's time range
 // [0,t). The other will include [t,inf)
 func partitionRequest(r Request, t time.Time) (before Request, after Request) {
-	boundary := timeutil.TimeToMillis(t)
+	boundary := util.TimeToMillis(t)
 	if r.GetStart() >= boundary {
 		return nil, r
 	}

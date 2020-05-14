@@ -60,7 +60,7 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 		//   on the configured retention period).
 		// - Blocks uploaded by compactor: the source blocks are marked for deletion but will continue to be
 		//   queried by store-gateways for a while (depends on the configured deletion marks delay).
-		if ulid.Now()-blockID.Time() < uint64(c.uploadGracePeriod/time.Millisecond) {
+		if ulid.Now()-blockID.Time() < uint64(c.uploadGracePeriod.Milliseconds()) {
 			continue
 		}
 

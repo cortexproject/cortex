@@ -95,6 +95,7 @@
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 * [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
 * [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
+* [BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. #2565
 
 ## 1.0.1 / 2020-04-23
 

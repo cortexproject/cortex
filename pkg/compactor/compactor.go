@@ -40,6 +40,7 @@ type Config struct {
 	// Compactors sharding.
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
 	ShardingRing    RingConfig `yaml:"sharding_ring"`
+	ShardsPerTenant uint       `yaml:"shards_per_tenant"`
 
 	// No need to add options to customize the retry backoff,
 	// given the defaults should be fine, but allow to override
@@ -64,6 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
+	f.UintVar(&cfg.ShardsPerTenant, "compactor.shards-per-tenant", 1, "Number of shards a single tenant blocks should be grouped into (0 or 1 means per-tenant blocks sharding is disabled).")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
 		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
@@ -346,6 +348,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		reg,
 		[]block.MetadataFilter{
 			// List of filters to apply (order matters).
+			NewBlocksShardingFilter(uint32(c.compactorCfg.ShardsPerTenant)),
 			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
 			ignoreDeletionMarkFilter,
 			deduplicateBlocksFilter,

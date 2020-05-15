@@ -805,6 +805,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		{
 			Name:  cortex_tsdb.TenantIDExternalLabel,
 			Value: userID,
+		}, {
+			Name:  cortex_tsdb.IngesterIDExternalLabel,
+			Value: i.lifecycler.ID,
 		},
 	}
 

@@ -31,8 +31,17 @@ const (
 	// BackendFilesystem is the value for the filesystem storge backend
 	BackendFilesystem = "filesystem"
 
-	// TenantIDExternalLabel is the external label set when shipping blocks to the storage
+	// TenantIDExternalLabel is the external label containing the tenant ID,
+	// set when shipping blocks to the storage.
 	TenantIDExternalLabel = "__org_id__"
+
+	// IngesterIDExternalLabel is the external label containing the ingester ID,
+	// set when shipping blocks to the storage.
+	IngesterIDExternalLabel = "__ingester_id__"
+
+	// ShardIDExternalLabel is the external label containing the shard ID,
+	// set by the compactor.
+	ShardIDExternalLabel = "__shard_id__"
 )
 
 // Validation errors

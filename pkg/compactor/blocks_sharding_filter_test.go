@@ -40,29 +40,30 @@ func TestHashIngesterID(t *testing.T) {
 
 func TestShardByIngesterID_DistributionForKubernetesStatefulSets(t *testing.T) {
 	const (
-		numIngesters          = 50
 		numShards             = 3
 		distributionThreshold = 0.8
 	)
 
-	// Generate the ingester IDs.
-	ids := make([]string, numIngesters)
-	for i := 0; i < numIngesters; i++ {
-		ids[i] = fmt.Sprintf("ingester-%d", i)
-	}
+	for _, numIngesters := range []int{10, 30, 50, 100} {
+		// Generate the ingester IDs.
+		ids := make([]string, numIngesters)
+		for i := 0; i < numIngesters; i++ {
+			ids[i] = fmt.Sprintf("ingester-%d", i)
+		}
 
-	// Compute the shard for each ingester.
-	distribution := map[string][]string{}
-	for _, id := range ids {
-		shard := shardByIngesterID(id, numShards)
-		distribution[shard] = append(distribution[shard], id)
-	}
+		// Compute the shard for each ingester.
+		distribution := map[string][]string{}
+		for _, id := range ids {
+			shard := shardByIngesterID(id, numShards)
+			distribution[shard] = append(distribution[shard], id)
+		}
 
-	// Ensure the distribution is fair.
-	minSizePerShard := distributionThreshold * (float64(numIngesters) / float64(numShards))
+		// Ensure the distribution is fair.
+		minSizePerShard := distributionThreshold * (float64(numIngesters) / float64(numShards))
 
-	for _, ingesters := range distribution {
-		assert.GreaterOrEqual(t, len(ingesters), int(minSizePerShard))
+		for _, ingesters := range distribution {
+			assert.GreaterOrEqual(t, len(ingesters), int(minSizePerShard))
+		}
 	}
 }
 

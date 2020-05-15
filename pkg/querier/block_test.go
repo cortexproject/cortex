@@ -34,10 +34,12 @@ func TestBlockQuerierSeries(t *testing.T) {
 			expectedMetric: labels.Labels(nil),
 			expectedErr:    "no chunks",
 		},
-		"should remove the external label added by the shipper": {
+		"should remove the external label added by the ingester and compactor": {
 			series: &storepb.Series{
 				Labels: []storepb.Label{
 					{Name: tsdb.TenantIDExternalLabel, Value: "test"},
+					{Name: tsdb.IngesterIDExternalLabel, Value: "test"},
+					{Name: tsdb.ShardIDExternalLabel, Value: "test"},
 					{Name: "foo", Value: "bar"},
 				},
 				Chunks: []storepb.AggrChunk{
@@ -133,7 +135,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// second, with multiple chunks
 			{
-				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed"),
+				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed", tsdb.IngesterIDExternalLabel, "to be removed", tsdb.ShardIDExternalLabel, "to be removed"),
 				Chunks: []storepb.AggrChunk{
 					// unordered chunks
 					createChunkWithSineSamples(now.Add(400*time.Second), now.Add(600*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples, = 120000 in total)

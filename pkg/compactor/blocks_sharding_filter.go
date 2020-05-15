@@ -23,12 +23,13 @@ func NewBlocksShardingFilter(shards uint32) *BlocksShardingFilter {
 }
 
 func (f *BlocksShardingFilter) Filter(_ context.Context, metas map[ulid.ULID]*metadata.Meta, _ *extprom.TxGaugeVec) error {
-	// Do nothing if sharding is disabled.
-	if f.shards <= 1 {
-		return nil
-	}
-
 	for _, m := range metas {
+		// Just remove the ingester ID label if sharding is disabled.
+		if f.shards <= 1 {
+			delete(m.Thanos.Labels, cortex_tsdb.IngesterIDExternalLabel)
+			continue
+		}
+
 		// Skip any block already containing the shard ID to avoid any manipulation
 		// (ie. in case the sharding algorithm changes over the time).
 		if _, ok := m.Thanos.Labels[cortex_tsdb.ShardIDExternalLabel]; ok {

@@ -72,43 +72,60 @@ func TestBlocksShardingFilter(t *testing.T) {
 	block3 := ulid.MustNew(3, nil)
 
 	tests := map[string]struct {
-		input    map[ulid.ULID]map[string]string
-		expected map[ulid.ULID]map[string]string
+		numShards uint32
+		input     map[ulid.ULID]map[string]string
+		expected  map[ulid.ULID]map[string]string
 	}{
 		"blocks from the same ingester should go into the same shard": {
+			numShards: 3,
 			input: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0"},
-				block2: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0"},
-				block3: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0"},
+				block1: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 			expected: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.ShardIDExternalLabel: "2"},
-				block2: {cortex_tsdb.ShardIDExternalLabel: "2"},
-				block3: {cortex_tsdb.ShardIDExternalLabel: "2"},
+				block1: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 		},
 		"blocks from the different ingesters should be sharded": {
+			numShards: 3,
 			input: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0"},
-				block2: {cortex_tsdb.IngesterIDExternalLabel: "ingester-1"},
-				block3: {cortex_tsdb.IngesterIDExternalLabel: "ingester-2"},
+				block1: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.IngesterIDExternalLabel: "ingester-1", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.IngesterIDExternalLabel: "ingester-2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 			expected: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.ShardIDExternalLabel: "2"},
-				block2: {cortex_tsdb.ShardIDExternalLabel: "1"},
-				block3: {cortex_tsdb.ShardIDExternalLabel: "0"},
+				block1: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.ShardIDExternalLabel: "1", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.ShardIDExternalLabel: "0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 		},
 		"blocks without ingester ID should not be mangled": {
+			numShards: 3,
 			input: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.ShardIDExternalLabel: "2"},
-				block2: {cortex_tsdb.ShardIDExternalLabel: "1"},
-				block3: {cortex_tsdb.ShardIDExternalLabel: "0"},
+				block1: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.ShardIDExternalLabel: "1", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.ShardIDExternalLabel: "0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 			expected: map[ulid.ULID]map[string]string{
-				block1: {cortex_tsdb.ShardIDExternalLabel: "2"},
-				block2: {cortex_tsdb.ShardIDExternalLabel: "1"},
-				block3: {cortex_tsdb.ShardIDExternalLabel: "0"},
+				block1: {cortex_tsdb.ShardIDExternalLabel: "2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.ShardIDExternalLabel: "1", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.ShardIDExternalLabel: "0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+			},
+		},
+		"should remove the ingester ID external label if sharding is disabled": {
+			numShards: 1,
+			input: map[ulid.ULID]map[string]string{
+				block1: {cortex_tsdb.IngesterIDExternalLabel: "ingester-0", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.IngesterIDExternalLabel: "ingester-1", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.IngesterIDExternalLabel: "ingester-2", cortex_tsdb.TenantIDExternalLabel: "user-1"},
+			},
+			expected: map[ulid.ULID]map[string]string{
+				block1: {cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block2: {cortex_tsdb.TenantIDExternalLabel: "user-1"},
+				block3: {cortex_tsdb.TenantIDExternalLabel: "user-1"},
 			},
 		},
 	}
@@ -120,7 +137,7 @@ func TestBlocksShardingFilter(t *testing.T) {
 				metas[id] = &metadata.Meta{Thanos: metadata.Thanos{Labels: lbls}}
 			}
 
-			f := NewBlocksShardingFilter(3)
+			f := NewBlocksShardingFilter(testData.numShards)
 			err := f.Filter(context.Background(), metas, nil)
 			require.NoError(t, err)
 			assert.Len(t, metas, len(testData.expected))

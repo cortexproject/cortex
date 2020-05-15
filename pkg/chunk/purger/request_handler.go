@@ -171,5 +171,8 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	if err := dm.deleteStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
 		level.Error(util.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	w.WriteHeader(http.StatusOK)
 }

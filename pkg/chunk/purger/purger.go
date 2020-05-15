@@ -339,7 +339,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 
 	for _, deleteRequest := range deleteRequests {
 		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
-		if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Add(time.Hour).After(model.Now()) {
+		if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 

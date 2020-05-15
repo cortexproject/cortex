@@ -35,6 +35,9 @@ The following Prometheus API endpoints are supported by `query-tee`:
 - `/api/v1/labels` (GET)
 - `/api/v1/label/{name}/values` (GET)
 - `/api/v1/series` (GET)
+- `/api/v1/metadata` (GET)
+- `/api/v1/alerts` (GET)
+- `/api/v1/rules` (GET)
 
 ### Authentication
 

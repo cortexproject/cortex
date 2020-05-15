@@ -613,6 +613,15 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+  # Number of shards a single tenant blocks should be grouped into (0 or 1 means
+  # per-tenant blocks sharding is disabled).
+  # CLI flag: -compactor.per-tenant-num-shards
+  [per_tenant_num_shards: <int> | default = 1]
+
+  # Number of concurrent shards compacted for a single tenant.
+  # CLI flag: -compactor.per-tenant-shards-concurrency
+  [per_tenant_shards_concurrency: <int> | default = 1]
 ```
 
 ## Known issues

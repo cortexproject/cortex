@@ -52,19 +52,19 @@ func TestCortex(t *testing.T) {
 
 	c, err := New(cfg)
 	require.NoError(t, err)
-	require.NotNil(t, c.ServiceMap)
 
-	for m, s := range c.ServiceMap {
+	serviceMap, err := c.ModuleManager.InitModuleServices(c.Cfg.Target)
+	require.NoError(t, err)
+	require.NotNil(t, serviceMap)
+
+	for m, s := range serviceMap {
 		// make sure each service is still New
 		require.Equal(t, services.New, s.State(), "module: %s", m)
 	}
 
 	// check random modules that we expect to be configured when using Target=All
-	require.NotNil(t, c.ServiceMap[Server])
-	require.NotNil(t, c.ServiceMap[Ingester])
-	require.NotNil(t, c.ServiceMap[Ring])
-	require.NotNil(t, c.ServiceMap[Distributor])
-
-	// check that findInverseDependencie for Ring -- querier and distributor depend on Ring, so should be returned.
-	require.ElementsMatch(t, []ModuleName{Distributor, Querier}, findInverseDependencies(Ring, modules[cfg.Target].deps))
+	require.NotNil(t, serviceMap[Server])
+	require.NotNil(t, serviceMap[Ingester])
+	require.NotNil(t, serviceMap[Ring])
+	require.NotNil(t, serviceMap[Distributor])
 }

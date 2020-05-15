@@ -26,17 +26,6 @@ func TestFlagParsing(t *testing.T) {
 			stderrMessage: configFileOption,
 		},
 
-		// check that config file is used
-		"config with unknown target": {
-			yaml:          "target: unknown",
-			stderrMessage: "unrecognised module name: unknown",
-		},
-
-		"argument with unknown target": {
-			arguments:     []string{"-target=unknown"},
-			stderrMessage: "unrecognised module name: unknown",
-		},
-
 		"unknown flag": {
 			arguments:     []string{"-unknown.flag"},
 			stderrMessage: "-unknown.flag",
@@ -48,12 +37,6 @@ func TestFlagParsing(t *testing.T) {
 			stdoutMessage: "target: ingester",
 		},
 
-		"config with wrong argument override": {
-			yaml:          "target: ingester",
-			arguments:     []string{"-target=unknown"},
-			stderrMessage: "unrecognised module name: unknown",
-		},
-
 		"default values": {
 			stdoutMessage: "target: all\n",
 		},
@@ -61,11 +44,6 @@ func TestFlagParsing(t *testing.T) {
 		"config": {
 			yaml:          "target: ingester",
 			stdoutMessage: "target: ingester\n",
-		},
-
-		"config without expand-env": {
-			yaml:          "target: $TARGET",
-			stderrMessage: "Error parsing config file: unrecognised module name: $TARGET\n",
 		},
 
 		"config with expand-env": {

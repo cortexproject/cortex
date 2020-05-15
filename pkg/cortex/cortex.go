@@ -47,6 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
+	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -71,10 +72,10 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      ModuleName `yaml:"target"`
-	AuthEnabled bool       `yaml:"auth_enabled"`
-	PrintConfig bool       `yaml:"-"`
-	HTTPPrefix  string     `yaml:"http_prefix"`
+	Target      string `yaml:"target"`
+	AuthEnabled bool   `yaml:"auth_enabled"`
+	PrintConfig bool   `yaml:"-"`
+	HTTPPrefix  string `yaml:"http_prefix"`
 
 	API              api.Config               `yaml:"api"`
 	Server           server.Config            `yaml:"server"`
@@ -108,9 +109,8 @@ type Config struct {
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
-	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
+	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -191,7 +191,8 @@ type Cortex struct {
 	Cfg Config
 
 	// set during initialization
-	ServiceMap map[ModuleName]services.Service
+	ServiceMap    map[string]services.Service
+	ModuleManager *modules.Manager
 
 	API              *api.API
 	Server           *server.Server
@@ -238,13 +239,9 @@ func New(cfg Config) (*Cortex, error) {
 	cortex.setupAuthMiddleware()
 	cortex.setupThanosTracing()
 
-	serviceMap, err := cortex.initModuleServices()
-	if err != nil {
+	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
 	}
-
-	cortex.ServiceMap = serviceMap
-	cortex.API.RegisterServiceMapHandler(http.HandlerFunc(cortex.servicesHandler))
 
 	return cortex, nil
 }
@@ -292,40 +289,16 @@ func (t *Cortex) setupThanosTracing() {
 	)
 }
 
-func (t *Cortex) initModuleServices() (map[ModuleName]services.Service, error) {
-	servicesMap := map[ModuleName]services.Service{}
-
-	// initialize all of our dependencies first
-	deps := orderedDeps(t.Cfg.Target)
-	deps = append(deps, t.Cfg.Target) // lastly, initialize the requested module
-
-	for ix, n := range deps {
-		mod := modules[n]
-
-		var serv services.Service
-
-		if mod.wrappedService != nil {
-			s, err := mod.wrappedService(t)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			if s != nil {
-				// We pass servicesMap, which isn't yet finished. By the time service starts,
-				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findInverseDependencies(n, deps[ix+1:]))
-			}
-		}
-
-		if serv != nil {
-			servicesMap[n] = serv
-		}
-	}
-
-	return servicesMap, nil
-}
-
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
+	if err != nil {
+		return err
+	}
+
+	t.ServiceMap = serviceMap
+	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
+
 	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)
 	for _, s := range t.ServiceMap {
@@ -425,66 +398,4 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		http.Error(w, "ready", http.StatusOK)
 	}
-}
-
-// listDeps recursively gets a list of dependencies for a passed moduleName
-func listDeps(m ModuleName) []ModuleName {
-	deps := modules[m].deps
-	for _, d := range modules[m].deps {
-		deps = append(deps, listDeps(d)...)
-	}
-	return deps
-}
-
-// orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
-func orderedDeps(m ModuleName) []ModuleName {
-	deps := listDeps(m)
-
-	// get a unique list of moduleNames, with a flag for whether they have been added to our result
-	uniq := map[ModuleName]bool{}
-	for _, dep := range deps {
-		uniq[dep] = false
-	}
-
-	result := make([]ModuleName, 0, len(uniq))
-
-	// keep looping through all modules until they have all been added to the result.
-
-	for len(result) < len(uniq) {
-	OUTER:
-		for name, added := range uniq {
-			if added {
-				continue
-			}
-			for _, dep := range modules[name].deps {
-				// stop processing this module if one of its dependencies has
-				// not been added to the result yet.
-				if !uniq[dep] {
-					continue OUTER
-				}
-			}
-
-			// if all of the module's dependencies have been added to the result slice,
-			// then we can safely add this module to the result slice as well.
-			uniq[name] = true
-			result = append(result, name)
-		}
-	}
-	return result
-}
-
-// find modules in the supplied list, that depend on mod
-func findInverseDependencies(mod ModuleName, mods []ModuleName) []ModuleName {
-	result := []ModuleName(nil)
-
-	for _, n := range mods {
-		for _, d := range modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
-		}
-	}
-
-	return result
 }

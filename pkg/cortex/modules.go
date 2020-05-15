@@ -3,7 +3,6 @@ package cortex
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,64 +30,37 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// ModuleName is used to describe a running module
-type ModuleName string
-
 // The various modules that make up Cortex.
 const (
-	API                 ModuleName = "api"
-	Ring                ModuleName = "ring"
-	RuntimeConfig       ModuleName = "runtime-config"
-	Overrides           ModuleName = "overrides"
-	Server              ModuleName = "server"
-	Distributor         ModuleName = "distributor"
-	Ingester            ModuleName = "ingester"
-	Flusher             ModuleName = "flusher"
-	Querier             ModuleName = "querier"
-	StoreQueryable      ModuleName = "store-queryable"
-	QueryFrontend       ModuleName = "query-frontend"
-	Store               ModuleName = "store"
-	DeleteRequestsStore ModuleName = "delete-requests-store"
-	TableManager        ModuleName = "table-manager"
-	Ruler               ModuleName = "ruler"
-	Configs             ModuleName = "configs"
-	AlertManager        ModuleName = "alertmanager"
-	Compactor           ModuleName = "compactor"
-	StoreGateway        ModuleName = "store-gateway"
-	MemberlistKV        ModuleName = "memberlist-kv"
-	DataPurger          ModuleName = "data-purger"
-	All                 ModuleName = "all"
+	API                 string = "api"
+	Ring                string = "ring"
+	RuntimeConfig       string = "runtime-config"
+	Overrides           string = "overrides"
+	Server              string = "server"
+	Distributor         string = "distributor"
+	Ingester            string = "ingester"
+	Flusher             string = "flusher"
+	Querier             string = "querier"
+	StoreQueryable      string = "store-queryable"
+	QueryFrontend       string = "query-frontend"
+	Store               string = "store"
+	DeleteRequestsStore string = "delete-requests-store"
+	TableManager        string = "table-manager"
+	Ruler               string = "ruler"
+	Configs             string = "configs"
+	AlertManager        string = "alertmanager"
+	Compactor           string = "compactor"
+	StoreGateway        string = "store-gateway"
+	MemberlistKV        string = "memberlist-kv"
+	DataPurger          string = "data-purger"
+	All                 string = "all"
 )
-
-func (m ModuleName) String() string {
-	return string(m)
-}
-
-func (m *ModuleName) Set(s string) error {
-	l := ModuleName(strings.ToLower(s))
-	if _, ok := modules[l]; !ok {
-		return fmt.Errorf("unrecognised module name: %s", s)
-	}
-	*m = l
-	return nil
-}
-
-func (m ModuleName) MarshalYAML() (interface{}, error) {
-	return m.String(), nil
-}
-
-func (m *ModuleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	return m.Set(s)
-}
 
 func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
@@ -515,117 +487,63 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 	return t.DataPurger, nil
 }
 
-type module struct {
-	deps []ModuleName
+func (t *Cortex) setupModuleManager() error {
+	mm := modules.NewManager()
 
-	// Service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
-	// (can return nil)
-	wrappedService func(t *Cortex) (services.Service, error)
-}
+	// Register all modules here.
+	// RegisterModule(name string, initFn func()(services.Service, error))
+	mm.RegisterModule(Server, t.initServer)
+	mm.RegisterModule(API, t.initAPI)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
+	mm.RegisterModule(Ring, t.initRing)
+	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
+	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(Flusher, t.initFlusher)
+	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryable)
+	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
+	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(Ruler, t.initRuler)
+	mm.RegisterModule(Configs, t.initConfig)
+	mm.RegisterModule(AlertManager, t.initAlertManager)
+	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(StoreGateway, t.initStoreGateway)
+	mm.RegisterModule(DataPurger, t.initDataPurger)
+	mm.RegisterModule(All, nil)
+	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 
-var modules = map[ModuleName]module{
-	Server: {
-		wrappedService: (*Cortex).initServer,
-	},
+	// Add dependencies
+	deps := map[string][]string{
+		API:            {Server},
+		Ring:           {API, RuntimeConfig, MemberlistKV},
+		Overrides:      {RuntimeConfig},
+		Distributor:    {Ring, API, Overrides},
+		Store:          {Overrides, DeleteRequestsStore},
+		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Flusher:        {Store, API},
+		Querier:        {Distributor, Store, Ring, API, StoreQueryable},
+		StoreQueryable: {Store},
+		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
+		TableManager:   {API},
+		Ruler:          {Distributor, Store, StoreQueryable},
+		Configs:        {API},
+		AlertManager:   {API},
+		Compactor:      {API},
+		StoreGateway:   {API},
+		DataPurger:     {Store, DeleteRequestsStore, API},
+		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+	}
+	for mod, targets := range deps {
+		if err := mm.AddDependency(mod, targets...); err != nil {
+			return err
+		}
+	}
 
-	API: {
-		deps:           []ModuleName{Server},
-		wrappedService: (*Cortex).initAPI,
-	},
+	t.ModuleManager = mm
 
-	RuntimeConfig: {
-		wrappedService: (*Cortex).initRuntimeConfig,
-	},
-
-	MemberlistKV: {
-		wrappedService: (*Cortex).initMemberlistKV,
-	},
-
-	Ring: {
-		deps:           []ModuleName{API, RuntimeConfig, MemberlistKV},
-		wrappedService: (*Cortex).initRing,
-	},
-
-	Overrides: {
-		deps:           []ModuleName{RuntimeConfig},
-		wrappedService: (*Cortex).initOverrides,
-	},
-
-	Distributor: {
-		deps:           []ModuleName{Ring, API, Overrides},
-		wrappedService: (*Cortex).initDistributor,
-	},
-
-	Store: {
-		deps:           []ModuleName{Overrides, DeleteRequestsStore},
-		wrappedService: (*Cortex).initStore,
-	},
-
-	DeleteRequestsStore: {
-		wrappedService: (*Cortex).initDeleteRequestsStore,
-	},
-
-	Ingester: {
-		deps:           []ModuleName{Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		wrappedService: (*Cortex).initIngester,
-	},
-
-	Flusher: {
-		deps:           []ModuleName{Store, API},
-		wrappedService: (*Cortex).initFlusher,
-	},
-
-	Querier: {
-		deps:           []ModuleName{Distributor, Store, Ring, API, StoreQueryable},
-		wrappedService: (*Cortex).initQuerier,
-	},
-
-	StoreQueryable: {
-		deps:           []ModuleName{Store},
-		wrappedService: (*Cortex).initStoreQueryable,
-	},
-
-	QueryFrontend: {
-		deps:           []ModuleName{API, Overrides, DeleteRequestsStore},
-		wrappedService: (*Cortex).initQueryFrontend,
-	},
-
-	TableManager: {
-		deps:           []ModuleName{API},
-		wrappedService: (*Cortex).initTableManager,
-	},
-
-	Ruler: {
-		deps:           []ModuleName{Distributor, Store, StoreQueryable},
-		wrappedService: (*Cortex).initRuler,
-	},
-
-	Configs: {
-		deps:           []ModuleName{API},
-		wrappedService: (*Cortex).initConfig,
-	},
-
-	AlertManager: {
-		deps:           []ModuleName{API},
-		wrappedService: (*Cortex).initAlertManager,
-	},
-
-	Compactor: {
-		deps:           []ModuleName{API},
-		wrappedService: (*Cortex).initCompactor,
-	},
-
-	StoreGateway: {
-		deps:           []ModuleName{API},
-		wrappedService: (*Cortex).initStoreGateway,
-	},
-
-	DataPurger: {
-		deps:           []ModuleName{Store, DeleteRequestsStore, API},
-		wrappedService: (*Cortex).initDataPurger,
-	},
-
-	All: {
-		deps: []ModuleName{QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
-	},
+	return nil
 }

@@ -56,7 +56,8 @@ type BlocksScanner struct {
 	metasMx sync.RWMutex
 	metas   map[string][]*metadata.Meta
 
-	scanDuration prometheus.Histogram
+	scanDuration    prometheus.Histogram
+	scanLastSuccess prometheus.Gauge
 }
 
 func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BlocksScanner {
@@ -71,6 +72,10 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 			Name:    "cortex_querier_blocks_scan_duration_seconds",
 			Help:    "The total time it takes to run a full blocks scan across the storage.",
 			Buckets: []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
+		}),
+		scanLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_querier_blocks_last_successful_scan_timestamp_seconds",
+			Help: "Unix timestamp of the last successful blocks scan.",
 		}),
 	}
 
@@ -135,9 +140,12 @@ func (d *BlocksScanner) scan(ctx context.Context) error {
 	return nil
 }
 
-func (d *BlocksScanner) scanBucket(ctx context.Context) error {
+func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	defer func(start time.Time) {
 		d.scanDuration.Observe(time.Since(start).Seconds())
+		if returnErr == nil {
+			d.scanLastSuccess.SetToCurrentTime()
+		}
 	}(time.Now())
 
 	jobsChan := make(chan string)

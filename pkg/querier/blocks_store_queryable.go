@@ -96,7 +96,7 @@ func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, reg pro
 func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.Config, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	var stores BlocksStoreSet
 
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), storageCfg, "querier", logger)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), storageCfg, "querier", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket client")
 	}
@@ -126,7 +126,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			reg.MustRegister(storesRing)
 		}
 
-		stores, err = newBlocksStoreReplicationSet(storesRing, logger, reg)
+		stores, err = newBlocksStoreReplicationSet(storesRing, querierCfg.StoreGatewayClient, logger, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store set")
 		}
@@ -135,7 +135,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			return nil, errNoStoreGatewayAddress
 		}
 
-		stores = newBlocksStoreBalancedSet(querierCfg.GetStoreGatewayAddresses(), logger, reg)
+		stores = newBlocksStoreBalancedSet(querierCfg.GetStoreGatewayAddresses(), querierCfg.StoreGatewayClient, logger, reg)
 	}
 
 	return NewBlocksStoreQueryable(stores, scanner, reg)

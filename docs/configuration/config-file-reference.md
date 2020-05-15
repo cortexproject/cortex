@@ -646,6 +646,19 @@ The `querier_config` configures the Cortex querier.
 # instances form a ring and addresses are picked from the ring).
 # CLI flag: -experimental.querier.store-gateway-addresses
 [store_gateway_addresses: <string> | default = ""]
+
+store_gateway_client:
+  # TLS cert path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `query_frontend_config`
@@ -756,6 +769,19 @@ The `ruler_config` configures the Cortex ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+ruler_client:
+  # TLS cert path for the client
+  # CLI flag: -ruler.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -ruler.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -ruler.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -1685,6 +1711,10 @@ cassandra:
   # CLI flag: -cassandra.retry-min-backoff
   [retry_min_backoff: <duration> | default = 100ms]
 
+  # Limit number of concurrent queries to Cassandra. (Default is 0: no limit)
+  # CLI flag: -cassandra.query-concurrency
+  [query_concurrency: <int> | default = 0]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
@@ -1960,6 +1990,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the client
+  # CLI flag: -ingester.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -ingester.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -ingester.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `frontend_worker_config`
@@ -2021,6 +2063,18 @@ grpc_client_config:
     # Number of times to backoff and retry before failing.
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # TLS cert path for the client
+  # CLI flag: -querier.frontend-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # TLS key path for the client
+  # CLI flag: -querier.frontend-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # TLS CA path for the client
+  # CLI flag: -querier.frontend-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### `etcd_config`
@@ -2526,6 +2580,18 @@ The `configstore_config` configures the config database storing rules and alerts
 # Timeout for requests to Weave Cloud configs service.
 # CLI flag: -<prefix>.configs.client-timeout
 [client_timeout: <duration> | default = 5s]
+
+# TLS cert path for the client
+# CLI flag: -<prefix>.configs.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# TLS key path for the client
+# CLI flag: -<prefix>.configs.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# TLS CA path for the client
+# CLI flag: -<prefix>.configs.tls-ca-path
+[tls_ca_path: <string> | default = ""]
 ```
 
 ### `tsdb_config`
@@ -2666,6 +2732,71 @@ bucket_store:
     # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
     [postings_compression_enabled: <boolean> | default = false]
 
+  chunks_cache:
+    # Backend for chunks cache, if not empty. Supported values: memcached.
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.backend
+    [backend: <string> | default = ""]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are splitted into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+    # Size of each subrange that bucket object is split into for better caching.
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-size
+    [subrange_size: <int> | default = 16000]
+
+    # Maximum number of sub-GetRange requests that a single GetRange request can
+    # be split into when fetching chunks. Zero or negative value = unlimited
+    # number of sub-requests.
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
+    [max_get_range_requests: <int> | default = 3]
+
+    # TTL for caching object size for chunks.
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
+    [object_size_ttl: <duration> | default = 24h]
+
+    # TTL for caching individual chunks subranges.
+    # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
+    [subrange_ttl: <duration> | default = 24h]
+
   # Duration after which the blocks marked for deletion will be filtered out
   # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
   # blocks that are marked for deletion with some delay. This ensures store can
@@ -2688,6 +2819,10 @@ bucket_store:
 # this will decrease memory footprint, but can negatively impact performance.
 # CLI flag: -experimental.tsdb.stripe-size
 [stripe_size: <int> | default = 16384]
+
+# True to enable TSDB WAL compression.
+# CLI flag: -experimental.tsdb.wal-compression-enabled
+[wal_compression_enabled: <boolean> | default = false]
 
 # True if the Cortex cluster is running the store-gateway service and the
 # querier should query the bucket store via the store-gateway.

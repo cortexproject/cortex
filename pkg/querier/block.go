@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
@@ -33,13 +32,9 @@ type BlockQueryable struct {
 // NewBlockQueryable returns a client to query a block store
 func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", util.Logger)
+	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "querier", util.Logger, registerer)
 	if err != nil {
 		return nil, err
-	}
-
-	if registerer != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer))
 	}
 
 	us, err := NewBucketStoresService(cfg, bucketClient, logLevel, util.Logger, registerer)

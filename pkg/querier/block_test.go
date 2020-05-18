@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestBlockQuerierSeries(t *testing.T) {
@@ -34,10 +32,9 @@ func TestBlockQuerierSeries(t *testing.T) {
 			expectedMetric: labels.Labels(nil),
 			expectedErr:    "no chunks",
 		},
-		"should remove the external label added by the shipper": {
+		"should return series on success": {
 			series: &storepb.Series{
 				Labels: []storepb.Label{
-					{Name: tsdb.TenantIDExternalLabel, Value: "test"},
 					{Name: "foo", Value: "bar"},
 				},
 				Chunks: []storepb.AggrChunk{
@@ -133,7 +130,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// second, with multiple chunks
 			{
-				Labels: mkLabels("__name__", "second", tsdb.TenantIDExternalLabel, "to be removed"),
+				Labels: mkLabels("__name__", "second"),
 				Chunks: []storepb.AggrChunk{
 					// unordered chunks
 					createChunkWithSineSamples(now.Add(400*time.Second), now.Add(600*time.Second), 5*time.Millisecond), // 200 / 0.005 (= 40000 samples, = 120000 in total)

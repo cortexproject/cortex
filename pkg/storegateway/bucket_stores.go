@@ -245,7 +245,14 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			// TODO(pracucci) can this cause troubles with the upcoming blocks sharding in the store-gateway?
 			block.NewDeduplicateFilter(),
 		}...),
-		nil,
+		[]block.MetadataModifier{
+			// Remove Cortex external labels so that they're not injected when querying blocks.
+			block.NewReplicaLabelRemover(userLogger, []string{
+				tsdb.TenantIDExternalLabel,
+				tsdb.IngesterIDExternalLabel,
+				tsdb.ShardIDExternalLabel,
+			}),
+		},
 	)
 	if err != nil {
 		return nil, err

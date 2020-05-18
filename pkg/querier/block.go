@@ -208,10 +208,7 @@ func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *bl
 
 	b := labels.NewBuilder(nil)
 	for _, l := range lbls {
-		// Ignore external label set by the shipper
-		if l.Name != tsdb.TenantIDExternalLabel {
-			b.Set(l.Name, l.Value)
-		}
+		b.Set(l.Name, l.Value)
 	}
 
 	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}

@@ -326,6 +326,15 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 			samples:          5,
 			expectedResponse: success,
 		},
+
+		{
+			enableTracker:    true,
+			acceptedReplica:  "instance0",
+			testReplica:      "instance0",
+			samples:          5,
+			expectedResponse: success,
+		},
+
 		// The 202 indicates that we didn't accept this sample.
 		{
 			enableTracker:   true,
@@ -335,6 +344,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 			samples:         5,
 			expectedCode:    202,
 		},
+
 		// If the HA tracker is disabled we should still accept samples that have both labels.
 		{
 			enableTracker:    false,
@@ -1038,11 +1048,14 @@ func makeWriteRequestHA(samples int, replica, cluster string) *client.WriteReque
 					{Name: "__name__", Value: "foo"},
 					{Name: "__replica__", Value: replica},
 					{Name: "bar", Value: "baz"},
-					{Name: "cluster", Value: cluster},
 					{Name: "sample", Value: fmt.Sprintf("%d", i)},
 				},
 			},
 		}
+		if cluster != "" {
+			ts.Labels = append(ts.Labels, client.LabelAdapter{Name: "cluster", Value: cluster})
+		}
+
 		ts.Samples = []client.Sample{
 			{
 				Value:       float64(i),

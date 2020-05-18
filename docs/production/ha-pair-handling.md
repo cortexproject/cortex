@@ -21,7 +21,7 @@ Now we do the same leader election process T2.
 
 ### Client Side
 
-So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, ideally `cluster` and `replica` (note the default is `__replica__`). For example:
+So for Cortex to achieve this, we need a way to uniquely identify each Prometheus.  You can use 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b) - although the cluster label is optional. The easiest way to do with is by setting external labels, ideally `cluster` and `replica` (note the default is `__replica__`). For example:
 
 ```
 cluster: prom-team1
@@ -37,7 +37,7 @@ replica: replica2
 
 Note: These are external labels and have nothing to do with remote_write config.
 
-These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be `team`, `cluster`, `prometheus`, etc.
+These label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be `team`, `cluster`, `prometheus`, etc.  Note this label is optional.
 
 The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won't change when replicas change.
 

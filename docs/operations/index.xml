@@ -712,6 +712,9 @@ step: 5m0s
 &lt;li&gt;&lt;code&gt;/api/v1/labels&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;/api/v1/label/{name}/values&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;/api/v1/series&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/metadata&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/alerts&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/rules&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;authentication&#34;&gt;Authentication&lt;/h3&gt;
 &lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; supports &lt;a href=&#34;https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication&#34;&gt;HTTP basic authentication&lt;/a&gt;. It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.&lt;/p&gt;

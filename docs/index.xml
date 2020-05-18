@@ -5272,6 +5272,9 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;/api/v1/labels&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;/api/v1/label/{name}/values&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;/api/v1/series&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/metadata&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/alerts&lt;/code&gt; (GET)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/api/v1/rules&lt;/code&gt; (GET)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;authentication&#34;&gt;Authentication&lt;/h3&gt;
 &lt;p&gt;&lt;code&gt;query-tee&lt;/code&gt; supports &lt;a href=&#34;https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication&#34;&gt;HTTP basic authentication&lt;/a&gt;. It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.&lt;/p&gt;
@@ -6340,6 +6343,7 @@ replica: replica2
 &lt;li&gt;[FEATURE] Experimental: Added support for &lt;code&gt;/api/v1/metadata&lt;/code&gt; Prometheus-based endpoint. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2549&#34;&gt;#2549&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] Add ability to limit concurrent queries to Cassandra with &lt;code&gt;-cassandra.query-concurrency&lt;/code&gt; flag. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2562&#34;&gt;#2562&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client &amp;amp; Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2502&#34;&gt;#2502&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] &lt;code&gt;query-tee&lt;/code&gt; supports &lt;code&gt;/metadata&lt;/code&gt;, &lt;code&gt;/alerts&lt;/code&gt;, and &lt;code&gt;/rules&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2600&#34;&gt;#2600&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2587&#34;&gt;#2587&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing &lt;code&gt;cortex_discarded_samples_total&lt;/code&gt; metric. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2370&#34;&gt;#2370&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2383&#34;&gt;#2383&lt;/a&gt;&lt;/li&gt;

@@ -99,12 +99,25 @@ func (p *Proxy) Start() error {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// Read endpoints.
-	router.Path("/api/v1/query").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_query", p.metrics, p.logger))
-	router.Path("/api/v1/query_range").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_query_range", p.metrics, p.logger))
-	router.Path("/api/v1/labels").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_labels", p.metrics, p.logger))
-	router.Path("/api/v1/label/{name}/values").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_label_name_values", p.metrics, p.logger))
-	router.Path("/api/v1/series").Methods("GET").Handler(NewProxyEndpoint(p.backends, "api_v1_series", p.metrics, p.logger))
+	endpoints := []struct {
+		endpoint  string
+		methods   string
+		routeName string
+	}{
+		{"/api/v1/query", "GET", "api_v1_query"},
+		{"/api/v1/query_range", "GET", "api_v1_query_range"},
+		{"/api/v1/labels", "GET", "api_v1_labels"},
+		{"/api/v1/label/{name}/values", "GET", "api_v1_label_name_values"},
+		{"/api/v1/series", "GET", "api_v1_series"},
+		{"/api/v1/metadata", "GET", "api_v1_metadata"},
+		{"/api/v1/rules", "GET", "api_v1_rules"},
+		{"/api/v1/alerts", "GET", "api_v1_alerts"},
+	}
+
+	// Read endpoints
+	for _, e := range endpoints {
+		router.Path(e.endpoint).Methods(e.methods).Handler(NewProxyEndpoint(p.backends, e.routeName, p.metrics, p.logger))
+	}
 
 	p.srvListener = listener
 	p.srv = &http.Server{

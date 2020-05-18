@@ -552,10 +552,10 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 
 	// Find the created blocks (we expect 2).
 	var blockIDs []string
-	bucketClient.Iter(ctx, "user-1/", func(key string) error {
+	require.NoError(t, bucketClient.Iter(ctx, "user-1/", func(key string) error {
 		blockIDs = append(blockIDs, strings.TrimSuffix(strings.TrimPrefix(key, userID+"/"), "/"))
 		return nil
-	})
+	}))
 	require.Len(t, blockIDs, 2)
 
 	// Inject different external labels for each block.

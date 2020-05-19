@@ -89,3 +89,13 @@ Several things to note here:
 -  If you want to add AWS tags to the created DynamoDB tables you
    can do it by adding a `tags` map to your schema definition. See
    [`schema configuration`](../configuration/schema-config-reference.md)
+-  AWS DynamoDB has a limit on how many times you can scale down a table
+   per day [AWS DynamoDB Limits](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#default-limits-throughput-capacity-modes). You can decrease the
+   provisioned capacity up to 4 times per day, and you'll get an additional
+   decrease per past hour where there was no decrease done. This means that
+   you don't want the table manager to aggresivly try do decrease the
+   provisioned throughput, since you might end up hitting the limit.
+-  If the write unit consumption is less than 100, Cortex will not do any
+   scaling. This is due to the fact that with the current implementation,
+   missing values looks like low values, so there has to be a threshold
+   for when to scale.

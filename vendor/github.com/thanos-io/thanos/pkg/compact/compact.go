@@ -184,59 +184,6 @@ func (s *Syncer) Metas() map[ulid.ULID]*metadata.Meta {
 	return s.blocks
 }
 
-// GroupKey returns a unique identifier for the group the block belongs to. It considers
-// the downsampling resolution and the block's labels.
-func GroupKey(meta metadata.Thanos) string {
-	return groupKey(meta.Downsample.Resolution, labels.FromMap(meta.Labels))
-}
-
-func groupKey(res int64, lbls labels.Labels) string {
-	return fmt.Sprintf("%d@%v", res, lbls.Hash())
-}
-
-// Groups returns the compaction groups for all blocks currently known to the syncer.
-// It creates all groups from the scratch on every call.
-func (s *Syncer) Groups() (res []*Group, err error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	groups := map[string]*Group{}
-	for _, m := range s.blocks {
-		groupKey := GroupKey(m.Thanos)
-		g, ok := groups[groupKey]
-		if !ok {
-			lbls := labels.FromMap(m.Thanos.Labels)
-			g, err = newGroup(
-				log.With(s.logger, "group", fmt.Sprintf("%d@%v", m.Thanos.Downsample.Resolution, lbls.String()), "groupKey", groupKey),
-				s.bkt,
-				lbls,
-				m.Thanos.Downsample.Resolution,
-				s.acceptMalformedIndex,
-				s.enableVerticalCompaction,
-				s.metrics.compactions.WithLabelValues(groupKey),
-				s.metrics.compactionRunsStarted.WithLabelValues(groupKey),
-				s.metrics.compactionRunsCompleted.WithLabelValues(groupKey),
-				s.metrics.compactionFailures.WithLabelValues(groupKey),
-				s.metrics.verticalCompactions.WithLabelValues(groupKey),
-				s.metrics.garbageCollectedBlocks,
-				s.metrics.blocksMarkedForDeletion,
-			)
-			if err != nil {
-				return nil, errors.Wrap(err, "create compaction group")
-			}
-			groups[groupKey] = g
-			res = append(res, g)
-		}
-		if err := g.Add(m); err != nil {
-			return nil, errors.Wrap(err, "add compaction group")
-		}
-	}
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].Key() < res[j].Key()
-	})
-	return res, nil
-}
-
 // GarbageCollect marks blocks for deletion from bucket if their data is available as part of a
 // block with a higher compaction level.
 // Call to SyncMetas function is required to populate duplicateIDs in duplicateBlocksFilter.
@@ -286,11 +233,98 @@ func (s *Syncer) GarbageCollect(ctx context.Context) error {
 	return nil
 }
 
+type GrouperMetrics struct {
+	Compactions             *prometheus.CounterVec
+	CompactionRunsStarted   *prometheus.CounterVec
+	CompactionRunsCompleted *prometheus.CounterVec
+	CompactionFailures      *prometheus.CounterVec
+	VerticalCompactions     *prometheus.CounterVec
+	GarbageCollectedBlocks  prometheus.Counter
+	BlocksMarkedForDeletion prometheus.Counter
+}
+
+type Grouper interface {
+	Groups(blocks map[ulid.ULID]*metadata.Meta, metrics GrouperMetrics) (res []*Group, err error)
+}
+
+// GroupKey returns a unique identifier for the group the block belongs to. It considers
+// the downsampling resolution and the block's labels.
+func GroupKey(meta metadata.Thanos) string {
+	return groupKey(meta.Downsample.Resolution, labels.FromMap(meta.Labels))
+}
+
+func groupKey(res int64, lbls labels.Labels) string {
+	return fmt.Sprintf("%d@%v", res, lbls.Hash())
+}
+
+type DefaultGrouper struct {
+	bkt                      objstore.Bucket
+	logger log.Logger
+	acceptMalformedIndex     bool
+	enableVerticalCompaction bool
+}
+
+func NewDefaultGrouper(
+	bkt objstore.Bucket,
+	logger log.Logger,
+	acceptMalformedIndex bool,
+	enableVerticalCompaction bool,
+) *DefaultGrouper {
+	return &DefaultGrouper{
+		bkt:                      bkt,
+		logger: logger,
+		acceptMalformedIndex:     acceptMalformedIndex,
+		enableVerticalCompaction: enableVerticalCompaction,
+	}
+}
+
+// Groups returns the compaction groups for all blocks currently known to the syncer.
+// It creates all groups from the scratch on every call.
+func (g *DefaultGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta, metrics GrouperMetrics) (res []*Group, err error) {
+	groups := map[string]*Group{}
+	for _, m := range blocks {
+		groupKey := GroupKey(m.Thanos)
+		group, ok := groups[groupKey]
+		if !ok {
+			lbls := labels.FromMap(m.Thanos.Labels)
+			group, err = NewGroup(
+				log.With(g.logger, "group", fmt.Sprintf("%d@%v", m.Thanos.Downsample.Resolution, lbls.String()), "groupKey", groupKey),
+				g.bkt,
+				groupKey,
+				lbls,
+				m.Thanos.Downsample.Resolution,
+				g.acceptMalformedIndex,
+				g.enableVerticalCompaction,
+				metrics.Compactions.WithLabelValues(groupKey),
+				metrics.CompactionRunsStarted.WithLabelValues(groupKey),
+				metrics.CompactionRunsCompleted.WithLabelValues(groupKey),
+				metrics.CompactionFailures.WithLabelValues(groupKey),
+				metrics.VerticalCompactions.WithLabelValues(groupKey),
+				metrics.GarbageCollectedBlocks,
+				metrics.BlocksMarkedForDeletion,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "create compaction group")
+			}
+			groups[groupKey] = group
+			res = append(res, group)
+		}
+		if err := group.Add(m); err != nil {
+			return nil, errors.Wrap(err, "add compaction group")
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].Key() < res[j].Key()
+	})
+	return res, nil
+}
+
 // Group captures a set of blocks that have the same origin labels and downsampling resolution.
 // Those blocks generally contain the same series and can thus efficiently be compacted.
 type Group struct {
 	logger                      log.Logger
 	bkt                         objstore.Bucket
+	key string
 	labels                      labels.Labels
 	resolution                  int64
 	mtx                         sync.Mutex
@@ -306,10 +340,11 @@ type Group struct {
 	blocksMarkedForDeletion     prometheus.Counter
 }
 
-// newGroup returns a new compaction group.
-func newGroup(
+// NewGroup returns a new compaction group.
+func NewGroup(
 	logger log.Logger,
 	bkt objstore.Bucket,
+	key string,
 	lset labels.Labels,
 	resolution int64,
 	acceptMalformedIndex bool,
@@ -328,6 +363,7 @@ func newGroup(
 	g := &Group{
 		logger:                      logger,
 		bkt:                         bkt,
+		key: key,
 		labels:                      lset,
 		resolution:                  resolution,
 		blocks:                      map[ulid.ULID]*metadata.Meta{},
@@ -346,7 +382,7 @@ func newGroup(
 
 // Key returns an identifier for the group.
 func (cg *Group) Key() string {
-	return groupKey(cg.resolution, cg.labels)
+	return cg.key
 }
 
 // Add the block with the given meta to the group.
@@ -376,6 +412,34 @@ func (cg *Group) IDs() (ids []ulid.ULID) {
 		return ids[i].Compare(ids[j]) < 0
 	})
 	return ids
+}
+
+// MinTime returns the min time across all group's blocks.
+func (cg *Group) MinTime() (int64) {
+	cg.mtx.Lock()
+	defer cg.mtx.Unlock()
+
+	min := int64(0)
+	for _, b := range cg.blocks {
+		if b.MinTime < min {
+			min = b.MinTime
+		}
+	}
+	return min
+}
+
+// MaxTime returns the max time across all group's blocks.
+func (cg *Group) MaxTime() (int64) {
+	cg.mtx.Lock()
+	defer cg.mtx.Unlock()
+
+	max := int64(0)
+	for _, b := range cg.blocks {
+		if b.MaxTime < max {
+			max = b.MaxTime
+		}
+	}
+	return max
 }
 
 // Labels returns the labels that all blocks in the group share.
@@ -645,11 +709,12 @@ func (cg *Group) compact(ctx context.Context, dir string, comp tsdb.Compactor) (
 			return false, ulid.ULID{}, errors.Wrapf(err, "read meta from %s", pdir)
 		}
 
-		cgKey, groupKey := cg.Key(), GroupKey(meta.Thanos)
-		if cgKey != groupKey {
-			return false, ulid.ULID{}, halt(errors.Errorf("compact planned compaction for mixed groups. group: %s, planned block's group: %s", cgKey, groupKey))
-		}
-
+		// Disabled because GroupKey() doesn't work with a custom grouper.
+		//cgKey, groupKey := cg.Key(), GroupKey(meta.Thanos)
+		//if cgKey != groupKey {
+		//	return false, ulid.ULID{}, halt(errors.Errorf("compact planned compaction for mixed groups. group: %s, planned block's group: %s", cgKey, groupKey))
+		//}
+		
 		for _, s := range meta.Compaction.Sources {
 			if _, ok := uniqueSources[s]; ok {
 				return false, ulid.ULID{}, halt(errors.Errorf("overlapping sources detected for plan %v", plan))
@@ -800,6 +865,7 @@ func (cg *Group) deleteBlock(b string) error {
 type BucketCompactor struct {
 	logger      log.Logger
 	sy          *Syncer
+	grouper     Grouper
 	comp        tsdb.Compactor
 	compactDir  string
 	bkt         objstore.Bucket
@@ -810,6 +876,7 @@ type BucketCompactor struct {
 func NewBucketCompactor(
 	logger log.Logger,
 	sy *Syncer,
+	grouper Grouper,
 	comp tsdb.Compactor,
 	compactDir string,
 	bkt objstore.Bucket,
@@ -821,6 +888,7 @@ func NewBucketCompactor(
 	return &BucketCompactor{
 		logger:      logger,
 		sy:          sy,
+		grouper:     grouper,
 		comp:        comp,
 		compactDir:  compactDir,
 		bkt:         bkt,
@@ -896,7 +964,17 @@ func (c *BucketCompactor) Compact(ctx context.Context) error {
 			return errors.Wrap(err, "garbage")
 		}
 
-		groups, err := c.sy.Groups()
+		grouperMetrics := GrouperMetrics{
+			Compactions:             c.sy.metrics.compactions,
+			CompactionRunsStarted:   c.sy.metrics.compactionRunsStarted,
+			CompactionRunsCompleted: c.sy.metrics.compactionRunsCompleted,
+			CompactionFailures:      c.sy.metrics.compactionFailures,
+			VerticalCompactions:     c.sy.metrics.verticalCompactions,
+			GarbageCollectedBlocks:  c.sy.metrics.garbageCollectedBlocks,
+			BlocksMarkedForDeletion: c.sy.metrics.blocksMarkedForDeletion,
+		}
+
+		groups, err := c.grouper.Groups(c.sy.Metas(), grouperMetrics)
 		if err != nil {
 			return errors.Wrap(err, "build compaction groups")
 		}

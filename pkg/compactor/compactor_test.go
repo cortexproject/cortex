@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +20,12 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
@@ -364,9 +369,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	// Ensure a plan has been executed for the blocks of each user.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
-
+	// Check logs to ensure compaction has been executed for each user.
 	assert.Equal(t, []string{
 		`level=info msg="discovering users from bucket"`,
 		`level=info msg="discovered users from bucket" users=2`,
@@ -459,9 +462,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	// Only one user's block is compacted.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 1)
-
+	// Check logs to ensure compaction has been executed only for 1 user.
 	assert.Equal(t, []string{
 		`level=info msg="discovering users from bucket"`,
 		`level=info msg="discovered users from bucket" users=1`,
@@ -547,9 +548,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	// Ensure a plan has been executed for the blocks of each user.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
-
+	// Check logs to ensure compaction has been executed for each user.
 	assert.Equal(t, []string{
 		`level=info msg="waiting until compactor is ACTIVE in the ring"`,
 		`level=info msg="compactor is ACTIVE in the ring"`,
@@ -662,6 +661,361 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 }
 
+func TestCompactor_ShouldSupportTimeBasedSharding(t *testing.T) {
+	t.Parallel()
+
+	const (
+		userID     = "user-1"
+		blockRange = 2 * time.Hour
+	)
+
+	var (
+		blockRangeMillis = blockRange.Milliseconds()
+		externalLabels   = map[string]string{cortex_tsdb.TenantIDExternalLabel: userID}
+		compactionRanges = cortex_tsdb.DurationList{blockRange, 2 * blockRange, 4 * blockRange}
+	)
+
+	tests := map[string]struct {
+		setup func(t *testing.T, storageDir string) []metadata.Meta
+	}{
+		"overlapping blocks matching the 1st compaction range should be compacted": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, 2*blockRangeMillis, externalLabels)
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, 2*blockRangeMillis, externalLabels)
+
+				return []metadata.Meta{
+					{
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 1 * blockRangeMillis,
+							MaxTime: 2 * blockRangeMillis,
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block1, block2},
+							},
+						},
+					},
+				}
+			},
+		},
+		"overlapping blocks matching the beginning of the 1st compaction range should be compacted": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), 0, (5 * time.Minute).Milliseconds(), externalLabels)
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), time.Minute.Milliseconds(), (7 * time.Minute).Milliseconds(), externalLabels)
+
+				// Add another block as "most recent one" otherwise the previous blocks are not compacted
+				// because the most recent blocks must cover the full range to be compacted.
+				block3 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, blockRangeMillis+time.Minute.Milliseconds(), externalLabels)
+
+				return []metadata.Meta{
+					{
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 0,
+							MaxTime: (7 * time.Minute).Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block1, block2},
+							},
+						},
+					}, {
+						// Not compacted.
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: blockRangeMillis,
+							MaxTime: blockRangeMillis + time.Minute.Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   1,
+								Sources: []ulid.ULID{block3},
+							},
+						},
+					},
+				}
+			},
+		},
+		"non-overlapping blocks matching the beginning of the 1st compaction range (without gaps) should be compacted": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), 0, (5 * time.Minute).Milliseconds(), externalLabels)
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), (5 * time.Minute).Milliseconds(), (10 * time.Minute).Milliseconds(), externalLabels)
+
+				// Add another block as "most recent one" otherwise the previous blocks are not compacted
+				// because the most recent blocks must cover the full range to be compacted.
+				block3 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, blockRangeMillis+time.Minute.Milliseconds(), externalLabels)
+
+				return []metadata.Meta{
+					{
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 0,
+							MaxTime: (10 * time.Minute).Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block1, block2},
+							},
+						},
+					}, {
+						// Not compacted.
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: blockRangeMillis,
+							MaxTime: blockRangeMillis + time.Minute.Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   1,
+								Sources: []ulid.ULID{block3},
+							},
+						},
+					},
+				}
+			},
+		},
+		"non-overlapping blocks matching the beginning of the 1st compaction range (with gaps) should be compacted": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), 0, (5 * time.Minute).Milliseconds(), externalLabels)
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), (7 * time.Minute).Milliseconds(), (10 * time.Minute).Milliseconds(), externalLabels)
+
+				// Add another block as "most recent one" otherwise the previous blocks are not compacted
+				// because the most recent blocks must cover the full range to be compacted.
+				block3 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, blockRangeMillis+time.Minute.Milliseconds(), externalLabels)
+
+				return []metadata.Meta{
+					{
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 0,
+							MaxTime: (10 * time.Minute).Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block1, block2},
+							},
+						},
+					}, {
+						// Not compacted.
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: blockRangeMillis,
+							MaxTime: blockRangeMillis + time.Minute.Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   1,
+								Sources: []ulid.ULID{block3},
+							},
+						},
+					},
+				}
+			},
+		},
+		"smaller compaction ranges should take precedence over larger ones, and then re-iterate in subsequent compactions of increasing ranges": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), 1, blockRangeMillis, externalLabels)
+
+				// Two overlapping blocks.
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, 2*blockRangeMillis, externalLabels)
+				block3 := createTSDBBlock(t, filepath.Join(storageDir, userID), blockRangeMillis, 2*blockRangeMillis, externalLabels)
+
+				// Two adjacent blocks.
+				block4 := createTSDBBlock(t, filepath.Join(storageDir, userID), 2*blockRangeMillis, 3*blockRangeMillis, externalLabels)
+				block5 := createTSDBBlock(t, filepath.Join(storageDir, userID), 3*blockRangeMillis, 4*blockRangeMillis, externalLabels)
+
+				// Two non-adjacent blocks in the 3rd level range.
+				block6 := createTSDBBlock(t, filepath.Join(storageDir, userID), 4*blockRangeMillis, 5*blockRangeMillis, externalLabels)
+				block7 := createTSDBBlock(t, filepath.Join(storageDir, userID), 6*blockRangeMillis, 7*blockRangeMillis, externalLabels)
+
+				// Add another block as "most recent one" otherwise the previous blocks are not compacted
+				// because the most recent blocks must cover the full range to be compacted.
+				block8 := createTSDBBlock(t, filepath.Join(storageDir, userID), 8*blockRangeMillis, 9*blockRangeMillis, externalLabels)
+
+				return []metadata.Meta{
+					{
+						// The two overlapping blocks (block2, block3) have been compacted in the 1st range,
+						// and then compacted with block1 in 2nd range. Finally, they've been compacted with
+						// block4 and block5 in the 3rd range compaction (total levels: 4).
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 1,
+							MaxTime: 4 * blockRangeMillis,
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   4,
+								Sources: []ulid.ULID{block1, block2, block3, block4, block5},
+							},
+						},
+					}, {
+						// The two non-adjacent blocks have been compacted in the 3rd range.
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 4 * blockRangeMillis,
+							MaxTime: 7 * blockRangeMillis,
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block6, block7},
+							},
+						},
+					}, {
+						// Not compacted.
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 8 * blockRangeMillis,
+							MaxTime: 9 * blockRangeMillis,
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   1,
+								Sources: []ulid.ULID{block8},
+							},
+						},
+					},
+				}
+			},
+		},
+		"overlapping and non-overlapping blocks within the same range should be compacted together": {
+			setup: func(t *testing.T, storageDir string) []metadata.Meta {
+				// Overlapping.
+				block1 := createTSDBBlock(t, filepath.Join(storageDir, userID), 0, (5 * time.Minute).Milliseconds(), externalLabels)
+				block2 := createTSDBBlock(t, filepath.Join(storageDir, userID), time.Minute.Milliseconds(), (7 * time.Minute).Milliseconds(), externalLabels)
+
+				// Not overlapping.
+				block3 := createTSDBBlock(t, filepath.Join(storageDir, userID), time.Hour.Milliseconds(), (2 * time.Hour).Milliseconds(), externalLabels)
+
+				return []metadata.Meta{
+					{
+						BlockMeta: tsdb.BlockMeta{
+							MinTime: 0,
+							MaxTime: (2 * time.Hour).Milliseconds(),
+							Compaction: tsdb.BlockMetaCompaction{
+								Level:   2,
+								Sources: []ulid.ULID{block1, block2, block3},
+							},
+						},
+					},
+				}
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Create a temporary directory for compactor.
+			workDir, err := ioutil.TempDir(os.TempDir(), "compactor")
+			require.NoError(t, err)
+			defer os.RemoveAll(workDir) //nolint:errcheck
+
+			// Create a temporary directory for local storage.
+			storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
+			require.NoError(t, err)
+			defer os.RemoveAll(storageDir) //nolint:errcheck
+
+			// Create a temporary directory for fetcher.
+			fetcherDir, err := ioutil.TempDir(os.TempDir(), "fetcher")
+			require.NoError(t, err)
+			defer os.RemoveAll(fetcherDir) //nolint:errcheck
+
+			// Create TSDB blocks in the storage and get the expected blocks.
+			expected := testData.setup(t, storageDir)
+
+			storageCfg := cortex_tsdb.Config{}
+			flagext.DefaultValues(&storageCfg)
+			storageCfg.Backend = cortex_tsdb.BackendFilesystem
+			storageCfg.Filesystem.Directory = storageDir
+
+			compactorCfg := prepareConfig()
+			compactorCfg.retryMinBackoff = 0
+			compactorCfg.retryMaxBackoff = 0
+			compactorCfg.ConsistencyDelay = 0
+			compactorCfg.DataDir = workDir
+			compactorCfg.BlockRanges = compactionRanges
+
+			logger := log.NewNopLogger()
+			reg := prometheus.NewPedanticRegistry()
+			ctx := context.Background()
+
+			c, err := NewCompactor(compactorCfg, storageCfg, logger, reg)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
+
+			// Wait until the first compaction run completed.
+			cortex_testutil.Poll(t, 5*time.Second, float64(1), func() interface{} {
+				return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+			})
+
+			// List back any (non deleted) block from the storage.
+			userBucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
+			fetcher, err := block.NewMetaFetcher(logger, 1, userBucket, fetcherDir, reg, []block.MetadataFilter{block.NewIgnoreDeletionMarkFilter(logger, userBucket, 0)}, nil)
+			require.NoError(t, err)
+			metas, partials, err := fetcher.Fetch(ctx)
+			require.NoError(t, err)
+			require.Empty(t, partials)
+
+			// Sort blocks by MinTime so that we get a stable comparison.
+			var actual []*metadata.Meta
+			for _, m := range metas {
+				actual = append(actual, m)
+			}
+			sortMetasByMinTime(actual)
+
+			// Compare actual blocks with the expected ones.
+			require.Len(t, actual, len(expected))
+			for i, e := range expected {
+				assert.Equal(t, e.MinTime, actual[i].MinTime)
+				assert.Equal(t, e.MaxTime, actual[i].MaxTime)
+				assert.Equal(t, e.Compaction.Level, actual[i].Compaction.Level)
+				assert.Equal(t, e.Compaction.Sources, actual[i].Compaction.Sources)
+			}
+
+			assert.Equal(t, float64(1), prom_testutil.ToFloat64(c.compactionRunsCompleted))
+			assert.Equal(t, float64(0), prom_testutil.ToFloat64(c.compactionRunsFailed))
+		})
+	}
+
+}
+
+func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
+	// Create a temporary dir for TSDB.
+	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir) //nolint:errcheck
+
+	// Create a temporary dir for the snapshot.
+	snapshotDir, err := ioutil.TempDir(os.TempDir(), "snapshot")
+	require.NoError(t, err)
+	defer os.RemoveAll(snapshotDir) //nolint:errcheck
+
+	// Create a new TSDB.
+	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
+		BlockRanges:       []int64{int64(2 * 60 * 60 * 1000)}, // 2h period
+		RetentionDuration: uint64(15 * 86400 * 1000),          // 15 days
+	})
+	require.NoError(t, err)
+
+	db.DisableCompactions()
+
+	// Append a sample at the beginning and one at the end of the time range.
+	for i, ts := range []int64{minT, maxT - 1} {
+		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
+
+		app := db.Appender()
+		_, err := app.Add(lbls, ts, float64(i))
+		require.NoError(t, err)
+
+		err = app.Commit()
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, db.Compact())
+	require.NoError(t, db.Snapshot(snapshotDir, true))
+
+	// Look for the created block (we expect one).
+	entries, err := ioutil.ReadDir(snapshotDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].IsDir())
+
+	blockID, err := ulid.Parse(entries[0].Name())
+	require.NoError(t, err)
+
+	// Inject Thanos external labels to the block.
+	meta := metadata.Thanos{
+		Labels: externalLabels,
+		Source: "test",
+	}
+	_, err = metadata.InjectThanos(log.NewNopLogger(), filepath.Join(snapshotDir, blockID.String()), meta, nil)
+	require.NoError(t, err)
+
+	// Ensure the output directory exists.
+	require.NoError(t, os.MkdirAll(dir, os.ModePerm))
+
+	// Copy the block files to the storage dir.
+	require.NoError(t, exec.Command("cp", "-r", filepath.Join(snapshotDir, blockID.String()), dir).Run())
+
+	return blockID
+}
+
 func findCompactorByUserID(compactors []*Compactor, logs []*bytes.Buffer, userID string) (*Compactor, *bytes.Buffer, error) {
 	var compactor *Compactor
 	var log *bytes.Buffer
@@ -706,15 +1060,15 @@ func prepareConfig() Config {
 	compactorCfg := Config{}
 	flagext.DefaultValues(&compactorCfg)
 
+	compactorCfg.retryMinBackoff = 0
+	compactorCfg.retryMaxBackoff = 0
+
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
 	storageCfg := cortex_tsdb.Config{}
 	flagext.DefaultValues(&storageCfg)
-
-	compactorCfg.retryMinBackoff = 0
-	compactorCfg.retryMaxBackoff = 0
 
 	// Create a temporary directory for compactor data.
 	dataDir, err := ioutil.TempDir(os.TempDir(), "compactor-test")

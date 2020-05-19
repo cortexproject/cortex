@@ -301,6 +301,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	if err != nil {
 		return nil, nil, err
 	}
+	level.Debug(spanLog).Log("num store-gateway instances:", len(clients))
 
 	req := &storepb.SeriesRequest{
 		MinTime:                 minT,
@@ -360,6 +361,8 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 				}
 			}
 
+			level.Debug(spanLog).Log("store-gateway", c, "num received series", len(mySeries))
+
 			// Store the result.
 			mtx.Lock()
 			seriesSets = append(seriesSets, &blockQuerierSeriesSet{series: mySeries})
@@ -390,6 +393,14 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
+}
+
+func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {
+	ids := make([]ulid.ULID, len(metas))
+	for i, m := range metas {
+		ids[i] = m.ULID
+	}
+	return ids
 }
 
 func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {

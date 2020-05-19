@@ -171,7 +171,12 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
+	// check if per-tenant cache freshness value is provided
+	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
+	if maxCacheFreshness == time.Duration(0) {
+		maxCacheFreshness = s.cfg.MaxCacheFreshness
+	}
+	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
 	}
@@ -184,7 +189,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err == nil && len(extents) > 0 {
-		extents, err := s.filterRecentExtents(r, extents)
+		extents, err := s.filterRecentExtents(ctx, r, extents)
 		if err != nil {
 			return nil, err
 		}
@@ -417,8 +422,18 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	return requests, cachedResponses, nil
 }
 
-func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Extent, error) {
-	maxCacheTime := (int64(model.Now().Add(-s.cfg.MaxCacheFreshness)) / req.GetStep()) * req.GetStep()
+func (s resultsCache) filterRecentExtents(ctx context.Context, req Request, extents []Extent) ([]Extent, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// check if per-tenant cache freshness value is provided
+	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
+	if maxCacheFreshness == time.Duration(0) {
+		maxCacheFreshness = s.cfg.MaxCacheFreshness
+	}
+	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {

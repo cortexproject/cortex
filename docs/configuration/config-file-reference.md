@@ -2366,6 +2366,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
 
+# Most recent allowed cacheable result per-tenant, to prevent caching very
+# recent results that might still be in flux.
+# CLI flag: -frontend.per-user-max-cache-freshness
+[max_cache_freshness: <duration> | default = 0s]
+
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
 # CLI flag: -limits.per-user-override-config

@@ -436,68 +436,62 @@ func TestResultsCacheRecent(t *testing.T) {
 }
 
 func TestResultsCacheMaxFreshness(t *testing.T) {
-	var cfg ResultsCacheConfig
-	flagext.DefaultValues(&cfg)
-	cfg.CacheConfig.Cache = cache.NewMockCache()
-
-	// set a small "global" MaxCacheFreshness value
-	cfg.MaxCacheFreshness = 5 * time.Second
-
-	fakeLimits := fakeLimits{}
-	rcm, _, err := NewResultsCacheMiddleware(
-		log.NewNopLogger(),
-		cfg,
-		constSplitter(day),
-		fakeLimits,
-		PrometheusCodec,
-		PrometheusResponseExtractor{},
-		nil,
-	)
-	require.NoError(t, err)
-
-	// create cache with nil handler
-	rc := rcm.Wrap(nil)
-	ctx := user.InjectOrgID(context.Background(), "1")
-
 	modelNow := model.Now()
-	// create request
-	req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
+	for i, tc := range []struct {
+		fakeLimits       Limits
+		Handler          HandlerFunc
+		expectedResponse *PrometheusResponse
+	}{
+		{
+			fakeLimits:       fakeLimits{},
+			Handler:          nil,
+			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
+		},
+		{
+			fakeLimits: fakeLimitsWithMaxCacheFreshness{},
+			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+				return parsedResponse, nil
+			}),
+			expectedResponse: parsedResponse,
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			var cfg ResultsCacheConfig
+			flagext.DefaultValues(&cfg)
+			cfg.CacheConfig.Cache = cache.NewMockCache()
 
-	// fill cache
-	key := constSplitter(day).GenerateCacheKey("1", req)
-	rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
+			// set a small "global" MaxCacheFreshness value
+			cfg.MaxCacheFreshness = 5 * time.Second
 
-	// request should lookup cache.
-	resp, err := rc.Do(ctx, req)
-	require.NoError(t, err)
-	require.Equal(t, mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10), resp)
+			fakeLimits := tc.fakeLimits
+			rcm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				constSplitter(day),
+				fakeLimits,
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+			)
+			require.NoError(t, err)
 
-	// fakeLimitsWithMaxCacheFreshness sets a high per-tenant MaxCacheFreshness value
-	fakeLimitsWithMaxCacheFreshness := fakeLimitsWithMaxCacheFreshness{}
-	rcm, _, err = NewResultsCacheMiddleware(
-		log.NewNopLogger(),
-		cfg,
-		constSplitter(day),
-		fakeLimitsWithMaxCacheFreshness,
-		PrometheusCodec,
-		PrometheusResponseExtractor{},
-		nil,
-	)
-	require.NoError(t, err)
+			// create cache with nil handler
+			rc := rcm.Wrap(tc.Handler)
+			ctx := user.InjectOrgID(context.Background(), "1")
 
-	// create cache with handler
-	rc = rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-		return parsedResponse, nil
-	}))
-	ctx = user.InjectOrgID(context.Background(), "1")
+			// create request with start end within the key extents
+			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
-	// fill cache
-	rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
+			// fill cache
+			key := constSplitter(day).GenerateCacheKey("1", req)
+			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
 
-	// doing same request with higher cache max freshness should not lookup cache.
-	resp, err = rc.Do(ctx, req)
-	require.NoError(t, err)
-	require.Equal(t, parsedResponse, resp)
+			// request should lookup cache.
+			resp, err := rc.Do(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResponse, resp)
+		})
+	}
 }
 
 func Test_resultsCache_MissingData(t *testing.T) {

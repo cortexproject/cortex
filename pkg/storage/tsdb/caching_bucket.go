@@ -3,6 +3,7 @@ package tsdb
 import (
 	"flag"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -70,11 +71,12 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, bkt objstore.Bucket, lo
 		return nil, errors.Errorf("unsupported cache type: %s", chunksConfig.Backend)
 	}
 
-	cc := storecache.CachingBucketConfig{
-		ChunkSubrangeSize:         chunksConfig.SubrangeSize,
-		MaxChunksGetRangeRequests: chunksConfig.MaxGetRangeRequests,
-		ChunkObjectSizeTTL:        chunksConfig.ObjectSizeTTL,
-		ChunkSubrangeTTL:          chunksConfig.SubrangeTTL,
-	}
-	return storecache.NewCachingBucket(bkt, chunksCache, cc, logger, reg)
+	cfg := storecache.NewCachingBucketConfig()
+	cfg.CacheGetRange("chunks", chunksCache, isTSDBChunkFile, chunksConfig.SubrangeSize, chunksConfig.ObjectSizeTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
+
+	return storecache.NewCachingBucket(bkt, cfg, logger, reg)
 }
+
+var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)
+
+func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) }

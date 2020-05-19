@@ -38,8 +38,10 @@ type Config struct {
 	DeletionDelay        time.Duration            `yaml:"deletion_delay"`
 
 	// Compactors sharding.
-	ShardingEnabled bool       `yaml:"sharding_enabled"`
-	ShardingRing    RingConfig `yaml:"sharding_ring"`
+	ShardingEnabled            bool       `yaml:"sharding_enabled"`
+	ShardingRing               RingConfig `yaml:"sharding_ring"`
+	PerTenantNumShards         uint       `yaml:"per_tenant_num_shards"`
+	PerTenantShardsConcurrency int        `yaml:"per_tenant_shards_concurrency"`
 
 	// No need to add options to customize the retry backoff,
 	// given the defaults should be fine, but allow to override
@@ -64,6 +66,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
+	f.UintVar(&cfg.PerTenantNumShards, "compactor.per-tenant-num-shards", 1, "Number of shards a single tenant blocks should be grouped into (0 or 1 means per-tenant blocks sharding is disabled).")
+	f.IntVar(&cfg.PerTenantShardsConcurrency, "compactor.per-tenant-shards-concurrency", 1, "Number of concurrent shards compacted for a single tenant.")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
 		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
@@ -346,6 +350,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		reg,
 		[]block.MetadataFilter{
 			// List of filters to apply (order matters).
+			NewBlocksShardingFilter(uint32(c.compactorCfg.PerTenantNumShards)),
 			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
 			ignoreDeletionMarkFilter,
 			deduplicateBlocksFilter,
@@ -378,10 +383,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.tsdbCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
-		// No compaction concurrency. Due to how Cortex works we don't
-		// expect to have multiple block groups per tenant, so setting
-		// a value higher than 1 would be useless.
-		1,
+		c.compactorCfg.PerTenantShardsConcurrency,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

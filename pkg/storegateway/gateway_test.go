@@ -6,8 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,8 +18,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -524,6 +529,93 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	})
 }
 
+func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	userID := "user-1"
+
+	storageDir, err := ioutil.TempDir(os.TempDir(), "")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir) //nolint:errcheck
+
+	// Generate 2 TSDB blocks with the same exact series (and data points).
+	numSeries := 2
+	now := time.Now()
+	minT := now.Add(-1*time.Hour).Unix() * 1000
+	maxT := now.Unix() * 1000
+	step := (maxT - minT) / int64(numSeries)
+	require.NoError(t, mockTSDB(path.Join(storageDir, userID), numSeries, minT, maxT))
+	require.NoError(t, mockTSDB(path.Join(storageDir, userID), numSeries, minT, maxT))
+
+	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	// Find the created blocks (we expect 2).
+	var blockIDs []string
+	require.NoError(t, bucketClient.Iter(ctx, "user-1/", func(key string) error {
+		blockIDs = append(blockIDs, strings.TrimSuffix(strings.TrimPrefix(key, userID+"/"), "/"))
+		return nil
+	}))
+	require.Len(t, blockIDs, 2)
+
+	// Inject different external labels for each block.
+	for idx, blockID := range blockIDs {
+		meta := metadata.Thanos{
+			Labels: map[string]string{
+				cortex_tsdb.TenantIDExternalLabel:   userID,
+				cortex_tsdb.IngesterIDExternalLabel: fmt.Sprintf("ingester-%d", idx),
+				cortex_tsdb.ShardIDExternalLabel:    fmt.Sprintf("shard-%d", idx),
+			},
+			Source: metadata.TestSource,
+		}
+
+		_, err := metadata.InjectThanos(logger, filepath.Join(storageDir, userID, blockID), meta, nil)
+		require.NoError(t, err)
+	}
+
+	// Create a store-gateway used to query back the series from the blocks.
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = false
+	storageCfg, cleanup := mockStorageConfig(t)
+	defer cleanup()
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, mockLoggingLevel(), logger, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
+	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+
+	// Query back all series.
+	req := &storepb.SeriesRequest{
+		MinTime: minT,
+		MaxTime: maxT,
+		Matchers: []storepb.LabelMatcher{
+			{Type: storepb.LabelMatcher_RE, Name: "__name__", Value: ".*"},
+		},
+	}
+
+	srv := NewBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+	err = g.Series(req, srv)
+	require.NoError(t, err)
+	assert.Empty(t, srv.Warnings)
+	assert.Len(t, srv.SeriesSet, numSeries)
+
+	for seriesID := 0; seriesID < numSeries; seriesID++ {
+		actual := srv.SeriesSet[seriesID]
+
+		// Ensure Cortex external labels have been removed.
+		assert.Equal(t, []storepb.Label{{Name: "series_id", Value: strconv.Itoa(seriesID)}}, actual.Labels)
+
+		// Ensure samples have been correctly queried (it's OK having duplicated samples
+		// at this stage, but should be correctly grouped together).
+		samples, err := readSamplesFromChunks(actual.Chunks)
+		require.NoError(t, err)
+		assert.Equal(t, []sample{
+			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
+			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
+		}, samples)
+	}
+}
+
 func mockGatewayConfig() Config {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
@@ -551,8 +643,8 @@ func mockStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
 	return cfg, cleanup
 }
 
-// mockTSDB create 1+ TSDB blocks storing numSeries of series with
-// timestamp evenly distributed between minT and maxT.
+// mockTSDB create 1+ TSDB blocks storing numSeries of series, each series
+// with 1 sample and its timestamp evenly distributed between minT and maxT.
 func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 	// Create a new TSDB on a temporary directory. The blocks
 	// will be then snapshotted to the input dir.
@@ -605,4 +697,39 @@ func generateSortedTokens(numTokens int) ring.Tokens {
 	})
 
 	return ring.Tokens(tokens)
+}
+
+func readSamplesFromChunks(rawChunks []storepb.AggrChunk) ([]sample, error) {
+	var samples []sample
+
+	for _, rawChunk := range rawChunks {
+		c, err := chunkenc.FromData(chunkenc.EncXOR, rawChunk.Raw.Data)
+		if err != nil {
+			return nil, err
+		}
+
+		it := c.Iterator(nil)
+		for it.Next() {
+			if it.Err() != nil {
+				return nil, it.Err()
+			}
+
+			ts, v := it.At()
+			samples = append(samples, sample{
+				ts:    ts,
+				value: v,
+			})
+		}
+
+		if it.Err() != nil {
+			return nil, it.Err()
+		}
+	}
+
+	return samples, nil
+}
+
+type sample struct {
+	ts    int64
+	value float64
 }

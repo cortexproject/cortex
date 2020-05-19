@@ -127,9 +127,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to alertmanager will utilize the V2 API.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
-	if flag.Lookup("promql.lookback-delta") == nil {
-		flag.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
-	}
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
@@ -607,7 +604,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					Rule: &rules.RuleDesc{
 						Expr:        rule.Query().String(),
 						Alert:       rule.Name(),
-						For:         rule.Duration(),
+						For:         rule.HoldDuration(),
 						Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
 						Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
 					},

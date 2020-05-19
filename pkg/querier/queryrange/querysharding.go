@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
@@ -72,8 +73,8 @@ func (confs ShardingConfigs) hasShards() bool {
 	return false
 }
 
-func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
-	expr, err := promql.ParseExpr(query)
+func mapQuery(mapper astmapper.ASTMapper, query string) (parser.Node, error) {
+	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		return nil, err
 	}

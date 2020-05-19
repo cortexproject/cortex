@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +18,7 @@ func TestPredicate(t *testing.T) {
 	}{
 		{
 			input: "selector1{} or selector2{}",
-			fn: predicate(func(node promql.Node) (bool, error) {
+			fn: predicate(func(node parser.Node) (bool, error) {
 				return false, errors.New("some err")
 			}),
 			expected: false,
@@ -26,7 +26,7 @@ func TestPredicate(t *testing.T) {
 		},
 		{
 			input: "selector1{} or selector2{}",
-			fn: predicate(func(node promql.Node) (bool, error) {
+			fn: predicate(func(node parser.Node) (bool, error) {
 				return false, nil
 			}),
 			expected: false,
@@ -34,7 +34,7 @@ func TestPredicate(t *testing.T) {
 		},
 		{
 			input: "selector1{} or selector2{}",
-			fn: predicate(func(node promql.Node) (bool, error) {
+			fn: predicate(func(node parser.Node) (bool, error) {
 				return true, nil
 			}),
 			expected: true,
@@ -48,10 +48,10 @@ func TestPredicate(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			expr, err := promql.ParseExpr(tc.input)
+			expr, err := parser.ParseExpr(tc.input)
 			require.Nil(t, err)
 
-			res, err := Predicate(expr.(promql.Node), tc.fn)
+			res, err := Predicate(expr.(parser.Node), tc.fn)
 			if tc.err {
 				require.Error(t, err)
 			} else {
@@ -98,12 +98,12 @@ func TestSubtreeMapper(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			mapper := NewSubtreeFolder()
 
-			expr, err := promql.ParseExpr(tc.input)
+			expr, err := parser.ParseExpr(tc.input)
 			require.Nil(t, err)
 			res, err := mapper.Map(expr)
 			require.Nil(t, err)
 
-			expected, err := promql.ParseExpr(tc.expected)
+			expected, err := parser.ParseExpr(tc.expected)
 			require.Nil(t, err)
 
 			require.Equal(t, expected.String(), res.String())

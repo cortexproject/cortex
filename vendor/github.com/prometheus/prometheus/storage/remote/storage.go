@@ -65,7 +65,7 @@ func NewStorage(l log.Logger, reg prometheus.Registerer, stCallback startTimeCal
 		logger:                 logging.Dedupe(l, 1*time.Minute),
 		localStartTimeCallback: stCallback,
 	}
-	s.rws = NewWriteStorage(s.logger, walDir, flushDeadline)
+	s.rws = NewWriteStorage(s.logger, reg, walDir, flushDeadline)
 	return s
 }
 
@@ -145,11 +145,11 @@ func (s *Storage) Querier(ctx context.Context, mint, maxt int64) (storage.Querie
 		}
 		queriers = append(queriers, q)
 	}
-	return storage.NewMergeQuerier(nil, queriers), nil
+	return storage.NewMergeQuerier(nil, queriers, storage.ChainedSeriesMerge), nil
 }
 
 // Appender implements storage.Storage.
-func (s *Storage) Appender() (storage.Appender, error) {
+func (s *Storage) Appender() storage.Appender {
 	return s.rws.Appender()
 }
 

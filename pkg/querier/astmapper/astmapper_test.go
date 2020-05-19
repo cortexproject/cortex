@@ -6,33 +6,33 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCloneNode(t *testing.T) {
 	var testExpr = []struct {
-		input    promql.Expr
-		expected promql.Expr
+		input    parser.Expr
+		expected parser.Expr
 	}{
 		// simple unmodified case
 		{
-			&promql.BinaryExpr{
-				Op:  promql.ADD,
-				LHS: &promql.NumberLiteral{Val: 1},
-				RHS: &promql.NumberLiteral{Val: 1},
+			&parser.BinaryExpr{
+				Op:  parser.ADD,
+				LHS: &parser.NumberLiteral{Val: 1},
+				RHS: &parser.NumberLiteral{Val: 1},
 			},
-			&promql.BinaryExpr{
-				Op:  promql.ADD,
-				LHS: &promql.NumberLiteral{Val: 1, PosRange: promql.PositionRange{Start: 0, End: 1}},
-				RHS: &promql.NumberLiteral{Val: 1, PosRange: promql.PositionRange{Start: 4, End: 5}},
+			&parser.BinaryExpr{
+				Op:  parser.ADD,
+				LHS: &parser.NumberLiteral{Val: 1, PosRange: parser.PositionRange{Start: 0, End: 1}},
+				RHS: &parser.NumberLiteral{Val: 1, PosRange: parser.PositionRange{Start: 4, End: 5}},
 			},
 		},
 		{
-			&promql.AggregateExpr{
-				Op:      promql.SUM,
+			&parser.AggregateExpr{
+				Op:      parser.SUM,
 				Without: true,
-				Expr: &promql.VectorSelector{
+				Expr: &parser.VectorSelector{
 					Name: "some_metric",
 					LabelMatchers: []*labels.Matcher{
 						mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "some_metric"),
@@ -40,21 +40,21 @@ func TestCloneNode(t *testing.T) {
 				},
 				Grouping: []string{"foo"},
 			},
-			&promql.AggregateExpr{
-				Op:      promql.SUM,
+			&parser.AggregateExpr{
+				Op:      parser.SUM,
 				Without: true,
-				Expr: &promql.VectorSelector{
+				Expr: &parser.VectorSelector{
 					Name: "some_metric",
 					LabelMatchers: []*labels.Matcher{
 						mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "some_metric"),
 					},
-					PosRange: promql.PositionRange{
+					PosRange: parser.PositionRange{
 						Start: 18,
 						End:   29,
 					},
 				},
 				Grouping: []string{"foo"},
-				PosRange: promql.PositionRange{
+				PosRange: parser.PositionRange{
 					Start: 0,
 					End:   30,
 				},
@@ -92,7 +92,7 @@ sum(rate(http_requests_total{cluster="ops-tools1"}[1m]))
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			expr, err := promql.ParseExpr(c.input)
+			expr, err := parser.ParseExpr(c.input)
 			require.Nil(t, err)
 			res, err := CloneNode(expr)
 			require.Nil(t, err)

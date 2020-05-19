@@ -655,8 +655,9 @@ func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 	defer os.RemoveAll(tempDir) //nolint:errcheck
 
 	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
-		BlockRanges:       []int64{int64(2 * 60 * 60 * 1000)}, // 2h period
-		RetentionDuration: uint64(15 * 86400 * 1000),          // 15 days
+		MinBlockDuration:  2 * 60 * 60 * 1000, // 2h period
+		MaxBlockDuration:  2 * 60 * 60 * 1000, // 2h period
+		RetentionDuration: 15 * 86400 * 1000,  // 15 days
 	})
 	if err != nil {
 		return err

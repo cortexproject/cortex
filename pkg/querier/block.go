@@ -83,11 +83,7 @@ type blocksQuerier struct {
 	userStores *BucketStoresService
 }
 
-func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return b.SelectSorted(sp, matchers...)
-}
-
-func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()
 
@@ -223,7 +219,7 @@ func (bqs *blockQuerierSeries) Labels() labels.Labels {
 	return bqs.labels
 }
 
-func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
+func (bqs *blockQuerierSeries) Iterator() chunkenc.Iterator {
 	if len(bqs.chunks) == 0 {
 		// should not happen in practice, but we have a unit test for it
 		return series.NewErrIterator(errors.New("no chunks"))

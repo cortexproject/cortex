@@ -50,6 +50,9 @@ type Config struct {
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
 	// engine.
 	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
+	// LookbackDelta determines the time since the last sample after which a time
+	// series is considered stale.
+	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
 	// Blocks storage only.
 	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
@@ -66,7 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	if f.Lookup("promql.lookback-delta") == nil {
-		f.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+		f.DurationVar(&cfg.LookbackDelta, "promql.lookback-delta", cfg.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	}
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
@@ -138,6 +141,7 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, 
 		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
+		LookbackDelta:      cfg.LookbackDelta,
 	})
 	return lazyQueryable, engine
 }
@@ -216,14 +220,14 @@ type querier struct {
 	tombstonesLoader *purger.TombstonesLoader
 }
 
-// SelectSorted implements storage.Querier.
-func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
+// Select implements storage.Querier.
+func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
 	// querying the long-term storage.
 	if sp == nil {
-		return q.metadataQuerier.Select(nil, matchers...)
+		return q.metadataQuerier.Select(true, nil, matchers...)
 	}
 
 	userID, err := user.ExtractOrgID(q.ctx)
@@ -237,7 +241,7 @@ func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matc
 	}
 
 	if len(q.queriers) == 1 {
-		seriesSet, warning, err := q.queriers[0].Select(sp, matchers...)
+		seriesSet, warning, err := q.queriers[0].Select(true, sp, matchers...)
 		if err != nil {
 			return nil, warning, err
 		}
@@ -253,7 +257,7 @@ func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matc
 	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, _, err := querier.Select(sp, matchers...)
+			set, _, err := querier.Select(true, sp, matchers...)
 			if err != nil {
 				errs <- err
 			} else {
@@ -283,11 +287,6 @@ func (q querier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matc
 		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 	}
 	return seriesSet, nil, nil
-}
-
-// Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
 }
 
 // LabelsValue implements storage.Querier.
@@ -340,7 +339,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	}
 
 	if len(chunks) == 0 {
-		return storage.NewMergeSeriesSet(otherSets, nil)
+		return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
 	}
 
 	// partitionChunks returns set with sorted series, so it can be used by NewMergeSeriesSet
@@ -351,7 +350,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	}
 
 	otherSets = append(otherSets, chunksSet)
-	return storage.NewMergeSeriesSet(otherSets, nil)
+	return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
 }
 
 // This series set ignores first 'Next' call and simply returns cached result

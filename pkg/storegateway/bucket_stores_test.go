@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -26,6 +27,8 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
+
+var _ block.MetadataModifier = &ReplicaLabelRemover{}
 
 func TestBucketStores_InitialSync(t *testing.T) {
 	userToMetric := map[string]string{
@@ -205,7 +208,7 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 		require.NoError(t, os.RemoveAll(tmpDir))
 	}()
 
-	db, err := tsdb.Open(tmpDir, log.NewNopLogger(), nil, tsdb.DefaultOptions)
+	db, err := tsdb.Open(tmpDir, log.NewNopLogger(), nil, tsdb.DefaultOptions())
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, db.Close())

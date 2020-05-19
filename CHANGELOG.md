@@ -34,6 +34,7 @@
 * [FEATURE] Experimental: Added support for `/api/v1/metadata` Prometheus-based endpoint. #2549
 * [FEATURE] Add ability to limit concurrent queries to Cassandra with `-cassandra.query-concurrency` flag. #2562
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
+* [FEATURE] `-promql.lookback-delta` now has a config file entry as `lookback_delta` under `querier_config`. #2604
 * [ENHANCEMENT] `query-tee` supports `/metadata`, `/alerts`, and `/rules` #2600
 * [ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. #2587
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
@@ -84,6 +85,9 @@
 * [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
 * [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
 * [ENHANCEMENT] Experimental TSDB: added per-tenant blocks sharding support in the compactor, in order to parallelize blocks compaction for a single tenant in a single node. Sharding can be enabled via `-compactor.per-tenant-num-shards` while the parallelization can be controlled with `-compactor.per-tenant-shards-concurrency`. #2599
+* [ENHANCEMENT] Thanos and Prometheus upgraded to [806479182a6b](https://github.com/thanos-io/thanos/commit/806479182a6b) and [cd73b3d33e06](https://github.com/prometheus/prometheus/commit/cd73b3d33e06) respectively. #2604
+  * TSDB now supports isolation of append and queries.
+  * TSDB now holds less WAL files after Head Truncation.
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

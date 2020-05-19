@@ -51,8 +51,7 @@ func (s *blocksStoreBalancedSet) starting(ctx context.Context) error {
 }
 
 func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
-	s.dnsProvider.Resolve(ctx, s.serviceAddresses)
-	return nil
+	return s.dnsProvider.Resolve(ctx, s.serviceAddresses)
 }
 
 func (s *blocksStoreBalancedSet) GetClientsFor(_ []*metadata.Meta) ([]storegatewaypb.StoreGatewayClient, error) {

@@ -237,7 +237,8 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupAuthMiddleware()
-	cortex.setupThanosTracing()
+	// TODO(pracucci) temporarily disabled because we get flooded by memcached spans
+	// cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err

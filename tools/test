@@ -8,7 +8,7 @@ NO_GO_GET=true
 TAGS=
 PARALLEL=
 RACE="-race -covermode=atomic"
-TIMEOUT=1m
+TIMEOUT=5m
 VERBOSE=
 
 usage() {

@@ -1,4 +1,4 @@
-package main
+package querytee
 
 import (
 	"fmt"
@@ -15,10 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_NewProxy(t *testing.T) {
-	cfg := Config{}
+var testRoutes = []Route{
+	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: nil},
+}
 
-	p, err := NewProxy(cfg, log.NewNopLogger(), nil)
+func Test_NewProxy(t *testing.T) {
+	cfg := ProxyConfig{}
+
+	p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
 	assert.Equal(t, errMinBackends, err)
 	assert.Nil(t, p)
 }
@@ -145,15 +149,14 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			}
 
 			// Start the proxy.
-			cfg := Config{
+			cfg := ProxyConfig{
 				BackendEndpoints:   strings.Join(backendURLs, ","),
 				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:  0,
-				ServerMetricsPort:  0,
 				BackendReadTimeout: time.Second,
 			}
 
-			p, err := NewProxy(cfg, log.NewNopLogger(), nil)
+			p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
 			require.NoError(t, err)
 			require.NotNil(t, p)
 			defer p.Stop() //nolint:errcheck

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0-rc.0 / 2020-05-13
+## 1.1.0 / 2020-05-20
 
 This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!
 

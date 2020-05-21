@@ -780,9 +780,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userLogger := util.WithUserID(userID, util.Logger)
 
 	blockRanges := i.cfg.TSDBConfig.BlockRanges.ToMilliseconds()
-	if len(blockRanges) == 0 {
-		return nil, errors.New("block ranges are empty")
-	}
 
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{

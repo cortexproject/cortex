@@ -197,6 +197,8 @@ type blocksStoreQuerier struct {
 	storesHit  prometheus.Histogram
 }
 
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	set, warnings, err := q.selectSorted(sp, matchers...)
 

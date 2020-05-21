@@ -83,6 +83,8 @@ type blocksQuerier struct {
 	userStores *BucketStoresService
 }
 
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()

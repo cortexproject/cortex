@@ -82,7 +82,8 @@ func (q *MockShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 	return q, nil
 }
 
-// Select impls storage.Querier
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (q *MockShardedQueryable) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	tStart := time.Now()
 

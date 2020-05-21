@@ -642,8 +642,8 @@ The `querier_config` configures the Cortex querier.
 
 # Time since the last sample after which a time series is considered stale and
 # ignored by expression evaluations.
-# CLI flag: -promql.lookback-delta
-[lookback_delta: <duration> | default = 0s]
+# CLI flag: -querier.lookback-delta
+[lookback_delta: <duration> | default = 5m]
 
 # Comma separated list of store-gateway addresses in DNS Service Discovery
 # format. This option should be set when using the experimental blocks storage

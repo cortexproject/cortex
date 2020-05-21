@@ -49,6 +49,8 @@ type distributorQuerier struct {
 	chunkIterFn chunkIteratorFunc
 }
 
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.

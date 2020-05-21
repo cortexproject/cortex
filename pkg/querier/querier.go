@@ -53,6 +53,8 @@ type Config struct {
 	// LookbackDelta determines the time since the last sample after which a time
 	// series is considered stale.
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
+	// This is used for the deprecated flag -promql.lookback-delta.
+	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
 	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
@@ -63,14 +65,15 @@ var (
 	errBadLookbackConfigs = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 )
 
+const (
+	defaultLookbackDelta = 5 * time.Minute
+)
+
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	if f.Lookup("promql.lookback-delta") == nil {
-		f.DurationVar(&cfg.LookbackDelta, "promql.lookback-delta", cfg.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
-	}
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
@@ -81,6 +84,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	f.StringVar(&cfg.StoreGatewayAddresses, "experimental.querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the experimental blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
+	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+	// TODO: Remove this flag in v1.4.0.
+	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 }
 
 // Validate the config
@@ -134,6 +140,13 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, 
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
+	lookbackDelta := cfg.LookbackDelta
+	if cfg.LookbackDelta == defaultLookbackDelta && cfg.legacyLookbackDelta != defaultLookbackDelta {
+		// If the old flag was set to some other value than the default, it means
+		// the old flag was used and not the new flag.
+		lookbackDelta = cfg.legacyLookbackDelta
+	}
+
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
@@ -141,7 +154,7 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, 
 		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
-		LookbackDelta:      cfg.LookbackDelta,
+		LookbackDelta:      lookbackDelta,
 	})
 	return lazyQueryable, engine
 }
@@ -220,7 +233,8 @@ type querier struct {
 	tombstonesLoader *purger.TombstonesLoader
 }
 
-// Select implements storage.Querier.
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.

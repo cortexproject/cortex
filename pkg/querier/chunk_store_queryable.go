@@ -37,6 +37,8 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
 func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {

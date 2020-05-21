@@ -26,6 +26,9 @@ var (
 
 		// 0.7.0 used 204 status code for all components
 		"quay.io/cortexproject/cortex:v0.7.0",
+
+		"quay.io/cortexproject/cortex:v1.0.0",
+		"quay.io/cortexproject/cortex:v1.1.0",
 	}
 )
 

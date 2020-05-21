@@ -6,9 +6,9 @@ import "google/protobuf/empty.proto";
 
 service grpc_store {
     //index-client
-    rpc BatchWrite(BatchWrites) returns (google.protobuf.Empty);
-    rpc QueryPages(IndexQuery) returns (stream ReadBatch);
-    rpc Delete(BatchDeletes) returns (google.protobuf.Empty);
+    rpc WriteIndex(WriteIndexRequest) returns (google.protobuf.Empty);
+    rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+    rpc DeleteIndex(DeleteIndexRequest) returns (google.protobuf.Empty);
 
     //storage-client
     rpc PutChunks(PutChunksRequest) returns (google.protobuf.Empty);
@@ -19,12 +19,9 @@ service grpc_store {
     //table-client
     rpc ListTables(google.protobuf.Empty) returns (ListTablesResponse);
     rpc CreateTable(TableDesc) returns (google.protobuf.Empty);
-    rpc DeleteTable(TableName) returns (google.protobuf.Empty);
-    rpc DescribeTable(TableName) returns (DescribeTableResponse);
+    rpc DeleteTable(DeleteTableRequest) returns (google.protobuf.Empty);
+    rpc DescribeTable(DescribeTableRequest) returns (DescribeTableResponse);
     rpc UpdateTable(UpdateTableRequest) returns (google.protobuf.Empty);
-
-    //used by storage-client & index-client
-    rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 message PutChunksRequest {
@@ -49,7 +46,11 @@ message ChunkID {
     string chunkID = 1;
 }
 
-message TableName {
+message DeleteTableRequest {
+    string tableName = 1;
+}
+
+message DescribeTableRequest {
     string tableName = 1;
 }
 
@@ -58,15 +59,15 @@ message WriteBatch {
     repeated IndexEntry deletes    = 2;
 }
 
-message BatchWrites {
+message WriteIndexRequest {
     repeated IndexEntry writes    = 1;
 }
 
-message BatchDeletes {
+message DeleteIndexRequest {
     repeated IndexEntry deletes   = 1;
 }
 
-message ReadBatch {
+message QueryIndexResponse {
     repeated Row rows = 1;
 }
 
@@ -82,7 +83,7 @@ message IndexEntry {
     bytes value      = 4;
 }
 
-message IndexQuery {
+message QueryIndexRequest {
     string tableName          = 1;
     string hashValue          = 2;
     bytes rangeValuePrefix    = 3;

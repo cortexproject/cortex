@@ -4,42 +4,39 @@ import (
 	"context"
 	"io"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type StorageClient struct {
-	schemaCfg chunk.SchemaConfig
-	client    GrpcStoreClient
+	schemaCfg  chunk.SchemaConfig
+	client     GrpcStoreClient
+	connection *grpc.ClientConn
 }
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
-	grpcClient, _, err := connectToGrpcServer(cfg.Address)
+	grpcClient, conn, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
 		return nil, err
 	}
 	client := &StorageClient{
-		schemaCfg: schemaCfg,
-		client:    grpcClient,
+		schemaCfg:  schemaCfg,
+		client:     grpcClient,
+		connection: conn,
 	}
 	return client, nil
 }
 
 func (s *StorageClient) Stop() {
-	_, err := s.client.Stop(context.Background(), &empty.Empty{})
-	if err != nil {
-		level.Error(util.Logger).Log("failed to the stop the storage client connection", err)
-	}
+	// In gRPC-store we don't have any use of Stop
 }
 
 // PutChunks implements chunk.ObjectClient.
 func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	chunksInfo := &PutChunksRequest{}
+	req := &PutChunksRequest{}
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -57,10 +54,10 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 			TableName: tableName,
 		}
 
-		chunksInfo.Chunks = append(chunksInfo.Chunks, writeChunk)
+		req.Chunks = append(req.Chunks, writeChunk)
 	}
 
-	_, err := s.client.PutChunks(ctx, chunksInfo)
+	_, err := s.client.PutChunks(ctx, req)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -78,8 +75,8 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
 }
 
 func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	chunks := &GetChunksRequest{}
-	chunks.Chunks = []*Chunk{}
+	req := &GetChunksRequest{}
+	req.Chunks = []*Chunk{}
 	var err error
 	for _, inputInfo := range input {
 		chunkInfo := &Chunk{}
@@ -89,14 +86,14 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 			return nil, errors.WithStack(err)
 		}
 		chunkInfo.Key = inputInfo.ExternalKey()
-		chunks.Chunks = append(chunks.Chunks, chunkInfo)
+		req.Chunks = append(req.Chunks, chunkInfo)
 	}
-	streamer, err := s.client.GetChunks(ctx, chunks)
+	streamer, err := s.client.GetChunks(ctx, req)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	var result []chunk.Chunk
-	var decodeContext *chunk.DecodeContext
+	decodeContext := chunk.NewDecodeContext()
 	for {
 		receivedChunks, err := streamer.Recv()
 		if err == io.EOF {
@@ -108,15 +105,12 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 		for _, chunkResponse := range receivedChunks.GetChunks() {
 			var c chunk.Chunk
 			if chunkResponse != nil {
-				decodeContext = chunk.NewDecodeContext()
 				err = c.Decode(decodeContext, chunkResponse.Encoded)
 				if err != nil {
 					return result, err
 				}
 			}
-			if c.Data != nil {
-				result = append(result, c)
-			}
+			result = append(result, c)
 		}
 	}
 

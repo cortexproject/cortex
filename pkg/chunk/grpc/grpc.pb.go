@@ -262,21 +262,21 @@ func (m *ChunkID) GetChunkID() string {
 	return ""
 }
 
-type TableName struct {
+type DeleteTableRequest struct {
 	TableName string `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
 }
 
-func (m *TableName) Reset()      { *m = TableName{} }
-func (*TableName) ProtoMessage() {}
-func (*TableName) Descriptor() ([]byte, []int) {
+func (m *DeleteTableRequest) Reset()      { *m = DeleteTableRequest{} }
+func (*DeleteTableRequest) ProtoMessage() {}
+func (*DeleteTableRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_bedfbfc9b54e5600, []int{5}
 }
-func (m *TableName) XXX_Unmarshal(b []byte) error {
+func (m *DeleteTableRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TableName) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DeleteTableRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TableName.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DeleteTableRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -286,19 +286,62 @@ func (m *TableName) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *TableName) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TableName.Merge(m, src)
+func (m *DeleteTableRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteTableRequest.Merge(m, src)
 }
-func (m *TableName) XXX_Size() int {
+func (m *DeleteTableRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *TableName) XXX_DiscardUnknown() {
-	xxx_messageInfo_TableName.DiscardUnknown(m)
+func (m *DeleteTableRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteTableRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TableName proto.InternalMessageInfo
+var xxx_messageInfo_DeleteTableRequest proto.InternalMessageInfo
 
-func (m *TableName) GetTableName() string {
+func (m *DeleteTableRequest) GetTableName() string {
+	if m != nil {
+		return m.TableName
+	}
+	return ""
+}
+
+type DescribeTableRequest struct {
+	TableName string `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
+}
+
+func (m *DescribeTableRequest) Reset()      { *m = DescribeTableRequest{} }
+func (*DescribeTableRequest) ProtoMessage() {}
+func (*DescribeTableRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_bedfbfc9b54e5600, []int{6}
+}
+func (m *DescribeTableRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DescribeTableRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DescribeTableRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DescribeTableRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DescribeTableRequest.Merge(m, src)
+}
+func (m *DescribeTableRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *DescribeTableRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DescribeTableRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DescribeTableRequest proto.InternalMessageInfo
+
+func (m *DescribeTableRequest) GetTableName() string {
 	if m != nil {
 		return m.TableName
 	}
@@ -313,7 +356,7 @@ type WriteBatch struct {
 func (m *WriteBatch) Reset()      { *m = WriteBatch{} }
 func (*WriteBatch) ProtoMessage() {}
 func (*WriteBatch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{6}
+	return fileDescriptor_bedfbfc9b54e5600, []int{7}
 }
 func (m *WriteBatch) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -356,21 +399,21 @@ func (m *WriteBatch) GetDeletes() []*IndexEntry {
 	return nil
 }
 
-type BatchWrites struct {
+type WriteIndexRequest struct {
 	Writes []*IndexEntry `protobuf:"bytes,1,rep,name=writes,proto3" json:"writes,omitempty"`
 }
 
-func (m *BatchWrites) Reset()      { *m = BatchWrites{} }
-func (*BatchWrites) ProtoMessage() {}
-func (*BatchWrites) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{7}
+func (m *WriteIndexRequest) Reset()      { *m = WriteIndexRequest{} }
+func (*WriteIndexRequest) ProtoMessage() {}
+func (*WriteIndexRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_bedfbfc9b54e5600, []int{8}
 }
-func (m *BatchWrites) XXX_Unmarshal(b []byte) error {
+func (m *WriteIndexRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *BatchWrites) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *WriteIndexRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_BatchWrites.Marshal(b, m, deterministic)
+		return xxx_messageInfo_WriteIndexRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -380,40 +423,40 @@ func (m *BatchWrites) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return b[:n], nil
 	}
 }
-func (m *BatchWrites) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BatchWrites.Merge(m, src)
+func (m *WriteIndexRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_WriteIndexRequest.Merge(m, src)
 }
-func (m *BatchWrites) XXX_Size() int {
+func (m *WriteIndexRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *BatchWrites) XXX_DiscardUnknown() {
-	xxx_messageInfo_BatchWrites.DiscardUnknown(m)
+func (m *WriteIndexRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_WriteIndexRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_BatchWrites proto.InternalMessageInfo
+var xxx_messageInfo_WriteIndexRequest proto.InternalMessageInfo
 
-func (m *BatchWrites) GetWrites() []*IndexEntry {
+func (m *WriteIndexRequest) GetWrites() []*IndexEntry {
 	if m != nil {
 		return m.Writes
 	}
 	return nil
 }
 
-type BatchDeletes struct {
+type DeleteIndexRequest struct {
 	Deletes []*IndexEntry `protobuf:"bytes,1,rep,name=deletes,proto3" json:"deletes,omitempty"`
 }
 
-func (m *BatchDeletes) Reset()      { *m = BatchDeletes{} }
-func (*BatchDeletes) ProtoMessage() {}
-func (*BatchDeletes) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{8}
+func (m *DeleteIndexRequest) Reset()      { *m = DeleteIndexRequest{} }
+func (*DeleteIndexRequest) ProtoMessage() {}
+func (*DeleteIndexRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_bedfbfc9b54e5600, []int{9}
 }
-func (m *BatchDeletes) XXX_Unmarshal(b []byte) error {
+func (m *DeleteIndexRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *BatchDeletes) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DeleteIndexRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_BatchDeletes.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DeleteIndexRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -423,40 +466,40 @@ func (m *BatchDeletes) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
-func (m *BatchDeletes) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BatchDeletes.Merge(m, src)
+func (m *DeleteIndexRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteIndexRequest.Merge(m, src)
 }
-func (m *BatchDeletes) XXX_Size() int {
+func (m *DeleteIndexRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *BatchDeletes) XXX_DiscardUnknown() {
-	xxx_messageInfo_BatchDeletes.DiscardUnknown(m)
+func (m *DeleteIndexRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteIndexRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_BatchDeletes proto.InternalMessageInfo
+var xxx_messageInfo_DeleteIndexRequest proto.InternalMessageInfo
 
-func (m *BatchDeletes) GetDeletes() []*IndexEntry {
+func (m *DeleteIndexRequest) GetDeletes() []*IndexEntry {
 	if m != nil {
 		return m.Deletes
 	}
 	return nil
 }
 
-type ReadBatch struct {
+type QueryIndexResponse struct {
 	Rows []*Row `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
 }
 
-func (m *ReadBatch) Reset()      { *m = ReadBatch{} }
-func (*ReadBatch) ProtoMessage() {}
-func (*ReadBatch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{9}
+func (m *QueryIndexResponse) Reset()      { *m = QueryIndexResponse{} }
+func (*QueryIndexResponse) ProtoMessage() {}
+func (*QueryIndexResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_bedfbfc9b54e5600, []int{10}
 }
-func (m *ReadBatch) XXX_Unmarshal(b []byte) error {
+func (m *QueryIndexResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ReadBatch) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *QueryIndexResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ReadBatch.Marshal(b, m, deterministic)
+		return xxx_messageInfo_QueryIndexResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -466,19 +509,19 @@ func (m *ReadBatch) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ReadBatch) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReadBatch.Merge(m, src)
+func (m *QueryIndexResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryIndexResponse.Merge(m, src)
 }
-func (m *ReadBatch) XXX_Size() int {
+func (m *QueryIndexResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *ReadBatch) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReadBatch.DiscardUnknown(m)
+func (m *QueryIndexResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryIndexResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ReadBatch proto.InternalMessageInfo
+var xxx_messageInfo_QueryIndexResponse proto.InternalMessageInfo
 
-func (m *ReadBatch) GetRows() []*Row {
+func (m *QueryIndexResponse) GetRows() []*Row {
 	if m != nil {
 		return m.Rows
 	}
@@ -493,7 +536,7 @@ type Row struct {
 func (m *Row) Reset()      { *m = Row{} }
 func (*Row) ProtoMessage() {}
 func (*Row) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{10}
+	return fileDescriptor_bedfbfc9b54e5600, []int{11}
 }
 func (m *Row) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -546,7 +589,7 @@ type IndexEntry struct {
 func (m *IndexEntry) Reset()      { *m = IndexEntry{} }
 func (*IndexEntry) ProtoMessage() {}
 func (*IndexEntry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{11}
+	return fileDescriptor_bedfbfc9b54e5600, []int{12}
 }
 func (m *IndexEntry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -603,7 +646,7 @@ func (m *IndexEntry) GetValue() []byte {
 	return nil
 }
 
-type IndexQuery struct {
+type QueryIndexRequest struct {
 	TableName        string `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
 	HashValue        string `protobuf:"bytes,2,opt,name=hashValue,proto3" json:"hashValue,omitempty"`
 	RangeValuePrefix []byte `protobuf:"bytes,3,opt,name=rangeValuePrefix,proto3" json:"rangeValuePrefix,omitempty"`
@@ -612,17 +655,17 @@ type IndexQuery struct {
 	Immutable        bool   `protobuf:"varint,6,opt,name=immutable,proto3" json:"immutable,omitempty"`
 }
 
-func (m *IndexQuery) Reset()      { *m = IndexQuery{} }
-func (*IndexQuery) ProtoMessage() {}
-func (*IndexQuery) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{12}
+func (m *QueryIndexRequest) Reset()      { *m = QueryIndexRequest{} }
+func (*QueryIndexRequest) ProtoMessage() {}
+func (*QueryIndexRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_bedfbfc9b54e5600, []int{13}
 }
-func (m *IndexQuery) XXX_Unmarshal(b []byte) error {
+func (m *QueryIndexRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *IndexQuery) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *QueryIndexRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_IndexQuery.Marshal(b, m, deterministic)
+		return xxx_messageInfo_QueryIndexRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -632,54 +675,54 @@ func (m *IndexQuery) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *IndexQuery) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_IndexQuery.Merge(m, src)
+func (m *QueryIndexRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryIndexRequest.Merge(m, src)
 }
-func (m *IndexQuery) XXX_Size() int {
+func (m *QueryIndexRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *IndexQuery) XXX_DiscardUnknown() {
-	xxx_messageInfo_IndexQuery.DiscardUnknown(m)
+func (m *QueryIndexRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryIndexRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_IndexQuery proto.InternalMessageInfo
+var xxx_messageInfo_QueryIndexRequest proto.InternalMessageInfo
 
-func (m *IndexQuery) GetTableName() string {
+func (m *QueryIndexRequest) GetTableName() string {
 	if m != nil {
 		return m.TableName
 	}
 	return ""
 }
 
-func (m *IndexQuery) GetHashValue() string {
+func (m *QueryIndexRequest) GetHashValue() string {
 	if m != nil {
 		return m.HashValue
 	}
 	return ""
 }
 
-func (m *IndexQuery) GetRangeValuePrefix() []byte {
+func (m *QueryIndexRequest) GetRangeValuePrefix() []byte {
 	if m != nil {
 		return m.RangeValuePrefix
 	}
 	return nil
 }
 
-func (m *IndexQuery) GetRangeValueStart() []byte {
+func (m *QueryIndexRequest) GetRangeValueStart() []byte {
 	if m != nil {
 		return m.RangeValueStart
 	}
 	return nil
 }
 
-func (m *IndexQuery) GetValueEqual() []byte {
+func (m *QueryIndexRequest) GetValueEqual() []byte {
 	if m != nil {
 		return m.ValueEqual
 	}
 	return nil
 }
 
-func (m *IndexQuery) GetImmutable() bool {
+func (m *QueryIndexRequest) GetImmutable() bool {
 	if m != nil {
 		return m.Immutable
 	}
@@ -694,7 +737,7 @@ type UpdateTableRequest struct {
 func (m *UpdateTableRequest) Reset()      { *m = UpdateTableRequest{} }
 func (*UpdateTableRequest) ProtoMessage() {}
 func (*UpdateTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{13}
+	return fileDescriptor_bedfbfc9b54e5600, []int{14}
 }
 func (m *UpdateTableRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -745,7 +788,7 @@ type DescribeTableResponse struct {
 func (m *DescribeTableResponse) Reset()      { *m = DescribeTableResponse{} }
 func (*DescribeTableResponse) ProtoMessage() {}
 func (*DescribeTableResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{14}
+	return fileDescriptor_bedfbfc9b54e5600, []int{15}
 }
 func (m *DescribeTableResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -799,7 +842,7 @@ type TableDesc struct {
 func (m *TableDesc) Reset()      { *m = TableDesc{} }
 func (*TableDesc) ProtoMessage() {}
 func (*TableDesc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{15}
+	return fileDescriptor_bedfbfc9b54e5600, []int{16}
 }
 func (m *TableDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -870,7 +913,7 @@ type ListTablesResponse struct {
 func (m *ListTablesResponse) Reset()      { *m = ListTablesResponse{} }
 func (*ListTablesResponse) ProtoMessage() {}
 func (*ListTablesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{16}
+	return fileDescriptor_bedfbfc9b54e5600, []int{17}
 }
 func (m *ListTablesResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -914,7 +957,7 @@ type Labels struct {
 func (m *Labels) Reset()      { *m = Labels{} }
 func (*Labels) ProtoMessage() {}
 func (*Labels) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bedfbfc9b54e5600, []int{17}
+	return fileDescriptor_bedfbfc9b54e5600, []int{18}
 }
 func (m *Labels) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -963,14 +1006,15 @@ func init() {
 	proto.RegisterType((*GetChunksResponse)(nil), "grpc.GetChunksResponse")
 	proto.RegisterType((*Chunk)(nil), "grpc.Chunk")
 	proto.RegisterType((*ChunkID)(nil), "grpc.ChunkID")
-	proto.RegisterType((*TableName)(nil), "grpc.TableName")
+	proto.RegisterType((*DeleteTableRequest)(nil), "grpc.DeleteTableRequest")
+	proto.RegisterType((*DescribeTableRequest)(nil), "grpc.DescribeTableRequest")
 	proto.RegisterType((*WriteBatch)(nil), "grpc.WriteBatch")
-	proto.RegisterType((*BatchWrites)(nil), "grpc.BatchWrites")
-	proto.RegisterType((*BatchDeletes)(nil), "grpc.BatchDeletes")
-	proto.RegisterType((*ReadBatch)(nil), "grpc.ReadBatch")
+	proto.RegisterType((*WriteIndexRequest)(nil), "grpc.WriteIndexRequest")
+	proto.RegisterType((*DeleteIndexRequest)(nil), "grpc.DeleteIndexRequest")
+	proto.RegisterType((*QueryIndexResponse)(nil), "grpc.QueryIndexResponse")
 	proto.RegisterType((*Row)(nil), "grpc.Row")
 	proto.RegisterType((*IndexEntry)(nil), "grpc.IndexEntry")
-	proto.RegisterType((*IndexQuery)(nil), "grpc.IndexQuery")
+	proto.RegisterType((*QueryIndexRequest)(nil), "grpc.QueryIndexRequest")
 	proto.RegisterType((*UpdateTableRequest)(nil), "grpc.UpdateTableRequest")
 	proto.RegisterType((*DescribeTableResponse)(nil), "grpc.DescribeTableResponse")
 	proto.RegisterType((*TableDesc)(nil), "grpc.TableDesc")
@@ -983,64 +1027,64 @@ func init() { proto.RegisterFile("grpc.proto", fileDescriptor_bedfbfc9b54e5600) 
 
 var fileDescriptor_bedfbfc9b54e5600 = []byte{
 	// 916 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x55, 0x4b, 0x6f, 0x1c, 0x45,
-	0x10, 0xde, 0xde, 0x97, 0x3d, 0xb5, 0x8e, 0x62, 0xb7, 0x20, 0x0c, 0x1b, 0x18, 0x59, 0x93, 0xcb,
-	0xc6, 0xc0, 0x26, 0x18, 0x13, 0x47, 0x89, 0x00, 0x91, 0xac, 0x85, 0x2c, 0x05, 0xe2, 0x74, 0x42,
-	0xc2, 0x0d, 0xcd, 0xce, 0x54, 0xd6, 0xa3, 0xec, 0xce, 0x6c, 0xa6, 0x7b, 0xfc, 0xb8, 0x20, 0xee,
-	0x5c, 0xf8, 0x19, 0xfc, 0x14, 0xc4, 0xc9, 0xc7, 0x1c, 0x38, 0xe0, 0xf5, 0x85, 0x63, 0x7e, 0x02,
-	0xea, 0xee, 0x79, 0x79, 0x76, 0xc7, 0x58, 0x70, 0xeb, 0xfe, 0xea, 0xf1, 0x55, 0x75, 0x75, 0x55,
-	0x01, 0x8c, 0xa2, 0xa9, 0xdb, 0x9f, 0x46, 0xa1, 0x08, 0x69, 0x53, 0x9e, 0xbb, 0xd7, 0x47, 0x61,
-	0x38, 0x1a, 0xe3, 0x2d, 0x85, 0x0d, 0xe3, 0x97, 0xb7, 0x70, 0x32, 0x15, 0xc7, 0x5a, 0xc5, 0xde,
-	0x86, 0xd5, 0xbd, 0x58, 0x3c, 0xdc, 0x8f, 0x83, 0x57, 0x9c, 0xe1, 0xeb, 0x18, 0xb9, 0xa0, 0x37,
-	0xa0, 0xed, 0x2a, 0xc0, 0x24, 0xeb, 0x8d, 0x5e, 0x67, 0xb3, 0xd3, 0x57, 0x3e, 0x95, 0x12, 0x4b,
-	0x44, 0xd2, 0xf0, 0x1b, 0xfc, 0x2f, 0x86, 0x77, 0x61, 0xad, 0x60, 0xc8, 0xa7, 0x61, 0xc0, 0xf1,
-	0x72, 0x96, 0x4f, 0xa0, 0xa5, 0x00, 0x6a, 0xc2, 0x12, 0x06, 0x6e, 0xe8, 0xa1, 0x67, 0x92, 0x75,
-	0xd2, 0x5b, 0x61, 0xe9, 0x95, 0xae, 0x42, 0xe3, 0x15, 0x1e, 0x9b, 0xf5, 0x75, 0xd2, 0x33, 0x98,
-	0x3c, 0xd2, 0x0f, 0xc0, 0x10, 0xce, 0x70, 0x8c, 0xdf, 0x39, 0x13, 0x34, 0x1b, 0x0a, 0xcf, 0x01,
-	0xfb, 0x06, 0x2c, 0x29, 0x97, 0xbb, 0x03, 0xe9, 0xd4, 0xd5, 0x47, 0xe5, 0xd4, 0x60, 0xe9, 0xd5,
-	0xbe, 0x09, 0xc6, 0xb3, 0xd4, 0xe2, 0xbc, 0x3f, 0x52, 0xf6, 0x37, 0x04, 0x78, 0x11, 0xf9, 0x02,
-	0x1f, 0x38, 0xc2, 0xdd, 0xa7, 0x3d, 0x68, 0x1f, 0xca, 0x5b, 0x9a, 0xd5, 0xaa, 0xce, 0x6a, 0x37,
-	0xf0, 0xf0, 0x68, 0x27, 0x10, 0xd1, 0x31, 0x4b, 0xe4, 0x74, 0x03, 0x96, 0x3c, 0x1c, 0xa3, 0x54,
-	0xad, 0x57, 0xa8, 0xa6, 0x0a, 0xf6, 0x36, 0x74, 0x94, 0xfb, 0x17, 0xda, 0xf4, 0xd2, 0x24, 0xf6,
-	0x3d, 0x58, 0x51, 0x86, 0x03, 0xed, 0xa8, 0x48, 0x4a, 0xfe, 0x8d, 0x74, 0x03, 0x0c, 0x86, 0x8e,
-	0xa7, 0xf3, 0xfa, 0x10, 0x9a, 0x51, 0x78, 0x98, 0x5a, 0x19, 0xda, 0x8a, 0x85, 0x87, 0x4c, 0xc1,
-	0xf6, 0x7d, 0x68, 0xb0, 0xf0, 0x90, 0x5a, 0x00, 0x91, 0x13, 0x8c, 0xf0, 0xb9, 0x33, 0x8e, 0x31,
-	0x29, 0x54, 0x01, 0xa1, 0xef, 0x40, 0xeb, 0x40, 0x89, 0xea, 0x4a, 0xa4, 0x2f, 0xf6, 0x4f, 0x00,
-	0x39, 0xff, 0xc5, 0xaf, 0x2d, 0xa5, 0xfb, 0x0e, 0xdf, 0x7f, 0x9e, 0x79, 0x31, 0x58, 0x0e, 0x94,
-	0xf8, 0x1b, 0xd5, 0xfc, 0xcd, 0x22, 0xff, 0x9f, 0x24, 0x09, 0xe0, 0x49, 0x8c, 0xff, 0x33, 0x80,
-	0x0d, 0x58, 0xcd, 0xe9, 0xf6, 0x22, 0x7c, 0xe9, 0x1f, 0x25, 0x61, 0xcc, 0xe1, 0xb4, 0x07, 0x57,
-	0x73, 0xec, 0xa9, 0x70, 0x22, 0x91, 0x84, 0x55, 0x86, 0x65, 0x5a, 0x2a, 0xd2, 0x9d, 0xd7, 0xb1,
-	0x33, 0x36, 0x5b, 0x3a, 0xad, 0x1c, 0x91, 0x31, 0xf9, 0x93, 0x49, 0xac, 0x82, 0x34, 0xdb, 0xeb,
-	0xa4, 0xb7, 0xcc, 0x72, 0xc0, 0x1e, 0x03, 0xfd, 0x7e, 0xea, 0x39, 0x02, 0xd5, 0x8f, 0x4e, 0x1b,
-	0xf7, 0x26, 0x2c, 0xb9, 0x71, 0x14, 0x61, 0x20, 0x54, 0x8e, 0x9d, 0xcd, 0xab, 0xba, 0xa6, 0x4a,
-	0x69, 0x80, 0xdc, 0x65, 0xa9, 0x9c, 0x7e, 0x04, 0xcb, 0x78, 0x34, 0x45, 0x57, 0xa0, 0xa7, 0x32,
-	0x5e, 0xa0, 0x9b, 0x29, 0xd8, 0x3f, 0xc0, 0xbb, 0x12, 0x89, 0xfc, 0x61, 0xca, 0x97, 0xf5, 0x7b,
-	0xd3, 0x43, 0xee, 0x56, 0xb1, 0x29, 0x21, 0xed, 0xc2, 0xb2, 0xcf, 0xbf, 0x76, 0x85, 0x7f, 0xa0,
-	0x1f, 0x77, 0x99, 0x65, 0x77, 0xfb, 0x97, 0x7a, 0xd2, 0x94, 0x52, 0x9f, 0x52, 0x68, 0x06, 0x79,
-	0x81, 0xd4, 0x99, 0x7e, 0x0c, 0x6b, 0x31, 0xc7, 0xc7, 0xc1, 0x00, 0x27, 0x4e, 0xe0, 0xed, 0x3e,
-	0xfe, 0x36, 0xf4, 0x52, 0x37, 0xf3, 0x02, 0xf9, 0xfe, 0xd3, 0x28, 0x3c, 0xf0, 0xb9, 0x1f, 0x06,
-	0xe8, 0xc9, 0xaf, 0xae, 0x4a, 0xd5, 0x60, 0x65, 0x58, 0x56, 0xb5, 0x00, 0xa9, 0x26, 0x54, 0xa5,
-	0x6a, 0xb0, 0x39, 0x9c, 0x7e, 0x02, 0x4d, 0xe1, 0x8c, 0xb8, 0xd9, 0x52, 0x8d, 0xf2, 0x7e, 0x29,
-	0xcd, 0xfe, 0x33, 0x67, 0xc4, 0x75, 0x9f, 0x29, 0xb5, 0xee, 0xb6, 0xcc, 0x29, 0x81, 0xd2, 0x51,
-	0x46, 0xf2, 0x51, 0x76, 0xae, 0x61, 0x8c, 0xe4, 0xc3, 0xde, 0xab, 0xdf, 0x25, 0xf6, 0x16, 0xd0,
-	0x47, 0x3e, 0x17, 0xca, 0x73, 0x3e, 0x54, 0x2d, 0x80, 0xec, 0xab, 0xea, 0x66, 0x35, 0x58, 0x01,
-	0xb1, 0x37, 0xa1, 0xfd, 0xc8, 0x19, 0xe2, 0x98, 0x2f, 0x7c, 0xbf, 0x85, 0x6c, 0x9b, 0x7f, 0xb4,
-	0xf4, 0x86, 0xf9, 0x91, 0x8b, 0x30, 0x42, 0xba, 0x0d, 0x90, 0xcf, 0x22, 0xba, 0xa6, 0x13, 0x2c,
-	0x4c, 0xa7, 0xee, 0xb5, 0xbe, 0xde, 0x3e, 0xfd, 0x74, 0xfb, 0xf4, 0x77, 0xe4, 0xf6, 0xa1, 0x9f,
-	0x02, 0xa8, 0x06, 0xdb, 0x73, 0x46, 0xc8, 0x69, 0x71, 0xf0, 0x28, 0xb8, 0x9b, 0x7c, 0x89, 0x6c,
-	0xe6, 0xdc, 0x26, 0x74, 0x0b, 0xda, 0x7a, 0x72, 0x51, 0x5a, 0xe0, 0x49, 0x86, 0x59, 0x25, 0xd1,
-	0x7d, 0x30, 0xb2, 0x05, 0x47, 0xaf, 0x69, 0xc3, 0xf2, 0xc6, 0xab, 0x34, 0xfe, 0x12, 0x8c, 0x6c,
-	0x57, 0xa5, 0xc6, 0xe5, 0xad, 0xd7, 0x7d, 0x6f, 0x0e, 0xd7, 0xef, 0x7f, 0x9b, 0xd0, 0xcf, 0x61,
-	0x45, 0xc7, 0x97, 0xb8, 0xb8, 0x52, 0x58, 0x6b, 0xbb, 0x83, 0x0b, 0x68, 0x21, 0x2f, 0x27, 0xad,
-	0xd0, 0xea, 0x9a, 0xda, 0xd9, 0x82, 0xc2, 0xdf, 0x81, 0xce, 0xc3, 0x08, 0xd3, 0x26, 0xa7, 0xe5,
-	0xf6, 0xaa, 0xe4, 0xbd, 0x03, 0x1d, 0x1d, 0xee, 0xbc, 0x9d, 0xfc, 0x31, 0x95, 0x76, 0x5f, 0xc0,
-	0x95, 0x73, 0x6d, 0x3e, 0x6f, 0x79, 0x5d, 0x03, 0x8b, 0x87, 0xc1, 0x57, 0xd0, 0x29, 0xcc, 0x24,
-	0x9a, 0xe4, 0x35, 0x3f, 0xa6, 0x2e, 0x88, 0xbb, 0xf9, 0x54, 0x84, 0xd3, 0xca, 0x97, 0xaa, 0xc0,
-	0x1f, 0x6c, 0x9d, 0x9c, 0x5a, 0xb5, 0x37, 0xa7, 0x56, 0xed, 0xed, 0xa9, 0x45, 0x7e, 0x9e, 0x59,
-	0xe4, 0xb7, 0x99, 0x45, 0x7e, 0x9f, 0x59, 0xe4, 0x64, 0x66, 0x91, 0xbf, 0x66, 0x16, 0xf9, 0x7b,
-	0x66, 0xd5, 0xde, 0xce, 0x2c, 0xf2, 0xeb, 0x99, 0x55, 0x3b, 0x39, 0xb3, 0x6a, 0x6f, 0xce, 0xac,
-	0xda, 0xb0, 0xad, 0xbc, 0x7c, 0xf6, 0x4f, 0x00, 0x00, 0x00, 0xff, 0xff, 0xf5, 0x8a, 0xbc, 0x00,
-	0x6a, 0x09, 0x00, 0x00,
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x55, 0x4f, 0x93, 0xd4, 0x44,
+	0x14, 0x9f, 0x9e, 0x7f, 0xbb, 0x79, 0x03, 0xc5, 0x6e, 0x17, 0x42, 0x0c, 0x9a, 0xda, 0x0a, 0x97,
+	0x11, 0x75, 0xb0, 0x86, 0x55, 0x28, 0x29, 0x44, 0x60, 0xb6, 0x74, 0xab, 0x50, 0xa0, 0x45, 0xf4,
+	0x66, 0x65, 0x92, 0xc7, 0x6c, 0x8a, 0x99, 0x64, 0x48, 0x3a, 0xfb, 0xe7, 0x62, 0x79, 0xf7, 0xe2,
+	0xc7, 0xf0, 0x9b, 0xe8, 0x71, 0x8f, 0x1c, 0xdd, 0xd9, 0x8b, 0x47, 0x3e, 0x82, 0x95, 0xee, 0x74,
+	0x92, 0x49, 0x26, 0xb0, 0x72, 0xeb, 0xfe, 0xbd, 0x7f, 0xbf, 0xf7, 0xba, 0xdf, 0x7b, 0x00, 0x93,
+	0x70, 0xee, 0x0c, 0xe6, 0x61, 0xc0, 0x03, 0xda, 0x4e, 0xce, 0xc6, 0x95, 0x49, 0x10, 0x4c, 0xa6,
+	0x78, 0x5d, 0x60, 0xe3, 0xf8, 0xf9, 0x75, 0x9c, 0xcd, 0xf9, 0x91, 0x54, 0xb1, 0x6e, 0xc2, 0xc6,
+	0xe3, 0x98, 0x3f, 0xd8, 0x8b, 0xfd, 0x17, 0x11, 0xc3, 0x97, 0x31, 0x46, 0x9c, 0x5e, 0x85, 0xae,
+	0x23, 0x00, 0x9d, 0x6c, 0xb5, 0xfa, 0xbd, 0x61, 0x6f, 0x20, 0x7c, 0x0a, 0x25, 0x96, 0x8a, 0x12,
+	0xc3, 0x6f, 0xf0, 0x5d, 0x0c, 0x6f, 0xc1, 0x66, 0xc1, 0x30, 0x9a, 0x07, 0x7e, 0x84, 0x67, 0xb3,
+	0x7c, 0x02, 0x1d, 0x01, 0x50, 0x1d, 0xd6, 0xd0, 0x77, 0x02, 0x17, 0x5d, 0x9d, 0x6c, 0x91, 0xfe,
+	0x39, 0xa6, 0xae, 0x74, 0x03, 0x5a, 0x2f, 0xf0, 0x48, 0x6f, 0x6e, 0x91, 0xbe, 0xc6, 0x92, 0x23,
+	0xfd, 0x00, 0x34, 0x6e, 0x8f, 0xa7, 0xf8, 0xbd, 0x3d, 0x43, 0xbd, 0x25, 0xf0, 0x1c, 0xb0, 0xae,
+	0xc2, 0x9a, 0x70, 0xb9, 0x3b, 0x4a, 0x9c, 0x3a, 0xf2, 0x28, 0x9c, 0x6a, 0x4c, 0x5d, 0xad, 0x21,
+	0xd0, 0x11, 0x4e, 0x91, 0xe3, 0xd3, 0xc4, 0x4e, 0x25, 0xbb, 0xe4, 0x98, 0x94, 0x1d, 0x6f, 0xc3,
+	0xc5, 0x11, 0x46, 0x4e, 0xe8, 0x8d, 0xff, 0x8f, 0xd5, 0x18, 0xe0, 0xa7, 0xd0, 0xe3, 0x78, 0xdf,
+	0xe6, 0xce, 0x1e, 0xed, 0x43, 0xf7, 0x20, 0xb9, 0xa9, 0xa2, 0x6c, 0xc8, 0xa2, 0xec, 0xfa, 0x2e,
+	0x1e, 0xee, 0xf8, 0x3c, 0x3c, 0x62, 0xa9, 0x9c, 0x5e, 0x83, 0x35, 0x57, 0x30, 0x8c, 0xf4, 0x66,
+	0x8d, 0xaa, 0x52, 0xb0, 0xee, 0xc0, 0xa6, 0x88, 0x21, 0x64, 0x8a, 0xd6, 0x99, 0x43, 0x59, 0x5f,
+	0xab, 0x62, 0x2c, 0xd9, 0x17, 0x08, 0x90, 0xb7, 0x11, 0xb8, 0x01, 0xf4, 0x49, 0x8c, 0xe1, 0x51,
+	0xea, 0x20, 0xfd, 0x01, 0x1f, 0x42, 0x3b, 0x0c, 0x0e, 0x94, 0xb9, 0x26, 0xcd, 0x59, 0x70, 0xc0,
+	0x04, 0x6c, 0xdd, 0x86, 0x16, 0x0b, 0x0e, 0xa8, 0x09, 0x10, 0xda, 0xfe, 0x04, 0x9f, 0xd9, 0xd3,
+	0x18, 0xd3, 0xc7, 0x2f, 0x20, 0xf4, 0x22, 0x74, 0xf6, 0x85, 0xa8, 0x29, 0x44, 0xf2, 0x62, 0xfd,
+	0x0a, 0x90, 0x13, 0x79, 0xf3, 0x13, 0x24, 0xd2, 0x3d, 0x3b, 0xda, 0x7b, 0x96, 0x79, 0xd1, 0x58,
+	0x0e, 0x94, 0xe2, 0xb7, 0xea, 0xe3, 0xb7, 0x8b, 0xf1, 0x4f, 0x09, 0x6c, 0x16, 0x53, 0x3e, 0xc3,
+	0x57, 0x78, 0x0b, 0x8f, 0x6b, 0xb0, 0x91, 0x47, 0x7d, 0x1c, 0xe2, 0x73, 0xef, 0x30, 0x65, 0x53,
+	0xc1, 0x69, 0x1f, 0x2e, 0xe4, 0xd8, 0x0f, 0xdc, 0x0e, 0x79, 0xca, 0xae, 0x0c, 0x27, 0xd9, 0x09,
+	0xc2, 0x3b, 0x2f, 0x63, 0x7b, 0xaa, 0x77, 0x64, 0x76, 0x39, 0x92, 0x70, 0xf2, 0x66, 0xb3, 0x58,
+	0x90, 0xd4, 0xbb, 0x5b, 0xa4, 0xbf, 0xce, 0x72, 0xc0, 0x9a, 0x02, 0xfd, 0x71, 0xee, 0xda, 0xa5,
+	0x36, 0xf9, 0x08, 0xd6, 0x9c, 0x38, 0x0c, 0xd1, 0xe7, 0x22, 0xc7, 0xde, 0xf0, 0x82, 0x7c, 0x5a,
+	0xa1, 0x94, 0xb4, 0x08, 0x53, 0x72, 0xfa, 0x31, 0xac, 0xe3, 0xe1, 0x1c, 0x1d, 0x8e, 0xae, 0xc8,
+	0x78, 0x85, 0x6e, 0xa6, 0x60, 0xfd, 0x0c, 0xef, 0x95, 0x1a, 0x2c, 0x1b, 0x25, 0x6d, 0x17, 0x23,
+	0xa7, 0x2e, 0x9a, 0x10, 0x52, 0x03, 0xd6, 0xbd, 0xe8, 0x9e, 0xc3, 0xbd, 0x7d, 0x59, 0xdc, 0x75,
+	0x96, 0xdd, 0xad, 0xdf, 0x9b, 0xa0, 0x65, 0xfa, 0x94, 0x42, 0xdb, 0xcf, 0x1f, 0x48, 0x9c, 0xe9,
+	0x27, 0xb0, 0x19, 0x47, 0xf8, 0xc8, 0x1f, 0xe1, 0xcc, 0xf6, 0xdd, 0xdd, 0x47, 0xdf, 0x05, 0xae,
+	0x72, 0x53, 0x15, 0x24, 0xf5, 0x9f, 0x87, 0xc1, 0xbe, 0x17, 0x79, 0x81, 0x8f, 0x2e, 0x43, 0xdb,
+	0x15, 0x4f, 0xd5, 0x62, 0x65, 0x38, 0x79, 0xd5, 0x02, 0x24, 0xba, 0x54, 0x3c, 0x55, 0x8b, 0x55,
+	0x70, 0xfa, 0x29, 0xb4, 0xb9, 0x3d, 0x89, 0xf4, 0x8e, 0xe8, 0x97, 0xf7, 0x4b, 0x69, 0x0e, 0x9e,
+	0xda, 0x93, 0x48, 0xf6, 0x9d, 0x50, 0x33, 0x6e, 0x26, 0x39, 0xa5, 0x90, 0x9a, 0x92, 0x24, 0x9f,
+	0x92, 0x4b, 0x7d, 0xa3, 0xa5, 0xff, 0xf6, 0xcb, 0xe6, 0x2d, 0x62, 0x6d, 0x03, 0x7d, 0xe8, 0x45,
+	0x5c, 0x78, 0xce, 0xe7, 0xb5, 0x09, 0x90, 0x7d, 0x55, 0xd9, 0xb3, 0x1a, 0x2b, 0x20, 0xd6, 0x10,
+	0xba, 0x0f, 0xed, 0x31, 0x4e, 0xa3, 0x95, 0xf5, 0x5b, 0x19, 0x6d, 0xf8, 0x57, 0x47, 0x2e, 0xaf,
+	0x5f, 0x22, 0x1e, 0x84, 0x48, 0xef, 0xa4, 0xb3, 0x50, 0xf4, 0x0c, 0xbd, 0x2c, 0x13, 0xac, 0x4c,
+	0x2e, 0xe3, 0xd2, 0x40, 0xae, 0xb7, 0x81, 0x5a, 0x6f, 0x83, 0x9d, 0x64, 0xbd, 0xd1, 0x7b, 0x00,
+	0x79, 0xcb, 0x29, 0xf3, 0x4a, 0x13, 0x1a, 0x7a, 0x55, 0x20, 0x53, 0xfc, 0x8c, 0xd0, 0xbb, 0xd0,
+	0x2b, 0x8c, 0x3a, 0x9a, 0xaa, 0x56, 0xa7, 0x5f, 0x2d, 0x87, 0xdb, 0xa0, 0x65, 0xcb, 0x95, 0x5e,
+	0x92, 0xe6, 0xe5, 0x6d, 0x5b, 0x6b, 0xfc, 0x15, 0x68, 0xd9, 0x9e, 0x54, 0xc6, 0xe5, 0x8d, 0x6b,
+	0x5c, 0xae, 0xe0, 0x19, 0xfb, 0xcf, 0xe1, 0x9c, 0xa4, 0x9a, 0xba, 0x38, 0x5f, 0x58, 0xa9, 0xbb,
+	0xa3, 0x37, 0x84, 0x85, 0xfc, 0xbd, 0x69, 0x8d, 0x96, 0x2a, 0xdb, 0x8a, 0x9f, 0xf1, 0x05, 0xf4,
+	0x1e, 0x84, 0xa8, 0xa6, 0x00, 0x2d, 0xf7, 0x5f, 0x6d, 0xdc, 0xac, 0xd8, 0xd2, 0x6e, 0xa9, 0xd8,
+	0xc5, 0x81, 0x52, 0xeb, 0xe0, 0x5b, 0x38, 0xbf, 0x34, 0x10, 0xa8, 0xa1, 0x5c, 0x54, 0xd7, 0xb0,
+	0x71, 0x65, 0xa5, 0x2c, 0x4d, 0xe1, 0x2e, 0xf4, 0x0a, 0x83, 0x4c, 0x51, 0xa9, 0xce, 0xb6, 0x3a,
+	0x2a, 0xf7, 0xb7, 0x8f, 0x4f, 0xcc, 0xc6, 0xab, 0x13, 0xb3, 0xf1, 0xfa, 0xc4, 0x24, 0xbf, 0x2d,
+	0x4c, 0xf2, 0xe7, 0xc2, 0x24, 0x7f, 0x2f, 0x4c, 0x72, 0xbc, 0x30, 0xc9, 0x3f, 0x0b, 0x93, 0xfc,
+	0xbb, 0x30, 0x1b, 0xaf, 0x17, 0x26, 0xf9, 0xe3, 0xd4, 0x6c, 0x1c, 0x9f, 0x9a, 0x8d, 0x57, 0xa7,
+	0x66, 0x63, 0xdc, 0x15, 0x5e, 0x6e, 0xfc, 0x17, 0x00, 0x00, 0xff, 0xff, 0x10, 0xb4, 0x68, 0xc7,
+	0xc2, 0x09, 0x00, 0x00,
 }
 
 func (this *PutChunksRequest) Equal(that interface{}) bool {
@@ -1184,14 +1228,38 @@ func (this *ChunkID) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *TableName) Equal(that interface{}) bool {
+func (this *DeleteTableRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TableName)
+	that1, ok := that.(*DeleteTableRequest)
 	if !ok {
-		that2, ok := that.(TableName)
+		that2, ok := that.(DeleteTableRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	return true
+}
+func (this *DescribeTableRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DescribeTableRequest)
+	if !ok {
+		that2, ok := that.(DescribeTableRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1245,14 +1313,14 @@ func (this *WriteBatch) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *BatchWrites) Equal(that interface{}) bool {
+func (this *WriteIndexRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*BatchWrites)
+	that1, ok := that.(*WriteIndexRequest)
 	if !ok {
-		that2, ok := that.(BatchWrites)
+		that2, ok := that.(WriteIndexRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1274,14 +1342,14 @@ func (this *BatchWrites) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *BatchDeletes) Equal(that interface{}) bool {
+func (this *DeleteIndexRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*BatchDeletes)
+	that1, ok := that.(*DeleteIndexRequest)
 	if !ok {
-		that2, ok := that.(BatchDeletes)
+		that2, ok := that.(DeleteIndexRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1303,14 +1371,14 @@ func (this *BatchDeletes) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ReadBatch) Equal(that interface{}) bool {
+func (this *QueryIndexResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ReadBatch)
+	that1, ok := that.(*QueryIndexResponse)
 	if !ok {
-		that2, ok := that.(ReadBatch)
+		that2, ok := that.(QueryIndexResponse)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1392,14 +1460,14 @@ func (this *IndexEntry) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *IndexQuery) Equal(that interface{}) bool {
+func (this *QueryIndexRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*IndexQuery)
+	that1, ok := that.(*QueryIndexRequest)
 	if !ok {
-		that2, ok := that.(IndexQuery)
+		that2, ok := that.(QueryIndexRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1640,12 +1708,22 @@ func (this *ChunkID) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *TableName) GoString() string {
+func (this *DeleteTableRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&grpc.TableName{")
+	s = append(s, "&grpc.DeleteTableRequest{")
+	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DescribeTableRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&grpc.DescribeTableRequest{")
 	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -1665,36 +1743,36 @@ func (this *WriteBatch) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *BatchWrites) GoString() string {
+func (this *WriteIndexRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&grpc.BatchWrites{")
+	s = append(s, "&grpc.WriteIndexRequest{")
 	if this.Writes != nil {
 		s = append(s, "Writes: "+fmt.Sprintf("%#v", this.Writes)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *BatchDeletes) GoString() string {
+func (this *DeleteIndexRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&grpc.BatchDeletes{")
+	s = append(s, "&grpc.DeleteIndexRequest{")
 	if this.Deletes != nil {
 		s = append(s, "Deletes: "+fmt.Sprintf("%#v", this.Deletes)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ReadBatch) GoString() string {
+func (this *QueryIndexResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&grpc.ReadBatch{")
+	s = append(s, "&grpc.QueryIndexResponse{")
 	if this.Rows != nil {
 		s = append(s, "Rows: "+fmt.Sprintf("%#v", this.Rows)+",\n")
 	}
@@ -1725,12 +1803,12 @@ func (this *IndexEntry) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *IndexQuery) GoString() string {
+func (this *QueryIndexRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 10)
-	s = append(s, "&grpc.IndexQuery{")
+	s = append(s, "&grpc.QueryIndexRequest{")
 	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
 	s = append(s, "HashValue: "+fmt.Sprintf("%#v", this.HashValue)+",\n")
 	s = append(s, "RangeValuePrefix: "+fmt.Sprintf("%#v", this.RangeValuePrefix)+",\n")
@@ -1837,9 +1915,9 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type GrpcStoreClient interface {
 	//index-client
-	BatchWrite(ctx context.Context, in *BatchWrites, opts ...grpc.CallOption) (*empty.Empty, error)
-	QueryPages(ctx context.Context, in *IndexQuery, opts ...grpc.CallOption) (GrpcStore_QueryPagesClient, error)
-	Delete(ctx context.Context, in *BatchDeletes, opts ...grpc.CallOption) (*empty.Empty, error)
+	WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	QueryIndex(ctx context.Context, in *QueryIndexRequest, opts ...grpc.CallOption) (GrpcStore_QueryIndexClient, error)
+	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	//storage-client
 	PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	//In GetChunks rpc request send buf as nil
@@ -1848,11 +1926,9 @@ type GrpcStoreClient interface {
 	//table-client
 	ListTables(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error)
 	CreateTable(ctx context.Context, in *TableDesc, opts ...grpc.CallOption) (*empty.Empty, error)
-	DeleteTable(ctx context.Context, in *TableName, opts ...grpc.CallOption) (*empty.Empty, error)
-	DescribeTable(ctx context.Context, in *TableName, opts ...grpc.CallOption) (*DescribeTableResponse, error)
+	DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	DescribeTable(ctx context.Context, in *DescribeTableRequest, opts ...grpc.CallOption) (*DescribeTableResponse, error)
 	UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	//used by storage-client & index-client
-	Stop(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
 type grpcStoreClient struct {
@@ -1863,21 +1939,21 @@ func NewGrpcStoreClient(cc *grpc.ClientConn) GrpcStoreClient {
 	return &grpcStoreClient{cc}
 }
 
-func (c *grpcStoreClient) BatchWrite(ctx context.Context, in *BatchWrites, opts ...grpc.CallOption) (*empty.Empty, error) {
+func (c *grpcStoreClient) WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
-	err := c.cc.Invoke(ctx, "/grpc.grpc_store/BatchWrite", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/grpc.grpc_store/WriteIndex", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *grpcStoreClient) QueryPages(ctx context.Context, in *IndexQuery, opts ...grpc.CallOption) (GrpcStore_QueryPagesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_GrpcStore_serviceDesc.Streams[0], "/grpc.grpc_store/QueryPages", opts...)
+func (c *grpcStoreClient) QueryIndex(ctx context.Context, in *QueryIndexRequest, opts ...grpc.CallOption) (GrpcStore_QueryIndexClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_GrpcStore_serviceDesc.Streams[0], "/grpc.grpc_store/QueryIndex", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpcStoreQueryPagesClient{stream}
+	x := &grpcStoreQueryIndexClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -1887,26 +1963,26 @@ func (c *grpcStoreClient) QueryPages(ctx context.Context, in *IndexQuery, opts .
 	return x, nil
 }
 
-type GrpcStore_QueryPagesClient interface {
-	Recv() (*ReadBatch, error)
+type GrpcStore_QueryIndexClient interface {
+	Recv() (*QueryIndexResponse, error)
 	grpc.ClientStream
 }
 
-type grpcStoreQueryPagesClient struct {
+type grpcStoreQueryIndexClient struct {
 	grpc.ClientStream
 }
 
-func (x *grpcStoreQueryPagesClient) Recv() (*ReadBatch, error) {
-	m := new(ReadBatch)
+func (x *grpcStoreQueryIndexClient) Recv() (*QueryIndexResponse, error) {
+	m := new(QueryIndexResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *grpcStoreClient) Delete(ctx context.Context, in *BatchDeletes, opts ...grpc.CallOption) (*empty.Empty, error) {
+func (c *grpcStoreClient) DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
-	err := c.cc.Invoke(ctx, "/grpc.grpc_store/Delete", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DeleteIndex", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1981,7 +2057,7 @@ func (c *grpcStoreClient) CreateTable(ctx context.Context, in *TableDesc, opts .
 	return out, nil
 }
 
-func (c *grpcStoreClient) DeleteTable(ctx context.Context, in *TableName, opts ...grpc.CallOption) (*empty.Empty, error) {
+func (c *grpcStoreClient) DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DeleteTable", in, out, opts...)
 	if err != nil {
@@ -1990,7 +2066,7 @@ func (c *grpcStoreClient) DeleteTable(ctx context.Context, in *TableName, opts .
 	return out, nil
 }
 
-func (c *grpcStoreClient) DescribeTable(ctx context.Context, in *TableName, opts ...grpc.CallOption) (*DescribeTableResponse, error) {
+func (c *grpcStoreClient) DescribeTable(ctx context.Context, in *DescribeTableRequest, opts ...grpc.CallOption) (*DescribeTableResponse, error) {
 	out := new(DescribeTableResponse)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DescribeTable", in, out, opts...)
 	if err != nil {
@@ -2008,21 +2084,12 @@ func (c *grpcStoreClient) UpdateTable(ctx context.Context, in *UpdateTableReques
 	return out, nil
 }
 
-func (c *grpcStoreClient) Stop(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
-	out := new(empty.Empty)
-	err := c.cc.Invoke(ctx, "/grpc.grpc_store/Stop", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // GrpcStoreServer is the server API for GrpcStore service.
 type GrpcStoreServer interface {
 	//index-client
-	BatchWrite(context.Context, *BatchWrites) (*empty.Empty, error)
-	QueryPages(*IndexQuery, GrpcStore_QueryPagesServer) error
-	Delete(context.Context, *BatchDeletes) (*empty.Empty, error)
+	WriteIndex(context.Context, *WriteIndexRequest) (*empty.Empty, error)
+	QueryIndex(*QueryIndexRequest, GrpcStore_QueryIndexServer) error
+	DeleteIndex(context.Context, *DeleteIndexRequest) (*empty.Empty, error)
 	//storage-client
 	PutChunks(context.Context, *PutChunksRequest) (*empty.Empty, error)
 	//In GetChunks rpc request send buf as nil
@@ -2031,25 +2098,23 @@ type GrpcStoreServer interface {
 	//table-client
 	ListTables(context.Context, *empty.Empty) (*ListTablesResponse, error)
 	CreateTable(context.Context, *TableDesc) (*empty.Empty, error)
-	DeleteTable(context.Context, *TableName) (*empty.Empty, error)
-	DescribeTable(context.Context, *TableName) (*DescribeTableResponse, error)
+	DeleteTable(context.Context, *DeleteTableRequest) (*empty.Empty, error)
+	DescribeTable(context.Context, *DescribeTableRequest) (*DescribeTableResponse, error)
 	UpdateTable(context.Context, *UpdateTableRequest) (*empty.Empty, error)
-	//used by storage-client & index-client
-	Stop(context.Context, *empty.Empty) (*empty.Empty, error)
 }
 
 // UnimplementedGrpcStoreServer can be embedded to have forward compatible implementations.
 type UnimplementedGrpcStoreServer struct {
 }
 
-func (*UnimplementedGrpcStoreServer) BatchWrite(ctx context.Context, req *BatchWrites) (*empty.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BatchWrite not implemented")
+func (*UnimplementedGrpcStoreServer) WriteIndex(ctx context.Context, req *WriteIndexRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WriteIndex not implemented")
 }
-func (*UnimplementedGrpcStoreServer) QueryPages(req *IndexQuery, srv GrpcStore_QueryPagesServer) error {
-	return status.Errorf(codes.Unimplemented, "method QueryPages not implemented")
+func (*UnimplementedGrpcStoreServer) QueryIndex(req *QueryIndexRequest, srv GrpcStore_QueryIndexServer) error {
+	return status.Errorf(codes.Unimplemented, "method QueryIndex not implemented")
 }
-func (*UnimplementedGrpcStoreServer) Delete(ctx context.Context, req *BatchDeletes) (*empty.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+func (*UnimplementedGrpcStoreServer) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteIndex not implemented")
 }
 func (*UnimplementedGrpcStoreServer) PutChunks(ctx context.Context, req *PutChunksRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PutChunks not implemented")
@@ -2066,76 +2131,73 @@ func (*UnimplementedGrpcStoreServer) ListTables(ctx context.Context, req *empty.
 func (*UnimplementedGrpcStoreServer) CreateTable(ctx context.Context, req *TableDesc) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTable not implemented")
 }
-func (*UnimplementedGrpcStoreServer) DeleteTable(ctx context.Context, req *TableName) (*empty.Empty, error) {
+func (*UnimplementedGrpcStoreServer) DeleteTable(ctx context.Context, req *DeleteTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTable not implemented")
 }
-func (*UnimplementedGrpcStoreServer) DescribeTable(ctx context.Context, req *TableName) (*DescribeTableResponse, error) {
+func (*UnimplementedGrpcStoreServer) DescribeTable(ctx context.Context, req *DescribeTableRequest) (*DescribeTableResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DescribeTable not implemented")
 }
 func (*UnimplementedGrpcStoreServer) UpdateTable(ctx context.Context, req *UpdateTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateTable not implemented")
-}
-func (*UnimplementedGrpcStoreServer) Stop(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Stop not implemented")
 }
 
 func RegisterGrpcStoreServer(s *grpc.Server, srv GrpcStoreServer) {
 	s.RegisterService(&_GrpcStore_serviceDesc, srv)
 }
 
-func _GrpcStore_BatchWrite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BatchWrites)
+func _GrpcStore_WriteIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WriteIndexRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GrpcStoreServer).BatchWrite(ctx, in)
+		return srv.(GrpcStoreServer).WriteIndex(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/grpc.grpc_store/BatchWrite",
+		FullMethod: "/grpc.grpc_store/WriteIndex",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).BatchWrite(ctx, req.(*BatchWrites))
+		return srv.(GrpcStoreServer).WriteIndex(ctx, req.(*WriteIndexRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _GrpcStore_QueryPages_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(IndexQuery)
+func _GrpcStore_QueryIndex_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(QueryIndexRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(GrpcStoreServer).QueryPages(m, &grpcStoreQueryPagesServer{stream})
+	return srv.(GrpcStoreServer).QueryIndex(m, &grpcStoreQueryIndexServer{stream})
 }
 
-type GrpcStore_QueryPagesServer interface {
-	Send(*ReadBatch) error
+type GrpcStore_QueryIndexServer interface {
+	Send(*QueryIndexResponse) error
 	grpc.ServerStream
 }
 
-type grpcStoreQueryPagesServer struct {
+type grpcStoreQueryIndexServer struct {
 	grpc.ServerStream
 }
 
-func (x *grpcStoreQueryPagesServer) Send(m *ReadBatch) error {
+func (x *grpcStoreQueryIndexServer) Send(m *QueryIndexResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _GrpcStore_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BatchDeletes)
+func _GrpcStore_DeleteIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteIndexRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GrpcStoreServer).Delete(ctx, in)
+		return srv.(GrpcStoreServer).DeleteIndex(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/grpc.grpc_store/Delete",
+		FullMethod: "/grpc.grpc_store/DeleteIndex",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).Delete(ctx, req.(*BatchDeletes))
+		return srv.(GrpcStoreServer).DeleteIndex(ctx, req.(*DeleteIndexRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2234,7 +2296,7 @@ func _GrpcStore_CreateTable_Handler(srv interface{}, ctx context.Context, dec fu
 }
 
 func _GrpcStore_DeleteTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TableName)
+	in := new(DeleteTableRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -2246,13 +2308,13 @@ func _GrpcStore_DeleteTable_Handler(srv interface{}, ctx context.Context, dec fu
 		FullMethod: "/grpc.grpc_store/DeleteTable",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).DeleteTable(ctx, req.(*TableName))
+		return srv.(GrpcStoreServer).DeleteTable(ctx, req.(*DeleteTableRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _GrpcStore_DescribeTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TableName)
+	in := new(DescribeTableRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -2264,7 +2326,7 @@ func _GrpcStore_DescribeTable_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: "/grpc.grpc_store/DescribeTable",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).DescribeTable(ctx, req.(*TableName))
+		return srv.(GrpcStoreServer).DescribeTable(ctx, req.(*DescribeTableRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2287,35 +2349,17 @@ func _GrpcStore_UpdateTable_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
-func _GrpcStore_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(GrpcStoreServer).Stop(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/grpc.grpc_store/Stop",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).Stop(ctx, req.(*empty.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 var _GrpcStore_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "grpc.grpc_store",
 	HandlerType: (*GrpcStoreServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "BatchWrite",
-			Handler:    _GrpcStore_BatchWrite_Handler,
+			MethodName: "WriteIndex",
+			Handler:    _GrpcStore_WriteIndex_Handler,
 		},
 		{
-			MethodName: "Delete",
-			Handler:    _GrpcStore_Delete_Handler,
+			MethodName: "DeleteIndex",
+			Handler:    _GrpcStore_DeleteIndex_Handler,
 		},
 		{
 			MethodName: "PutChunks",
@@ -2345,15 +2389,11 @@ var _GrpcStore_serviceDesc = grpc.ServiceDesc{
 			MethodName: "UpdateTable",
 			Handler:    _GrpcStore_UpdateTable_Handler,
 		},
-		{
-			MethodName: "Stop",
-			Handler:    _GrpcStore_Stop_Handler,
-		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "QueryPages",
-			Handler:       _GrpcStore_QueryPages_Handler,
+			StreamName:    "QueryIndex",
+			Handler:       _GrpcStore_QueryIndex_Handler,
 			ServerStreams: true,
 		},
 		{
@@ -2550,7 +2590,7 @@ func (m *ChunkID) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TableName) Marshal() (dAtA []byte, err error) {
+func (m *DeleteTableRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2560,12 +2600,42 @@ func (m *TableName) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TableName) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteTableRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TableName) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteTableRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.TableName) > 0 {
+		i -= len(m.TableName)
+		copy(dAtA[i:], m.TableName)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.TableName)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DescribeTableRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DescribeTableRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DescribeTableRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2631,7 +2701,7 @@ func (m *WriteBatch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *BatchWrites) Marshal() (dAtA []byte, err error) {
+func (m *WriteIndexRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2641,12 +2711,12 @@ func (m *BatchWrites) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *BatchWrites) MarshalTo(dAtA []byte) (int, error) {
+func (m *WriteIndexRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *BatchWrites) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *WriteIndexRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2668,7 +2738,7 @@ func (m *BatchWrites) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *BatchDeletes) Marshal() (dAtA []byte, err error) {
+func (m *DeleteIndexRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2678,12 +2748,12 @@ func (m *BatchDeletes) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *BatchDeletes) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteIndexRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *BatchDeletes) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteIndexRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2705,7 +2775,7 @@ func (m *BatchDeletes) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ReadBatch) Marshal() (dAtA []byte, err error) {
+func (m *QueryIndexResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2715,12 +2785,12 @@ func (m *ReadBatch) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ReadBatch) MarshalTo(dAtA []byte) (int, error) {
+func (m *QueryIndexResponse) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ReadBatch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *QueryIndexResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2830,7 +2900,7 @@ func (m *IndexEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexQuery) Marshal() (dAtA []byte, err error) {
+func (m *QueryIndexRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2840,12 +2910,12 @@ func (m *IndexQuery) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *IndexQuery) MarshalTo(dAtA []byte) (int, error) {
+func (m *QueryIndexRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *IndexQuery) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *QueryIndexRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -3218,7 +3288,20 @@ func (m *ChunkID) Size() (n int) {
 	return n
 }
 
-func (m *TableName) Size() (n int) {
+func (m *DeleteTableRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TableName)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	return n
+}
+
+func (m *DescribeTableRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3252,7 +3335,7 @@ func (m *WriteBatch) Size() (n int) {
 	return n
 }
 
-func (m *BatchWrites) Size() (n int) {
+func (m *WriteIndexRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3267,7 +3350,7 @@ func (m *BatchWrites) Size() (n int) {
 	return n
 }
 
-func (m *BatchDeletes) Size() (n int) {
+func (m *DeleteIndexRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3282,7 +3365,7 @@ func (m *BatchDeletes) Size() (n int) {
 	return n
 }
 
-func (m *ReadBatch) Size() (n int) {
+func (m *QueryIndexResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3339,7 +3422,7 @@ func (m *IndexEntry) Size() (n int) {
 	return n
 }
 
-func (m *IndexQuery) Size() (n int) {
+func (m *QueryIndexRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3539,11 +3622,21 @@ func (this *ChunkID) String() string {
 	}, "")
 	return s
 }
-func (this *TableName) String() string {
+func (this *DeleteTableRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&TableName{`,
+	s := strings.Join([]string{`&DeleteTableRequest{`,
+		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DescribeTableRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DescribeTableRequest{`,
 		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
 		`}`,
 	}, "")
@@ -3570,7 +3663,7 @@ func (this *WriteBatch) String() string {
 	}, "")
 	return s
 }
-func (this *BatchWrites) String() string {
+func (this *WriteIndexRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
@@ -3579,13 +3672,13 @@ func (this *BatchWrites) String() string {
 		repeatedStringForWrites += strings.Replace(f.String(), "IndexEntry", "IndexEntry", 1) + ","
 	}
 	repeatedStringForWrites += "}"
-	s := strings.Join([]string{`&BatchWrites{`,
+	s := strings.Join([]string{`&WriteIndexRequest{`,
 		`Writes:` + repeatedStringForWrites + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *BatchDeletes) String() string {
+func (this *DeleteIndexRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
@@ -3594,13 +3687,13 @@ func (this *BatchDeletes) String() string {
 		repeatedStringForDeletes += strings.Replace(f.String(), "IndexEntry", "IndexEntry", 1) + ","
 	}
 	repeatedStringForDeletes += "}"
-	s := strings.Join([]string{`&BatchDeletes{`,
+	s := strings.Join([]string{`&DeleteIndexRequest{`,
 		`Deletes:` + repeatedStringForDeletes + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ReadBatch) String() string {
+func (this *QueryIndexResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
@@ -3609,7 +3702,7 @@ func (this *ReadBatch) String() string {
 		repeatedStringForRows += strings.Replace(f.String(), "Row", "Row", 1) + ","
 	}
 	repeatedStringForRows += "}"
-	s := strings.Join([]string{`&ReadBatch{`,
+	s := strings.Join([]string{`&QueryIndexResponse{`,
 		`Rows:` + repeatedStringForRows + `,`,
 		`}`,
 	}, "")
@@ -3639,11 +3732,11 @@ func (this *IndexEntry) String() string {
 	}, "")
 	return s
 }
-func (this *IndexQuery) String() string {
+func (this *QueryIndexRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&IndexQuery{`,
+	s := strings.Join([]string{`&QueryIndexRequest{`,
 		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
 		`HashValue:` + fmt.Sprintf("%v", this.HashValue) + `,`,
 		`RangeValuePrefix:` + fmt.Sprintf("%v", this.RangeValuePrefix) + `,`,
@@ -4226,7 +4319,7 @@ func (m *ChunkID) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TableName) Unmarshal(dAtA []byte) error {
+func (m *DeleteTableRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4249,10 +4342,95 @@ func (m *TableName) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TableName: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteTableRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TableName: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteTableRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TableName", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TableName = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGrpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DescribeTableRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGrpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DescribeTableRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DescribeTableRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4432,7 +4610,7 @@ func (m *WriteBatch) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *BatchWrites) Unmarshal(dAtA []byte) error {
+func (m *WriteIndexRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4455,10 +4633,10 @@ func (m *BatchWrites) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: BatchWrites: wiretype end group for non-group")
+			return fmt.Errorf("proto: WriteIndexRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BatchWrites: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: WriteIndexRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4519,7 +4697,7 @@ func (m *BatchWrites) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *BatchDeletes) Unmarshal(dAtA []byte) error {
+func (m *DeleteIndexRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4542,10 +4720,10 @@ func (m *BatchDeletes) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: BatchDeletes: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteIndexRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BatchDeletes: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteIndexRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4606,7 +4784,7 @@ func (m *BatchDeletes) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ReadBatch) Unmarshal(dAtA []byte) error {
+func (m *QueryIndexResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4629,10 +4807,10 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ReadBatch: wiretype end group for non-group")
+			return fmt.Errorf("proto: QueryIndexResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ReadBatch: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: QueryIndexResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4999,7 +5177,7 @@ func (m *IndexEntry) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *IndexQuery) Unmarshal(dAtA []byte) error {
+func (m *QueryIndexRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5022,10 +5200,10 @@ func (m *IndexQuery) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: IndexQuery: wiretype end group for non-group")
+			return fmt.Errorf("proto: QueryIndexRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: IndexQuery: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: QueryIndexRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

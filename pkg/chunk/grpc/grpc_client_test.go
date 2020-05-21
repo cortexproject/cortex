@@ -16,8 +16,9 @@ import (
 // tableClient, indexClient, storageClient
 func TestGrpcStore(t *testing.T) {
 	var err error
-	createTestGrpcServer()
-	cfg := Config{Address: "localhost:6688"}
+	cleanup, storeAddress := createTestGrpcServer(t)
+	defer cleanup()
+	cfg := Config{Address: storeAddress}
 	schemaCfg := chunk.SchemaConfig{Configs: []chunk.PeriodConfig{
 		{
 			From:       chunk.DayTime{Time: 1564358400000},

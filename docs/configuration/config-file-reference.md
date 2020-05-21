@@ -1846,7 +1846,7 @@ delete_store:
   # CLI flag: -deletes.requests-table-name
   [requests_table_name: <string> | default = "delete_requests"]
 
-grpc-store:
+grpc_store:
   # Hostname or IP of the gRPC store instance.
   # CLI flag: -grpc-store.server-address
   [server_address: <string> | default = ""]

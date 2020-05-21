@@ -75,7 +75,7 @@ type Config struct {
 
 	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
 
-	GrpcConfig grpc.Config `yaml:"grpc-store"`
+	GrpcConfig grpc.Config `yaml:"grpc_store"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -254,7 +254,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "grpc-store":
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
 }
 
@@ -294,7 +294,7 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	case "grpc-store":
 		return grpc.NewTableClient(cfg.GrpcConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
 }
 

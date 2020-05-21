@@ -4,13 +4,12 @@ import (
 	"context"
 	"log"
 	"net"
-	"time"
+	"testing"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/reflection"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -20,7 +19,7 @@ type server struct {
 }
 
 // indexClient RPCs
-func (s server) BatchWrite(ctx context.Context, writes *BatchWrites) (*empty.Empty, error) {
+func (s server) WriteIndex(ctx context.Context, writes *WriteIndexRequest) (*empty.Empty, error) {
 	rangeValue := "JSI0YbyRLVmLKkLBiAKf5ctf8mWtn9U6CXCzuYmWkMk 5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4  8"
 	value := "localhost:9090"
 	if writes.Writes[0].TableName == "index_2625" &&
@@ -32,7 +31,7 @@ func (s server) BatchWrite(ctx context.Context, writes *BatchWrites) (*empty.Emp
 	return &empty.Empty{}, err
 }
 
-func (s server) QueryPages(query *IndexQuery, pagesServer GrpcStore_QueryPagesServer) error {
+func (s server) QueryIndex(query *QueryIndexRequest, pagesServer GrpcStore_QueryIndexServer) error {
 	if query.TableName == "table" && query.HashValue == "foo" {
 		return nil
 	}
@@ -40,7 +39,7 @@ func (s server) QueryPages(query *IndexQuery, pagesServer GrpcStore_QueryPagesSe
 	return err
 }
 
-func (s server) Delete(ctx context.Context, deletes *BatchDeletes) (*empty.Empty, error) {
+func (s server) DeleteIndex(ctx context.Context, deletes *DeleteIndexRequest) (*empty.Empty, error) {
 	if deletes.Deletes[0].TableName == "index_2625" && deletes.Deletes[0].HashValue == "fake:d18381:5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4" &&
 		string(deletes.Deletes[0].RangeValue) == "JSI0YbyRLVmLKkLBiAKf5ctf8mWtn9U6CXCzuYmWkMk 5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4  8" {
 		return &empty.Empty{}, nil
@@ -91,7 +90,7 @@ func (s server) CreateTable(ctx context.Context, desc *TableDesc) (*empty.Empty,
 	return &empty.Empty{}, err
 }
 
-func (s server) DeleteTable(ctx context.Context, name *TableName) (*empty.Empty, error) {
+func (s server) DeleteTable(ctx context.Context, name *DeleteTableRequest) (*empty.Empty, error) {
 	if name.TableName == "chunk_2591" {
 		return &empty.Empty{}, nil
 	}
@@ -99,7 +98,7 @@ func (s server) DeleteTable(ctx context.Context, name *TableName) (*empty.Empty,
 	return &empty.Empty{}, err
 }
 
-func (s server) DescribeTable(ctx context.Context, name *TableName) (*DescribeTableResponse, error) {
+func (s server) DescribeTable(ctx context.Context, name *DescribeTableRequest) (*DescribeTableResponse, error) {
 	if name.TableName == "chunk_2591" {
 		return &DescribeTableResponse{
 			Desc: &TableDesc{
@@ -127,13 +126,9 @@ func (s server) UpdateTable(ctx context.Context, request *UpdateTableRequest) (*
 	return &empty.Empty{}, err
 }
 
-func (s server) Stop(ctx context.Context, empty *empty.Empty) (*empty.Empty, error) {
-	return empty, nil
-}
-
 // NewStorageClient returns a new StorageClient.
 func NewTestStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
-	grpcClient, _, err := connectToTestGrpcServer(cfg.Address)
+	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +143,7 @@ func NewTestStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageCli
 
 // NewTableClient returns a new TableClient.
 func NewTestTableClient(cfg Config) (*TableClient, error) {
-	grpcClient, _, err := connectToTestGrpcServer(cfg.Address)
+	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -166,29 +161,11 @@ func newTestStorageServer(cfg Config) (*server, error) {
 	return client, nil
 }
 
-func connectToTestGrpcServer(serverAddress string) (GrpcStoreClient, *grpc.ClientConn, error) {
-	params := keepalive.ClientParameters{
-		Time:                time.Second * 20,
-		Timeout:             time.Minute * 10,
-		PermitWithoutStream: true,
-	}
-	param := grpc.WithKeepaliveParams(params)
-	cc, err := grpc.Dial(serverAddress, param, grpc.WithInsecure())
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to dial grpc-store %s", serverAddress)
-	}
-	return NewGrpcStoreClient(cc), cc, nil
-}
-
-func createTestGrpcServer() {
+func createTestGrpcServer(t *testing.T) (func(), string) {
 	var cfg server
-	lis, err := net.Listen("tcp", "localhost:6688")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
+	lis, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
 	s := grpc.NewServer()
-	// Enable reflection to expose endpoints this server offers.
-	reflection.Register(s)
 
 	s1, err := newTestStorageServer(cfg.Cfg)
 	if err != nil {
@@ -200,4 +177,9 @@ func createTestGrpcServer() {
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
+	cleanup := func() {
+		s.GracefulStop()
+	}
+
+	return cleanup, lis.Addr().String()
 }

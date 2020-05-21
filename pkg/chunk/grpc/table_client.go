@@ -34,7 +34,7 @@ func (c *TableClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func (c *TableClient) DeleteTable(ctx context.Context, name string) error {
-	tableName := &TableName{TableName: name}
+	tableName := &DeleteTableRequest{TableName: name}
 	_, err := c.client.DeleteTable(ctx, tableName)
 	if err != nil {
 		return errors.WithStack(err)
@@ -43,7 +43,7 @@ func (c *TableClient) DeleteTable(ctx context.Context, name string) error {
 }
 
 func (c *TableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
-	tableName := &TableName{TableName: name}
+	tableName := &DescribeTableRequest{TableName: name}
 	tableDesc, err := c.client.DescribeTable(ctx, tableName)
 	if err != nil {
 		return desc, false, errors.WithStack(err)

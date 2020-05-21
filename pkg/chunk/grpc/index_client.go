@@ -33,14 +33,14 @@ func (s *StorageClient) NewWriteBatch() chunk.WriteBatch {
 
 func (s *StorageClient) BatchWrite(c context.Context, batch chunk.WriteBatch) error {
 	writeBatch := batch.(*WriteBatch)
-	batchWrites := &BatchWrites{Writes: writeBatch.Writes}
-	_, err := s.client.BatchWrite(context.Background(), batchWrites)
+	batchWrites := &WriteIndexRequest{Writes: writeBatch.Writes}
+	_, err := s.client.WriteIndex(context.Background(), batchWrites)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	batchDeletes := &BatchDeletes{Deletes: writeBatch.Deletes}
-	_, err = s.client.Delete(context.Background(), batchDeletes)
+	batchDeletes := &DeleteIndexRequest{Deletes: writeBatch.Deletes}
+	_, err = s.client.DeleteIndex(context.Background(), batchDeletes)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -53,7 +53,7 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback util.Callback) error {
-	indexQuery := &IndexQuery{
+	indexQuery := &QueryIndexRequest{
 		TableName:        query.TableName,
 		HashValue:        query.HashValue,
 		RangeValuePrefix: query.RangeValuePrefix,
@@ -61,7 +61,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		ValueEqual:       query.ValueEqual,
 		Immutable:        query.Immutable,
 	}
-	streamer, err := s.client.QueryPages(ctx, indexQuery)
+	streamer, err := s.client.QueryIndex(ctx, indexQuery)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -81,16 +81,16 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	return nil
 }
 
-func (r *ReadBatch) Iterator() chunk.ReadBatchIterator {
+func (r *QueryIndexResponse) Iterator() chunk.ReadBatchIterator {
 	return &grpcIter{
-		i:         -1,
-		ReadBatch: r,
+		i:                  -1,
+		QueryIndexResponse: r,
 	}
 }
 
 type grpcIter struct {
 	i int
-	*ReadBatch
+	*QueryIndexResponse
 }
 
 func (b *grpcIter) Next() bool {

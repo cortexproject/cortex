@@ -413,7 +413,14 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
-	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
+	t.Ruler, err = ruler.NewRuler(
+		t.Cfg.Ruler,
+		ruler.PromDelayedQueryFunc(engine),
+		queryable,
+		t.Distributor,
+		prometheus.DefaultRegisterer,
+		util.Logger,
+	)
 	if err != nil {
 		return
 	}

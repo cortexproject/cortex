@@ -110,7 +110,7 @@ Please make sure to review renamed metrics, and update your dashboards and alert
 * [BUGFIX] Fixed `version`, `revision` and `branch` labels exported by the `cortex_build_info` metric. #2468
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
- 
+
 ## 1.0.1 / 2020-04-23
 
 * [BUGFIX] Fix gaps when querying ingesters with replication factor = 3 and 2 ingesters in the cluster. #2503

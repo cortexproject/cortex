@@ -443,11 +443,13 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		expectedResponse *PrometheusResponse
 	}{
 		{
+			// should lookup cache
 			fakeLimits:       fakeLimits{},
 			Handler:          nil,
 			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
+			// should not lookup cache
 			fakeLimits: fakeLimitsWithMaxCacheFreshness{},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
@@ -475,7 +477,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			// create cache with nil handler
+			// create cache with handler
 			rc := rcm.Wrap(tc.Handler)
 			ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -486,7 +488,6 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			key := constSplitter(day).GenerateCacheKey("1", req)
 			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
 
-			// request should lookup cache.
 			resp, err := rc.Do(ctx, req)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResponse, resp)

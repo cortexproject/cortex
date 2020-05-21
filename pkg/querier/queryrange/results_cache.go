@@ -189,7 +189,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err == nil && len(extents) > 0 {
-		extents, err := s.filterRecentExtents(ctx, r, extents)
+		extents, err := s.filterRecentExtents(r, maxCacheFreshness, extents)
 		if err != nil {
 			return nil, err
 		}
@@ -422,17 +422,7 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	return requests, cachedResponses, nil
 }
 
-func (s resultsCache) filterRecentExtents(ctx context.Context, req Request, extents []Extent) ([]Extent, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// check if per-tenant cache freshness value is provided
-	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
-	if maxCacheFreshness == time.Duration(0) {
-		maxCacheFreshness = s.cfg.MaxCacheFreshness
-	}
+func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
 	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
 	for i := range extents {
 		// Never cache data for the latest freshness period.

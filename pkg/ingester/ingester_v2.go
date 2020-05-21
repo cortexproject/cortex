@@ -532,7 +532,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// Since ingester runs with a very limited TSDB retention, we can (and should) query
 	// metrics without any time range bound, otherwise when we receive a request with a time
 	// range older then the ingester's data we return an empty response instead of returning
 	// the currently known series.

@@ -17,6 +17,8 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v0.7.0         | 2020-03-09                                 | Marco Pracucci (@pracucci)                  |
 | v1.0.0         | 2020-03-31                                 | Goutham Veeramachaneni (@gouthamve)         |
 | v1.1.0         | 2020-05-11                                 | Peter Štibraný (@pstibrany)                 |
+| v1.2.0         | 2020-06-22                                 |                                             |
+| v1.3.0         | 2020-08-03                                 |                                             |
 
 ## Release shepherd responsibilities
 
@@ -61,6 +63,8 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
 
+Once your PR with release prepartion is approved, merge it to "release-X.Y" branch, and continue with publishing.
+
 ### Publish a release candidate
 
 To publish a release candidate:
@@ -70,7 +74,7 @@ To publish a release candidate:
 3. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 3. Create a pre-release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
-   - Build binaries with `make disk` and attach them to the release
+   - Build binaries with `make dist` and attach them to the release
 
 ### Publish a stable release
 

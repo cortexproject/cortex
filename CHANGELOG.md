@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0-rc.0 / 2020-05-13
+## 1.1.0 / 2020-05-21
 
 This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!
 
@@ -21,10 +21,10 @@ Please make sure to review renamed metrics, and update your dashboards and alert
   * `cortex_querier_bucket_store_blocks_meta_sync_duration_seconds` > `cortex_querier_blocks_meta_sync_duration_seconds`
   * `cortex_querier_bucket_store_blocks_meta_sync_consistency_delay_seconds` > `cortex_querier_blocks_meta_sync_consistency_delay_seconds`
 * [CHANGE] Experimental TSDB: Modified default values for `compactor.deletion-delay` option from 48h to 12h and `-experimental.tsdb.bucket-store.ignore-deletion-marks-delay` from 24h to 6h. #2414
-* [CHANGE] Experimental WAL: Default value of `-ingester.checkpoint-enabled` changed to `true`. #2416
+* [CHANGE] WAL: Default value of `-ingester.checkpoint-enabled` changed to `true`. #2416
 * [CHANGE] `trace_id` field in log files has been renamed to `traceID`. #2518
 * [CHANGE] Slow query log has a different output now. Previously used `url` field has been replaced with `host` and `path`, and query parameters are logged as individual log fields with `qs_` prefix. #2520
-* [CHANGE] Experimental WAL: WAL and checkpoint compression is now disabled. #2436
+* [CHANGE] WAL: WAL and checkpoint compression is now disabled. #2436
 * [CHANGE] Update in dependency `go-kit/kit` from `v0.9.0` to `v0.10.0`. HTML escaping disabled in JSON Logger. #2535
 * [CHANGE] Experimental TSDB: Removed `cortex_<service>_` prefix from Thanos objstore metrics and added `component` label to distinguish which Cortex component is doing API calls to the object storage when running in single-binary mode: #2568
   - `cortex_<service>_thanos_objstore_bucket_operations_total` renamed to `thanos_objstore_bucket_operations_total{component="<name>"}`

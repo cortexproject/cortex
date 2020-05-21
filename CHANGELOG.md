@@ -98,6 +98,7 @@
 * [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
 * [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
 * [BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. #2565
+* [BUGFIX] QueryFrontend: fixed a panic (`integer divide by zero`) in the query-frontend. The query-frontend now requires the `-querier.default-evaluation-interval` config to be set to the same value of the querier. #2603
 
 ## 1.0.1 / 2020-04-23
 

@@ -438,21 +438,21 @@ func TestResultsCacheRecent(t *testing.T) {
 func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
-		legacyCacheMaxFreshness time.Duration
+		legacyMaxCacheFreshness time.Duration
 		fakeLimits              Limits
 		Handler                 HandlerFunc
 		expectedResponse        *PrometheusResponse
 	}{
 		{
 			// should lookup cache because legacy cache max freshness will be applied
-			legacyCacheMaxFreshness: 5 * time.Second,
+			legacyMaxCacheFreshness: 5 * time.Second,
 			fakeLimits:              fakeLimits{},
 			Handler:                 nil,
 			expectedResponse:        mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
 			// should not lookup cache because per-tenant override will be applied
-			legacyCacheMaxFreshness: time.Duration(0),
+			legacyMaxCacheFreshness: time.Duration(0),
 			fakeLimits:              fakeLimitsHighMaxCacheFreshness{},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
@@ -465,7 +465,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
 
-			cfg.MaxCacheFreshness = tc.legacyCacheMaxFreshness
+			cfg.LegacyMaxCacheFreshness = tc.legacyMaxCacheFreshness
 
 			fakeLimits := tc.fakeLimits
 			rcm, _, err := NewResultsCacheMiddleware(

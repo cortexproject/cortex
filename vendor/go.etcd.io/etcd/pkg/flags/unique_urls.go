@@ -16,7 +16,6 @@ package flags
 
 import (
 	"flag"
-	"fmt"
 	"net/url"
 	"sort"
 	"strings"
@@ -77,7 +76,7 @@ func NewUniqueURLsWithExceptions(s string, exceptions ...string) *UniqueURLs {
 		return us
 	}
 	if err := us.Set(s); err != nil {
-		panic(fmt.Sprintf("new UniqueURLs should never fail: %v", err))
+		plog.Panicf("new UniqueURLs should never fail: %v", err)
 	}
 	return us
 }

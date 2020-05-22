@@ -14,13 +14,10 @@
 
 package flags
 
-import "go.uber.org/zap"
-
 // IgnoredFlag encapsulates a flag that may have been previously valid but is
 // now ignored. If an IgnoredFlag is set, a warning is printed and
 // operation continues.
 type IgnoredFlag struct {
-	lg   *zap.Logger
 	Name string
 }
 
@@ -30,9 +27,7 @@ func (f *IgnoredFlag) IsBoolFlag() bool {
 }
 
 func (f *IgnoredFlag) Set(s string) error {
-	if f.lg != nil {
-		f.lg.Warn("flag is no longer supported - ignoring", zap.String("flag-name", f.Name))
-	}
+	plog.Warningf(`flag "-%s" is no longer supported - ignoring.`, f.Name)
 	return nil
 }
 

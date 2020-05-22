@@ -147,6 +147,8 @@ type ServerConfig struct {
 	LoggerCore        zapcore.Core
 	LoggerWriteSyncer zapcore.WriteSyncer
 
+	Debug bool
+
 	ForceNewCluster bool
 
 	// EnableLeaseCheckpoint enables primary lessor to persist lease remainingTTL to prevent indefinite auto-renewal of long lived leases.

@@ -60,17 +60,25 @@ func (t *tokenJWT) info(ctx context.Context, token string, rev uint64) (*AuthInf
 	})
 
 	if err != nil {
-		t.lg.Warn(
-			"failed to parse a JWT token",
-			zap.String("token", token),
-			zap.Error(err),
-		)
+		if t.lg != nil {
+			t.lg.Warn(
+				"failed to parse a JWT token",
+				zap.String("token", token),
+				zap.Error(err),
+			)
+		} else {
+			plog.Warningf("failed to parse jwt token: %s", err)
+		}
 		return nil, false
 	}
 
 	claims, ok := parsed.Claims.(jwt.MapClaims)
 	if !parsed.Valid || !ok {
-		t.lg.Warn("invalid JWT token", zap.String("token", token))
+		if t.lg != nil {
+			t.lg.Warn("invalid JWT token", zap.String("token", token))
+		} else {
+			plog.Warningf("invalid jwt token: %s", token)
+		}
 		return nil, false
 	}
 
@@ -96,33 +104,42 @@ func (t *tokenJWT) assign(ctx context.Context, username string, revision uint64)
 
 	token, err := tk.SignedString(t.key)
 	if err != nil {
-		t.lg.Debug(
-			"failed to sign a JWT token",
-			zap.String("user-name", username),
-			zap.Uint64("revision", revision),
-			zap.Error(err),
-		)
+		if t.lg != nil {
+			t.lg.Debug(
+				"failed to sign a JWT token",
+				zap.String("user-name", username),
+				zap.Uint64("revision", revision),
+				zap.Error(err),
+			)
+		} else {
+			plog.Debugf("failed to sign jwt token: %s", err)
+		}
 		return "", err
 	}
 
-	t.lg.Debug(
-		"created/assigned a new JWT token",
-		zap.String("user-name", username),
-		zap.Uint64("revision", revision),
-		zap.String("token", token),
-	)
+	if t.lg != nil {
+		t.lg.Debug(
+			"created/assigned a new JWT token",
+			zap.String("user-name", username),
+			zap.Uint64("revision", revision),
+			zap.String("token", token),
+		)
+	} else {
+		plog.Debugf("jwt token: %s", token)
+	}
 	return token, err
 }
 
 func newTokenProviderJWT(lg *zap.Logger, optMap map[string]string) (*tokenJWT, error) {
-	if lg == nil {
-		lg = zap.NewNop()
-	}
 	var err error
 	var opts jwtOptions
 	err = opts.ParseWithDefaults(optMap)
 	if err != nil {
-		lg.Error("problem loading JWT options", zap.Error(err))
+		if lg != nil {
+			lg.Error("problem loading JWT options", zap.Error(err))
+		} else {
+			plog.Errorf("problem loading JWT options: %s", err)
+		}
 		return nil, ErrInvalidAuthOpts
 	}
 
@@ -133,7 +150,11 @@ func newTokenProviderJWT(lg *zap.Logger, optMap map[string]string) (*tokenJWT, e
 		}
 	}
 	if len(keys) > 0 {
-		lg.Warn("unknown JWT options", zap.Strings("keys", keys))
+		if lg != nil {
+			lg.Warn("unknown JWT options", zap.Strings("keys", keys))
+		} else {
+			plog.Warningf("unknown JWT options: %v", keys)
+		}
 	}
 
 	key, err := opts.Key()

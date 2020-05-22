@@ -40,9 +40,6 @@ type peerStatus struct {
 }
 
 func newPeerStatus(lg *zap.Logger, local, id types.ID) *peerStatus {
-	if lg == nil {
-		lg = zap.NewNop()
-	}
 	return &peerStatus{lg: lg, local: local, id: id}
 }
 
@@ -50,7 +47,11 @@ func (s *peerStatus) activate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.active {
-		s.lg.Info("peer became active", zap.String("peer-id", s.id.String()))
+		if s.lg != nil {
+			s.lg.Info("peer became active", zap.String("peer-id", s.id.String()))
+		} else {
+			plog.Infof("peer %s became active", s.id)
+		}
 		s.active = true
 		s.since = time.Now()
 
@@ -63,7 +64,12 @@ func (s *peerStatus) deactivate(failure failureType, reason string) {
 	defer s.mu.Unlock()
 	msg := fmt.Sprintf("failed to %s %s on %s (%s)", failure.action, s.id, failure.source, reason)
 	if s.active {
-		s.lg.Warn("peer became inactive (message send to peer failed)", zap.String("peer-id", s.id.String()), zap.Error(errors.New(msg)))
+		if s.lg != nil {
+			s.lg.Warn("peer became inactive (message send to peer failed)", zap.String("peer-id", s.id.String()), zap.Error(errors.New(msg)))
+		} else {
+			plog.Errorf(msg)
+			plog.Infof("peer %s became inactive (message send to peer failed)", s.id)
+		}
 		s.active = false
 		s.since = time.Time{}
 

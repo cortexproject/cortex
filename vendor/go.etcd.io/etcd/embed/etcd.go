@@ -42,12 +42,15 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"go.etcd.io/etcd/version"
 
+	"github.com/coreos/pkg/capnslog"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
+
+var plog = capnslog.NewPackageLogger("go.etcd.io/etcd", "embed")
 
 const (
 	// internal fd usage includes disk usage and transport usage.
@@ -110,18 +113,22 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		e = nil
 	}()
 
-	e.cfg.logger.Info(
-		"configuring peer listeners",
-		zap.Strings("listen-peer-urls", e.cfg.getLPURLs()),
-	)
+	if e.cfg.logger != nil {
+		e.cfg.logger.Info(
+			"configuring peer listeners",
+			zap.Strings("listen-peer-urls", e.cfg.getLPURLs()),
+		)
+	}
 	if e.Peers, err = configurePeerListeners(cfg); err != nil {
 		return e, err
 	}
 
-	e.cfg.logger.Info(
-		"configuring client listeners",
-		zap.Strings("listen-client-urls", e.cfg.getLCURLs()),
-	)
+	if e.cfg.logger != nil {
+		e.cfg.logger.Info(
+			"configuring client listeners",
+			zap.Strings("listen-client-urls", e.cfg.getLCURLs()),
+		)
+	}
 	if e.sctxs, err = configureClientListeners(cfg); err != nil {
 		return e, err
 	}
@@ -152,7 +159,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		return e, err
 	}
 
-	backendFreelistType := parseBackendFreelistType(cfg.BackendFreelistType)
+	backendFreelistType := parseBackendFreelistType(cfg.ExperimentalBackendFreelistType)
 
 	srvcfg := etcdserver.ServerConfig{
 		Name:                       cfg.Name,
@@ -194,6 +201,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		LoggerConfig:               cfg.loggerConfig,
 		LoggerCore:                 cfg.loggerCore,
 		LoggerWriteSyncer:          cfg.loggerWriteSyncer,
+		Debug:                      cfg.Debug,
 		ForceNewCluster:            cfg.ForceNewCluster,
 		EnableGRPCGateway:          cfg.EnableGRPCGateway,
 		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
@@ -229,78 +237,107 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		return e, err
 	}
 
-	e.cfg.logger.Info(
-		"now serving peer/client/metrics",
-		zap.String("local-member-id", e.Server.ID().String()),
-		zap.Strings("initial-advertise-peer-urls", e.cfg.getAPURLs()),
-		zap.Strings("listen-peer-urls", e.cfg.getLPURLs()),
-		zap.Strings("advertise-client-urls", e.cfg.getACURLs()),
-		zap.Strings("listen-client-urls", e.cfg.getLCURLs()),
-		zap.Strings("listen-metrics-urls", e.cfg.getMetricsURLs()),
-	)
+	if e.cfg.logger != nil {
+		e.cfg.logger.Info(
+			"now serving peer/client/metrics",
+			zap.String("local-member-id", e.Server.ID().String()),
+			zap.Strings("initial-advertise-peer-urls", e.cfg.getAPURLs()),
+			zap.Strings("listen-peer-urls", e.cfg.getLPURLs()),
+			zap.Strings("advertise-client-urls", e.cfg.getACURLs()),
+			zap.Strings("listen-client-urls", e.cfg.getLCURLs()),
+			zap.Strings("listen-metrics-urls", e.cfg.getMetricsURLs()),
+		)
+	}
 	serving = true
 	return e, nil
 }
 
 func print(lg *zap.Logger, ec Config, sc etcdserver.ServerConfig, memberInitialized bool) {
-	cors := make([]string, 0, len(ec.CORS))
-	for v := range ec.CORS {
-		cors = append(cors, v)
-	}
-	sort.Strings(cors)
+	// TODO: remove this after dropping "capnslog"
+	if lg == nil {
+		plog.Infof("name = %s", ec.Name)
+		if sc.ForceNewCluster {
+			plog.Infof("force new cluster")
+		}
+		plog.Infof("data dir = %s", sc.DataDir)
+		plog.Infof("member dir = %s", sc.MemberDir())
+		if sc.DedicatedWALDir != "" {
+			plog.Infof("dedicated WAL dir = %s", sc.DedicatedWALDir)
+		}
+		plog.Infof("heartbeat = %dms", sc.TickMs)
+		plog.Infof("election = %dms", sc.ElectionTicks*int(sc.TickMs))
+		plog.Infof("snapshot count = %d", sc.SnapshotCount)
+		if len(sc.DiscoveryURL) != 0 {
+			plog.Infof("discovery URL= %s", sc.DiscoveryURL)
+			if len(sc.DiscoveryProxy) != 0 {
+				plog.Infof("discovery proxy = %s", sc.DiscoveryProxy)
+			}
+		}
+		plog.Infof("advertise client URLs = %s", sc.ClientURLs)
+		if memberInitialized {
+			plog.Infof("initial advertise peer URLs = %s", sc.PeerURLs)
+			plog.Infof("initial cluster = %s", sc.InitialPeerURLsMap)
+		}
+	} else {
+		cors := make([]string, 0, len(ec.CORS))
+		for v := range ec.CORS {
+			cors = append(cors, v)
+		}
+		sort.Strings(cors)
 
-	hss := make([]string, 0, len(ec.HostWhitelist))
-	for v := range ec.HostWhitelist {
-		hss = append(hss, v)
-	}
-	sort.Strings(hss)
+		hss := make([]string, 0, len(ec.HostWhitelist))
+		for v := range ec.HostWhitelist {
+			hss = append(hss, v)
+		}
+		sort.Strings(hss)
 
-	quota := ec.QuotaBackendBytes
-	if quota == 0 {
-		quota = etcdserver.DefaultQuotaBytes
-	}
+		quota := ec.QuotaBackendBytes
+		if quota == 0 {
+			quota = etcdserver.DefaultQuotaBytes
+		}
 
-	lg.Info(
-		"starting an etcd server",
-		zap.String("etcd-version", version.Version),
-		zap.String("git-sha", version.GitSHA),
-		zap.String("go-version", runtime.Version()),
-		zap.String("go-os", runtime.GOOS),
-		zap.String("go-arch", runtime.GOARCH),
-		zap.Int("max-cpu-set", runtime.GOMAXPROCS(0)),
-		zap.Int("max-cpu-available", runtime.NumCPU()),
-		zap.Bool("member-initialized", memberInitialized),
-		zap.String("name", sc.Name),
-		zap.String("data-dir", sc.DataDir),
-		zap.String("wal-dir", ec.WalDir),
-		zap.String("wal-dir-dedicated", sc.DedicatedWALDir),
-		zap.String("member-dir", sc.MemberDir()),
-		zap.Bool("force-new-cluster", sc.ForceNewCluster),
-		zap.String("heartbeat-interval", fmt.Sprintf("%v", time.Duration(sc.TickMs)*time.Millisecond)),
-		zap.String("election-timeout", fmt.Sprintf("%v", time.Duration(sc.ElectionTicks*int(sc.TickMs))*time.Millisecond)),
-		zap.Bool("initial-election-tick-advance", sc.InitialElectionTickAdvance),
-		zap.Uint64("snapshot-count", sc.SnapshotCount),
-		zap.Uint64("snapshot-catchup-entries", sc.SnapshotCatchUpEntries),
-		zap.Strings("initial-advertise-peer-urls", ec.getAPURLs()),
-		zap.Strings("listen-peer-urls", ec.getLPURLs()),
-		zap.Strings("advertise-client-urls", ec.getACURLs()),
-		zap.Strings("listen-client-urls", ec.getLCURLs()),
-		zap.Strings("listen-metrics-urls", ec.getMetricsURLs()),
-		zap.Strings("cors", cors),
-		zap.Strings("host-whitelist", hss),
-		zap.String("initial-cluster", sc.InitialPeerURLsMap.String()),
-		zap.String("initial-cluster-state", ec.ClusterState),
-		zap.String("initial-cluster-token", sc.InitialClusterToken),
-		zap.Int64("quota-size-bytes", quota),
-		zap.Bool("pre-vote", sc.PreVote),
-		zap.Bool("initial-corrupt-check", sc.InitialCorruptCheck),
-		zap.String("corrupt-check-time-interval", sc.CorruptCheckTime.String()),
-		zap.String("auto-compaction-mode", sc.AutoCompactionMode),
-		zap.Duration("auto-compaction-retention", sc.AutoCompactionRetention),
-		zap.String("auto-compaction-interval", sc.AutoCompactionRetention.String()),
-		zap.String("discovery-url", sc.DiscoveryURL),
-		zap.String("discovery-proxy", sc.DiscoveryProxy),
-	)
+		lg.Info(
+			"starting an etcd server",
+			zap.String("etcd-version", version.Version),
+			zap.String("git-sha", version.GitSHA),
+			zap.String("go-version", runtime.Version()),
+			zap.String("go-os", runtime.GOOS),
+			zap.String("go-arch", runtime.GOARCH),
+			zap.Int("max-cpu-set", runtime.GOMAXPROCS(0)),
+			zap.Int("max-cpu-available", runtime.NumCPU()),
+			zap.Bool("member-initialized", memberInitialized),
+			zap.String("name", sc.Name),
+			zap.String("data-dir", sc.DataDir),
+			zap.String("wal-dir", ec.WalDir),
+			zap.String("wal-dir-dedicated", sc.DedicatedWALDir),
+			zap.String("member-dir", sc.MemberDir()),
+			zap.Bool("force-new-cluster", sc.ForceNewCluster),
+			zap.String("heartbeat-interval", fmt.Sprintf("%v", time.Duration(sc.TickMs)*time.Millisecond)),
+			zap.String("election-timeout", fmt.Sprintf("%v", time.Duration(sc.ElectionTicks*int(sc.TickMs))*time.Millisecond)),
+			zap.Bool("initial-election-tick-advance", sc.InitialElectionTickAdvance),
+			zap.Uint64("snapshot-count", sc.SnapshotCount),
+			zap.Uint64("snapshot-catchup-entries", sc.SnapshotCatchUpEntries),
+			zap.Strings("initial-advertise-peer-urls", ec.getAPURLs()),
+			zap.Strings("listen-peer-urls", ec.getLPURLs()),
+			zap.Strings("advertise-client-urls", ec.getACURLs()),
+			zap.Strings("listen-client-urls", ec.getLCURLs()),
+			zap.Strings("listen-metrics-urls", ec.getMetricsURLs()),
+			zap.Strings("cors", cors),
+			zap.Strings("host-whitelist", hss),
+			zap.String("initial-cluster", sc.InitialPeerURLsMap.String()),
+			zap.String("initial-cluster-state", ec.ClusterState),
+			zap.String("initial-cluster-token", sc.InitialClusterToken),
+			zap.Int64("quota-size-bytes", quota),
+			zap.Bool("pre-vote", sc.PreVote),
+			zap.Bool("initial-corrupt-check", sc.InitialCorruptCheck),
+			zap.String("corrupt-check-time-interval", sc.CorruptCheckTime.String()),
+			zap.String("auto-compaction-mode", sc.AutoCompactionMode),
+			zap.Duration("auto-compaction-retention", sc.AutoCompactionRetention),
+			zap.String("auto-compaction-interval", sc.AutoCompactionRetention.String()),
+			zap.String("discovery-url", sc.DiscoveryURL),
+			zap.String("discovery-proxy", sc.DiscoveryProxy),
+		)
+	}
 }
 
 // Config returns the current configuration.
@@ -319,10 +356,14 @@ func (e *Etcd) Close() {
 		zap.Strings("advertise-client-urls", e.cfg.getACURLs()),
 	}
 	lg := e.GetLogger()
-	lg.Info("closing etcd server", fields...)
+	if lg != nil {
+		lg.Info("closing etcd server", fields...)
+	}
 	defer func() {
-		lg.Info("closed etcd server", fields...)
-		lg.Sync()
+		if lg != nil {
+			lg.Info("closed etcd server", fields...)
+			lg.Sync()
+		}
 	}()
 
 	e.closeOnce.Do(func() { close(e.stopc) })
@@ -413,14 +454,22 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 		return nil, err
 	}
 	if err = cfg.PeerSelfCert(); err != nil {
-		cfg.logger.Fatal("failed to get peer self-signed certs", zap.Error(err))
+		if cfg.logger != nil {
+			cfg.logger.Fatal("failed to get peer self-signed certs", zap.Error(err))
+		} else {
+			plog.Fatalf("could not get certs (%v)", err)
+		}
 	}
 	if !cfg.PeerTLSInfo.Empty() {
-		cfg.logger.Info(
-			"starting with peer TLS",
-			zap.String("tls-info", fmt.Sprintf("%+v", cfg.PeerTLSInfo)),
-			zap.Strings("cipher-suites", cfg.CipherSuites),
-		)
+		if cfg.logger != nil {
+			cfg.logger.Info(
+				"starting with peer TLS",
+				zap.String("tls-info", fmt.Sprintf("%+v", cfg.PeerTLSInfo)),
+				zap.Strings("cipher-suites", cfg.CipherSuites),
+			)
+		} else {
+			plog.Infof("peerTLS: %s", cfg.PeerTLSInfo)
+		}
 	}
 
 	peers = make([]*peerListener, len(cfg.LPUrls))
@@ -430,11 +479,15 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 		}
 		for i := range peers {
 			if peers[i] != nil && peers[i].close != nil {
-				cfg.logger.Warn(
-					"closing peer listener",
-					zap.String("address", cfg.LPUrls[i].String()),
-					zap.Error(err),
-				)
+				if cfg.logger != nil {
+					cfg.logger.Warn(
+						"closing peer listener",
+						zap.String("address", cfg.LPUrls[i].String()),
+						zap.Error(err),
+					)
+				} else {
+					plog.Info("stopping listening for peers on ", cfg.LPUrls[i].String())
+				}
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 				peers[i].close(ctx)
 				cancel()
@@ -445,10 +498,18 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 	for i, u := range cfg.LPUrls {
 		if u.Scheme == "http" {
 			if !cfg.PeerTLSInfo.Empty() {
-				cfg.logger.Warn("scheme is HTTP while key and cert files are present; ignoring key and cert files", zap.String("peer-url", u.String()))
+				if cfg.logger != nil {
+					cfg.logger.Warn("scheme is HTTP while key and cert files are present; ignoring key and cert files", zap.String("peer-url", u.String()))
+				} else {
+					plog.Warningf("The scheme of peer url %s is HTTP while peer key/cert files are presented. Ignored peer key/cert files.", u.String())
+				}
 			}
 			if cfg.PeerTLSInfo.ClientCertAuth {
-				cfg.logger.Warn("scheme is HTTP while --peer-client-cert-auth is enabled; ignoring client cert auth for this URL", zap.String("peer-url", u.String()))
+				if cfg.logger != nil {
+					cfg.logger.Warn("scheme is HTTP while --peer-client-cert-auth is enabled; ignoring client cert auth for this URL", zap.String("peer-url", u.String()))
+				} else {
+					plog.Warningf("The scheme of peer url %s is HTTP while client cert auth (--peer-client-cert-auth) is enabled. Ignored client cert auth for this url.", u.String())
+				}
 			}
 		}
 		peers[i] = &peerListener{close: func(context.Context) error { return nil }}
@@ -490,15 +551,19 @@ func (e *Etcd) servePeers() (err error) {
 			// gracefully shutdown http.Server
 			// close open listeners, idle connections
 			// until context cancel or time-out
-			e.cfg.logger.Info(
-				"stopping serving peer traffic",
-				zap.String("address", u),
-			)
+			if e.cfg.logger != nil {
+				e.cfg.logger.Info(
+					"stopping serving peer traffic",
+					zap.String("address", u),
+				)
+			}
 			stopServers(ctx, &servers{secure: peerTLScfg != nil, grpc: gs, http: srv})
-			e.cfg.logger.Info(
-				"stopped serving peer traffic",
-				zap.String("address", u),
-			)
+			if e.cfg.logger != nil {
+				e.cfg.logger.Info(
+					"stopped serving peer traffic",
+					zap.String("address", u),
+				)
+			}
 			return nil
 		}
 	}
@@ -507,10 +572,14 @@ func (e *Etcd) servePeers() (err error) {
 	for _, pl := range e.Peers {
 		go func(l *peerListener) {
 			u := l.Addr().String()
-			e.cfg.logger.Info(
-				"serving peer traffic",
-				zap.String("address", u),
-			)
+			if e.cfg.logger != nil {
+				e.cfg.logger.Info(
+					"serving peer traffic",
+					zap.String("address", u),
+				)
+			} else {
+				plog.Info("listening for peers on ", u)
+			}
 			e.errHandler(l.serve())
 		}(pl)
 	}
@@ -522,10 +591,18 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 		return nil, err
 	}
 	if err = cfg.ClientSelfCert(); err != nil {
-		cfg.logger.Fatal("failed to get client self-signed certs", zap.Error(err))
+		if cfg.logger != nil {
+			cfg.logger.Fatal("failed to get client self-signed certs", zap.Error(err))
+		} else {
+			plog.Fatalf("could not get certs (%v)", err)
+		}
 	}
 	if cfg.EnablePprof {
-		cfg.logger.Info("pprof is enabled", zap.String("path", debugutil.HTTPPrefixPProf))
+		if cfg.logger != nil {
+			cfg.logger.Info("pprof is enabled", zap.String("path", debugutil.HTTPPrefixPProf))
+		} else {
+			plog.Infof("pprof is enabled under %s", debugutil.HTTPPrefixPProf)
+		}
 	}
 
 	sctxs = make(map[string]*serveCtx)
@@ -533,10 +610,18 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 		sctx := newServeCtx(cfg.logger)
 		if u.Scheme == "http" || u.Scheme == "unix" {
 			if !cfg.ClientTLSInfo.Empty() {
-				cfg.logger.Warn("scheme is HTTP while key and cert files are present; ignoring key and cert files", zap.String("client-url", u.String()))
+				if cfg.logger != nil {
+					cfg.logger.Warn("scheme is HTTP while key and cert files are present; ignoring key and cert files", zap.String("client-url", u.String()))
+				} else {
+					plog.Warningf("The scheme of client url %s is HTTP while peer key/cert files are presented. Ignored key/cert files.", u.String())
+				}
 			}
 			if cfg.ClientTLSInfo.ClientCertAuth {
-				cfg.logger.Warn("scheme is HTTP while --client-cert-auth is enabled; ignoring client cert auth for this URL", zap.String("client-url", u.String()))
+				if cfg.logger != nil {
+					cfg.logger.Warn("scheme is HTTP while --client-cert-auth is enabled; ignoring client cert auth for this URL", zap.String("client-url", u.String()))
+				} else {
+					plog.Warningf("The scheme of client url %s is HTTP while client cert auth (--client-cert-auth) is enabled. Ignored client cert auth for this url.", u.String())
+				}
 			}
 		}
 		if (u.Scheme == "https" || u.Scheme == "unixs") && cfg.ClientTLSInfo.Empty() {
@@ -568,11 +653,15 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 
 		if fdLimit, fderr := runtimeutil.FDLimit(); fderr == nil {
 			if fdLimit <= reservedInternalFDNum {
-				cfg.logger.Fatal(
-					"file descriptor limit of etcd process is too low; please set higher",
-					zap.Uint64("limit", fdLimit),
-					zap.Int("recommended-limit", reservedInternalFDNum),
-				)
+				if cfg.logger != nil {
+					cfg.logger.Fatal(
+						"file descriptor limit of etcd process is too low; please set higher",
+						zap.Uint64("limit", fdLimit),
+						zap.Int("recommended-limit", reservedInternalFDNum),
+					)
+				} else {
+					plog.Fatalf("file descriptor limit[%d] of etcd process is too low, and should be set higher than %d to ensure internal usage", fdLimit, reservedInternalFDNum)
+				}
 			}
 			sctx.l = transport.LimitListener(sctx.l, int(fdLimit-reservedInternalFDNum))
 		}
@@ -588,20 +677,24 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 				return
 			}
 			sctx.l.Close()
-			cfg.logger.Warn(
-				"closing peer listener",
-				zap.String("address", u.Host),
-				zap.Error(err),
-			)
+			if cfg.logger != nil {
+				cfg.logger.Warn(
+					"closing peer listener",
+					zap.String("address", u.Host),
+					zap.Error(err),
+				)
+			} else {
+				plog.Info("stopping listening for client requests on ", u.Host)
+			}
 		}()
 		for k := range cfg.UserHandlers {
 			sctx.userHandlers[k] = cfg.UserHandlers[k]
 		}
 		sctx.serviceRegister = cfg.ServiceRegister
-		if cfg.EnablePprof || cfg.LogLevel == "debug" {
+		if cfg.EnablePprof || cfg.Debug {
 			sctx.registerPprof()
 		}
-		if cfg.LogLevel == "debug" {
+		if cfg.Debug {
 			sctx.registerTrace()
 		}
 		sctxs[addr] = sctx
@@ -611,11 +704,15 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 
 func (e *Etcd) serveClients() (err error) {
 	if !e.cfg.ClientTLSInfo.Empty() {
-		e.cfg.logger.Info(
-			"starting with client TLS",
-			zap.String("tls-info", fmt.Sprintf("%+v", e.cfg.ClientTLSInfo)),
-			zap.Strings("cipher-suites", e.cfg.CipherSuites),
-		)
+		if e.cfg.logger != nil {
+			e.cfg.logger.Info(
+				"starting with client TLS",
+				zap.String("tls-info", fmt.Sprintf("%+v", e.cfg.ClientTLSInfo)),
+				zap.Strings("cipher-suites", e.cfg.CipherSuites),
+			)
+		} else {
+			plog.Infof("ClientTLS: %s", e.cfg.ClientTLSInfo)
+		}
 	}
 
 	// Start a client server goroutine for each listen address
@@ -629,7 +726,7 @@ func (e *Etcd) serveClients() (err error) {
 		}
 	} else {
 		mux := http.NewServeMux()
-		etcdhttp.HandleBasic(e.cfg.logger, mux, e.Server)
+		etcdhttp.HandleBasic(mux, e.Server)
 		h = mux
 	}
 
@@ -664,7 +761,7 @@ func (e *Etcd) serveMetrics() (err error) {
 
 	if len(e.cfg.ListenMetricsUrls) > 0 {
 		metricsMux := http.NewServeMux()
-		etcdhttp.HandleMetricsHealth(e.cfg.logger, metricsMux, e.Server)
+		etcdhttp.HandleMetricsHealth(metricsMux, e.Server)
 
 		for _, murl := range e.cfg.ListenMetricsUrls {
 			tlsInfo := &e.cfg.ClientTLSInfo
@@ -677,10 +774,14 @@ func (e *Etcd) serveMetrics() (err error) {
 			}
 			e.metricsListeners = append(e.metricsListeners, ml)
 			go func(u url.URL, ln net.Listener) {
-				e.cfg.logger.Info(
-					"serving metrics",
-					zap.String("address", u.String()),
-				)
+				if e.cfg.logger != nil {
+					e.cfg.logger.Info(
+						"serving metrics",
+						zap.String("address", u.String()),
+					)
+				} else {
+					plog.Info("listening for metrics on ", u.String())
+				}
 				e.errHandler(http.Serve(ln, metricsMux))
 			}(murl, ml)
 		}
@@ -710,7 +811,7 @@ func (e *Etcd) GetLogger() *zap.Logger {
 
 func parseCompactionRetention(mode, retention string) (ret time.Duration, err error) {
 	h, err := strconv.Atoi(retention)
-	if err == nil && h >= 0 {
+	if err == nil {
 		switch mode {
 		case CompactorModeRevision:
 			ret = time.Duration(int64(h))

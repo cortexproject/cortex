@@ -16,7 +16,6 @@ package flags
 
 import (
 	"flag"
-	"fmt"
 	"sort"
 	"strings"
 )
@@ -42,7 +41,7 @@ func NewStringsValue(s string) (ss *StringsValue) {
 	}
 	ss = new(StringsValue)
 	if err := ss.Set(s); err != nil {
-		panic(fmt.Sprintf("new StringsValue should never fail: %v", err))
+		plog.Panicf("new StringsValue should never fail: %v", err)
 	}
 	return ss
 }

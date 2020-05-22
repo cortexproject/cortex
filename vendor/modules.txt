@@ -121,8 +121,10 @@ github.com/cespare/xxhash
 github.com/cespare/xxhash/v2
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
-# github.com/coreos/go-systemd/v22 v22.0.0
-github.com/coreos/go-systemd/v22/journal
+# github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
+github.com/coreos/go-systemd/journal
+# github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
+github.com/coreos/pkg/capnslog
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
@@ -608,7 +610,7 @@ github.com/weaveworks/promrus
 github.com/xiang90/probing
 # go.etcd.io/bbolt v1.3.4
 go.etcd.io/bbolt
-# go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
+# go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 go.etcd.io/etcd/auth
 go.etcd.io/etcd/auth/authpb
 go.etcd.io/etcd/client
@@ -624,7 +626,6 @@ go.etcd.io/etcd/etcdserver
 go.etcd.io/etcd/etcdserver/api
 go.etcd.io/etcd/etcdserver/api/etcdhttp
 go.etcd.io/etcd/etcdserver/api/membership
-go.etcd.io/etcd/etcdserver/api/membership/membershippb
 go.etcd.io/etcd/etcdserver/api/rafthttp
 go.etcd.io/etcd/etcdserver/api/snap
 go.etcd.io/etcd/etcdserver/api/snap/snappb
@@ -647,7 +648,6 @@ go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb
 go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb/gw
 go.etcd.io/etcd/etcdserver/api/v3rpc
 go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes
-go.etcd.io/etcd/etcdserver/cindex
 go.etcd.io/etcd/etcdserver/etcdserverpb
 go.etcd.io/etcd/etcdserver/etcdserverpb/gw
 go.etcd.io/etcd/lease

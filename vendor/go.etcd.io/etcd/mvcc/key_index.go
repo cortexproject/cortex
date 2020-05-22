@@ -78,13 +78,17 @@ func (ki *keyIndex) put(lg *zap.Logger, main int64, sub int64) {
 	rev := revision{main: main, sub: sub}
 
 	if !rev.GreaterThan(ki.modified) {
-		lg.Panic(
-			"'put' with an unexpected smaller revision",
-			zap.Int64("given-revision-main", rev.main),
-			zap.Int64("given-revision-sub", rev.sub),
-			zap.Int64("modified-revision-main", ki.modified.main),
-			zap.Int64("modified-revision-sub", ki.modified.sub),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'put' with an unexpected smaller revision",
+				zap.Int64("given-revision-main", rev.main),
+				zap.Int64("given-revision-sub", rev.sub),
+				zap.Int64("modified-revision-main", ki.modified.main),
+				zap.Int64("modified-revision-sub", ki.modified.sub),
+			)
+		} else {
+			plog.Panicf("store.keyindex: put with unexpected smaller revision [%v / %v]", rev, ki.modified)
+		}
 	}
 	if len(ki.generations) == 0 {
 		ki.generations = append(ki.generations, generation{})
@@ -101,10 +105,14 @@ func (ki *keyIndex) put(lg *zap.Logger, main int64, sub int64) {
 
 func (ki *keyIndex) restore(lg *zap.Logger, created, modified revision, ver int64) {
 	if len(ki.generations) != 0 {
-		lg.Panic(
-			"'restore' got an unexpected non-empty generations",
-			zap.Int("generations-size", len(ki.generations)),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'restore' got an unexpected non-empty generations",
+				zap.Int("generations-size", len(ki.generations)),
+			)
+		} else {
+			plog.Panicf("store.keyindex: cannot restore non-empty keyIndex")
+		}
 	}
 
 	ki.modified = modified
@@ -118,10 +126,14 @@ func (ki *keyIndex) restore(lg *zap.Logger, created, modified revision, ver int6
 // It returns ErrRevisionNotFound when tombstone on an empty generation.
 func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 	if ki.isEmpty() {
-		lg.Panic(
-			"'tombstone' got an unexpected empty keyIndex",
-			zap.String("key", string(ki.key)),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'tombstone' got an unexpected empty keyIndex",
+				zap.String("key", string(ki.key)),
+			)
+		} else {
+			plog.Panicf("store.keyindex: unexpected tombstone on empty keyIndex %s", string(ki.key))
+		}
 	}
 	if ki.generations[len(ki.generations)-1].isEmpty() {
 		return ErrRevisionNotFound
@@ -136,10 +148,14 @@ func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 // Rev must be higher than or equal to the given atRev.
 func (ki *keyIndex) get(lg *zap.Logger, atRev int64) (modified, created revision, ver int64, err error) {
 	if ki.isEmpty() {
-		lg.Panic(
-			"'get' got an unexpected empty keyIndex",
-			zap.String("key", string(ki.key)),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'get' got an unexpected empty keyIndex",
+				zap.String("key", string(ki.key)),
+			)
+		} else {
+			plog.Panicf("store.keyindex: unexpected get on empty keyIndex %s", string(ki.key))
+		}
 	}
 	g := ki.findGeneration(atRev)
 	if g.isEmpty() {
@@ -159,10 +175,14 @@ func (ki *keyIndex) get(lg *zap.Logger, atRev int64) (modified, created revision
 // main revision.
 func (ki *keyIndex) since(lg *zap.Logger, rev int64) []revision {
 	if ki.isEmpty() {
-		lg.Panic(
-			"'since' got an unexpected empty keyIndex",
-			zap.String("key", string(ki.key)),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'since' got an unexpected empty keyIndex",
+				zap.String("key", string(ki.key)),
+			)
+		} else {
+			plog.Panicf("store.keyindex: unexpected get on empty keyIndex %s", string(ki.key))
+		}
 	}
 	since := revision{rev, 0}
 	var gi int
@@ -203,10 +223,14 @@ func (ki *keyIndex) since(lg *zap.Logger, rev int64) []revision {
 // If a generation becomes empty during compaction, it will be removed.
 func (ki *keyIndex) compact(lg *zap.Logger, atRev int64, available map[revision]struct{}) {
 	if ki.isEmpty() {
-		lg.Panic(
-			"'compact' got an unexpected empty keyIndex",
-			zap.String("key", string(ki.key)),
-		)
+		if lg != nil {
+			lg.Panic(
+				"'compact' got an unexpected empty keyIndex",
+				zap.String("key", string(ki.key)),
+			)
+		} else {
+			plog.Panicf("store.keyindex: unexpected compact on empty keyIndex %s", string(ki.key))
+		}
 	}
 
 	genIdx, revIndex := ki.doCompact(atRev, available)

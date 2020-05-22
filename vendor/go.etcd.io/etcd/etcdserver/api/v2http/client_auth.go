@@ -44,7 +44,11 @@ func hasWriteRootAccess(lg *zap.Logger, sec v2auth.Store, r *http.Request, clien
 func userFromBasicAuth(lg *zap.Logger, sec v2auth.Store, r *http.Request) *v2auth.User {
 	username, password, ok := r.BasicAuth()
 	if !ok {
-		lg.Warn("malformed basic auth encoding")
+		if lg != nil {
+			lg.Warn("malformed basic auth encoding")
+		} else {
+			plog.Warningf("auth: malformed basic auth encoding")
+		}
 		return nil
 	}
 	user, err := sec.GetUser(username)
@@ -54,7 +58,11 @@ func userFromBasicAuth(lg *zap.Logger, sec v2auth.Store, r *http.Request) *v2aut
 
 	ok = sec.CheckPassword(user, password)
 	if !ok {
-		lg.Warn("incorrect password", zap.String("user-name", username))
+		if lg != nil {
+			lg.Warn("incorrect password", zap.String("user-name", username))
+		} else {
+			plog.Warningf("auth: incorrect password for user: %s", username)
+		}
 		return nil
 	}
 	return &user
@@ -67,14 +75,22 @@ func userFromClientCertificate(lg *zap.Logger, sec v2auth.Store, r *http.Request
 
 	for _, chains := range r.TLS.VerifiedChains {
 		for _, chain := range chains {
-			lg.Debug("found common name", zap.String("common-name", chain.Subject.CommonName))
+			if lg != nil {
+				lg.Debug("found common name", zap.String("common-name", chain.Subject.CommonName))
+			} else {
+				plog.Debugf("auth: found common name %s.\n", chain.Subject.CommonName)
+			}
 			user, err := sec.GetUser(chain.Subject.CommonName)
 			if err == nil {
-				lg.Debug(
-					"authenticated a user via common name",
-					zap.String("user-name", user.User),
-					zap.String("common-name", chain.Subject.CommonName),
-				)
+				if lg != nil {
+					lg.Debug(
+						"authenticated a user via common name",
+						zap.String("user-name", user.User),
+						zap.String("common-name", chain.Subject.CommonName),
+					)
+				} else {
+					plog.Debugf("auth: authenticated user %s by cert common name.", user.User)
+				}
 				return &user
 			}
 		}
@@ -110,12 +126,16 @@ func hasRootAccess(lg *zap.Logger, sec v2auth.Store, r *http.Request, clientCert
 		}
 	}
 
-	lg.Warn(
-		"a user does not have root role for resource",
-		zap.String("root-user", rootUser.User),
-		zap.String("root-role-name", v2auth.RootRoleName),
-		zap.String("resource-path", r.URL.Path),
-	)
+	if lg != nil {
+		lg.Warn(
+			"a user does not have root role for resource",
+			zap.String("root-user", rootUser.User),
+			zap.String("root-role-name", v2auth.RootRoleName),
+			zap.String("resource-path", r.URL.Path),
+		)
+	} else {
+		plog.Warningf("auth: user %s does not have the %s role for resource %s.", rootUser.User, v2auth.RootRoleName, r.URL.Path)
+	}
 	return false
 }
 
@@ -158,11 +178,15 @@ func hasKeyPrefixAccess(lg *zap.Logger, sec v2auth.Store, r *http.Request, key s
 		}
 	}
 
-	lg.Warn(
-		"invalid access for user on key",
-		zap.String("user-name", user.User),
-		zap.String("key", key),
-	)
+	if lg != nil {
+		lg.Warn(
+			"invalid access for user on key",
+			zap.String("user-name", user.User),
+			zap.String("key", key),
+		)
+	} else {
+		plog.Warningf("auth: invalid access for user %s on key %s.", user.User, key)
+	}
 	return false
 }
 
@@ -176,22 +200,30 @@ func hasGuestAccess(lg *zap.Logger, sec v2auth.Store, r *http.Request, key strin
 		return true
 	}
 
-	lg.Warn(
-		"invalid access for a guest role on key",
-		zap.String("role-name", v2auth.GuestRoleName),
-		zap.String("key", key),
-	)
+	if lg != nil {
+		lg.Warn(
+			"invalid access for a guest role on key",
+			zap.String("role-name", v2auth.GuestRoleName),
+			zap.String("key", key),
+		)
+	} else {
+		plog.Warningf("auth: invalid access for unauthenticated user on resource %s.", key)
+	}
 	return false
 }
 
 func writeNoAuth(lg *zap.Logger, w http.ResponseWriter, r *http.Request) {
 	herr := httptypes.NewHTTPError(http.StatusUnauthorized, "Insufficient credentials")
 	if err := herr.WriteTo(w); err != nil {
-		lg.Debug(
-			"failed to write v2 HTTP error",
-			zap.String("remote-addr", r.RemoteAddr),
-			zap.Error(err),
-		)
+		if lg != nil {
+			lg.Debug(
+				"failed to write v2 HTTP error",
+				zap.String("remote-addr", r.RemoteAddr),
+				zap.Error(err),
+			)
+		} else {
+			plog.Debugf("error writing HTTPError (%v) to %s", err, r.RemoteAddr)
+		}
 	}
 }
 
@@ -245,11 +277,15 @@ func (sh *authHandler) baseRoles(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(rolesCollections)
 
 	if err != nil {
-		sh.lg.Warn(
-			"failed to encode base roles",
-			zap.String("url", r.URL.String()),
-			zap.Error(err),
-		)
+		if sh.lg != nil {
+			sh.lg.Warn(
+				"failed to encode base roles",
+				zap.String("url", r.URL.String()),
+				zap.Error(err),
+			)
+		} else {
+			plog.Warningf("baseRoles error encoding on %s", r.URL)
+		}
 		writeError(sh.lg, w, r, err)
 		return
 	}
@@ -291,11 +327,15 @@ func (sh *authHandler) forRole(w http.ResponseWriter, r *http.Request, role stri
 		}
 		err = json.NewEncoder(w).Encode(data)
 		if err != nil {
-			sh.lg.Warn(
-				"failed to encode a role",
-				zap.String("url", r.URL.String()),
-				zap.Error(err),
-			)
+			if sh.lg != nil {
+				sh.lg.Warn(
+					"failed to encode a role",
+					zap.String("url", r.URL.String()),
+					zap.Error(err),
+				)
+			} else {
+				plog.Warningf("forRole error encoding on %s", r.URL)
+			}
 			return
 		}
 		return
@@ -338,11 +378,15 @@ func (sh *authHandler) forRole(w http.ResponseWriter, r *http.Request, role stri
 
 		err = json.NewEncoder(w).Encode(out)
 		if err != nil {
-			sh.lg.Warn(
-				"failed to encode a role",
-				zap.String("url", r.URL.String()),
-				zap.Error(err),
-			)
+			if sh.lg != nil {
+				sh.lg.Warn(
+					"failed to encode a role",
+					zap.String("url", r.URL.String()),
+					zap.Error(err),
+				)
+			} else {
+				plog.Warningf("forRole error encoding on %s", r.URL)
+			}
 			return
 		}
 		return
@@ -415,11 +459,15 @@ func (sh *authHandler) baseUsers(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(ucs)
 
 	if err != nil {
-		sh.lg.Warn(
-			"failed to encode users",
-			zap.String("url", r.URL.String()),
-			zap.Error(err),
-		)
+		if sh.lg != nil {
+			sh.lg.Warn(
+				"failed to encode users",
+				zap.String("url", r.URL.String()),
+				zap.Error(err),
+			)
+		} else {
+			plog.Warningf("baseUsers error encoding on %s", r.URL)
+		}
 		writeError(sh.lg, w, r, err)
 		return
 	}
@@ -479,11 +527,15 @@ func (sh *authHandler) forUser(w http.ResponseWriter, r *http.Request, user stri
 		err = json.NewEncoder(w).Encode(uwr)
 
 		if err != nil {
-			sh.lg.Warn(
-				"failed to encode roles",
-				zap.String("url", r.URL.String()),
-				zap.Error(err),
-			)
+			if sh.lg != nil {
+				sh.lg.Warn(
+					"failed to encode roles",
+					zap.String("url", r.URL.String()),
+					zap.Error(err),
+				)
+			} else {
+				plog.Warningf("forUser error encoding on %s", r.URL)
+			}
 			return
 		}
 		return
@@ -542,11 +594,15 @@ func (sh *authHandler) forUser(w http.ResponseWriter, r *http.Request, user stri
 
 		err = json.NewEncoder(w).Encode(out)
 		if err != nil {
-			sh.lg.Warn(
-				"failed to encode a user",
-				zap.String("url", r.URL.String()),
-				zap.Error(err),
-			)
+			if sh.lg != nil {
+				sh.lg.Warn(
+					"failed to encode a user",
+					zap.String("url", r.URL.String()),
+					zap.Error(err),
+				)
+			} else {
+				plog.Warningf("forUser error encoding on %s", r.URL)
+			}
 			return
 		}
 		return
@@ -580,11 +636,15 @@ func (sh *authHandler) enableDisable(w http.ResponseWriter, r *http.Request) {
 		jsonDict := enabled{isEnabled}
 		err := json.NewEncoder(w).Encode(jsonDict)
 		if err != nil {
-			sh.lg.Warn(
-				"failed to encode a auth state",
-				zap.String("url", r.URL.String()),
-				zap.Error(err),
-			)
+			if sh.lg != nil {
+				sh.lg.Warn(
+					"failed to encode a auth state",
+					zap.String("url", r.URL.String()),
+					zap.Error(err),
+				)
+			} else {
+				plog.Warningf("error encoding auth state on %s", r.URL)
+			}
 		}
 
 	case "PUT":

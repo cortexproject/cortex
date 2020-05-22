@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"github.com/go-kit/kit/log/level"
 	"strings"
 	"time"
-
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -17,12 +16,14 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -86,7 +87,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StoreGatewayAddresses, "experimental.querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the experimental blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	// TODO: Remove this flag in v1.4.0.
-	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations. Please use -querier.lookback-delta instead.")
 }
 
 // Validate the config
@@ -145,6 +146,9 @@ func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, 
 		// If the old flag was set to some other value than the default, it means
 		// the old flag was used and not the new flag.
 		lookbackDelta = cfg.legacyLookbackDelta
+
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(util.Logger).Log("msg", "Using deprecated flag -promql.lookback-delta, use -querier.lookback-delta instead")
 	}
 
 	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)

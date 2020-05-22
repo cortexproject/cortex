@@ -54,8 +54,9 @@ require (
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
 	go.etcd.io/bbolt v1.3.4
-	go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
+	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.6.0
+	go.uber.org/zap v1.14.1 // indirect
 	golang.org/x/net v0.0.0-20200301022130-244492dfa37a
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0

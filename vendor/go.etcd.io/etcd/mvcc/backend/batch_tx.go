@@ -71,11 +71,15 @@ func (t *batchTx) RUnlock() {
 func (t *batchTx) UnsafeCreateBucket(name []byte) {
 	_, err := t.tx.CreateBucket(name)
 	if err != nil && err != bolt.ErrBucketExists {
-		t.backend.lg.Fatal(
-			"failed to create a bucket",
-			zap.String("bucket-name", string(name)),
-			zap.Error(err),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to create a bucket",
+				zap.String("bucket-name", string(name)),
+				zap.Error(err),
+			)
+		} else {
+			plog.Fatalf("cannot create bucket %s (%v)", name, err)
+		}
 	}
 	t.pending++
 }
@@ -93,10 +97,14 @@ func (t *batchTx) UnsafeSeqPut(bucketName []byte, key []byte, value []byte) {
 func (t *batchTx) unsafePut(bucketName []byte, key []byte, value []byte, seq bool) {
 	bucket := t.tx.Bucket(bucketName)
 	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.String("bucket-name", string(bucketName)),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to find a bucket",
+				zap.String("bucket-name", string(bucketName)),
+			)
+		} else {
+			plog.Fatalf("bucket %s does not exist", bucketName)
+		}
 	}
 	if seq {
 		// it is useful to increase fill percent when the workloads are mostly append-only.
@@ -104,11 +112,15 @@ func (t *batchTx) unsafePut(bucketName []byte, key []byte, value []byte, seq boo
 		bucket.FillPercent = 0.9
 	}
 	if err := bucket.Put(key, value); err != nil {
-		t.backend.lg.Fatal(
-			"failed to write to a bucket",
-			zap.String("bucket-name", string(bucketName)),
-			zap.Error(err),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to write to a bucket",
+				zap.String("bucket-name", string(bucketName)),
+				zap.Error(err),
+			)
+		} else {
+			plog.Fatalf("cannot put key into bucket (%v)", err)
+		}
 	}
 	t.pending++
 }
@@ -117,10 +129,14 @@ func (t *batchTx) unsafePut(bucketName []byte, key []byte, value []byte, seq boo
 func (t *batchTx) UnsafeRange(bucketName, key, endKey []byte, limit int64) ([][]byte, [][]byte) {
 	bucket := t.tx.Bucket(bucketName)
 	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.String("bucket-name", string(bucketName)),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to find a bucket",
+				zap.String("bucket-name", string(bucketName)),
+			)
+		} else {
+			plog.Fatalf("bucket %s does not exist", bucketName)
+		}
 	}
 	return unsafeRange(bucket.Cursor(), key, endKey, limit)
 }
@@ -151,18 +167,26 @@ func unsafeRange(c *bolt.Cursor, key, endKey []byte, limit int64) (keys [][]byte
 func (t *batchTx) UnsafeDelete(bucketName []byte, key []byte) {
 	bucket := t.tx.Bucket(bucketName)
 	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.String("bucket-name", string(bucketName)),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to find a bucket",
+				zap.String("bucket-name", string(bucketName)),
+			)
+		} else {
+			plog.Fatalf("bucket %s does not exist", bucketName)
+		}
 	}
 	err := bucket.Delete(key)
 	if err != nil {
-		t.backend.lg.Fatal(
-			"failed to delete a key",
-			zap.String("bucket-name", string(bucketName)),
-			zap.Error(err),
-		)
+		if t.backend.lg != nil {
+			t.backend.lg.Fatal(
+				"failed to delete a key",
+				zap.String("bucket-name", string(bucketName)),
+				zap.Error(err),
+			)
+		} else {
+			plog.Fatalf("cannot delete key from bucket (%v)", err)
+		}
 	}
 	t.pending++
 }
@@ -220,7 +244,11 @@ func (t *batchTx) commit(stop bool) {
 
 		t.pending = 0
 		if err != nil {
-			t.backend.lg.Fatal("failed to commit tx", zap.Error(err))
+			if t.backend.lg != nil {
+				t.backend.lg.Fatal("failed to commit tx", zap.Error(err))
+			} else {
+				plog.Fatalf("cannot commit tx (%s)", err)
+			}
 		}
 	}
 	if !stop {
@@ -283,7 +311,11 @@ func (t *batchTxBuffered) unsafeCommit(stop bool) {
 		go func(tx *bolt.Tx, wg *sync.WaitGroup) {
 			wg.Wait()
 			if err := tx.Rollback(); err != nil {
-				t.backend.lg.Fatal("failed to rollback tx", zap.Error(err))
+				if t.backend.lg != nil {
+					t.backend.lg.Fatal("failed to rollback tx", zap.Error(err))
+				} else {
+					plog.Fatalf("cannot rollback tx (%s)", err)
+				}
 			}
 		}(t.backend.readTx.tx, t.backend.readTx.txWg)
 		t.backend.readTx.reset()

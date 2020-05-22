@@ -19,14 +19,11 @@ import (
 	"math"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 // LeaderStats is used by the leader in an etcd cluster, and encapsulates
 // statistics about communication with its followers
 type LeaderStats struct {
-	lg *zap.Logger
 	leaderStats
 	sync.Mutex
 }
@@ -39,12 +36,8 @@ type leaderStats struct {
 }
 
 // NewLeaderStats generates a new LeaderStats with the given id as leader
-func NewLeaderStats(lg *zap.Logger, id string) *LeaderStats {
-	if lg == nil {
-		lg = zap.NewNop()
-	}
+func NewLeaderStats(id string) *LeaderStats {
 	return &LeaderStats{
-		lg: lg,
 		leaderStats: leaderStats{
 			Leader:    id,
 			Followers: make(map[string]*FollowerStats),
@@ -59,7 +52,7 @@ func (ls *LeaderStats) JSON() []byte {
 	b, err := json.Marshal(stats)
 	// TODO(jonboulle): appropriate error handling?
 	if err != nil {
-		ls.lg.Error("failed to marshal leader stats", zap.Error(err))
+		plog.Errorf("error marshalling leader stats (%v)", err)
 	}
 	return b
 }

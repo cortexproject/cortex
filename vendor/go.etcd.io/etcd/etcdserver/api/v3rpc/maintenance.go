@@ -18,7 +18,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"io"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"go.etcd.io/etcd/auth"
 	"go.etcd.io/etcd/etcdserver"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
@@ -46,10 +48,6 @@ type Alarmer interface {
 	Alarm(ctx context.Context, ar *pb.AlarmRequest) (*pb.AlarmResponse, error)
 }
 
-type Downgrader interface {
-	Downgrade(ctx context.Context, dr *pb.DowngradeRequest) (*pb.DowngradeResponse, error)
-}
-
 type LeaderTransferrer interface {
 	MoveLeader(ctx context.Context, lead, target uint64) error
 }
@@ -72,27 +70,38 @@ type maintenanceServer struct {
 	lt  LeaderTransferrer
 	hdr header
 	cs  ClusterStatusGetter
-	d   Downgrader
 }
 
 func NewMaintenanceServer(s *etcdserver.EtcdServer) pb.MaintenanceServer {
-	srv := &maintenanceServer{lg: s.Cfg.Logger, rg: s, kg: s, bg: s, a: s, lt: s, hdr: newHeader(s), cs: s, d: s}
-	if srv.lg == nil {
-		srv.lg = zap.NewNop()
-	}
+	srv := &maintenanceServer{lg: s.Cfg.Logger, rg: s, kg: s, bg: s, a: s, lt: s, hdr: newHeader(s), cs: s}
 	return &authMaintenanceServer{srv, s}
 }
 
 func (ms *maintenanceServer) Defragment(ctx context.Context, sr *pb.DefragmentRequest) (*pb.DefragmentResponse, error) {
-	ms.lg.Info("starting defragment")
+	if ms.lg != nil {
+		ms.lg.Info("starting defragment")
+	} else {
+		plog.Noticef("starting to defragment the storage backend...")
+	}
 	err := ms.bg.Backend().Defrag()
 	if err != nil {
-		ms.lg.Warn("failed to defragment", zap.Error(err))
+		if ms.lg != nil {
+			ms.lg.Warn("failed to defragment", zap.Error(err))
+		} else {
+			plog.Errorf("failed to defragment the storage backend (%v)", err)
+		}
 		return nil, err
 	}
-	ms.lg.Info("finished defragment")
+	if ms.lg != nil {
+		ms.lg.Info("finished defragment")
+	} else {
+		plog.Noticef("finished defragmenting the storage backend")
+	}
 	return &pb.DefragmentResponse{}, nil
 }
+
+// big enough size to hold >1 OS pages in the buffer
+const snapshotSendBufferSize = 32 * 1024
 
 func (ms *maintenanceServer) Snapshot(sr *pb.SnapshotRequest, srv pb.Maintenance_SnapshotServer) error {
 	snap := ms.bg.Backend().Snapshot()
@@ -103,24 +112,55 @@ func (ms *maintenanceServer) Snapshot(sr *pb.SnapshotRequest, srv pb.Maintenance
 	go func() {
 		snap.WriteTo(pw)
 		if err := snap.Close(); err != nil {
-			ms.lg.Warn("failed to close snapshot", zap.Error(err))
+			if ms.lg != nil {
+				ms.lg.Warn("failed to close snapshot", zap.Error(err))
+			} else {
+				plog.Errorf("error closing snapshot (%v)", err)
+			}
 		}
 		pw.Close()
 	}()
 
-	// send file data
+	// record SHA digest of snapshot data
+	// used for integrity checks during snapshot restore operation
 	h := sha256.New()
-	br := int64(0)
-	buf := make([]byte, 32*1024)
-	sz := snap.Size()
-	for br < sz {
+
+	// buffer just holds read bytes from stream
+	// response size is multiple of OS page size, fetched in boltdb
+	// e.g. 4*1024
+	buf := make([]byte, snapshotSendBufferSize)
+
+	sent := int64(0)
+	total := snap.Size()
+	size := humanize.Bytes(uint64(total))
+
+	start := time.Now()
+	if ms.lg != nil {
+		ms.lg.Info("sending database snapshot to client",
+			zap.Int64("total-bytes", total),
+			zap.String("size", size),
+		)
+	} else {
+		plog.Infof("sending database snapshot to client %s [%d bytes]", size, total)
+	}
+	for total-sent > 0 {
 		n, err := io.ReadFull(pr, buf)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return togRPCError(err)
 		}
-		br += int64(n)
+		sent += int64(n)
+
+		// if total is x * snapshotSendBufferSize. it is possible that
+		// resp.RemainingBytes == 0
+		// resp.Blob == zero byte but not nil
+		// does this make server response sent to client nil in proto
+		// and client stops receiving from snapshot stream before
+		// server sends snapshot SHA?
+		// No, the client will still receive non-nil response
+		// until server closes the stream with EOF
+
 		resp := &pb.SnapshotResponse{
-			RemainingBytes: uint64(sz - br),
+			RemainingBytes: uint64(total - sent),
 			Blob:           buf[:n],
 		}
 		if err = srv.Send(resp); err != nil {
@@ -129,11 +169,32 @@ func (ms *maintenanceServer) Snapshot(sr *pb.SnapshotRequest, srv pb.Maintenance
 		h.Write(buf[:n])
 	}
 
-	// send sha
+	// send SHA digest for integrity checks
+	// during snapshot restore operation
 	sha := h.Sum(nil)
+
+	if ms.lg != nil {
+		ms.lg.Info("sending database sha256 checksum to client",
+			zap.Int64("total-bytes", total),
+			zap.Int("checksum-size", len(sha)),
+		)
+	} else {
+		plog.Infof("sending database sha256 checksum to client [%d bytes]", len(sha))
+	}
+
 	hresp := &pb.SnapshotResponse{RemainingBytes: 0, Blob: sha}
 	if err := srv.Send(hresp); err != nil {
 		return togRPCError(err)
+	}
+
+	if ms.lg != nil {
+		ms.lg.Info("successfully sent database snapshot to client",
+			zap.Int64("total-bytes", total),
+			zap.String("size", size),
+			zap.String("took", humanize.Time(start)),
+		)
+	} else {
+		plog.Infof("successfully sent database snapshot to client %s [%d bytes]", size, total)
 	}
 
 	return nil
@@ -161,15 +222,7 @@ func (ms *maintenanceServer) HashKV(ctx context.Context, r *pb.HashKVRequest) (*
 }
 
 func (ms *maintenanceServer) Alarm(ctx context.Context, ar *pb.AlarmRequest) (*pb.AlarmResponse, error) {
-	resp, err := ms.a.Alarm(ctx, ar)
-	if err != nil {
-		return nil, togRPCError(err)
-	}
-	if resp.Header == nil {
-		resp.Header = &pb.ResponseHeader{}
-	}
-	ms.hdr.fill(resp.Header)
-	return resp, nil
+	return ms.a.Alarm(ctx, ar)
 }
 
 func (ms *maintenanceServer) Status(ctx context.Context, ar *pb.StatusRequest) (*pb.StatusResponse, error) {
@@ -204,16 +257,6 @@ func (ms *maintenanceServer) MoveLeader(ctx context.Context, tr *pb.MoveLeaderRe
 		return nil, togRPCError(err)
 	}
 	return &pb.MoveLeaderResponse{}, nil
-}
-
-func (ms *maintenanceServer) Downgrade(ctx context.Context, r *pb.DowngradeRequest) (*pb.DowngradeResponse, error) {
-	resp, err := ms.d.Downgrade(ctx, r)
-	if err != nil {
-		return nil, togRPCError(err)
-	}
-	resp.Header = &pb.ResponseHeader{}
-	ms.hdr.fill(resp.Header)
-	return resp, nil
 }
 
 type authMaintenanceServer struct {
@@ -267,8 +310,4 @@ func (ams *authMaintenanceServer) Status(ctx context.Context, ar *pb.StatusReque
 
 func (ams *authMaintenanceServer) MoveLeader(ctx context.Context, tr *pb.MoveLeaderRequest) (*pb.MoveLeaderResponse, error) {
 	return ams.maintenanceServer.MoveLeader(ctx, tr)
-}
-
-func (ams *authMaintenanceServer) Downgrade(ctx context.Context, r *pb.DowngradeRequest) (*pb.DowngradeResponse, error) {
-	return ams.maintenanceServer.Downgrade(ctx, r)
 }

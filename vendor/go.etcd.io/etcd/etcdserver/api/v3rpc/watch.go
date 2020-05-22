@@ -46,7 +46,7 @@ type watchServer struct {
 
 // NewWatchServer returns a new watch server.
 func NewWatchServer(s *etcdserver.EtcdServer) pb.WatchServer {
-	srv := &watchServer{
+	return &watchServer{
 		lg: s.Cfg.Logger,
 
 		clusterID: int64(s.Cluster().ID()),
@@ -58,10 +58,6 @@ func NewWatchServer(s *etcdserver.EtcdServer) pb.WatchServer {
 		watchable: s.Watchable(),
 		ag:        s,
 	}
-	if srv.lg == nil {
-		srv.lg = zap.NewNop()
-	}
-	return srv
 }
 
 var (
@@ -176,9 +172,17 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 	go func() {
 		if rerr := sws.recvLoop(); rerr != nil {
 			if isClientCtxErr(stream.Context().Err(), rerr) {
-				sws.lg.Debug("failed to receive watch request from gRPC stream", zap.Error(rerr))
+				if sws.lg != nil {
+					sws.lg.Debug("failed to receive watch request from gRPC stream", zap.Error(rerr))
+				} else {
+					plog.Debugf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
+				}
 			} else {
-				sws.lg.Warn("failed to receive watch request from gRPC stream", zap.Error(rerr))
+				if sws.lg != nil {
+					sws.lg.Warn("failed to receive watch request from gRPC stream", zap.Error(rerr))
+				} else {
+					plog.Warningf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
+				}
 				streamFailures.WithLabelValues("receive", "watch").Inc()
 			}
 			errc <- rerr
@@ -409,9 +413,17 @@ func (sws *serverWatchStream) sendLoop() {
 
 			if serr != nil {
 				if isClientCtxErr(sws.gRPCStream.Context().Err(), serr) {
-					sws.lg.Debug("failed to send watch response to gRPC stream", zap.Error(serr))
+					if sws.lg != nil {
+						sws.lg.Debug("failed to send watch response to gRPC stream", zap.Error(serr))
+					} else {
+						plog.Debugf("failed to send watch response to gRPC stream (%q)", serr.Error())
+					}
 				} else {
-					sws.lg.Warn("failed to send watch response to gRPC stream", zap.Error(serr))
+					if sws.lg != nil {
+						sws.lg.Warn("failed to send watch response to gRPC stream", zap.Error(serr))
+					} else {
+						plog.Warningf("failed to send watch response to gRPC stream (%q)", serr.Error())
+					}
 					streamFailures.WithLabelValues("send", "watch").Inc()
 				}
 				return
@@ -431,9 +443,17 @@ func (sws *serverWatchStream) sendLoop() {
 
 			if err := sws.gRPCStream.Send(c); err != nil {
 				if isClientCtxErr(sws.gRPCStream.Context().Err(), err) {
-					sws.lg.Debug("failed to send watch control response to gRPC stream", zap.Error(err))
+					if sws.lg != nil {
+						sws.lg.Debug("failed to send watch control response to gRPC stream", zap.Error(err))
+					} else {
+						plog.Debugf("failed to send watch control response to gRPC stream (%q)", err.Error())
+					}
 				} else {
-					sws.lg.Warn("failed to send watch control response to gRPC stream", zap.Error(err))
+					if sws.lg != nil {
+						sws.lg.Warn("failed to send watch control response to gRPC stream", zap.Error(err))
+					} else {
+						plog.Warningf("failed to send watch control response to gRPC stream (%q)", err.Error())
+					}
 					streamFailures.WithLabelValues("send", "watch").Inc()
 				}
 				return
@@ -452,9 +472,17 @@ func (sws *serverWatchStream) sendLoop() {
 					mvcc.ReportEventReceived(len(v.Events))
 					if err := sws.gRPCStream.Send(v); err != nil {
 						if isClientCtxErr(sws.gRPCStream.Context().Err(), err) {
-							sws.lg.Debug("failed to send pending watch response to gRPC stream", zap.Error(err))
+							if sws.lg != nil {
+								sws.lg.Debug("failed to send pending watch response to gRPC stream", zap.Error(err))
+							} else {
+								plog.Debugf("failed to send pending watch response to gRPC stream (%q)", err.Error())
+							}
 						} else {
-							sws.lg.Warn("failed to send pending watch response to gRPC stream", zap.Error(err))
+							if sws.lg != nil {
+								sws.lg.Warn("failed to send pending watch response to gRPC stream", zap.Error(err))
+							} else {
+								plog.Warningf("failed to send pending watch response to gRPC stream (%q)", err.Error())
+							}
 							streamFailures.WithLabelValues("send", "watch").Inc()
 						}
 						return

@@ -131,28 +131,41 @@ func (pc *Periodic) Run() {
 			}
 			rev := pc.revs[0]
 
-			pc.lg.Info(
-				"starting auto periodic compaction",
-				zap.Int64("revision", rev),
-				zap.Duration("compact-period", pc.period),
-			)
+			if pc.lg != nil {
+				pc.lg.Info(
+					"starting auto periodic compaction",
+					zap.Int64("revision", rev),
+					zap.Duration("compact-period", pc.period),
+				)
+			} else {
+				plog.Noticef("Starting auto-compaction at revision %d (retention: %v)", rev, pc.period)
+			}
 			_, err := pc.c.Compact(pc.ctx, &pb.CompactionRequest{Revision: rev})
 			if err == nil || err == mvcc.ErrCompacted {
-				pc.lg.Info(
-					"completed auto periodic compaction",
-					zap.Int64("revision", rev),
-					zap.Duration("compact-period", pc.period),
-					zap.Duration("took", time.Since(lastSuccess)),
-				)
+				if pc.lg != nil {
+					pc.lg.Info(
+						"completed auto periodic compaction",
+						zap.Int64("revision", rev),
+						zap.Duration("compact-period", pc.period),
+						zap.Duration("took", time.Since(lastSuccess)),
+					)
+				} else {
+					plog.Noticef("Finished auto-compaction at revision %d", rev)
+				}
 				lastSuccess = pc.clock.Now()
 			} else {
-				pc.lg.Warn(
-					"failed auto periodic compaction",
-					zap.Int64("revision", rev),
-					zap.Duration("compact-period", pc.period),
-					zap.Duration("retry-interval", retryInterval),
-					zap.Error(err),
-				)
+				if pc.lg != nil {
+					pc.lg.Warn(
+						"failed auto periodic compaction",
+						zap.Int64("revision", rev),
+						zap.Duration("compact-period", pc.period),
+						zap.Duration("retry-interval", retryInterval),
+						zap.Error(err),
+					)
+				} else {
+					plog.Noticef("Failed auto-compaction at revision %d (%v)", rev, err)
+					plog.Noticef("Retry after %v", retryInterval)
+				}
 			}
 		}
 	}()

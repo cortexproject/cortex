@@ -117,13 +117,17 @@ func warnOfFailedRequest(lg *zap.Logger, now time.Time, reqStringer fmt.Stringer
 		resp = fmt.Sprintf("size:%d", proto.Size(respMsg))
 	}
 	d := time.Since(now)
-	lg.Warn(
-		"failed to apply request",
-		zap.Duration("took", d),
-		zap.String("request", reqStringer.String()),
-		zap.String("response", resp),
-		zap.Error(err),
-	)
+	if lg != nil {
+		lg.Warn(
+			"failed to apply request",
+			zap.Duration("took", d),
+			zap.String("request", reqStringer.String()),
+			zap.String("response", resp),
+			zap.Error(err),
+		)
+	} else {
+		plog.Warningf("failed to apply request %q with response %q took (%v) to execute, err is %v", reqStringer.String(), resp, d, err)
+	}
 }
 
 func warnOfExpensiveReadOnlyTxnRequest(lg *zap.Logger, now time.Time, r *pb.TxnRequest, txnResponse *pb.TxnResponse, err error) {
@@ -155,15 +159,25 @@ func warnOfExpensiveReadOnlyRangeRequest(lg *zap.Logger, now time.Time, reqStrin
 func warnOfExpensiveGenericRequest(lg *zap.Logger, now time.Time, reqStringer fmt.Stringer, prefix string, resp string, err error) {
 	d := time.Since(now)
 	if d > warnApplyDuration {
-		lg.Warn(
-			"apply request took too long",
-			zap.Duration("took", d),
-			zap.Duration("expected-duration", warnApplyDuration),
-			zap.String("prefix", prefix),
-			zap.String("request", reqStringer.String()),
-			zap.String("response", resp),
-			zap.Error(err),
-		)
+		if lg != nil {
+			lg.Warn(
+				"apply request took too long",
+				zap.Duration("took", d),
+				zap.Duration("expected-duration", warnApplyDuration),
+				zap.String("prefix", prefix),
+				zap.String("request", reqStringer.String()),
+				zap.String("response", resp),
+				zap.Error(err),
+			)
+		} else {
+			var result string
+			if err != nil {
+				result = fmt.Sprintf("error:%v", err)
+			} else {
+				result = resp
+			}
+			plog.Warningf("%srequest %q with result %q took too long (%v) to execute", prefix, reqStringer.String(), result, d)
+		}
 		slowApplies.Inc()
 	}
 }

@@ -20,12 +20,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.etcd.io/etcd/etcdserver"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/raft"
-	"go.uber.org/zap"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -34,9 +34,9 @@ const (
 )
 
 // HandleMetricsHealth registers metrics and health handlers.
-func HandleMetricsHealth(lg *zap.Logger, mux *http.ServeMux, srv etcdserver.ServerV2) {
+func HandleMetricsHealth(mux *http.ServeMux, srv etcdserver.ServerV2) {
 	mux.Handle(PathMetrics, promhttp.Handler())
-	mux.Handle(PathHealth, NewHealthHandler(lg, func() Health { return checkHealth(lg, srv) }))
+	mux.Handle(PathHealth, NewHealthHandler(func() Health { return checkHealth(srv) }))
 }
 
 // HandlePrometheus registers prometheus handler on '/metrics'.
@@ -45,24 +45,22 @@ func HandlePrometheus(mux *http.ServeMux) {
 }
 
 // NewHealthHandler handles '/health' requests.
-func NewHealthHandler(lg *zap.Logger, hfunc func() Health) http.HandlerFunc {
+func NewHealthHandler(hfunc func() Health) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			lg.Warn("/health error", zap.Int("status-code", http.StatusMethodNotAllowed))
+			plog.Warningf("/health error (status code %d)", http.StatusMethodNotAllowed)
 			return
 		}
 		h := hfunc()
 		d, _ := json.Marshal(h)
 		if h.Health != "true" {
 			http.Error(w, string(d), http.StatusServiceUnavailable)
-			lg.Warn("/health error", zap.String("output", string(d)), zap.Int("status-code", http.StatusServiceUnavailable))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write(d)
-		lg.Info("/health OK", zap.Int("status-code", http.StatusOK))
 	}
 }
 
@@ -94,40 +92,39 @@ type Health struct {
 
 // TODO: server NOSPACE, etcdserver.ErrNoLeader in health API
 
-func checkHealth(lg *zap.Logger, srv etcdserver.ServerV2) (h Health) {
-	h.Health = "true"
-
-	defer func() {
-		if h.Health == "true" {
-			healthSuccess.Inc()
-		} else {
-			healthFailed.Inc()
-		}
-	}()
+func checkHealth(srv etcdserver.ServerV2) Health {
+	h := Health{Health: "true"}
 
 	as := srv.Alarms()
 	if len(as) > 0 {
 		h.Health = "false"
 		for _, v := range as {
-			lg.Warn("serving /health false due to an alarm", zap.String("alarm", v.String()))
+			plog.Warningf("/health error due to an alarm %s", v.String())
 		}
-		return
 	}
 
-	if uint64(srv.Leader()) == raft.None {
-		h.Health = "false"
-		lg.Warn("serving /health false; no leader")
-		return
+	if h.Health == "true" {
+		if uint64(srv.Leader()) == raft.None {
+			h.Health = "false"
+			plog.Warningf("/health error; no leader (status code %d)", http.StatusServiceUnavailable)
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	_, err := srv.Do(ctx, etcdserverpb.Request{Method: "QGET"})
-	cancel()
-	if err != nil {
-		h.Health = "false"
-		lg.Warn("serving /health false; QGET fails", zap.Error(err))
+	if h.Health == "true" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, err := srv.Do(ctx, etcdserverpb.Request{Method: "QGET"})
+		cancel()
+		if err != nil {
+			h.Health = "false"
+			plog.Warningf("/health error; QGET failed %v (status code %d)", err, http.StatusServiceUnavailable)
+		}
 	}
 
-	lg.Info("serving /health true")
-	return
+	if h.Health == "true" {
+		healthSuccess.Inc()
+		plog.Infof("/health OK (status code %d)", http.StatusOK)
+	} else {
+		healthFailed.Inc()
+	}
+	return h
 }

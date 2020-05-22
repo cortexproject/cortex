@@ -333,6 +333,8 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	}
 	records := [][]byte{}
 	totalSize := 0
+	ticker := time.NewTicker(perSeriesDuration)
+	defer ticker.Stop()
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
@@ -358,7 +360,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 
 			if !immediate {
 				select {
-				case <-time.After(perSeriesDuration):
+				case <-ticker.C:
 				case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.
 				}
 			}

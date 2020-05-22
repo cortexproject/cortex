@@ -308,6 +308,11 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		return
 	}
 
+	// Ensure the default evaluation interval is set (promql uses a package-scoped mutable variable).
+	// This is important when `querier.parallelise-shardable-queries` is enabled because the frontend
+	// aggregates the sharded queries.
+	promql.SetDefaultEvaluationInterval(t.Cfg.Querier.DefaultEvaluationInterval)
+
 	tripperware, cache, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util.Logger,

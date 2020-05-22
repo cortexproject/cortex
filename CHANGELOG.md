@@ -4,7 +4,7 @@
 
 * [CHANGE] Query Frontend now uses Round Robin to choose a tenant queue to service next. #2553
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
-* [FEATURE] Add ability to configure per-tenant MaxCacheFreshness in the query-frontend using `frontend.per-user-max-cache-freshness`. #2609
+* [FEATURE] The flag `frontend.max-cache-freshness` can now be used to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from `results_cache.max_freshness` to `limits_config.max_cache_freshness`. The legacy YAML config parameter (`results_cache.max_freshness`) will continue to be supported till Cortex release `v1.4.0`. #2609
 * [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`

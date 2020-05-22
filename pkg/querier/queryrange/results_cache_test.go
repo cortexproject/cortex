@@ -356,11 +356,11 @@ func (fakeLimits) MaxCacheFreshness(string) time.Duration {
 	return time.Duration(0)
 }
 
-type fakeLimitsWithMaxCacheFreshness struct {
+type fakeLimitsHighMaxCacheFreshness struct {
 	fakeLimits
 }
 
-func (fakeLimitsWithMaxCacheFreshness) MaxCacheFreshness(string) time.Duration {
+func (fakeLimitsHighMaxCacheFreshness) MaxCacheFreshness(string) time.Duration {
 	return 10 * time.Minute
 }
 
@@ -438,19 +438,22 @@ func TestResultsCacheRecent(t *testing.T) {
 func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
-		fakeLimits       Limits
-		Handler          HandlerFunc
-		expectedResponse *PrometheusResponse
+		legacyCacheMaxFreshness time.Duration
+		fakeLimits              Limits
+		Handler                 HandlerFunc
+		expectedResponse        *PrometheusResponse
 	}{
 		{
-			// should lookup cache
-			fakeLimits:       fakeLimits{},
-			Handler:          nil,
-			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
+			// should lookup cache because legacy cache max freshness will be applied
+			legacyCacheMaxFreshness: 5 * time.Second,
+			fakeLimits:              fakeLimits{},
+			Handler:                 nil,
+			expectedResponse:        mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
-			// should not lookup cache
-			fakeLimits: fakeLimitsWithMaxCacheFreshness{},
+			// should not lookup cache because per-tenant override will be applied
+			legacyCacheMaxFreshness: time.Duration(0),
+			fakeLimits:              fakeLimitsHighMaxCacheFreshness{},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
 			}),
@@ -462,8 +465,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
 
-			// set a small "global" MaxCacheFreshness value
-			cfg.MaxCacheFreshness = 5 * time.Second
+			cfg.MaxCacheFreshness = tc.legacyCacheMaxFreshness
 
 			fakeLimits := tc.fakeLimits
 			rcm, _, err := NewResultsCacheMiddleware(

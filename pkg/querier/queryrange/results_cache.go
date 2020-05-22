@@ -40,7 +40,7 @@ type CacheGenNumberLoader interface {
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
-	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
+	MaxCacheFreshness time.Duration `yaml:"max_freshness" doc:"hidden"` // TODO: (deprecated) remove in Cortex v1.4.0
 }
 
 // RegisterFlags registers flags.
@@ -48,8 +48,6 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
-
-	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -171,10 +169,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	// check if per-tenant cache freshness value is provided
-	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
+	// check if cache freshness value is provided in legacy config
+	maxCacheFreshness := s.cfg.MaxCacheFreshness
 	if maxCacheFreshness == time.Duration(0) {
-		maxCacheFreshness = s.cfg.MaxCacheFreshness
+		maxCacheFreshness = s.limits.MaxCacheFreshness(userID)
 	}
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {

@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -19,44 +18,23 @@ type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
 type appender struct {
-	pusher        Pusher
-	labels        []labels.Labels
-	samples       []client.Sample
-	userID        string
-	refMap        map[uint64]labels.Labels
-	reverseRefMap map[uint64]uint64
-	lastRef       uint64
+	pusher  Pusher
+	labels  []labels.Labels
+	samples []client.Sample
+	userID  string
 }
 
 func (a *appender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
-	var ref uint64
-	hash := l.Hash()
-	if r, ok := a.reverseRefMap[hash]; ok {
-		ref = r
-	} else {
-		a.lastRef++
-		a.refMap[a.lastRef] = l
-		a.reverseRefMap[hash] = a.lastRef
-	}
 	a.labels = append(a.labels, l)
 	a.samples = append(a.samples, client.Sample{
 		TimestampMs: t,
 		Value:       v,
 	})
-	return ref, nil
+	return 0, nil
 }
 
-func (a *appender) AddFast(ref uint64, t int64, v float64) error {
-	l, ok := a.refMap[ref]
-	if !ok {
-		return fmt.Errorf("unknown reference %d", ref)
-	}
-	a.labels = append(a.labels, l)
-	a.samples = append(a.samples, client.Sample{
-		TimestampMs: t,
-		Value:       v,
-	})
-	return nil
+func (a *appender) AddFast(_ uint64, _ int64, _ float64) error {
+	return storage.ErrNotFound
 }
 
 func (a *appender) Commit() error {
@@ -85,10 +63,8 @@ type tsdb struct {
 // Appender returns a storage.Appender
 func (t *tsdb) Appender() storage.Appender {
 	return &appender{
-		pusher:        t.pusher,
-		userID:        t.userID,
-		refMap:        make(map[uint64]labels.Labels),
-		reverseRefMap: make(map[uint64]uint64),
+		pusher: t.pusher,
+		userID: t.userID,
 	}
 }
 

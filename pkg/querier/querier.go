@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"github.com/go-kit/kit/log/level"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"

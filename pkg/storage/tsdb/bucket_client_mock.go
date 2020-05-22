@@ -77,7 +77,14 @@ func (m *BucketClientMock) Get(ctx context.Context, name string) (io.ReadCloser,
 func (m *BucketClientMock) MockGet(name, content string, err error) {
 	if content != "" {
 		m.On("Exists", mock.Anything, name).Return(true, err)
-		m.On("Get", mock.Anything, name).Return(ioutil.NopCloser(bytes.NewReader([]byte(content))), err)
+
+		// Since we return an ReadCloser and it can be consumed only once,
+		// each time the mocked Get() is called we do create a new one, so
+		// that getting the same mocked object twice works as expected.
+		mockedGet := m.On("Get", mock.Anything, name)
+		mockedGet.Run(func(args mock.Arguments) {
+			mockedGet.Return(ioutil.NopCloser(bytes.NewReader([]byte(content))), err)
+		})
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
 		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist)

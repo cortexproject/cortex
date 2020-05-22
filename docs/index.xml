@@ -6346,6 +6346,13 @@ replica: replica2
 &lt;li&gt;TSDB now supports isolation of append and queries.&lt;/li&gt;
 &lt;li&gt;TSDB now holds less WAL files after Head Truncation.&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: decoupled blocks deletion from blocks compaction in the compactor, so that blocks deletion is not blocked by a busy compactor. The following metrics have been added: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2623&#34;&gt;#2623&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_started_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_completed_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_failed_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2506&#34;&gt;#2506&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixes &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2411&#34;&gt;#2411&lt;/a&gt;, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code&gt;-server.path-prefix&lt;/code&gt; is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2372&#34;&gt;#2372&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;&lt;/li&gt;

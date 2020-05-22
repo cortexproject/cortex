@@ -596,12 +596,12 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 // segmentsExist is a stripped down version of
 // https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
 func segmentsExist(dir string) (bool, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return false, err
 	}
-	for _, fn := range files {
-		if _, err := strconv.Atoi(fn); err == nil {
+	for _, f := range files {
+		if _, err := strconv.Atoi(f.Name()); err == nil {
 			// First filename which is a number.
 			// This is how Prometheus stores and this
 			// is how it checks too.
@@ -1061,13 +1061,13 @@ func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error)
 // If https://github.com/prometheus/prometheus/pull/6477 is merged, get rid of this
 // method and use from Prometheus directly.
 func SegmentRange(dir string) (int, int, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return 0, 0, err
 	}
 	first, last := math.MaxInt32, math.MinInt32
-	for _, fn := range files {
-		k, err := strconv.Atoi(fn)
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
 		if err != nil {
 			continue
 		}

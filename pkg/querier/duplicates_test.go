@@ -120,12 +120,8 @@ type testQuerier struct {
 	ts *timeSeriesSeriesSet
 }
 
-func (m testQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m testQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return m.ts, nil, nil
-}
-
-func (m testQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return m.SelectSorted(sp, matchers...)
 }
 
 func (m testQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

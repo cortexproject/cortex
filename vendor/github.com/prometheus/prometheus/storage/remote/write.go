@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 var (
@@ -49,6 +50,9 @@ type WriteStorage struct {
 	logger log.Logger
 	mtx    sync.Mutex
 
+	queueMetrics      *queueManagerMetrics
+	watcherMetrics    *wal.WatcherMetrics
+	liveReaderMetrics *wal.LiveReaderMetrics
 	configHash        string
 	externalLabelHash string
 	walDir            string
@@ -58,16 +62,19 @@ type WriteStorage struct {
 }
 
 // NewWriteStorage creates and runs a WriteStorage.
-func NewWriteStorage(logger log.Logger, walDir string, flushDeadline time.Duration) *WriteStorage {
+func NewWriteStorage(logger log.Logger, reg prometheus.Registerer, walDir string, flushDeadline time.Duration) *WriteStorage {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	rws := &WriteStorage{
-		queues:        make(map[string]*QueueManager),
-		logger:        logger,
-		flushDeadline: flushDeadline,
-		samplesIn:     newEWMARate(ewmaWeight, shardUpdateDuration),
-		walDir:        walDir,
+		queues:            make(map[string]*QueueManager),
+		queueMetrics:      newQueueManagerMetrics(reg),
+		watcherMetrics:    wal.NewWatcherMetrics(reg),
+		liveReaderMetrics: wal.NewLiveReaderMetrics(reg),
+		logger:            logger,
+		flushDeadline:     flushDeadline,
+		samplesIn:         newEWMARate(ewmaWeight, shardUpdateDuration),
+		walDir:            walDir,
 	}
 	go rws.run()
 	return rws
@@ -148,7 +155,9 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 			return err
 		}
 		newQueues[hash] = NewQueueManager(
-			prometheus.DefaultRegisterer,
+			rws.queueMetrics,
+			rws.watcherMetrics,
+			rws.liveReaderMetrics,
 			rws.logger,
 			rws.walDir,
 			rws.samplesIn,
@@ -178,10 +187,10 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 }
 
 // Appender implements storage.Storage.
-func (rws *WriteStorage) Appender() (storage.Appender, error) {
+func (rws *WriteStorage) Appender() storage.Appender {
 	return &timestampTracker{
 		writeStorage: rws,
-	}, nil
+	}
 }
 
 // Close closes the WriteStorage.
@@ -201,7 +210,7 @@ type timestampTracker struct {
 }
 
 // Add implements storage.Appender.
-func (t *timestampTracker) Add(_ labels.Labels, ts int64, v float64) (uint64, error) {
+func (t *timestampTracker) Add(_ labels.Labels, ts int64, _ float64) (uint64, error) {
 	t.samples++
 	if ts > t.highestTimestamp {
 		t.highestTimestamp = ts
@@ -210,8 +219,8 @@ func (t *timestampTracker) Add(_ labels.Labels, ts int64, v float64) (uint64, er
 }
 
 // AddFast implements storage.Appender.
-func (t *timestampTracker) AddFast(l labels.Labels, _ uint64, ts int64, v float64) error {
-	_, err := t.Add(l, ts, v)
+func (t *timestampTracker) AddFast(_ uint64, ts int64, v float64) error {
+	_, err := t.Add(nil, ts, v)
 	return err
 }
 

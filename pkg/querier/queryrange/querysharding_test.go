@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +37,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 			next: mockHandler(&PrometheusResponse{
 				Status: "",
 				Data: PrometheusData{
-					ResultType: promql.ValueTypeVector,
+					ResultType: parser.ValueTypeVector,
 					Result:     []SampleStream{},
 				},
 				ErrorType: "",
@@ -66,7 +67,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 				)
 				out, err := handler.Do(context.Background(), qry)
 				require.Nil(t, err)
-				require.Equal(t, promql.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
+				require.Equal(t, parser.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
 			},
 		},
@@ -118,7 +119,7 @@ func sampleMatrixResponse() *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: promql.ValueTypeMatrix,
+			ResultType: parser.ValueTypeMatrix,
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
@@ -302,7 +303,7 @@ type mappingValidator struct {
 }
 
 func (v *mappingValidator) Do(ctx context.Context, req Request) (Response, error) {
-	expr, err := promql.ParseExpr(req.GetQuery())
+	expr, err := parser.ParseExpr(req.GetQuery())
 	if err != nil {
 		return nil, err
 	}

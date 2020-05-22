@@ -31,11 +31,10 @@ func TestDeriv(t *testing.T) {
 	defer storage.Close()
 	engine := NewEngine(nil, nil, 10, 10*time.Second)
 
-	a, err := storage.Appender()
-	testutil.Ok(t, err)
+	a := storage.Appender()
 
 	metric := labels.FromStrings("__name__", "foo")
-	_, err = a.Add(metric, 1493712816939, 1.0)
+	_, err := a.Add(metric, 1493712816939, 1.0)
 	testutil.Ok(t, err)
 
 	_, err = a.Add(metric, 1493712846939, 1.0)

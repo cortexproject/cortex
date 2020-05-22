@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -128,7 +128,7 @@ func BenchmarkSetRegexLookup(b *testing.B) {
 }
 
 func mustParseMatcher(s string) []*labels.Matcher {
-	ms, err := promql.ParseMetricSelector(s)
+	ms, err := parser.ParseMetricSelector(s)
 	if err != nil {
 		panic(err)
 	}

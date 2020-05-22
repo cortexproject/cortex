@@ -49,7 +49,9 @@ type distributorQuerier struct {
 	chunkIterFn chunkIteratorFunc
 }
 
-func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
@@ -75,11 +77,7 @@ func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...
 	return series.MatrixToSeriesSet(matrix), nil, nil
 }
 
-func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
-}
-
-func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}

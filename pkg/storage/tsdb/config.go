@@ -53,6 +53,7 @@ var (
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
+	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
 // Config holds the config information for TSDB storage
@@ -163,6 +164,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.StripeSize <= 1 || (cfg.StripeSize&(cfg.StripeSize-1)) != 0 { // ensure stripe size is a positive power of 2
 		return errInvalidStripeSize
+	}
+
+	if len(cfg.BlockRanges) == 0 {
+		return errEmptyBlockranges
 	}
 
 	return cfg.BucketStore.Validate()

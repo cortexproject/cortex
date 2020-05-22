@@ -197,11 +197,9 @@ type blocksStoreQuerier struct {
 	storesHit  prometheus.Histogram
 }
 
-func (q *blocksStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
-}
-
-func (q *blocksStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	set, warnings, err := q.selectSorted(sp, matchers...)
 
 	// We need to wrap the error in order to have Prometheus returning a 5xx error.
@@ -226,7 +224,7 @@ func (q *blocksStoreQuerier) Close() error {
 	return nil
 }
 
-func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	log, _ := spanlogger.New(q.ctx, "blocksStoreQuerier.selectSorted")
 	defer log.Span.Finish()
 
@@ -323,5 +321,5 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...
 		q.storesHit.Observe(float64(len(clients)))
 	}
 
-	return storage.NewMergeSeriesSet(seriesSets, nil), warnings, nil
+	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
 }

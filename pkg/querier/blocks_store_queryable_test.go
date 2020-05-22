@@ -227,7 +227,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 			}
 
-			set, warnings, err := q.SelectSorted(nil, matchers...)
+			set, warnings, err := q.Select(true, nil, matchers...)
 			if testData.expectedErr != "" {
 				assert.EqualError(t, err, testData.expectedErr)
 				assert.Nil(t, set)

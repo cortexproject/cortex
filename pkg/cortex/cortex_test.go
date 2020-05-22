@@ -33,7 +33,7 @@ func TestCortex(t *testing.T) {
 					},
 					ReplicationFactor: 3,
 				},
-				InfNames: []string{"en0", "eth0", "lo0"},
+				InfNames: []string{"en0", "eth0", "lo0", "lo"},
 			},
 		},
 		TSDB: tsdb.Config{

@@ -25,7 +25,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/tsdb"
 	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
-	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/model"
@@ -367,7 +366,11 @@ func (f *BaseFetcher) fetchMetadata(ctx context.Context) (interface{}, error) {
 
 	// Best effort cleanup of disk-cached metas.
 	if f.cacheDir != "" {
-		names, err := fileutil.ReadDir(f.cacheDir)
+		fis, err := ioutil.ReadDir(f.cacheDir)
+		names := make([]string, 0, len(fis))
+		for _, fi := range fis {
+			names = append(names, fi.Name())
+		}
 		if err != nil {
 			level.Warn(f.logger).Log("msg", "best effort remove of not needed cached dirs failed; ignoring", "err", err)
 		} else {
@@ -687,6 +690,10 @@ func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*met
 				delete(l, replicaLabel)
 				modified.WithLabelValues(replicaRemovedMeta).Inc()
 			}
+		}
+		if len(l) == 0 {
+			level.Warn(r.logger).Log("msg", "block has no labels left, creating one", r.replicaLabels[0], "deduped")
+			l[r.replicaLabels[0]] = "deduped"
 		}
 		metas[u].Thanos.Labels = l
 	}

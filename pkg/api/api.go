@@ -259,6 +259,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
+		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
 		false,                              // Disable admin APIs.

@@ -640,6 +640,11 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.active-query-tracker-dir
 [active_query_tracker_dir: <string> | default = "./active-query-tracker"]
 
+# Time since the last sample after which a time series is considered stale and
+# ignored by expression evaluations.
+# CLI flag: -querier.lookback-delta
+[lookback_delta: <duration> | default = 5m]
+
 # Comma separated list of store-gateway addresses in DNS Service Discovery
 # format. This option should be set when using the experimental blocks storage
 # and the store-gateway sharding is disabled (when enabled, the store-gateway

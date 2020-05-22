@@ -5,22 +5,22 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
 
 // orSquasher is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
 // It's helpful for tests because of its intuitive & human readable output.
-func orSquasher(nodes ...promql.Node) (promql.Expr, error) {
+func orSquasher(nodes ...parser.Node) (parser.Expr, error) {
 	combined := nodes[0]
 	for i := 1; i < len(nodes); i++ {
-		combined = &promql.BinaryExpr{
-			Op:  promql.LOR,
-			LHS: combined.(promql.Expr),
-			RHS: nodes[i].(promql.Expr),
+		combined = &parser.BinaryExpr{
+			Op:  parser.LOR,
+			LHS: combined.(parser.Expr),
+			RHS: nodes[i].(parser.Expr),
 		}
 	}
-	return combined.(promql.Expr), nil
+	return combined.(parser.Expr), nil
 }
 
 func TestShardSummer(t *testing.T) {
@@ -121,12 +121,12 @@ func TestShardSummer(t *testing.T) {
 
 			summer, err := NewShardSummer(c.shards, orSquasher, nil)
 			require.Nil(t, err)
-			expr, err := promql.ParseExpr(c.input)
+			expr, err := parser.ParseExpr(c.input)
 			require.Nil(t, err)
 			res, err := summer.Map(expr)
 			require.Nil(t, err)
 
-			expected, err := promql.ParseExpr(c.expected)
+			expected, err := parser.ParseExpr(c.expected)
 			require.Nil(t, err)
 
 			require.Equal(t, expected.String(), res.String())
@@ -149,12 +149,12 @@ func TestShardSummerWithEncoding(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			summer, err := NewShardSummer(c.shards, VectorSquasher, nil)
 			require.Nil(t, err)
-			expr, err := promql.ParseExpr(c.input)
+			expr, err := parser.ParseExpr(c.input)
 			require.Nil(t, err)
 			res, err := summer.Map(expr)
 			require.Nil(t, err)
 
-			expected, err := promql.ParseExpr(c.expected)
+			expected, err := parser.ParseExpr(c.expected)
 			require.Nil(t, err)
 
 			require.Equal(t, expected.String(), res.String())

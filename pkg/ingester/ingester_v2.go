@@ -427,6 +427,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	}
 	defer q.Close()
 
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss, _, err := q.Select(false, nil, matchers...)
 	if err != nil {
 		return nil, err
@@ -656,6 +657,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 	defer q.Close()
 
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss, _, err := q.Select(false, nil, matchers...)
 	if err != nil {
 		return err

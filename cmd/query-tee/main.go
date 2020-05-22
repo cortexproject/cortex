@@ -63,5 +63,8 @@ func cortexReadRoutes() []querytee.Route {
 		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: "GET", ResponseComparator: nil},
 		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: "GET", ResponseComparator: nil},
 		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/rules", RouteName: "api_v1_rules", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: "GET", ResponseComparator: nil},
 	}
 }

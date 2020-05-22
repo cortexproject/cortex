@@ -409,7 +409,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimitsHighMaxCacheFreshness{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))

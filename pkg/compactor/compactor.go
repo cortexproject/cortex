@@ -81,10 +81,18 @@ type Compactor struct {
 	compactorCfg Config
 	storageCfg   cortex_tsdb.Config
 	logger       log.Logger
+	parentLogger log.Logger
+	registerer   prometheus.Registerer
 
 	// function that creates bucket client and TSDB compactor using the context.
 	// Useful for injecting mock objects from tests.
 	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error)
+
+	// Users scanner, used to discover users from the bucket.
+	usersScanner *UsersScanner
+
+	// Blocks cleaner is responsible to hard delete blocks marked for deletion.
+	blocksCleaner *BlocksCleaner
 
 	// Underlying compactor used to compact TSDB blocks.
 	tsdbCompactor tsdb.Compactor
@@ -93,22 +101,17 @@ type Compactor struct {
 	bucketClient objstore.Bucket
 
 	// Ring used for sharding compactions.
-	ringLifecycler *ring.Lifecycler
-	ring           *ring.Ring
-
-	// Subservices manager (ring, lifecycler)
-	subservices        *services.Manager
-	subservicesWatcher *services.FailureWatcher
+	ringLifecycler         *ring.Lifecycler
+	ring                   *ring.Ring
+	ringSubservices        *services.Manager
+	ringSubservicesWatcher *services.FailureWatcher
 
 	// Metrics.
 	compactionRunsStarted     prometheus.Counter
 	compactionRunsCompleted   prometheus.Counter
 	compactionRunsFailed      prometheus.Counter
 	compactionRunsLastSuccess prometheus.Gauge
-
-	blocksCleaned           prometheus.Counter
-	blockCleanupFailures    prometheus.Counter
-	blocksMarkedForDeletion prometheus.Counter
+	blocksMarkedForDeletion   prometheus.Counter
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
@@ -144,7 +147,9 @@ func newCompactor(
 	c := &Compactor{
 		compactorCfg:                       compactorCfg,
 		storageCfg:                         storageCfg,
-		logger:                             logger,
+		parentLogger:                       logger,
+		logger:                             log.With(logger, "component", "compactor"),
+		registerer:                         registerer,
 		syncerMetrics:                      newSyncerMetrics(registerer),
 		createBucketClientAndTsdbCompactor: createBucketClientAndTsdbCompactor,
 
@@ -164,15 +169,6 @@ func newCompactor(
 			Name: "cortex_compactor_last_successful_run_timestamp_seconds",
 			Help: "Unix timestamp of the last successful compaction run.",
 		}),
-
-		blocksCleaned: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_blocks_cleaned_total",
-			Help: "Total number of blocks deleted in compactor.",
-		}),
-		blockCleanupFailures: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_block_cleanup_failures_total",
-			Help: "Failures encountered while deleting blocks in compactor.",
-		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_marked_for_deletion_total",
 			Help: "Total number of blocks marked for deletion in compactor.",
@@ -186,56 +182,47 @@ func newCompactor(
 
 // Start the compactor.
 func (c *Compactor) starting(ctx context.Context) error {
+	var err error
+
+	// Create bucket client and compactor.
+	c.bucketClient, c.tsdbCompactor, err = c.createBucketClientAndTsdbCompactor(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize compactor objects")
+	}
+
+	// Create the users scanner.
+	c.usersScanner = NewUsersScanner(c.bucketClient, c.ownUser, c.parentLogger)
+
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
-		lifecycler, err := ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}
 
-		c.ringLifecycler = lifecycler
-
-		ring, err := ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
+		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring")
 		}
 
-		c.ring = ring
-
-		c.subservices, err = services.NewManager(c.ringLifecycler, c.ring)
+		c.ringSubservices, err = services.NewManager(c.ringLifecycler, c.ring)
 		if err == nil {
-			c.subservicesWatcher = services.NewFailureWatcher()
-			c.subservicesWatcher.WatchManager(c.subservices)
+			c.ringSubservicesWatcher = services.NewFailureWatcher()
+			c.ringSubservicesWatcher.WatchManager(c.ringSubservices)
 
-			err = services.StartManagerAndAwaitHealthy(ctx, c.subservices)
+			err = services.StartManagerAndAwaitHealthy(ctx, c.ringSubservices)
 		}
 
 		if err != nil {
-			return errors.Wrap(err, "unable to start compactor dependencies")
+			return errors.Wrap(err, "unable to start compactor ring dependencies")
 		}
-	}
 
-	var err error
-	c.bucketClient, c.tsdbCompactor, err = c.createBucketClientAndTsdbCompactor(ctx)
-	if err != nil && c.subservices != nil {
-		c.subservices.StopAsync()
-	}
-
-	return errors.Wrap(err, "failed to initialize compactor objects")
-}
-
-func (c *Compactor) stopping(_ error) error {
-	if c.subservices != nil {
-		return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
-	}
-	return nil
-}
-
-func (c *Compactor) running(ctx context.Context) error {
-	// If sharding is enabled we should wait until this instance is
-	// ACTIVE within the ring.
-	if c.compactorCfg.ShardingEnabled {
+		// If sharding is enabled we should wait until this instance is
+		// ACTIVE within the ring. This MUST be done before starting the
+		// any other component depending on the users scanner, because the
+		// users scanner depends on the ring (to check whether an user belongs
+		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
 		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
 			return err
@@ -243,6 +230,34 @@ func (c *Compactor) running(ctx context.Context) error {
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
 	}
 
+	// Create the blocks cleaner (service).
+	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
+		DataDir:             c.compactorCfg.DataDir,
+		MetaSyncConcurrency: c.compactorCfg.MetaSyncConcurrency,
+		DeletionDelay:       c.compactorCfg.DeletionDelay,
+		CleanupInterval:     c.compactorCfg.CompactionInterval,
+	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
+
+	// Ensure an initial cleanup occurred before starting the compactor.
+	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
+		c.ringSubservices.StopAsync()
+		return errors.Wrap(err, "failed to start the blocks cleaner")
+	}
+
+	return nil
+}
+
+func (c *Compactor) stopping(_ error) error {
+	ctx := context.Background()
+
+	services.StopAndAwaitTerminated(ctx, c.blocksCleaner) //nolint:errcheck
+	if c.ringSubservices != nil {
+		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
+	}
+	return nil
+}
+
+func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
 	c.compactUsersWithRetries(ctx)
 
@@ -255,7 +270,7 @@ func (c *Compactor) running(ctx context.Context) error {
 			c.compactUsersWithRetries(ctx)
 		case <-ctx.Done():
 			return nil
-		case err := <-c.subservicesWatcher.Chan():
+		case err := <-c.ringSubservicesWatcher.Chan():
 			return errors.Wrap(err, "compactor subservice failed")
 		}
 	}
@@ -344,9 +359,9 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
 		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
-		// but we prefix it with "meta-" in order to guarantee no clashing with
+		// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
 		// the directory used by the Thanos Syncer, whatever is the user ID.
-		path.Join(c.compactorCfg.DataDir, "meta-"+userID),
+		path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID),
 		reg,
 		[]block.MetadataFilter{
 			// List of filters to apply (order matters).
@@ -393,12 +408,6 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "compaction")
 	}
 
-	blocksCleaner := compact.NewBlocksCleaner(ulogger, bucket, ignoreDeletionMarkFilter, c.compactorCfg.DeletionDelay, c.blocksCleaned, c.blockCleanupFailures)
-
-	if err := blocksCleaner.DeleteMarkedBlocks(ctx); err != nil {
-		return errors.Wrap(err, "error cleaning blocks")
-	}
-
 	return nil
 }
 
@@ -414,6 +423,11 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Compactor) ownUser(userID string) (bool, error) {
+	// Always owned if sharding is disabled.
+	if !c.compactorCfg.ShardingEnabled {
+		return true, nil
+	}
+
 	// Hash the user ID.
 	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(userID))

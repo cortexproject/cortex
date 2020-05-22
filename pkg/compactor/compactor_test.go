@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -94,8 +98,10 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	assert.Equal(t, []string{
-		`level=info msg="discovering users from bucket"`,
-		`level=info msg="discovered users from bucket" users=0`,
+		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
+		`level=info component=cleaner msg="successfully completed hard deletion of blocks marked for deletion"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=info component=compactor msg="discovered users from bucket" users=0`,
 	}, strings.Split(strings.TrimSpace(logs.String()), "\n"))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -167,17 +173,29 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		# TYPE cortex_compactor_group_vertical_compactions_total counter
 		cortex_compactor_group_vertical_compactions_total 0
 
-		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
 		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		# HELP cortex_compactor_block_cleanup_failures_total Total number of blocks failed to be deleted.
 		cortex_compactor_block_cleanup_failures_total 0
 
-		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted.
 		# TYPE cortex_compactor_blocks_cleaned_total counter
 		cortex_compactor_blocks_cleaned_total 0
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
+
+		# TYPE cortex_compactor_block_cleanup_started_total counter
+		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
+		cortex_compactor_block_cleanup_started_total 1
+
+		# TYPE cortex_compactor_block_cleanup_completed_total counter
+		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
+		cortex_compactor_block_cleanup_completed_total 1
+
+		# TYPE cortex_compactor_block_cleanup_failed_total counter
+		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
+		cortex_compactor_block_cleanup_failed_total 0
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -198,10 +216,13 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
 		"cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_block_cleanup_started_total",
+		"cortex_compactor_block_cleanup_completed_total",
+		"cortex_compactor_block_cleanup_failed_total",
 	))
 }
 
-func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testing.T) {
+func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket(t *testing.T) {
 	t.Parallel()
 
 	// Fail to iterate over the bucket while discovering users.
@@ -220,15 +241,17 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure the bucket iteration has been retried the configured number of times.
-	bucketClient.AssertNumberOfCalls(t, "Iter", 3)
+	bucketClient.AssertNumberOfCalls(t, "Iter", 1+3)
 
 	assert.Equal(t, []string{
-		`level=info msg="discovering users from bucket"`,
-		`level=error msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
-		`level=info msg="discovering users from bucket"`,
-		`level=error msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
-		`level=info msg="discovering users from bucket"`,
-		`level=error msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
+		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
+		`level=error component=cleaner msg="failed to hard delete blocks marked for deletion" err="failed to discover users from bucket: failed to iterate the bucket"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
 	}, strings.Split(strings.TrimSpace(logs.String()), "\n"))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -300,17 +323,29 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		# TYPE cortex_compactor_group_vertical_compactions_total counter
 		cortex_compactor_group_vertical_compactions_total 0
 
-		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
 		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		# HELP cortex_compactor_block_cleanup_failures_total Total number of blocks failed to be deleted.
 		cortex_compactor_block_cleanup_failures_total 0
 
-		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted.
 		# TYPE cortex_compactor_blocks_cleaned_total counter
 		cortex_compactor_blocks_cleaned_total 0
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
+
+		# TYPE cortex_compactor_block_cleanup_started_total counter
+		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
+		cortex_compactor_block_cleanup_started_total 1
+
+		# TYPE cortex_compactor_block_cleanup_completed_total counter
+		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
+		cortex_compactor_block_cleanup_completed_total 0
+
+		# TYPE cortex_compactor_block_cleanup_failed_total counter
+		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
+		cortex_compactor_block_cleanup_failed_total 1
 	`),
 		"cortex_compactor_runs_started_total",
 		"cortex_compactor_runs_completed_total",
@@ -331,6 +366,9 @@ func TestCompactor_ShouldRetryOnFailureWhileDiscoveringUsersFromBucket(t *testin
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
 		"cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_block_cleanup_started_total",
+		"cortex_compactor_block_cleanup_completed_total",
+		"cortex_compactor_block_cleanup_failed_total",
 	))
 }
 
@@ -349,13 +387,14 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	c, tsdbCompactor, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
 	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -368,24 +407,26 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
 
 	assert.Equal(t, []string{
-		`level=info msg="discovering users from bucket"`,
-		`level=info msg="discovered users from bucket" users=2`,
-		`level=info msg="starting compaction of user blocks" user=user-1`,
-		`level=info org_id=user-1 msg="start sync of metas"`,
-		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compactions"`,
-		`level=info org_id=user-1 msg="compaction iterations done"`,
-		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
-		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
-		`level=info msg="successfully compacted user blocks" user=user-1`,
-		`level=info msg="starting compaction of user blocks" user=user-2`,
-		`level=info org_id=user-2 msg="start sync of metas"`,
-		`level=info org_id=user-2 msg="start of GC"`,
-		`level=info org_id=user-2 msg="start of compactions"`,
-		`level=info org_id=user-2 msg="compaction iterations done"`,
-		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
-		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
-		`level=info msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
+		`level=info component=cleaner org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
+		`level=info component=cleaner msg="successfully completed hard deletion of blocks marked for deletion"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=info component=compactor msg="discovered users from bucket" users=2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
+		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -393,6 +434,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	testedMetrics := []string{
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
@@ -407,17 +449,29 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
 
-		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
 		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		# HELP cortex_compactor_block_cleanup_failures_total Total number of blocks failed to be deleted.
 		cortex_compactor_block_cleanup_failures_total 0
 
-		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted.
 		# TYPE cortex_compactor_blocks_cleaned_total counter
 		cortex_compactor_blocks_cleaned_total 0
-	
+
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
+
+		# TYPE cortex_compactor_block_cleanup_started_total counter
+		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
+		cortex_compactor_block_cleanup_started_total 1
+
+		# TYPE cortex_compactor_block_cleanup_completed_total counter
+		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
+		cortex_compactor_block_cleanup_completed_total 1
+
+		# TYPE cortex_compactor_block_cleanup_failed_total counter
+		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
+		cortex_compactor_block_cleanup_failed_total 0
 	`), testedMetrics...))
 }
 
@@ -444,13 +498,14 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	c, tsdbCompactor, logs, registry, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
 	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
@@ -463,19 +518,21 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 1)
 
 	assert.Equal(t, []string{
-		`level=info msg="discovering users from bucket"`,
-		`level=info msg="discovered users from bucket" users=1`,
-		`level=info msg="starting compaction of user blocks" user=user-1`,
-		`level=info org_id=user-1 msg="start sync of metas"`,
-		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compactions"`,
-		`level=info org_id=user-1 msg="compaction iterations done"`,
-		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
-		`level=debug org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
-		`level=debug org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
-		`level=info org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
-		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
-		`level=info msg="successfully compacted user blocks" user=user-1`,
+		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
+		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
+		`level=info component=cleaner org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
+		`level=info component=cleaner msg="successfully completed hard deletion of blocks marked for deletion"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=info component=compactor msg="discovered users from bucket" users=1`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -483,6 +540,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	testedMetrics := []string{
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
@@ -497,17 +555,29 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
 		cortex_compactor_runs_failed_total 0
 
-		# HELP cortex_compactor_block_cleanup_failures_total Failures encountered while deleting blocks in compactor.
 		# TYPE cortex_compactor_block_cleanup_failures_total counter
+		# HELP cortex_compactor_block_cleanup_failures_total Total number of blocks failed to be deleted.
 		cortex_compactor_block_cleanup_failures_total 0
 
-		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted in compactor.
+		# HELP cortex_compactor_blocks_cleaned_total Total number of blocks deleted.
 		# TYPE cortex_compactor_blocks_cleaned_total counter
 		cortex_compactor_blocks_cleaned_total 1
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
 		cortex_compactor_blocks_marked_for_deletion_total 0
+
+		# TYPE cortex_compactor_block_cleanup_started_total counter
+		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
+		cortex_compactor_block_cleanup_started_total 1
+
+		# TYPE cortex_compactor_block_cleanup_completed_total counter
+		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
+		cortex_compactor_block_cleanup_completed_total 1
+
+		# TYPE cortex_compactor_block_cleanup_failed_total counter
+		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
+		cortex_compactor_block_cleanup_failed_total 0
 	`), testedMetrics...))
 }
 
@@ -532,13 +602,14 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	c, tsdbCompactor, logs, _, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Mock the compactor as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
 	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
@@ -551,26 +622,28 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
 
 	assert.Equal(t, []string{
-		`level=info msg="waiting until compactor is ACTIVE in the ring"`,
-		`level=info msg="compactor is ACTIVE in the ring"`,
-		`level=info msg="discovering users from bucket"`,
-		`level=info msg="discovered users from bucket" users=2`,
-		`level=info msg="starting compaction of user blocks" user=user-1`,
-		`level=info org_id=user-1 msg="start sync of metas"`,
-		`level=info org_id=user-1 msg="start of GC"`,
-		`level=info org_id=user-1 msg="start of compactions"`,
-		`level=info org_id=user-1 msg="compaction iterations done"`,
-		`level=info org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
-		`level=info org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
-		`level=info msg="successfully compacted user blocks" user=user-1`,
-		`level=info msg="starting compaction of user blocks" user=user-2`,
-		`level=info org_id=user-2 msg="start sync of metas"`,
-		`level=info org_id=user-2 msg="start of GC"`,
-		`level=info org_id=user-2 msg="start of compactions"`,
-		`level=info org_id=user-2 msg="compaction iterations done"`,
-		`level=info org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
-		`level=info org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
-		`level=info msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
+		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
+		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
+		`level=info component=cleaner org_id=user-2 msg="started cleaning of blocks marked for deletion"`,
+		`level=info component=cleaner org_id=user-2 msg="cleaning of blocks marked for deletion done"`,
+		`level=info component=cleaner msg="successfully completed hard deletion of blocks marked for deletion"`,
+		`level=info component=compactor msg="discovering users from bucket"`,
+		`level=info component=compactor msg="discovered users from bucket" users=2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
+		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeMetaFetcherLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
 
@@ -658,8 +731,77 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	for _, userID := range userIDs {
 		_, l, err := findCompactorByUserID(compactors, logs, userID)
 		require.NoError(t, err)
-		assert.Contains(t, l.String(), fmt.Sprintf(`level=info msg="successfully compacted user blocks" user=%s`, userID))
+		assert.Contains(t, l.String(), fmt.Sprintf(`level=info component=compactor msg="successfully compacted user blocks" user=%s`, userID))
 	}
+}
+
+func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
+	// Create a temporary dir for TSDB.
+	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir) //nolint:errcheck
+
+	// Create a temporary dir for the snapshot.
+	snapshotDir, err := ioutil.TempDir(os.TempDir(), "snapshot")
+	require.NoError(t, err)
+	defer os.RemoveAll(snapshotDir) //nolint:errcheck
+
+	// Create a new TSDB.
+	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
+		MinBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
+		MaxBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
+		RetentionDuration: int64(15 * 86400 * 1000),  // 15 days
+	})
+	require.NoError(t, err)
+
+	db.DisableCompactions()
+
+	// Append a sample at the beginning and one at the end of the time range.
+	for i, ts := range []int64{minT, maxT - 1} {
+		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
+
+		app := db.Appender()
+		_, err := app.Add(lbls, ts, float64(i))
+		require.NoError(t, err)
+
+		err = app.Commit()
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, db.Compact())
+	require.NoError(t, db.Snapshot(snapshotDir, true))
+
+	// Look for the created block (we expect one).
+	entries, err := ioutil.ReadDir(snapshotDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].IsDir())
+
+	blockID, err := ulid.Parse(entries[0].Name())
+	require.NoError(t, err)
+
+	// Inject Thanos external labels to the block.
+	meta := metadata.Thanos{
+		Labels: externalLabels,
+		Source: "test",
+	}
+	_, err = metadata.InjectThanos(log.NewNopLogger(), filepath.Join(snapshotDir, blockID.String()), meta, nil)
+	require.NoError(t, err)
+
+	// Ensure the output directory exists.
+	require.NoError(t, os.MkdirAll(dir, os.ModePerm))
+
+	// Copy the block files to the storage dir.
+	require.NoError(t, exec.Command("cp", "-r", filepath.Join(snapshotDir, blockID.String()), dir).Run())
+
+	return blockID
+}
+
+func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTime time.Time) {
+	content := mockDeletionMarkJSON(blockID.String(), deletionTime)
+	path := filepath.Join(dir, blockID.String(), metadata.DeletionMarkFilename)
+
+	require.NoError(t, ioutil.WriteFile(path, []byte(content), os.ModePerm))
 }
 
 func findCompactorByUserID(compactors []*Compactor, logs []*bytes.Buffer, userID string) (*Compactor, *bytes.Buffer, error) {

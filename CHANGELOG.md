@@ -34,6 +34,11 @@
 * [ENHANCEMENT] Thanos and Prometheus upgraded to [806479182a6b](https://github.com/thanos-io/thanos/commit/806479182a6b) and [cd73b3d33e06](https://github.com/prometheus/prometheus/commit/cd73b3d33e06) respectively. #2604
   * TSDB now supports isolation of append and queries.
   * TSDB now holds less WAL files after Head Truncation.
+* [ENHANCEMENT] Experimental TSDB: decoupled blocks deletion from blocks compaction in the compactor, so that blocks deletion is not blocked by a busy compactor. The following metrics have been added: #2623
+  * `cortex_compactor_block_cleanup_started_total`
+  * `cortex_compactor_block_cleanup_completed_total`
+  * `cortex_compactor_block_cleanup_failed_total`
+  * `cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds`
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

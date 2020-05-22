@@ -527,13 +527,16 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	// Parse the request
-	from, to, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a new instance of the TSDB querier
-	q, err := db.Querier(int64(from), int64(to))
+	// Since ingester runs with a very limited TSDB retention, we can (and should) query
+	// metrics without any time range bound, otherwise when we receive a request with a time
+	// range older then the ingester's data we return an empty response instead of returning
+	// the currently known series.
+	q, err := db.Querier(0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}

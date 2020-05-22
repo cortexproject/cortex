@@ -883,9 +883,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 				{Labels: client.FromLabelsToLabelAdapters(fixtures[2].lbls)},
 			},
 		},
-		"should filter metrics by time range": {
-			from: 100000,
-			to:   100000,
+		"should NOT filter metrics by time range to always return known metrics even when queried for older time ranges": {
+			from: 100,
+			to:   1000,
 			matchers: []*client.LabelMatchers{{
 				Matchers: []*client.LabelMatcher{
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
@@ -893,6 +893,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 			}},
 			expected: []*client.Metric{
 				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: client.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
 		"should not return duplicated metrics on overlapping matchers": {

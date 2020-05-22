@@ -748,8 +748,9 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 
 	// Create a new TSDB.
 	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
-		BlockRanges:       []int64{int64(2 * 60 * 60 * 1000)}, // 2h period
-		RetentionDuration: uint64(15 * 86400 * 1000),          // 15 days
+		MinBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
+		MaxBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
+		RetentionDuration: int64(15 * 86400 * 1000),  // 15 days
 	})
 	require.NoError(t, err)
 

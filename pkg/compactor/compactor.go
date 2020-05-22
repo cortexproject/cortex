@@ -240,6 +240,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
+		c.ringSubservices.StopAsync()
 		return errors.Wrap(err, "failed to start the blocks cleaner")
 	}
 

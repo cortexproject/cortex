@@ -137,7 +137,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
   - `-ingester.claim-on-rollout` (flag unused)
   - `-ingester.normalise-tokens` (flag unused)
 * [CHANGE] Renamed YAML file options to be more consistent. See [full config file changes below](#config-file-breaking-changes). #2273
-* [CHANGE] AWS based autoscaling has been removed. You can only use metrics based autoscaling now. `-applicationautoscaling.url` has been removed. See https://cortexmetrics.io/docs/guides/aws/#dynamodb-capacity-provisioning on how to migrate. #2328
+* [CHANGE] AWS based autoscaling has been removed. You can only use metrics based autoscaling now. `-applicationautoscaling.url` has been removed. See https://cortexmetrics.io/docs/production/aws/#dynamodb-capacity-provisioning on how to migrate. #2328
 * [CHANGE] Renamed the `memcache.write-back-goroutines` and `memcache.write-back-buffer` flags to `background.write-back-concurrency` and `background.write-back-buffer`. This affects the following flags: #2241
   - `-frontend.memcache.write-back-buffer` --> `-frontend.background.write-back-buffer`
   - `-frontend.memcache.write-back-goroutines` --> `-frontend.background.write-back-concurrency`

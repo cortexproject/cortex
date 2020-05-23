@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400
 ```
 
 Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
-For details about table options, see the official document of storage you are using.  
+For details about table options, see the official document of storage you are using.
 
 **WARNING**: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by Table Manager at runtime and seriously affect your Cortex.
 

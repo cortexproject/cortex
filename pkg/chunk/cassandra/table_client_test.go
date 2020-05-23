@@ -29,7 +29,7 @@ func TestTableClient_getCreateTableQuery_default(t *testing.T) {
 func TestTableClient_getCreateTableQuery_withOptions(t *testing.T) {
 	client := &tableClient{
 		cfg: Config{
-			TableWith: "CLUSTERING ORDER BY (range DESC) AND compaction = { 'class' : 'LeveledCompactionStrategy' }",
+			TableOptions: "CLUSTERING ORDER BY (range DESC) AND compaction = { 'class' : 'LeveledCompactionStrategy' }",
 		},
 	}
 	desc, _, _ := client.DescribeTable(context.Background(), "test_table")

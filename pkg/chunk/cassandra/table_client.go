@@ -73,8 +73,8 @@ func (c *tableClient) getCreateTableQuery(desc *chunk.TableDesc) (query string) 
 			value blob,
 			PRIMARY KEY (hash, range)
 		)`, desc.Name)
-	if c.cfg.TableWith != "" {
-		query = fmt.Sprintf("%s WITH %s", query, c.cfg.TableWith)
+	if c.cfg.TableOptions != "" {
+		query = fmt.Sprintf("%s WITH %s", query, c.cfg.TableOptions)
 	}
 	return
 }

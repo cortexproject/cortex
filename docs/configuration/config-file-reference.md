@@ -1738,10 +1738,13 @@ cassandra:
   # CLI flag: -cassandra.convict-hosts-on-failure
   [convict_hosts_on_failure: <boolean> | default = true]
 
-  # Table options used to create index or chunk tables.(Default = "": use
-  # default table options of Cassandra
-  # CLI flag: -cassandra.table-with
-  [table_with: <string> | default = ""]
+  # Table options used to create index or chunk tables. This value is used as
+  # plain text in the table `WITH` like this, "CREATE TABLE
+  # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
+  # see https://cortexmetrics.io/docs/production/cassandra. (Default = "": use
+  # default table options of your Cassandra)
+  # CLI flag: -cassandra.table-options
+  [table_options: <string> | default = ""]
 
 boltdb:
   # Location of BoltDB index files.

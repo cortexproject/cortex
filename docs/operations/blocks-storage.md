@@ -337,8 +337,8 @@ tsdb:
       [max_get_range_requests: <int> | default = 3]
 
       # TTL for caching object size for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
-      [object_size_ttl: <duration> | default = 24h]
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.attributes-ttl
+      [attributes_ttl: <duration> | default = 24h]
 
       # TTL for caching individual chunks subranges.
       # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
@@ -415,9 +415,9 @@ tsdb:
       # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-content-ttl
       [metafile_content_ttl: <duration> | default = 24h]
 
-      # Maximum size of metafile content to cache.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-max-size
-      [metafile_max_size: <int> | default = 1048576]
+      # Maximum size of metafile content to cache in bytes.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-max-size-bytes
+      [metafile_max_size_bytes: <int> | default = 1048576]
 
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to

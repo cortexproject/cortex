@@ -3011,7 +3011,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
 # be removed.
 # CLI flag: -compactor.consistency-delay
-[consistency_delay: <duration> | default = 30m]
+[consistency_delay: <duration> | default = 0s]
 
 # Data directory in which to cache blocks and process compactions
 # CLI flag: -compactor.data-dir
@@ -3025,6 +3025,10 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # interval
 # CLI flag: -compactor.compaction-retries
 [compaction_retries: <int> | default = 3]
+
+# Max number of concurrent compactions running.
+# CLI flag: -compactor.compaction-concurrency
+[compaction_concurrency: <int> | default = 1]
 
 # Time before a block marked for deletion is deleted from bucket. If not 0,
 # blocks will be marked for deletion and compactor component will delete blocks
@@ -3086,15 +3090,6 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
-
-# Number of shards a single tenant blocks should be grouped into (0 or 1 means
-# per-tenant blocks sharding is disabled).
-# CLI flag: -compactor.per-tenant-num-shards
-[per_tenant_num_shards: <int> | default = 1]
-
-# Number of concurrent shards compacted for a single tenant.
-# CLI flag: -compactor.per-tenant-shards-concurrency
-[per_tenant_shards_concurrency: <int> | default = 1]
 ```
 
 ### `store_gateway_config`

@@ -403,14 +403,6 @@ func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {
 	return ids
 }
 
-func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {
-	ids := make([]ulid.ULID, len(metas))
-	for i, m := range metas {
-		ids[i] = m.ULID
-	}
-	return ids
-}
-
 func countSeriesBytes(series []*storepb.Series) (count uint64) {
 	for _, s := range series {
 		for _, c := range s.Chunks {

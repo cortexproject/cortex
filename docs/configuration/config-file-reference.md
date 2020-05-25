@@ -2807,7 +2807,7 @@ bucket_store:
     # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
     [max_get_range_requests: <int> | default = 3]
 
-    # TTL for caching object size for chunks.
+    # TTL for caching object attributes for chunks.
     # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.attributes-ttl
     [attributes_ttl: <duration> | default = 24h]
 

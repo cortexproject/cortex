@@ -128,7 +128,7 @@ func TestQuerierWithBlocksStorageWithoutStoreGateway(t *testing.T) {
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 
 			// Wait until the querier has synched the new uploaded blocks.
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "bucket_store_blocks_loaded"))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_bucket_store_blocks_loaded"))
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
 			result, err := c.Query("series_1", series1Timestamp)
@@ -307,15 +307,15 @@ func TestQuerierWithBlocksStorageAndStoreGatewayRunningInMicroservicesMode(t *te
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 
 			// Wait until the querier has discovered the uploaded blocks.
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "blocks_meta_synced"))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_blocks_meta_synced"))
 
 			// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled
 			// we don't known which store-gateway instance will synch the blocks, so we need to wait on
 			// metrics extracted from all instances.
 			if testCfg.blocksShardingEnabled {
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "bucket_store_blocks_loaded"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "cortex_bucket_store_blocks_loaded"))
 			} else {
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(2*storeGateways.NumInstances())), "bucket_store_blocks_loaded"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(2*storeGateways.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 			}
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
@@ -499,15 +499,15 @@ func TestQuerierWithBlocksStorageAndStoreGatewayRunningInSingleBinaryMode(t *tes
 			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
 
 			// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances()*2)), "cortex_querier_blocks_meta_synced"))
+			require.NoError(t, cluster.WaitSumMetricWithLabels(e2e.EqualsSingle(float64(2*cluster.NumInstances()*2)), "cortex_blocks_meta_synced", map[string]string{"component": "querier"}))
 
 			// Wait until the store-gateway has synched the new uploaded blocks.
 			const shippedBlocks = 2
 
 			if testCfg.blocksShardingEnabled {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor)), "bucket_store_blocks_loaded"))
+				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
 			} else {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "bucket_store_blocks_loaded"))
+				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 			}
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).

@@ -74,7 +74,7 @@ func TestQuerierRemoteRead(t *testing.T) {
 	startMs := now.Add(-1*time.Minute).Unix() * 1000
 	endMs := now.Add(time.Minute).Unix() * 1000
 
-	q, err := remote.ToQuery(startMs, endMs, []*labels.Matcher{matcher}, &storage.SelectParams{
+	q, err := remote.ToQuery(startMs, endMs, []*labels.Matcher{matcher}, &storage.SelectHints{
 		Step:  1,
 		Start: startMs,
 		End:   endMs,

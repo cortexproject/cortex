@@ -101,7 +101,7 @@ func (s *CompositeHTTPService) SumMetrics(metricNames ...string) ([]float64, err
 	return sums, nil
 }
 
-// SumMetrics returns the sum of the values of each given metric names.
+// SumMetricWithLabels returns the sum of the values of metric with matching labels across all services.
 func (s *CompositeHTTPService) SumMetricWithLabels(metricName string, expectedLabels map[string]string) (float64, error) {
 	sum := 0.0
 

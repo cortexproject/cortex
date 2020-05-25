@@ -848,15 +848,15 @@ func prepareConfig() Config {
 	compactorCfg := Config{}
 	flagext.DefaultValues(&compactorCfg)
 
+	compactorCfg.retryMinBackoff = 0
+	compactorCfg.retryMaxBackoff = 0
+
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient *cortex_tsdb.BucketClientMock) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
 	storageCfg := cortex_tsdb.Config{}
 	flagext.DefaultValues(&storageCfg)
-
-	compactorCfg.retryMinBackoff = 0
-	compactorCfg.retryMaxBackoff = 0
 
 	// Create a temporary directory for compactor data.
 	dataDir, err := ioutil.TempDir(os.TempDir(), "compactor-test")

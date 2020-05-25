@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -284,9 +285,11 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 	c.compactionRunsStarted.Inc()
 
 	for retries.Ongoing() {
-		if success := c.compactUsers(ctx); success {
+		if err := c.compactUsers(ctx); err == nil {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
+			return
+		} else if errors.Is(err, context.Canceled) {
 			return
 		}
 
@@ -296,20 +299,22 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 	c.compactionRunsFailed.Inc()
 }
 
-func (c *Compactor) compactUsers(ctx context.Context) bool {
+func (c *Compactor) compactUsers(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
 	users, err := c.discoverUsers(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return false
+		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
+
+	errs := tsdb_errors.MultiError{}
 
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return false
+			return ctx.Err()
 		}
 
 		// If sharding is enabled, ensure the user ID belongs to our shard.
@@ -327,13 +332,14 @@ func (c *Compactor) compactUsers(ctx context.Context) bool {
 
 		if err = c.compactUser(ctx, userID); err != nil {
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
+			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
 			continue
 		}
 
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return true
+	return errs.Err()
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
@@ -361,8 +367,11 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		// the directory used by the Thanos Syncer, whatever is the user ID.
 		path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID),
 		reg,
+		// List of filters to apply (order matters).
 		[]block.MetadataFilter{
-			// List of filters to apply (order matters).
+			// Remove the ingester ID because we don't shard blocks anymore, while still
+			// honoring the shard ID if sharding was done in the past.
+			NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
 			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
 			ignoreDeletionMarkFilter,
 			deduplicateBlocksFilter,

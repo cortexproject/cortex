@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -54,7 +55,7 @@ type BlocksScanner struct {
 
 	// Keep the per-tenant/user metas found during the last run.
 	userMx            sync.RWMutex
-	userMetas         map[string][]*metadata.Meta
+	userMetas         map[string][]*BlockMeta
 	userDeletionMarks map[string]map[ulid.ULID]*metadata.DeletionMark
 
 	scanDuration    prometheus.Histogram
@@ -67,7 +68,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
-		userMetas:         make(map[string][]*metadata.Meta),
+		userMetas:         make(map[string][]*BlockMeta),
 		userDeletionMarks: map[string]map[ulid.ULID]*metadata.DeletionMark{},
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
@@ -92,7 +93,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 
 // GetBlocks returns known blocks for userID containing samples within the range minT
 // and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error) {
+func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error) {
 	// We need to ensure the initial full bucket scan succeeded.
 	if d.State() != services.Running {
 		return nil, nil, errBlocksScannerNotRunning
@@ -111,7 +112,7 @@ func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*metadata.
 
 	// Given we do expect the large majority of queries to have a time range close
 	// to "now", we're going to find matching blocks iterating the list in reverse order.
-	var matchingMetas []*metadata.Meta
+	var matchingMetas []*BlockMeta
 	for i := len(userMetas) - 1; i >= 0; i-- {
 		// NOTE: Block intervals are half-open: [MinTime, MaxTime).
 		if userMetas[i].MinTime <= maxT && minT < userMetas[i].MaxTime {
@@ -162,7 +163,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 
 	jobsChan := make(chan string)
 	resMx := sync.Mutex{}
-	resMetas := map[string][]*metadata.Meta{}
+	resMetas := map[string][]*BlockMeta{}
 	resDeletionMarks := map[string]map[ulid.ULID]*metadata.DeletionMark{}
 	resErrs := tsdb_errors.MultiError{}
 
@@ -235,7 +236,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 
 // scanUserBlocksWithRetries runs scanUserBlocks() retrying multiple times
 // in case of error.
-func (d *BlocksScanner) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas []*metadata.Meta, deletionMarks map[ulid.ULID]*metadata.DeletionMark, err error) {
+func (d *BlocksScanner) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas []*BlockMeta, deletionMarks map[ulid.ULID]*metadata.DeletionMark, err error) {
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: time.Second,
 		MaxBackoff: 30 * time.Second,
@@ -254,8 +255,8 @@ func (d *BlocksScanner) scanUserBlocksWithRetries(ctx context.Context, userID st
 	return
 }
 
-func (d *BlocksScanner) scanUserBlocks(ctx context.Context, userID string) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error) {
-	fetcher, deletionMarkFilter, err := d.getOrCreateMetaFetcher(userID)
+func (d *BlocksScanner) scanUserBlocks(ctx context.Context, userID string) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error) {
+	fetcher, userBucket, deletionMarkFilter, err := d.getOrCreateMetaFetcher(userID)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "create meta fetcher for user %s", userID)
 	}
@@ -271,31 +272,61 @@ func (d *BlocksScanner) scanUserBlocks(ctx context.Context, userID string) ([]*m
 		logPartialBlocks(userID, partials, d.logger)
 	}
 
-	return sortMetasByMaxTime(metas), deletionMarkFilter.DeletionMarkBlocks(), nil
+	res := make([]*BlockMeta, 0, len(metas))
+	for _, m := range metas {
+		blockMeta := &BlockMeta{
+			Meta: *m,
+		}
+
+		// If the block is already known, we can get the remaining attributes from there
+		// because a block is immutable.
+		prevMeta := d.getBlockMeta(userID, m.ULID)
+		if prevMeta != nil {
+			blockMeta.UploadedAt = prevMeta.UploadedAt
+		} else {
+			attrs, err := userBucket.Attributes(ctx, path.Join(m.ULID.String(), metadata.MetaFilename))
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "read %s attributes of block %s for user %s", metadata.MetaFilename, m.ULID.String(), userID)
+			}
+
+			// Since the meta.json file is the last file of a block being uploaded and it's immutable
+			// we can safely assume that the last modified timestamp of the meta.json is the time when
+			// the block has completed to be uploaded.
+			blockMeta.UploadedAt = attrs.LastModified
+		}
+
+		res = append(res, blockMeta)
+	}
+
+	// The blocks scanner expects all blocks to be sorted by max time.
+	sortBlockMetasByMaxTime(res)
+
+	return res, deletionMarkFilter.DeletionMarkBlocks(), nil
 }
 
-func (d *BlocksScanner) getOrCreateMetaFetcher(userID string) (block.MetadataFetcher, *block.IgnoreDeletionMarkFilter, error) {
+func (d *BlocksScanner) getOrCreateMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	d.fetchersMx.Lock()
 	defer d.fetchersMx.Unlock()
 
 	if f, ok := d.fetchers[userID]; ok {
-		return f.metadataFetcher, f.deletionMarkFilter, nil
+		return f.metadataFetcher, f.userBucket, f.deletionMarkFilter, nil
 	}
 
-	fetcher, deletionMarkFilter, err := d.createMetaFetcher(userID)
+	fetcher, userBucket, deletionMarkFilter, err := d.createMetaFetcher(userID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	d.fetchers[userID] = userFetcher{
 		metadataFetcher:    fetcher,
 		deletionMarkFilter: deletionMarkFilter,
+		userBucket:         userBucket,
 	}
 
-	return fetcher, deletionMarkFilter, nil
+	return fetcher, userBucket, deletionMarkFilter, nil
 }
 
-func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher, *block.IgnoreDeletionMarkFilter, error) {
+func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util.WithUserID(userID, d.logger)
 	userBucket := cortex_tsdb.NewUserBucketClient(userID, d.bucketClient)
 	userReg := prometheus.NewRegistry()
@@ -320,24 +351,35 @@ func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher,
 		nil,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	d.fetchersMetrics.AddUserRegistry(userID, userReg)
-	return f, deletionMarkFilter, nil
+	return f, userBucket, deletionMarkFilter, nil
 }
 
-func sortMetasByMaxTime(metas map[ulid.ULID]*metadata.Meta) []*metadata.Meta {
-	sorted := make([]*metadata.Meta, 0, len(metas))
-	for _, m := range metas {
-		sorted = append(sorted, m)
+func (d *BlocksScanner) getBlockMeta(userID string, blockID ulid.ULID) *BlockMeta {
+	d.userMx.RLock()
+	defer d.userMx.RUnlock()
+
+	metas, ok := d.userMetas[userID]
+	if !ok {
+		return nil
 	}
 
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].MaxTime < sorted[j].MaxTime
-	})
+	for _, m := range metas {
+		if m.ULID == blockID {
+			return m
+		}
+	}
 
-	return sorted
+	return nil
+}
+
+func sortBlockMetasByMaxTime(metas []*BlockMeta) {
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].MaxTime < metas[j].MaxTime
+	})
 }
 
 func logPartialBlocks(userID string, partials map[ulid.ULID]error, logger log.Logger) {
@@ -355,4 +397,5 @@ func logPartialBlocks(userID string, partials map[ulid.ULID]error, logger log.Lo
 type userFetcher struct {
 	metadataFetcher    block.MetadataFetcher
 	deletionMarkFilter *block.IgnoreDeletionMarkFilter
+	userBucket         objstore.Bucket
 }

@@ -5,7 +5,6 @@ import (
 	"flag"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -54,7 +53,7 @@ type BlocksFinder interface {
 
 	// GetBlocks returns known blocks for userID containing samples within the range minT
 	// and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-	GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error)
+	GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error)
 }
 
 // BlocksStoreClient is the interface that should be implemented by any client used
@@ -68,13 +67,11 @@ type BlocksStoreClient interface {
 }
 
 type BlocksConsistencyCheckConfig struct {
-	Enabled           bool          `yaml:"enabled"`
-	UploadGracePeriod time.Duration `yaml:"upload_grace_period"`
+	Enabled bool `yaml:"enabled"`
 }
 
 func (cfg *BlocksConsistencyCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether the querier should run a consistency check to ensure all expected blocks have been queried.")
-	f.DurationVar(&cfg.UploadGracePeriod, prefix+".upload-grace-period", time.Hour, "The grace period allowed before a new block is included in the consistency check.")
 }
 
 // BlocksStoreQueryable is a queryable which queries blocks storage via
@@ -171,11 +168,14 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	var consistency *BlocksConsistencyChecker
 	if querierCfg.BlocksConsistencyCheck.Enabled {
 		consistency = NewBlocksConsistencyChecker(
-			querierCfg.BlocksConsistencyCheck.UploadGracePeriod,
+			// Exclude blocks which have been recently uploaded, in order to give enough time to store-gateways
+			// to discover and load them (3 times the sync interval).
+			storageCfg.BucketStore.ConsistencyDelay+(3*storageCfg.BucketStore.SyncInterval),
 			// To avoid any false positive in the consistency check, we do exclude blocks which have been
 			// recently marked for deletion, until the "ignore delay / 2". This means the consistency checker
 			// exclude such blocks about 50% of the time before querier and store-gateway stops querying them.
 			storageCfg.BucketStore.IgnoreDeletionMarksDelay/2,
+			logger,
 			reg,
 		)
 	}
@@ -293,7 +293,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		return series.NewEmptySeriesSet(), nil, nil
 	}
 
-	blockIDs := getULIDsFromMetas(metas)
+	blockIDs := getULIDsFromBlockMetas(metas)
 	level.Debug(spanLog).Log("expected blocks", blockIDs)
 
 	// Find the set of store-gateway instances having the blocks.
@@ -301,7 +301,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	if err != nil {
 		return nil, nil, err
 	}
-	level.Debug(spanLog).Log("num store-gateway instances:", len(clients))
+	level.Debug(spanLog).Log("num store-gateway instances", len(clients))
 
 	req := &storepb.SeriesRequest{
 		MinTime:                 minT,
@@ -386,21 +386,13 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 	// Ensure all expected blocks have been queried.
 	if q.consistency != nil {
-		if err := q.consistency.Check(blockIDs, deletionMarks, queriedBlocks); err != nil {
+		if err := q.consistency.Check(metas, deletionMarks, queriedBlocks); err != nil {
 			level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
 			return nil, nil, err
 		}
 	}
 
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
-}
-
-func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {
-	ids := make([]ulid.ULID, len(metas))
-	for i, m := range metas {
-		ids[i] = m.ULID
-	}
-	return ids
 }
 
 func countSeriesBytes(series []*storepb.Series) (count uint64) {

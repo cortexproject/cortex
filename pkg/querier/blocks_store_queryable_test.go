@@ -52,7 +52,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		finderResult   []*metadata.Meta
+		finderResult   []*BlockMeta
 		finderErr      error
 		storeSetResult []BlocksStoreClient
 		storeSetErr    error
@@ -68,17 +68,17 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			expectedErr: "unable to find blocks",
 		},
 		"error while getting clients to query the store-gateway": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetErr: errors.New("no client found"),
 			expectedErr: "no client found",
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -98,9 +98,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -126,9 +126,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -151,9 +151,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -177,9 +177,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping blocks (multiple returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -215,9 +215,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -229,10 +229,10 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -267,7 +267,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				userID:      "user-1",
 				finder:      finder,
 				stores:      stores,
-				consistency: NewBlocksConsistencyChecker(0, 0, nil),
+				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
 				logger:      log.NewNopLogger(),
 			}
 
@@ -327,11 +327,11 @@ func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID) ([]BlocksStoreClient, 
 type blocksFinderMock struct {
 	services.Service
 
-	mockedResult []*metadata.Meta
+	mockedResult []*BlockMeta
 	mockedErr    error
 }
 
-func (m *blocksFinderMock) GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error) {
+func (m *blocksFinderMock) GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error) {
 	return m.mockedResult, nil, m.mockedErr
 }
 

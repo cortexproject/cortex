@@ -672,11 +672,6 @@ blocks_consistency_check:
   # blocks have been queried.
   # CLI flag: -experimental.querier.blocks-consistency-check.enabled
   [enabled: <boolean> | default = false]
-
-  # The grace period allowed before a new block is included in the consistency
-  # check.
-  # CLI flag: -experimental.querier.blocks-consistency-check.upload-grace-period
-  [upload_grace_period: <duration> | default = 1h]
 ```
 
 ### `query_frontend_config`

@@ -18,6 +18,10 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
+const (
+	CacheBackendMemcached = "memcached"
+)
+
 type CacheBackend struct {
 	Backend   string                `yaml:"backend"`
 	Memcached MemcachedClientConfig `yaml:"memcached"`
@@ -25,11 +29,11 @@ type CacheBackend struct {
 
 // Validate the config.
 func (cfg *CacheBackend) Validate() error {
-	if cfg.Backend != "" && cfg.Backend != string(storecache.MemcachedBucketCacheProvider) {
+	if cfg.Backend != "" && cfg.Backend != CacheBackendMemcached {
 		return fmt.Errorf("unsupported cache backend: %s", cfg.Backend)
 	}
 
-	if cfg.Backend == string(storecache.MemcachedBucketCacheProvider) {
+	if cfg.Backend == CacheBackendMemcached {
 		if err := cfg.Memcached.Validate(); err != nil {
 			return err
 		}
@@ -48,7 +52,7 @@ type ChunksCacheConfig struct {
 }
 
 func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s.", storecache.MemcachedBucketCacheProvider))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for chunks cache, if not empty. Supported values: %s.", CacheBackendMemcached))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 
@@ -75,14 +79,13 @@ type MetadataCacheConfig struct {
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for metadata cache, if not empty. Supported values: %s.", storecache.MemcachedBucketCacheProvider))
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("Backend for metadata cache, if not empty. Supported values: %s.", CacheBackendMemcached))
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 
 	f.DurationVar(&cfg.TenantsListTTL, prefix+"tenants-list-ttl", 15*time.Minute, "How long to cache list of tenants in the bucket.")
 	f.DurationVar(&cfg.TenantBlocksListTTL, prefix+"tenant-blocks-list-ttl", 15*time.Minute, "How long to cache list of blocks for each tenant.")
-	f.DurationVar(&cfg.TenantBlocksListTTL, prefix+"chunks-list-ttl", 24*time.Hour, "How long to cache list of chunks for a block.")
-
+	f.DurationVar(&cfg.ChunksListTTL, prefix+"chunks-list-ttl", 24*time.Hour, "How long to cache list of chunks for a block.")
 	f.DurationVar(&cfg.MetafileExistsTTL, prefix+"metafile-exists-ttl", 2*time.Hour, "How long to cache information that block metafile exists.")
 	f.DurationVar(&cfg.MetafileDoesntExistTTL, prefix+"metafile-doesnt-exist-ttl", 15*time.Minute, "How long to cache information that block metafile doesn't exist.")
 	f.DurationVar(&cfg.MetafileContentTTL, prefix+"metafile-content-ttl", 24*time.Hour, "How long to cache content of the metafile.")
@@ -135,16 +138,16 @@ func createCache(cacheName string, backend string, memcached MemcachedClientConf
 		// No caching.
 		return nil, nil
 
-	case string(storecache.MemcachedBucketCacheProvider):
+	case CacheBackendMemcached:
 		var client cacheutil.MemcachedClient
-		client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, memcached.ToMemcachedClientConfig(), prometheus.WrapRegistererWith(prometheus.Labels{"cache": cacheName}, reg))
+		client, err := cacheutil.NewMemcachedClientWithConfig(logger, cacheName, memcached.ToMemcachedClientConfig(), reg)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create memcached client")
 		}
 		return cache.NewMemcachedCache(cacheName, logger, client, reg), nil
 
 	default:
-		return nil, errors.Errorf("unsupported cache type: %s", backend)
+		return nil, errors.Errorf("unsupported cache type for cache %s: %s", cacheName, backend)
 	}
 }
 

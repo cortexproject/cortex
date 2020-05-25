@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 var errObjectDoesNotExist = errors.New("object does not exist")
@@ -112,10 +113,10 @@ func (m *BucketClientMock) IsObjNotFoundErr(err error) bool {
 	return err == errObjectDoesNotExist
 }
 
-// ObjectSize mocks objstore.Bucket.ObjectSize()
-func (m *BucketClientMock) ObjectSize(ctx context.Context, name string) (uint64, error) {
+// ObjectSize mocks objstore.Bucket.Attributes()
+func (m *BucketClientMock) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	args := m.Called(ctx, name)
-	return args.Get(0).(uint64), args.Error(1)
+	return args.Get(0).(objstore.ObjectAttributes), args.Error(1)
 }
 
 // Close mocks objstore.Bucket.Close()

@@ -47,7 +47,7 @@ type ChunksCacheConfig struct {
 
 	SubrangeSize        int64         `yaml:"subrange_size"`
 	MaxGetRangeRequests int           `yaml:"max_get_range_requests"`
-	ObjectSizeTTL       time.Duration `yaml:"object_size_ttl"`
+	AttributesTTL       time.Duration `yaml:"attributes_ttl"`
 	SubrangeTTL         time.Duration `yaml:"subrange_ttl"`
 }
 
@@ -58,7 +58,7 @@ func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 
 	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
 	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
-	f.DurationVar(&cfg.ObjectSizeTTL, prefix+"object-size-ttl", 24*time.Hour, "TTL for caching object size for chunks.")
+	f.DurationVar(&cfg.AttributesTTL, prefix+"attributes-ttl", 24*time.Hour, "TTL for caching object size for chunks.")
 	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual chunks subranges.")
 }
 
@@ -106,7 +106,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 	}
 	if chunksCache != nil {
 		cachingConfigured = true
-		cfg.CacheGetRange("chunks", chunksCache, isTSDBChunkFile, chunksConfig.SubrangeSize, chunksConfig.ObjectSizeTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
+		cfg.CacheGetRange("chunks", chunksCache, isTSDBChunkFile, chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
 	}
 
 	metadataCache, err := createCache("metadata-cache", metadataConfig.Backend, metadataConfig.Memcached, logger, reg)

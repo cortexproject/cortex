@@ -75,7 +75,7 @@ type MetadataCacheConfig struct {
 	MetafileExistsTTL      time.Duration `yaml:"metafile_exists_ttl"`
 	MetafileDoesntExistTTL time.Duration `yaml:"metafile_doesnt_exist_ttl"`
 	MetafileContentTTL     time.Duration `yaml:"metafile_content_ttl"`
-	MetafileMaxSize        int           `yaml:"metafile_max_size"`
+	MetafileMaxSize        int           `yaml:"metafile_max_size_bytes"`
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -89,7 +89,7 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 	f.DurationVar(&cfg.MetafileExistsTTL, prefix+"metafile-exists-ttl", 2*time.Hour, "How long to cache information that block metafile exists.")
 	f.DurationVar(&cfg.MetafileDoesntExistTTL, prefix+"metafile-doesnt-exist-ttl", 15*time.Minute, "How long to cache information that block metafile doesn't exist.")
 	f.DurationVar(&cfg.MetafileContentTTL, prefix+"metafile-content-ttl", 24*time.Hour, "How long to cache content of the metafile.")
-	f.IntVar(&cfg.MetafileMaxSize, prefix+"metafile-max-size", 1*1024*1024, "Maximum size of metafile content to cache.")
+	f.IntVar(&cfg.MetafileMaxSize, prefix+"metafile-max-size-bytes", 1*1024*1024, "Maximum size of metafile content to cache in bytes.")
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
@@ -119,9 +119,10 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cfg.CacheExists("metafile", metadataCache, isMetaFile, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 		cfg.CacheGet("metafile", metadataCache, isMetaFile, metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 
-		cfg.CacheIter("tenants-iter", metadataCache, isTenantsDir, metadataConfig.TenantsListTTL, storecache.JSONIterCodec{})
-		cfg.CacheIter("tenant-blocks-iter", metadataCache, isTenantBlocksDir, metadataConfig.TenantBlocksListTTL, snappyIterCodec{storecache.JSONIterCodec{}})
-		cfg.CacheIter("chunks-iter", metadataCache, isChunksDir, metadataConfig.ChunksListTTL, snappyIterCodec{storecache.JSONIterCodec{}})
+		codec := snappyIterCodec{storecache.JSONIterCodec{}}
+		cfg.CacheIter("tenants-iter", metadataCache, isTenantsDir, metadataConfig.TenantsListTTL, codec)
+		cfg.CacheIter("tenant-blocks-iter", metadataCache, isTenantBlocksDir, metadataConfig.TenantBlocksListTTL, codec)
+		cfg.CacheIter("chunks-iter", metadataCache, isChunksDir, metadataConfig.ChunksListTTL, codec)
 	}
 
 	if !cachingConfigured {

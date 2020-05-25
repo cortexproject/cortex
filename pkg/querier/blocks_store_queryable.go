@@ -73,7 +73,7 @@ type BlocksConsistencyCheckConfig struct {
 }
 
 func (cfg *BlocksConsistencyCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, prefix+".enabled", true, "Whether the querier should run a consistency check to ensure all expected blocks have been queried.")
+	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether the querier should run a consistency check to ensure all expected blocks have been queried.")
 	f.DurationVar(&cfg.UploadGracePeriod, prefix+".upload-grace-period", time.Hour, "The grace period allowed before a new block is included in the consistency check.")
 }
 

@@ -671,7 +671,7 @@ blocks_consistency_check:
   # Whether the querier should run a consistency check to ensure all expected
   # blocks have been queried.
   # CLI flag: -experimental.querier.blocks-consistency-check.enabled
-  [enabled: <boolean> | default = true]
+  [enabled: <boolean> | default = false]
 
   # The grace period allowed before a new block is included in the consistency
   # check.

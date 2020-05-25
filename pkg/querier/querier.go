@@ -58,8 +58,9 @@ type Config struct {
 	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
-	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
-	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayAddresses  string                       `yaml:"store_gateway_addresses"`
+	StoreGatewayClient     tls.ClientConfig             `yaml:"store_gateway_client"`
+	BlocksConsistencyCheck BlocksConsistencyCheckConfig `yaml:"blocks_consistency_check" doc:"description=Configures the consistency check done by the querier on queried blocks when running the experimental blocks storage."`
 }
 
 var (
@@ -73,6 +74,7 @@ const (
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
+	cfg.BlocksConsistencyCheck.RegisterFlagsWithPrefix("experimental.querier.blocks-consistency-check", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
@@ -179,7 +181,7 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 		now := time.Now()
 
 		if cfg.MaxQueryIntoFuture > 0 {
-			maxQueryTime := util.TimeMilliseconds(now.Add(cfg.MaxQueryIntoFuture))
+			maxQueryTime := util.TimeToMillis(now.Add(cfg.MaxQueryIntoFuture))
 
 			if mint > maxQueryTime {
 				return storage.NoopQuerier(), nil
@@ -205,12 +207,12 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 		q.metadataQuerier = dqr
 
 		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeMilliseconds(now.Add(-cfg.QueryIngestersWithin)) {
+		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeToMillis(now.Add(-cfg.QueryIngestersWithin)) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
 		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= util.TimeMilliseconds(now.Add(-cfg.QueryStoreAfter)) {
+		if cfg.QueryStoreAfter == 0 || mint <= util.TimeToMillis(now.Add(-cfg.QueryStoreAfter)) {
 			cqr, err := store.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err

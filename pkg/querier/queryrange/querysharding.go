@@ -16,11 +16,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
-	nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
-
 	errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
 )
 
@@ -217,8 +216,8 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
 		r.GetQuery(),
-		TimeFromMillis(r.GetStart()),
-		TimeFromMillis(r.GetEnd()),
+		util.TimeFromMillis(r.GetStart()),
+		util.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 
@@ -312,7 +311,7 @@ func (splitter *shardSplitter) parallel(ctx context.Context, sharded, nonsharded
 // partitionQuery splits a request into potentially multiple requests, one including the request's time range
 // [0,t). The other will include [t,inf)
 func partitionRequest(r Request, t time.Time) (before Request, after Request) {
-	boundary := TimeToMillis(t)
+	boundary := util.TimeToMillis(t)
 	if r.GetStart() >= boundary {
 		return nil, r
 	}
@@ -322,15 +321,6 @@ func partitionRequest(r Request, t time.Time) (before Request, after Request) {
 	}
 
 	return r.WithStartEnd(r.GetStart(), boundary), r.WithStartEnd(boundary, r.GetEnd())
-}
-
-// TimeFromMillis is a helper to turn milliseconds -> time.Time
-func TimeFromMillis(ms int64) time.Time {
-	return time.Unix(0, ms*nanosecondsInMillisecond)
-}
-
-func TimeToMillis(t time.Time) int64 {
-	return t.UnixNano() / nanosecondsInMillisecond
 }
 
 func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {

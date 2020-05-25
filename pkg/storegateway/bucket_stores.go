@@ -243,10 +243,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		append(u.filters, []block.MetadataFilter{
 			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
-			// Filters out duplicate blocks that can be formed from two or more overlapping
-			// blocks that fully submatches the source blocks of the older blocks.
-			// TODO(pracucci) can this cause troubles with the upcoming blocks sharding in the store-gateway?
-			block.NewDeduplicateFilter(),
+			// The duplicate filter has been intentionally omitted because it could cause troubles with
+			// the consistency check done on the querier. The duplicate filter removes redundant blocks
+			// but if the store-gateway removes redundant blocks before the querier discovers them, the
+			// consistency check on the querier will fail.
 		}...),
 		[]block.MetadataModifier{
 			// Remove Cortex external labels so that they're not injected when querying blocks.

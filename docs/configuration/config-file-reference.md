@@ -759,11 +759,6 @@ results_cache:
     # The CLI flags prefix for this block config is: frontend
     [fifocache: <fifo_cache_config>]
 
-  # Most recent allowed cacheable result, to prevent caching very recent results
-  # that might still be in flux.
-  # CLI flag: -frontend.max-cache-freshness
-  [max_freshness: <duration> | default = 1m]
-
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
@@ -2383,6 +2378,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
+
+# Most recent allowed cacheable result per-tenant, to prevent caching very
+# recent results that might still be in flux.
+# CLI flag: -frontend.max-cache-freshness
+[max_cache_freshness: <duration> | default = 1m]
 
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]

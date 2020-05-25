@@ -67,15 +67,15 @@ func (cfg *ChunksCacheConfig) Validate() error {
 }
 
 type MetadataCacheConfig struct {
-	CacheBackend
+	CacheBackend `yaml:",inline"`
 
-	TenantsListTTL         time.Duration `json:"tenants_list_ttl"`
-	TenantBlocksListTTL    time.Duration `json:"tenant_blocks_list_ttl"`
-	ChunksListTTL          time.Duration `json:"chunks_list_ttl"`
-	MetafileExistsTTL      time.Duration `json:"metafile_exists_ttl"`
-	MetafileDoesntExistTTL time.Duration `json:"metafile_doesnt_exist_ttl"`
-	MetafileContentTTL     time.Duration `json:"metafile_content_ttl"`
-	MetafileMaxSize        int           `json:"metafile_max_size"`
+	TenantsListTTL         time.Duration `yaml:"tenants_list_ttl"`
+	TenantBlocksListTTL    time.Duration `yaml:"tenant_blocks_list_ttl"`
+	ChunksListTTL          time.Duration `yaml:"chunks_list_ttl"`
+	MetafileExistsTTL      time.Duration `yaml:"metafile_exists_ttl"`
+	MetafileDoesntExistTTL time.Duration `yaml:"metafile_doesnt_exist_ttl"`
+	MetafileContentTTL     time.Duration `yaml:"metafile_content_ttl"`
+	MetafileMaxSize        int           `yaml:"metafile_max_size"`
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {

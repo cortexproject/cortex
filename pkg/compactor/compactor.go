@@ -28,20 +28,19 @@ import (
 
 // Config holds the Compactor config.
 type Config struct {
-	BlockRanges          cortex_tsdb.DurationList `yaml:"block_ranges"`
-	BlockSyncConcurrency int                      `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency  int                      `yaml:"meta_sync_concurrency"`
-	ConsistencyDelay     time.Duration            `yaml:"consistency_delay"`
-	DataDir              string                   `yaml:"data_dir"`
-	CompactionInterval   time.Duration            `yaml:"compaction_interval"`
-	CompactionRetries    int                      `yaml:"compaction_retries"`
-	DeletionDelay        time.Duration            `yaml:"deletion_delay"`
+	BlockRanges           cortex_tsdb.DurationList `yaml:"block_ranges"`
+	BlockSyncConcurrency  int                      `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency   int                      `yaml:"meta_sync_concurrency"`
+	ConsistencyDelay      time.Duration            `yaml:"consistency_delay"`
+	DataDir               string                   `yaml:"data_dir"`
+	CompactionInterval    time.Duration            `yaml:"compaction_interval"`
+	CompactionRetries     int                      `yaml:"compaction_retries"`
+	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
+	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
 
 	// Compactors sharding.
-	ShardingEnabled            bool       `yaml:"sharding_enabled"`
-	ShardingRing               RingConfig `yaml:"sharding_ring"`
-	PerTenantNumShards         uint       `yaml:"per_tenant_num_shards"`
-	PerTenantShardsConcurrency int        `yaml:"per_tenant_shards_concurrency"`
+	ShardingEnabled bool       `yaml:"sharding_enabled"`
+	ShardingRing    RingConfig `yaml:"sharding_ring"`
 
 	// No need to add options to customize the retry backoff,
 	// given the defaults should be fine, but allow to override
@@ -59,15 +58,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.retryMaxBackoff = time.Minute
 
 	f.Var(&cfg.BlockRanges, "compactor.block-ranges", "List of compaction time ranges.")
-	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 30*time.Minute, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.PartialUploadThresholdAge))
+	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 0, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.PartialUploadThresholdAge))
 	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of Go routines to use when syncing block index and chunks files from the long term storage.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
+	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
-	f.UintVar(&cfg.PerTenantNumShards, "compactor.per-tenant-num-shards", 1, "Number of shards a single tenant blocks should be grouped into (0 or 1 means per-tenant blocks sharding is disabled).")
-	f.IntVar(&cfg.PerTenantShardsConcurrency, "compactor.per-tenant-shards-concurrency", 1, "Number of concurrent shards compacted for a single tenant.")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
 		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
@@ -84,7 +82,7 @@ type Compactor struct {
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
 
-	// function that creates bucket client and TSDB compactor using the context.
+	// Function that creates bucket client and TSDB compactor using the context.
 	// Useful for injecting mock objects from tests.
 	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error)
 
@@ -365,7 +363,6 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		reg,
 		[]block.MetadataFilter{
 			// List of filters to apply (order matters).
-			NewBlocksShardingFilter(uint32(c.compactorCfg.PerTenantNumShards)),
 			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
 			ignoreDeletionMarkFilter,
 			deduplicateBlocksFilter,
@@ -398,7 +395,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.tsdbCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
-		c.compactorCfg.PerTenantShardsConcurrency,
+		c.compactorCfg.CompactionConcurrency,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

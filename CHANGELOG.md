@@ -29,7 +29,6 @@
   * `cortex_storegateway_blocks_last_successful_sync_timestamp_seconds`
 * [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
 * [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
-* [ENHANCEMENT] Experimental TSDB: added per-tenant blocks sharding support in the compactor, in order to parallelize blocks compaction for a single tenant in a single node. Sharding can be enabled via `-compactor.per-tenant-num-shards` while the parallelization can be controlled with `-compactor.per-tenant-shards-concurrency`. #2599
 * [ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. #2587
 * [ENHANCEMENT] `query-tee` supports `/metadata`, `/alerts`, and `/rules` #2600
 * [ENHANCEMENT] Thanos and Prometheus upgraded to [806479182a6b](https://github.com/thanos-io/thanos/commit/806479182a6b) and [cd73b3d33e06](https://github.com/prometheus/prometheus/commit/cd73b3d33e06) respectively. #2604

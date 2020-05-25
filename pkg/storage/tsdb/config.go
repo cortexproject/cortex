@@ -39,8 +39,8 @@ const (
 	// set when shipping blocks to the storage.
 	IngesterIDExternalLabel = "__ingester_id__"
 
-	// ShardIDExternalLabel is the external label containing the shard ID,
-	// set by the compactor.
+	// ShardIDExternalLabel is the external label containing the shard ID
+	// and can be used to shard blocks.
 	ShardIDExternalLabel = "__shard_id__"
 )
 

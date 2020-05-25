@@ -111,6 +111,14 @@ To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache
 
 There are additional low-level options for configuring chunks cache. Please refer to other flags with `experimental.tsdb.bucket-store.chunks-cache` prefix.
 
+## Metadata cache
+
+Store-gateway and querier can use memcached for storing metadata: list of users, list of blocks per user, meta.json files and deletion mark files. Using the cache can reduce number of API calls to object storage significantly.
+
+To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached` prefix.
+
+Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+
 ## Configuration
 
 The general [configuration documentation](../configuration/_index.md) also applied to a Cortex cluster running the blocks storage, with few differences:

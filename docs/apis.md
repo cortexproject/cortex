@@ -34,10 +34,10 @@ Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/l
 GET /prometheus/api/v1/rules
 ```
 
-List of alerting and recording rules that are currently loaded by the Ruler. This endpoint retrieves the running rule groups in each ruler for a user, merges them and returns the response to the caller.
+List of alerting and recording rules that are currently loaded in the Ruler. This endpoint retrieves the running rule groups in each ruler for a user, merges them and returns the response to the caller.
 
 ```json
-$ curl -H 'X-Scope-OrgID:1' http://localhost:9090/prometheus/api/v1/rules
+$ curl -H 'X-Scope-OrgID:1' http://localhost:9009/prometheus/api/v1/rules
 
 {
     "data": {
@@ -95,7 +95,7 @@ GET /prometheus/api/v1/alerts
 Returns a list of all active alerts.
 
 ```json
-$ curl -H 'X-Scope-OrgID:1' http://localhost:9090/prometheus/api/v1/alerts
+$ curl -H 'X-Scope-OrgID:1' http://localhost:9009/prometheus/api/v1/alerts
 
 {
     "data": {

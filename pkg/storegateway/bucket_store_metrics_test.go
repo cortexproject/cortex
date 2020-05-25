@@ -23,138 +23,138 @@ func TestBucketStoreMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
-			# HELP bucket_store_blocks_loaded Number of currently loaded blocks.
-			# TYPE bucket_store_blocks_loaded gauge
-			bucket_store_blocks_loaded 22519
+			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE cortex_bucket_store_blocks_loaded gauge
+			cortex_bucket_store_blocks_loaded 22519
 
-			# HELP bucket_store_block_loads_total Total number of remote block loading attempts.
-			# TYPE bucket_store_block_loads_total counter
-			bucket_store_block_loads_total 45038
+			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE cortex_bucket_store_block_loads_total counter
+			cortex_bucket_store_block_loads_total 45038
 
-			# HELP bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
-			# TYPE bucket_store_block_load_failures_total counter
-			bucket_store_block_load_failures_total 67557
+			# HELP cortex_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE cortex_bucket_store_block_load_failures_total counter
+			cortex_bucket_store_block_load_failures_total 67557
 
-			# HELP bucket_store_block_drops_total Total number of local blocks that were dropped.
-			# TYPE bucket_store_block_drops_total counter
-			bucket_store_block_drops_total 90076
+			# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+			# TYPE cortex_bucket_store_block_drops_total counter
+			cortex_bucket_store_block_drops_total 90076
 
-			# HELP bucket_store_block_drop_failures_total Total number of local blocks that failed to be dropped.
-			# TYPE bucket_store_block_drop_failures_total counter
-			bucket_store_block_drop_failures_total 112595
+			# HELP cortex_bucket_store_block_drop_failures_total Total number of local blocks that failed to be dropped.
+			# TYPE cortex_bucket_store_block_drop_failures_total counter
+			cortex_bucket_store_block_drop_failures_total 112595
 
-			# HELP bucket_store_series_blocks_queried Number of blocks in a bucket store that were touched to satisfy a query.
-			# TYPE bucket_store_series_blocks_queried summary
-			bucket_store_series_blocks_queried_sum 1.283583e+06
-			bucket_store_series_blocks_queried_count 9
+			# HELP cortex_bucket_store_series_blocks_queried Number of blocks in a bucket store that were touched to satisfy a query.
+			# TYPE cortex_bucket_store_series_blocks_queried summary
+			cortex_bucket_store_series_blocks_queried_sum 1.283583e+06
+			cortex_bucket_store_series_blocks_queried_count 9
 
-			# HELP bucket_store_series_data_fetched How many items of a data type in a block were fetched for a single series request.
-			# TYPE bucket_store_series_data_fetched summary
-			bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
-			bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
-			bucket_store_series_data_fetched_sum{data_type="fetched-b"} 225190
-			bucket_store_series_data_fetched_count{data_type="fetched-b"} 3
-			bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
-			bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
+			# HELP cortex_bucket_store_series_data_fetched How many items of a data type in a block were fetched for a single series request.
+			# TYPE cortex_bucket_store_series_data_fetched summary
+			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
+			cortex_bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
+			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-b"} 225190
+			cortex_bucket_store_series_data_fetched_count{data_type="fetched-b"} 3
+			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
+			cortex_bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
 
-			# HELP bucket_store_series_data_size_fetched_bytes Size of all items of a data type in a block were fetched for a single series request.
-			# TYPE bucket_store_series_data_size_fetched_bytes summary
-			bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
-			bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
-			bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-b"} 360304
-			bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-b"} 3
-			bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
-			bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
+			# HELP cortex_bucket_store_series_data_size_fetched_bytes Size of all items of a data type in a block were fetched for a single series request.
+			# TYPE cortex_bucket_store_series_data_size_fetched_bytes summary
+			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
+			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-b"} 360304
+			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-b"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
+			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
 
-			# HELP bucket_store_series_data_size_touched_bytes Size of all items of a data type in a block were touched for a single series request.
-			# TYPE bucket_store_series_data_size_touched_bytes summary
-			bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
-			bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
-			bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-b"} 292747
-			bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-b"} 3
-			bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
-			bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
+			# HELP cortex_bucket_store_series_data_size_touched_bytes Size of all items of a data type in a block were touched for a single series request.
+			# TYPE cortex_bucket_store_series_data_size_touched_bytes summary
+			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
+			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-b"} 292747
+			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-b"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
+			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
 
-			# HELP bucket_store_series_data_touched How many items of a data type in a block were touched for a single series request.
-			# TYPE bucket_store_series_data_touched summary
-			bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
-			bucket_store_series_data_touched_count{data_type="touched-a"} 3
-			bucket_store_series_data_touched_sum{data_type="touched-b"} 157633
-			bucket_store_series_data_touched_count{data_type="touched-b"} 3
-			bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
-			bucket_store_series_data_touched_count{data_type="touched-c"} 3
+			# HELP cortex_bucket_store_series_data_touched How many items of a data type in a block were touched for a single series request.
+			# TYPE cortex_bucket_store_series_data_touched summary
+			cortex_bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
+			cortex_bucket_store_series_data_touched_count{data_type="touched-a"} 3
+			cortex_bucket_store_series_data_touched_sum{data_type="touched-b"} 157633
+			cortex_bucket_store_series_data_touched_count{data_type="touched-b"} 3
+			cortex_bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
+			cortex_bucket_store_series_data_touched_count{data_type="touched-c"} 3
 
-			# HELP bucket_store_series_get_all_duration_seconds Time it takes until all per-block prepares and preloads for a query are finished.
-			# TYPE bucket_store_series_get_all_duration_seconds histogram
-			bucket_store_series_get_all_duration_seconds_bucket{le="0.001"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="0.01"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="0.1"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="0.3"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="0.6"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="1"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="3"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="6"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="9"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="20"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="30"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="60"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="90"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="120"} 0
-			bucket_store_series_get_all_duration_seconds_bucket{le="+Inf"} 9
-			bucket_store_series_get_all_duration_seconds_sum 1.486254e+06
-			bucket_store_series_get_all_duration_seconds_count 9
+			# HELP cortex_bucket_store_series_get_all_duration_seconds Time it takes until all per-block prepares and preloads for a query are finished.
+			# TYPE cortex_bucket_store_series_get_all_duration_seconds histogram
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_series_get_all_duration_seconds_bucket{le="+Inf"} 9
+			cortex_bucket_store_series_get_all_duration_seconds_sum 1.486254e+06
+			cortex_bucket_store_series_get_all_duration_seconds_count 9
 
-			# HELP bucket_store_series_merge_duration_seconds Time it takes to merge sub-results from all queried blocks into a single result.
-			# TYPE bucket_store_series_merge_duration_seconds histogram
-			bucket_store_series_merge_duration_seconds_bucket{le="0.001"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="0.01"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="0.1"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="0.3"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="0.6"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="1"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="3"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="6"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="9"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="20"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="30"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="60"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="90"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="120"} 0
-			bucket_store_series_merge_duration_seconds_bucket{le="+Inf"} 9
-			bucket_store_series_merge_duration_seconds_sum 1.688925e+06
-			bucket_store_series_merge_duration_seconds_count 9
+			# HELP cortex_bucket_store_series_merge_duration_seconds Time it takes to merge sub-results from all queried blocks into a single result.
+			# TYPE cortex_bucket_store_series_merge_duration_seconds histogram
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_series_merge_duration_seconds_bucket{le="+Inf"} 9
+			cortex_bucket_store_series_merge_duration_seconds_sum 1.688925e+06
+			cortex_bucket_store_series_merge_duration_seconds_count 9
 
-			# HELP bucket_store_series_refetches_total Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.
-			# TYPE bucket_store_series_refetches_total counter
-			bucket_store_series_refetches_total 743127
+			# HELP cortex_bucket_store_series_refetches_total Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.
+			# TYPE cortex_bucket_store_series_refetches_total counter
+			cortex_bucket_store_series_refetches_total 743127
 
-			# HELP bucket_store_series_result_series Number of series observed in the final result of a query.
-			# TYPE bucket_store_series_result_series summary
-			bucket_store_series_result_series_sum 1.238545e+06
-			bucket_store_series_result_series_count 6
+			# HELP cortex_bucket_store_series_result_series Number of series observed in the final result of a query.
+			# TYPE cortex_bucket_store_series_result_series summary
+			cortex_bucket_store_series_result_series_sum 1.238545e+06
+			cortex_bucket_store_series_result_series_count 6
 
-			# HELP bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
-			# TYPE bucket_store_cached_postings_compressions_total counter
-			bucket_store_cached_postings_compressions_total{op="encode"} 1125950
-			bucket_store_cached_postings_compressions_total{op="decode"} 1148469
+			# HELP cortex_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
+			# TYPE cortex_bucket_store_cached_postings_compressions_total counter
+			cortex_bucket_store_cached_postings_compressions_total{op="encode"} 1125950
+			cortex_bucket_store_cached_postings_compressions_total{op="decode"} 1148469
 
-			# HELP bucket_store_cached_postings_compression_errors_total Number of postings compression and decompression errors.
-			# TYPE bucket_store_cached_postings_compression_errors_total counter
-			bucket_store_cached_postings_compression_errors_total{op="encode"} 1170988
-			bucket_store_cached_postings_compression_errors_total{op="decode"} 1193507
+			# HELP cortex_bucket_store_cached_postings_compression_errors_total Number of postings compression and decompression errors.
+			# TYPE cortex_bucket_store_cached_postings_compression_errors_total counter
+			cortex_bucket_store_cached_postings_compression_errors_total{op="encode"} 1170988
+			cortex_bucket_store_cached_postings_compression_errors_total{op="decode"} 1193507
 
-			# HELP bucket_store_cached_postings_compression_time_seconds Time spent compressing and decompressing postings when storing to / reading from postings cache.
-			# TYPE bucket_store_cached_postings_compression_time_seconds counter
-			bucket_store_cached_postings_compression_time_seconds{op="encode"} 1216026
-			bucket_store_cached_postings_compression_time_seconds{op="decode"} 1238545
+			# HELP cortex_bucket_store_cached_postings_compression_time_seconds Time spent compressing and decompressing postings when storing to / reading from postings cache.
+			# TYPE cortex_bucket_store_cached_postings_compression_time_seconds counter
+			cortex_bucket_store_cached_postings_compression_time_seconds{op="encode"} 1216026
+			cortex_bucket_store_cached_postings_compression_time_seconds{op="decode"} 1238545
 
-			# HELP bucket_store_cached_postings_original_size_bytes_total Original size of postings stored into cache.
-			# TYPE bucket_store_cached_postings_original_size_bytes_total counter
-			bucket_store_cached_postings_original_size_bytes_total 1261064
+			# HELP cortex_bucket_store_cached_postings_original_size_bytes_total Original size of postings stored into cache.
+			# TYPE cortex_bucket_store_cached_postings_original_size_bytes_total counter
+			cortex_bucket_store_cached_postings_original_size_bytes_total 1261064
 
-			# HELP bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
-			# TYPE bucket_store_cached_postings_compressed_size_bytes_total counter
-			bucket_store_cached_postings_compressed_size_bytes_total 1283583
+			# HELP cortex_bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
+			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
+			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
 `))
 	require.NoError(t, err)
 }

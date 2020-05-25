@@ -143,7 +143,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 
 	var storesReg prometheus.Registerer
 	if reg != nil {
-		storesReg = prometheus.WrapRegistererWithPrefix("cortex_storegateway_", reg)
+		storesReg = prometheus.WrapRegistererWith(prometheus.Labels{"component": "storegateway"}, reg)
 	}
 
 	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, storesReg)

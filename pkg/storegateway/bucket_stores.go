@@ -69,12 +69,12 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "blocks_sync_seconds",
+			Name:    "bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "blocks_last_successful_sync_timestamp_seconds",
+			Name: "bucket_stores_blocks_last_successful_sync_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}

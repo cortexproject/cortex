@@ -4,7 +4,7 @@
 
 * [CHANGE] Query Frontend now uses Round Robin to choose a tenant queue to service next. #2553
 * [CHANGE] `-promql.lookback-delta` is now deprecated and has been replaced by `-querier.lookback-delta` along with `lookback_delta` entry under `querier` in the config file. `-promql.lookback-delta` will be removed in v1.4.0. #2604
-* [CHANGE] Experimental TSDB: Renamed metrics in block stores:
+* [CHANGE] Experimental TSDB: Renamed index-cache metrics to use original metric names from Thanos, as Cortex is not aggregating them in any way:
   * `cortex_<service>_blocks_index_cache_items_evicted_total` => `thanos_store_index_cache_items_evicted_total{name="index-cache"}`
   * `cortex_<service>_blocks_index_cache_items_added_total` => `thanos_store_index_cache_items_added_total{name="index-cache"}`
   * `cortex_<service>_blocks_index_cache_requests_total` => `thanos_store_index_cache_requests_total{name="index-cache"}`
@@ -19,6 +19,33 @@
   * `cortex_<service>_blocks_index_cache_memcached_operation_failures_total` =>  `thanos_memcached_operation_failures_total{name="index-cache"}`
   * `cortex_<service>_blocks_index_cache_memcached_operation_duration_seconds` =>  `thanos_memcached_operation_duration_seconds{name="index-cache"}`
   * `cortex_<service>_blocks_index_cache_memcached_operation_skipped_total` =>  `thanos_memcached_operation_skipped_total{name="index-cache"}`
+* [CHANGE] Experimental TSDB: Renamed metrics in bucket stores:
+  * `cortex_<service>_blocks_meta_syncs_total` => `blocks_meta_syncs_total{component="<service>"}`
+  * `cortex_<service>_blocks_meta_sync_failures_total` => `blocks_meta_sync_failures_total{component="<service>"}`
+  * `cortex_<service>_blocks_meta_sync_duration_seconds` => `blocks_meta_sync_duration_seconds{component="<service>"}`
+  * `cortex_<service>_blocks_meta_sync_consistency_delay_seconds` => `blocks_meta_sync_consistency_delay_seconds{component="<service>"}`
+  * `cortex_<service>_blocks_meta_synced` => `blocks_meta_synced{component="<service>"}`
+  * `cortex_<service>_bucket_store_block_loads_total` => `bucket_store_block_loads_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_block_load_failures_total` => `bucket_store_block_load_failures_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_block_drops_total` => `bucket_store_block_drops_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_block_drop_failures_total` => `bucket_store_block_drop_failures_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_blocks_loaded` => `bucket_store_blocks_loaded{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_data_touched` => `bucket_store_series_data_touched{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_data_fetched` => `bucket_store_series_data_fetched{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_data_size_touched_bytes` => `bucket_store_series_data_size_touched_bytes{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_data_size_fetched_bytes` => `bucket_store_series_data_size_fetched_bytes{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_blocks_queried` => `bucket_store_series_blocks_queried{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_get_all_duration_seconds` => `bucket_store_series_get_all_duration_seconds{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_merge_duration_seconds` => `bucket_store_series_merge_duration_seconds{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_refetches_total` => `bucket_store_series_refetches_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_series_result_series` => `bucket_store_series_result_series{component="<service>"}`
+  * `cortex_<service>_bucket_store_cached_postings_compressions_total` => `bucket_store_cached_postings_compressions_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_cached_postings_compression_errors_total` => `bucket_store_cached_postings_compression_errors_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_cached_postings_compression_time_seconds` => `bucket_store_cached_postings_compression_time_seconds{component="<service>"}`
+  * `cortex_<service>_bucket_store_cached_postings_original_size_bytes_total` => `bucket_store_cached_postings_original_size_bytes_total{component="<service>"}`
+  * `cortex_<service>_bucket_store_cached_postings_compressed_size_bytes_total` => `bucket_store_cached_postings_compressed_size_bytes_total{component="<service>"}`
+  * `cortex_<service>_blocks_sync_seconds` => `bucket_stores_blocks_sync_seconds{component="<service>"}`
+  * `cortex_<service>_blocks_last_successful_sync_timestamp_seconds` => `bucket_stores_blocks_last_successful_sync_timestamp_seconds{component="<service>"}`
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
 * [FEATURE] The flag `-frontend.max-cache-freshness` is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from `results_cache.max_freshness` to `limits_config.max_cache_freshness`. The legacy YAML config parameter (`results_cache.max_freshness`) will continue to be supported till Cortex release `v1.4.0`. #2609
 * [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589

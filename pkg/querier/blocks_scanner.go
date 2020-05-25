@@ -56,6 +56,7 @@ type BlocksScanner struct {
 	// Keep the per-tenant/user metas found during the last run.
 	userMx            sync.RWMutex
 	userMetas         map[string][]*BlockMeta
+	userMetasLookup   map[string]map[ulid.ULID]*BlockMeta
 	userDeletionMarks map[string]map[ulid.ULID]*metadata.DeletionMark
 
 	scanDuration    prometheus.Histogram
@@ -69,6 +70,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
 		userMetas:         make(map[string][]*BlockMeta),
+		userMetasLookup:   make(map[string]map[ulid.ULID]*BlockMeta),
 		userDeletionMarks: map[string]map[ulid.ULID]*metadata.DeletionMark{},
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
@@ -164,6 +166,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	jobsChan := make(chan string)
 	resMx := sync.Mutex{}
 	resMetas := map[string][]*BlockMeta{}
+	resMetasLookup := map[string]map[ulid.ULID]*BlockMeta{}
 	resDeletionMarks := map[string]map[ulid.ULID]*metadata.DeletionMark{}
 	resErrs := tsdb_errors.MultiError{}
 
@@ -180,11 +183,18 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 			for userID := range jobsChan {
 				metas, deletionMarks, err := d.scanUserBlocksWithRetries(ctx, userID)
 
+				// Build the lookup map.
+				lookup := map[ulid.ULID]*BlockMeta{}
+				for _, m := range metas {
+					lookup[m.ULID] = m
+				}
+
 				resMx.Lock()
 				if err != nil {
 					resErrs.Add(err)
 				} else {
 					resMetas[userID] = metas
+					resMetasLookup[userID] = lookup
 					resDeletionMarks[userID] = deletionMarks
 				}
 				resMx.Unlock()
@@ -217,12 +227,17 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	if len(resErrs) == 0 {
 		// Replace the map, so that we discard tenants fully deleted from storage.
 		d.userMetas = resMetas
+		d.userMetasLookup = resMetasLookup
 		d.userDeletionMarks = resDeletionMarks
 	} else {
 		// If an error occurred, we prefer to partially update the metas map instead of
 		// not updating it at all. At least we'll update blocks for the successful tenants.
 		for userID, metas := range resMetas {
 			d.userMetas[userID] = metas
+		}
+
+		for userID, metas := range resMetasLookup {
+			d.userMetasLookup[userID] = metas
 		}
 
 		for userID, deletionMarks := range resDeletionMarks {
@@ -362,18 +377,12 @@ func (d *BlocksScanner) getBlockMeta(userID string, blockID ulid.ULID) *BlockMet
 	d.userMx.RLock()
 	defer d.userMx.RUnlock()
 
-	metas, ok := d.userMetas[userID]
+	metas, ok := d.userMetasLookup[userID]
 	if !ok {
 		return nil
 	}
 
-	for _, m := range metas {
-		if m.ULID == blockID {
-			return m
-		}
-	}
-
-	return nil
+	return metas[blockID]
 }
 
 func sortBlockMetasByMaxTime(metas []*BlockMeta) {

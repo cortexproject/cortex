@@ -30,9 +30,90 @@ See the Prometheus documentation for [more information on the Prometheus remote 
 
 Cortex supports the Prometheus' [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) and [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) api endpoints. This is supported in the Ruler service and can be enabled using the `experimental.ruler.enable-api` flag.
 
-`GET /api/prom/api/v1/rules` - List of alerting and recording rules that are currently loaded
+```
+GET /prometheus/api/v1/rules
+```
 
-`GET /api/prom/api/v1/alerts` - List of all active alerts
+List of alerting and recording rules that are currently loaded in the Ruler. This endpoint retrieves the running rule groups in each ruler for a user, merges them and returns the response to the caller.
+
+```json
+$ curl -H 'X-Scope-OrgID:1' http://localhost:9009/prometheus/api/v1/rules
+
+{
+    "data": {
+        "groups": [
+            {
+                "rules": [
+                    {
+                        "alerts": [
+                            {
+                                "activeAt": "2018-07-04T20:27:12.60602144+02:00",
+                                "annotations": {
+                                    "summary": "High request latency"
+                                },
+                                "labels": {
+                                    "alertname": "HighRequestLatency",
+                                    "severity": "page"
+                                },
+                                "state": "firing",
+                                "value": "1e+00"
+                            }
+                        ],
+                        "annotations": {
+                            "summary": "High request latency"
+                        },
+                        "duration": 600,
+                        "health": "ok",
+                        "labels": {
+                            "severity": "page"
+                        },
+                        "name": "HighRequestLatency",
+                        "query": "job:request_latency_seconds:mean5m{job=\"myjob\"} > 0.5",
+                        "type": "alerting"
+                    },
+                    {
+                        "health": "ok",
+                        "name": "job:http_inprogress_requests:sum",
+                        "query": "sum by (job) (http_inprogress_requests)",
+                        "type": "recording"
+                    }
+                ],
+                "file": "rules.yaml",
+                "interval": 60,
+                "name": "example"
+            }
+        ]
+    },
+    "status": "success"
+}
+```
+
+```
+GET /prometheus/api/v1/alerts
+```
+
+Returns a list of all active alerts.
+
+```json
+$ curl -H 'X-Scope-OrgID:1' http://localhost:9009/prometheus/api/v1/alerts
+
+{
+    "data": {
+        "alerts": [
+            {
+                "activeAt": "2018-07-04T20:27:12.60602144+02:00",
+                "annotations": {},
+                "labels": {
+                    "alertname": "my-alert"
+                },
+                "state": "firing",
+                "value": "1e+00"
+            }
+        ]
+    },
+    "status": "success"
+}
+```
 
 ### Experimental API
 
@@ -40,9 +121,9 @@ The ruler supports operations using a configured object storage client as a back
 
 #### List Rule Groups
 
-**Path**: `/api/v1/rules(/{namespace})` _namespace path segment is optional_
-
-**Method**: `GET`
+```
+GET /api/v1/rules
+```
 
 ##### Success Response
 
@@ -95,9 +176,9 @@ The success response for the list operation returns a yaml dictionary with all o
 
 #### Get Rule Group
 
-**Path**: `/api/v1/rules/{namespace}/{group_name}
-
-**Method**: `GET`
+```
+GET /api/v1/rules/{namespace}/{group_name}
+```
 
 ##### Success Response
 
@@ -121,9 +202,9 @@ rules:
 
 #### Set Rule Group
 
-**Path**: `/api/v1/rules/{namespace}
-
-**Method**: `POST`
+```
+POST /api/v1/rules/{namespace}
+```
 
 **Content-Type**: `application/yaml`
 
@@ -152,9 +233,9 @@ rules:
 
 #### Delete Rule Group
 
-**Path**: `/api/v1/rules/{namespace}/{group_name}`
-
-**Method**: `DELETE`
+```
+DELETE /api/v1/rules/{namespace}/{group_name}
+```
 
 ##### Success Response
 

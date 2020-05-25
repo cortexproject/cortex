@@ -58,7 +58,7 @@ func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 
 	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
 	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
-	f.DurationVar(&cfg.AttributesTTL, prefix+"attributes-ttl", 24*time.Hour, "TTL for caching object size for chunks.")
+	f.DurationVar(&cfg.AttributesTTL, prefix+"attributes-ttl", 24*time.Hour, "TTL for caching object attributes for chunks.")
 	f.DurationVar(&cfg.SubrangeTTL, prefix+"subrange-ttl", 24*time.Hour, "TTL for caching individual chunks subranges.")
 }
 

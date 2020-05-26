@@ -73,5 +73,6 @@ replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+inc
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 
-// Override reference that causes an error from Go proxy - see https://github.com/golang/go/issues/33558
-replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
+replace k8s.io/client-go => k8s.io/client-go v0.17.5
+
+replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0

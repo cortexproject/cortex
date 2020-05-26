@@ -12,7 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,7 +79,7 @@ rules_files:
 }
 
 func TestParseLegacyAlerts(t *testing.T) {
-	parsed, err := promql.ParseExpr("up == 0")
+	parsed, err := parser.ParseExpr("up == 0")
 	require.NoError(t, err)
 	rule := rules.NewAlertingRule(
 		"TestAlert",

@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +37,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 			next: mockHandler(&PrometheusResponse{
 				Status: "",
 				Data: PrometheusData{
-					ResultType: promql.ValueTypeVector,
+					ResultType: parser.ValueTypeVector,
 					Result:     []SampleStream{},
 				},
 				ErrorType: "",
@@ -66,7 +67,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 				)
 				out, err := handler.Do(context.Background(), qry)
 				require.Nil(t, err)
-				require.Equal(t, promql.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
+				require.Equal(t, parser.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
 			},
 		},
@@ -118,7 +119,7 @@ func sampleMatrixResponse() *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: promql.ValueTypeMatrix,
+			ResultType: parser.ValueTypeMatrix,
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
@@ -270,23 +271,6 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 	}
 }
 
-func TestTimeFromMillis(t *testing.T) {
-	var testExpr = []struct {
-		input    int64
-		expected time.Time
-	}{
-		{input: 1000, expected: time.Unix(1, 0)},
-		{input: 1500, expected: time.Unix(1, 500*nanosecondsInMillisecond)},
-	}
-
-	for i, c := range testExpr {
-		t.Run(string(i), func(t *testing.T) {
-			res := TimeFromMillis(c.input)
-			require.Equal(t, c.expected, res)
-		})
-	}
-}
-
 func parseDate(in string) model.Time {
 	t, err := time.Parse("2006-01-02", in)
 	if err != nil {
@@ -302,7 +286,7 @@ type mappingValidator struct {
 }
 
 func (v *mappingValidator) Do(ctx context.Context, req Request) (Response, error) {
-	expr, err := promql.ParseExpr(req.GetQuery())
+	expr, err := parser.ParseExpr(req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -347,8 +331,8 @@ func TestQueryshardingCorrectness(t *testing.T) {
 	shardFactor := 2
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: start.UnixNano() / nanosecondsInMillisecond,
-		End:   end.UnixNano() / nanosecondsInMillisecond,
+		Start: util.TimeToMillis(start),
+		End:   util.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 	}
 	for _, tc := range []struct {
@@ -443,8 +427,8 @@ func TestShardSplitting(t *testing.T) {
 
 	req := &PrometheusRequest{
 		Path:  "/query_range",
-		Start: start.UnixNano() / nanosecondsInMillisecond,
-		End:   end.UnixNano() / nanosecondsInMillisecond,
+		Start: util.TimeToMillis(start),
+		End:   util.TimeToMillis(end),
 		Step:  int64(step) / int64(time.Second),
 		Query: "sum(rate(bar1[1m]))",
 	}
@@ -618,8 +602,8 @@ func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error)
 	qry, err := h.engine.NewRangeQuery(
 		h.queryable,
 		r.GetQuery(),
-		TimeFromMillis(r.GetStart()),
-		TimeFromMillis(r.GetEnd()),
+		util.TimeFromMillis(r.GetStart()),
+		util.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 

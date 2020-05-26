@@ -352,6 +352,18 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 	return 14 // Flag default.
 }
 
+func (fakeLimits) MaxCacheFreshness(string) time.Duration {
+	return time.Duration(0)
+}
+
+type fakeLimitsHighMaxCacheFreshness struct {
+	fakeLimits
+}
+
+func (fakeLimitsHighMaxCacheFreshness) MaxCacheFreshness(string) time.Duration {
+	return 10 * time.Minute
+}
+
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	cfg := ResultsCacheConfig{
@@ -397,7 +409,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimitsHighMaxCacheFreshness{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -421,6 +433,68 @@ func TestResultsCacheRecent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 	require.Equal(t, parsedResponse, resp)
+}
+
+func TestResultsCacheMaxFreshness(t *testing.T) {
+	modelNow := model.Now()
+	for i, tc := range []struct {
+		legacyMaxCacheFreshness time.Duration
+		fakeLimits              Limits
+		Handler                 HandlerFunc
+		expectedResponse        *PrometheusResponse
+	}{
+		{
+			// should lookup cache because legacy cache max freshness will be applied
+			legacyMaxCacheFreshness: 5 * time.Second,
+			fakeLimits:              fakeLimits{},
+			Handler:                 nil,
+			expectedResponse:        mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
+		},
+		{
+			// should not lookup cache because per-tenant override will be applied
+			legacyMaxCacheFreshness: time.Duration(0),
+			fakeLimits:              fakeLimitsHighMaxCacheFreshness{},
+			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+				return parsedResponse, nil
+			}),
+			expectedResponse: parsedResponse,
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			var cfg ResultsCacheConfig
+			flagext.DefaultValues(&cfg)
+			cfg.CacheConfig.Cache = cache.NewMockCache()
+
+			cfg.LegacyMaxCacheFreshness = tc.legacyMaxCacheFreshness
+
+			fakeLimits := tc.fakeLimits
+			rcm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				constSplitter(day),
+				fakeLimits,
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+			)
+			require.NoError(t, err)
+
+			// create cache with handler
+			rc := rcm.Wrap(tc.Handler)
+			ctx := user.InjectOrgID(context.Background(), "1")
+
+			// create request with start end within the key extents
+			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
+
+			// fill cache
+			key := constSplitter(day).GenerateCacheKey("1", req)
+			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
+
+			resp, err := rc.Do(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResponse, resp)
+		})
+	}
 }
 
 func Test_resultsCache_MissingData(t *testing.T) {

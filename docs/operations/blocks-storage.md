@@ -111,6 +111,14 @@ To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache
 
 There are additional low-level options for configuring chunks cache. Please refer to other flags with `experimental.tsdb.bucket-store.chunks-cache` prefix.
 
+## Metadata cache
+
+Store-gateway and querier can use memcached for storing metadata: list of users, list of blocks per user, meta.json files and deletion mark files. Using the cache can reduce number of API calls to object storage significantly.
+
+To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached` prefix.
+
+Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+
 ## Configuration
 
 The general [configuration documentation](../configuration/_index.md) also applied to a Cortex cluster running the blocks storage, with few differences:
@@ -328,13 +336,88 @@ tsdb:
       # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
       [max_get_range_requests: <int> | default = 3]
 
-      # TTL for caching object size for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.object-size-ttl
-      [object_size_ttl: <duration> | default = 24h]
+      # TTL for caching object attributes for chunks.
+      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.attributes-ttl
+      [attributes_ttl: <duration> | default = 24h]
 
       # TTL for caching individual chunks subranges.
       # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
       [subrange_ttl: <duration> | default = 24h]
+
+    metadata_cache:
+      # Backend for metadata cache, if not empty. Supported values: memcached.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.backend
+      [backend: <string> | default = ""]
+
+      memcached:
+        # Comma separated list of memcached addresses. Supported prefixes are:
+        # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
+        # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
+        # made after that).
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.addresses
+        [addresses: <string> | default = ""]
+
+        # The socket read/write timeout.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.timeout
+        [timeout: <duration> | default = 100ms]
+
+        # The maximum number of idle connections that will be maintained per
+        # address.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-idle-connections
+        [max_idle_connections: <int> | default = 16]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of concurrent connections running get operations.
+        # If set to 0, concurrency is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum number of keys a single underlying get operation should
+        # run. If more keys are specified, internally keys are splitted into
+        # multiple batches and fetched concurrently, honoring the max
+        # concurrency. If set to 0, the max batch size is unlimited.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-get-multi-batch-size
+        [max_get_multi_batch_size: <int> | default = 0]
+
+        # The maximum size of an item stored in memcached. Bigger items are not
+        # stored. If set to 0, no maximum size is enforced.
+        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-item-size
+        [max_item_size: <int> | default = 1048576]
+
+      # How long to cache list of tenants in the bucket.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.tenants-list-ttl
+      [tenants_list_ttl: <duration> | default = 15m]
+
+      # How long to cache list of blocks for each tenant.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.tenant-blocks-list-ttl
+      [tenant_blocks_list_ttl: <duration> | default = 15m]
+
+      # How long to cache list of chunks for a block.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.chunks-list-ttl
+      [chunks_list_ttl: <duration> | default = 24h]
+
+      # How long to cache information that block metafile exists.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-exists-ttl
+      [metafile_exists_ttl: <duration> | default = 2h]
+
+      # How long to cache information that block metafile doesn't exist.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
+      [metafile_doesnt_exist_ttl: <duration> | default = 15m]
+
+      # How long to cache content of the metafile.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-content-ttl
+      [metafile_content_ttl: <duration> | default = 24h]
+
+      # Maximum size of metafile content to cache in bytes.
+      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-max-size-bytes
+      [metafile_max_size_bytes: <int> | default = 1048576]
 
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
@@ -537,7 +620,7 @@ compactor:
   # Malformed blocks older than the maximum of consistency-delay and 48h0m0s
   # will be removed.
   # CLI flag: -compactor.consistency-delay
-  [consistency_delay: <duration> | default = 30m]
+  [consistency_delay: <duration> | default = 0s]
 
   # Data directory in which to cache blocks and process compactions
   # CLI flag: -compactor.data-dir
@@ -551,6 +634,10 @@ compactor:
   # interval
   # CLI flag: -compactor.compaction-retries
   [compaction_retries: <int> | default = 3]
+
+  # Max number of concurrent compactions running.
+  # CLI flag: -compactor.compaction-concurrency
+  [compaction_concurrency: <int> | default = 1]
 
   # Time before a block marked for deletion is deleted from bucket. If not 0,
   # blocks will be marked for deletion and compactor component will delete
@@ -613,15 +700,6 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
-
-  # Number of shards a single tenant blocks should be grouped into (0 or 1 means
-  # per-tenant blocks sharding is disabled).
-  # CLI flag: -compactor.per-tenant-num-shards
-  [per_tenant_num_shards: <int> | default = 1]
-
-  # Number of concurrent shards compacted for a single tenant.
-  # CLI flag: -compactor.per-tenant-shards-concurrency
-  [per_tenant_shards_concurrency: <int> | default = 1]
 ```
 
 ## Known issues

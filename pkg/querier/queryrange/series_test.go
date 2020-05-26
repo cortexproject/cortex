@@ -3,7 +3,7 @@ package queryrange
 import (
 	"testing"
 
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -12,7 +12,7 @@ import (
 func Test_ResponseToSamples(t *testing.T) {
 	input := &PrometheusResponse{
 		Data: PrometheusData{
-			ResultType: promql.ValueTypeMatrix,
+			ResultType: parser.ValueTypeMatrix,
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{

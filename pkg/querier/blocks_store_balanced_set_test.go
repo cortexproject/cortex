@@ -33,7 +33,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 		clients, err := s.GetClientsFor(nil)
 		require.NoError(t, err)
 
-		addrs := getStoreClientClientAddrs(clients)
+		addrs := getStoreGatewayClientAddrs(clients)
 		require.Len(t, addrs, 1)
 
 		clientsCount[addrs[0]] = clientsCount[addrs[0]] + 1

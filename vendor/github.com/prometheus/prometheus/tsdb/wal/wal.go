@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -190,7 +191,7 @@ type walMetrics struct {
 	writesFailed    prometheus.Counter
 }
 
-func newWALMetrics(w *WAL, r prometheus.Registerer) *walMetrics {
+func newWALMetrics(r prometheus.Registerer) *walMetrics {
 	m := &walMetrics{}
 
 	m.fsyncDuration = prometheus.NewSummary(prometheus.SummaryOpts{
@@ -264,7 +265,7 @@ func NewSize(logger log.Logger, reg prometheus.Registerer, dir string, segmentSi
 		stopc:       make(chan chan struct{}),
 		compress:    compress,
 	}
-	w.metrics = newWALMetrics(w, reg)
+	w.metrics = newWALMetrics(reg)
 
 	_, last, err := w.Segments()
 	if err != nil {
@@ -293,7 +294,7 @@ func NewSize(logger log.Logger, reg prometheus.Registerer, dir string, segmentSi
 }
 
 // Open an existing WAL.
-func Open(logger log.Logger, reg prometheus.Registerer, dir string) (*WAL, error) {
+func Open(logger log.Logger, dir string) (*WAL, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -730,6 +731,11 @@ func (w *WAL) Close() (err error) {
 		return errors.New("wal already closed")
 	}
 
+	if w.segment == nil {
+		w.closed = true
+		return nil
+	}
+
 	// Flush the last page and zero out all its remaining size.
 	// We must not flush an empty page as it would falsely signal
 	// the segment is done if we start writing to it again after opening.
@@ -759,25 +765,26 @@ type segmentRef struct {
 }
 
 func listSegments(dir string) (refs []segmentRef, err error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var last int
-	for _, fn := range files {
+	for _, f := range files {
+		fn := f.Name()
 		k, err := strconv.Atoi(fn)
 		if err != nil {
 			continue
 		}
-		if len(refs) > 0 && k > last+1 {
-			return nil, errors.New("segments are not sequential")
-		}
 		refs = append(refs, segmentRef{name: fn, index: k})
-		last = k
 	}
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].index < refs[j].index
 	})
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i].index+1 != refs[i+1].index {
+			return nil, errors.New("segments are not sequential")
+		}
+	}
 	return refs, nil
 }
 
@@ -832,6 +839,7 @@ type segmentBufReader struct {
 	off  int // Offset of read data into current segment.
 }
 
+// nolint:golint // TODO: Consider exporting segmentBufReader
 func NewSegmentBufReader(segs ...*Segment) *segmentBufReader {
 	return &segmentBufReader{
 		buf:  bufio.NewReaderSize(segs[0], 16*pageSize),

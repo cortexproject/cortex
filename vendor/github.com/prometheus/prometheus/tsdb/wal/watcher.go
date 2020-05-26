@@ -16,6 +16,7 @@ package wal
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -29,7 +30,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
@@ -66,7 +66,7 @@ type Watcher struct {
 	walDir         string
 	lastCheckpoint string
 	metrics        *WatcherMetrics
-	readerMetrics  *liveReaderMetrics
+	readerMetrics  *LiveReaderMetrics
 
 	startTime      time.Time
 	startTimestamp int64 // the start time as a Prometheus timestamp
@@ -125,17 +125,17 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 	}
 
 	if reg != nil {
-		_ = reg.Register(m.recordsRead)
-		_ = reg.Register(m.recordDecodeFails)
-		_ = reg.Register(m.samplesSentPreTailing)
-		_ = reg.Register(m.currentSegment)
+		reg.MustRegister(m.recordsRead)
+		reg.MustRegister(m.recordDecodeFails)
+		reg.MustRegister(m.samplesSentPreTailing)
+		reg.MustRegister(m.currentSegment)
 	}
 
 	return m
 }
 
 // NewWatcher creates a new WAL watcher for a given WriteTo.
-func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.Logger, name string, writer WriteTo, walDir string) *Watcher {
+func NewWatcher(metrics *WatcherMetrics, readerMetrics *LiveReaderMetrics, logger log.Logger, name string, writer WriteTo, walDir string) *Watcher {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -143,7 +143,7 @@ func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.L
 		logger:        logger,
 		writer:        writer,
 		metrics:       metrics,
-		readerMetrics: NewLiveReaderMetrics(reg),
+		readerMetrics: readerMetrics,
 		walDir:        path.Join(walDir, "wal"),
 		name:          name,
 		quit:          make(chan struct{}),
@@ -179,11 +179,13 @@ func (w *Watcher) Stop() {
 	<-w.done
 
 	// Records read metric has series and samples.
-	w.metrics.recordsRead.DeleteLabelValues(w.name, "series")
-	w.metrics.recordsRead.DeleteLabelValues(w.name, "samples")
-	w.metrics.recordDecodeFails.DeleteLabelValues(w.name)
-	w.metrics.samplesSentPreTailing.DeleteLabelValues(w.name)
-	w.metrics.currentSegment.DeleteLabelValues(w.name)
+	if w.metrics != nil {
+		w.metrics.recordsRead.DeleteLabelValues(w.name, "series")
+		w.metrics.recordsRead.DeleteLabelValues(w.name, "samples")
+		w.metrics.recordDecodeFails.DeleteLabelValues(w.name)
+		w.metrics.samplesSentPreTailing.DeleteLabelValues(w.name)
+		w.metrics.currentSegment.DeleteLabelValues(w.name)
+	}
 
 	level.Info(w.logger).Log("msg", "WAL watcher stopped", "queue", w.name)
 }
@@ -291,15 +293,15 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 // Copied from tsdb/wal/wal.go so we do not have to open a WAL.
 // Plan is to move WAL watcher to TSDB and dedupe these implementations.
 func (w *Watcher) segments(dir string) ([]int, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	var refs []int
 	var last int
-	for _, fn := range files {
-		k, err := strconv.Atoi(fn)
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
 		if err != nil {
 			continue
 		}

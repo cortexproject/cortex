@@ -6,21 +6,21 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCanParallel(t *testing.T) {
 	var testExpr = []struct {
-		input    promql.Expr
+		input    parser.Expr
 		expected bool
 	}{
 		// simple sum
 		{
-			&promql.AggregateExpr{
-				Op:      promql.SUM,
+			&parser.AggregateExpr{
+				Op:      parser.SUM,
 				Without: true,
-				Expr: &promql.VectorSelector{
+				Expr: &parser.VectorSelector{
 					Name: "some_metric",
 					LabelMatchers: []*labels.Matcher{
 						mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "some_metric"),
@@ -38,23 +38,23 @@ func TestCanParallel(t *testing.T) {
 			  )
 		*/
 		{
-			&promql.AggregateExpr{
-				Op: promql.SUM,
-				Expr: &promql.BinaryExpr{
-					Op: promql.DIV,
-					LHS: &promql.AggregateExpr{
-						Op:       promql.SUM,
+			&parser.AggregateExpr{
+				Op: parser.SUM,
+				Expr: &parser.BinaryExpr{
+					Op: parser.DIV,
+					LHS: &parser.AggregateExpr{
+						Op:       parser.SUM,
 						Grouping: []string{"foo"},
-						Expr: &promql.VectorSelector{
+						Expr: &parser.VectorSelector{
 							Name: "idk",
 							LabelMatchers: []*labels.Matcher{
 								mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "bar1"),
 							}},
 					},
-					RHS: &promql.AggregateExpr{
-						Op:       promql.SUM,
+					RHS: &parser.AggregateExpr{
+						Op:       parser.SUM,
 						Grouping: []string{"foo"},
-						Expr: &promql.VectorSelector{
+						Expr: &parser.VectorSelector{
 							Name: "idk",
 							LabelMatchers: []*labels.Matcher{
 								mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "bar2"),
@@ -66,10 +66,10 @@ func TestCanParallel(t *testing.T) {
 		},
 		// sum by (foo) bar1{baz=”blip”}[1m]) ---- this is the first leg of the above
 		{
-			&promql.AggregateExpr{
-				Op:       promql.SUM,
+			&parser.AggregateExpr{
+				Op:       parser.SUM,
 				Grouping: []string{"foo"},
-				Expr: &promql.VectorSelector{
+				Expr: &parser.VectorSelector{
 					Name: "idk",
 					LabelMatchers: []*labels.Matcher{
 						mustLabelMatcher(labels.MatchEqual, string(model.MetricNameLabel), "bar1"),
@@ -120,7 +120,7 @@ func TestCanParallel_String(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			expr, err := promql.ParseExpr(c.input)
+			expr, err := parser.ParseExpr(c.input)
 			require.Nil(t, err)
 			res := CanParallelize(expr)
 			require.Equal(t, c.expected, res)

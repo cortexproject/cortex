@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -59,7 +59,7 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 	return chunk.NewChunk(userID, fp, metric, pc, model.Time(0), ts)
 }
 
-func testIter(t require.TestingT, points int, iter storage.SeriesIterator) {
+func testIter(t require.TestingT, points int, iter chunkenc.Iterator) {
 	ets := model.TimeFromUnix(0)
 	for i := 0; i < points; i++ {
 		require.True(t, iter.Next(), strconv.Itoa(i))
@@ -71,7 +71,7 @@ func testIter(t require.TestingT, points int, iter storage.SeriesIterator) {
 	require.False(t, iter.Next())
 }
 
-func testSeek(t require.TestingT, points int, iter storage.SeriesIterator) {
+func testSeek(t require.TestingT, points int, iter chunkenc.Iterator) {
 	for i := 0; i < points; i += points / 10 {
 		ets := int64(i * int(step/time.Millisecond))
 

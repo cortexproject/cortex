@@ -19,7 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -135,7 +135,7 @@ func TestIngester_v2Push(t *testing.T) {
 					nil,
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(9).Time().Format(time.RFC3339Nano)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(storage.ErrOutOfOrderSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(9).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -176,7 +176,7 @@ func TestIngester_v2Push(t *testing.T) {
 					nil,
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969-(86400*1000)).Time().Format(time.RFC3339Nano)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(storage.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969-(86400*1000)).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -217,7 +217,7 @@ func TestIngester_v2Push(t *testing.T) {
 					nil,
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969).Time().Format(time.RFC3339Nano)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(storage.ErrDuplicateSampleForTimestamp, "series=%s, timestamp=%s", metricLabels.String(), model.Time(1575043969).Time().Format(time.RFC3339Nano)), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -883,9 +883,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 				{Labels: client.FromLabelsToLabelAdapters(fixtures[2].lbls)},
 			},
 		},
-		"should filter metrics by time range": {
-			from: 100000,
-			to:   100000,
+		"should NOT filter metrics by time range to always return known metrics even when queried for older time ranges": {
+			from: 100,
+			to:   1000,
 			matchers: []*client.LabelMatchers{{
 				Matchers: []*client.LabelMatcher{
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
@@ -893,6 +893,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 			}},
 			expected: []*client.Metric{
 				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: client.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
 		"should not return duplicated metrics on overlapping matchers": {

@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -242,6 +243,13 @@ type querier struct {
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	log, ctx := spanlogger.New(q.ctx, "querier.Select")
+	defer log.Span.Finish()
+
+	if sp != nil {
+		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step)
+	}
+
 	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
@@ -250,7 +258,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return q.metadataQuerier.Select(true, nil, matchers...)
 	}
 
-	userID, err := user.ExtractOrgID(q.ctx)
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
@@ -293,8 +301,8 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
-		case <-q.ctx.Done():
-			return nil, nil, q.ctx.Err()
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
 		}
 	}
 

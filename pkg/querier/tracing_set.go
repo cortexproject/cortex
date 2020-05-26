@@ -42,7 +42,7 @@ func (t *tracingSet) Next() bool {
 
 func (t *tracingSet) At() storage.Series {
 	s := t.s.At()
-	if t.span != nil {
+	if t.span != nil && t.series%100 == 0 {
 		t.span.LogKV("at", s.Labels().String(), "current series", t.series, "current samples", t.samples)
 	}
 	return &tracingSeries{t, s}

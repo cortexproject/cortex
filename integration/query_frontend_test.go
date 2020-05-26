@@ -27,7 +27,7 @@ const (
 type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
@@ -36,7 +36,7 @@ func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 }
 
 func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
-	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
 		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
@@ -47,7 +47,7 @@ func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
 }
 
 func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+	runQueryFrontendTest(t, true, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 		dynamo := e2edb.NewDynamoDB()
@@ -65,7 +65,7 @@ func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
 }
 
 func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
-	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+	runQueryFrontendTest(t, true, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(ChunksStorageConfig)))
 		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
@@ -84,7 +84,7 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 }
 
 func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
@@ -107,7 +107,7 @@ func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 	})
 }
 
-func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
+func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryFrontendSetup) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
 
@@ -174,6 +174,14 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
+		// No need to repeat this test for each user.
+		if userID == 0 && testMissingMetricName {
+			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			require.NoError(t, err)
+			require.Equal(t, 422, res.StatusCode)
+			require.Contains(t, string(body), "query must contain metric name")
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()
@@ -188,7 +196,11 @@ func runQueryFrontendTest(t *testing.T, setup queryFrontendSetup) {
 
 	wg.Wait()
 
-	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser), "cortex_query_frontend_queries_total"))
+	extra := float64(0)
+	if testMissingMetricName {
+		extra = 1
+	}
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)

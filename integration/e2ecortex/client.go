@@ -25,6 +25,7 @@ import (
 // Client is a client used to interact with Cortex in integration tests
 type Client struct {
 	alertmanagerClient promapi.Client
+	querierAddress     string
 	rulerAddress       string
 	distributorAddress string
 	timeout            time.Duration
@@ -52,6 +53,7 @@ func NewClient(
 
 	c := &Client{
 		distributorAddress: distributorAddress,
+		querierAddress:     querierAddress,
 		rulerAddress:       rulerAddress,
 		timeout:            5 * time.Second,
 		httpClient:         &http.Client{},
@@ -110,6 +112,32 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	value, _, err := c.querierClient.Query(context.Background(), query, ts)
 	return value, err
+}
+
+func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
+	addr := fmt.Sprintf("http://%s/api/prom/api/v1/query?query=%s", c.querierAddress, url.QueryEscape(query))
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", addr, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, body, nil
 }
 
 // LabelValues gets label values

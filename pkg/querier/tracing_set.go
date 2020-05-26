@@ -21,18 +21,18 @@ type tracingSet struct {
 	s    storage.SeriesSet
 	span opentracing.Span
 
-	nextSeries  int
-	nextSamples int
+	series  int
+	samples int
 }
 
 func (t *tracingSet) Next() bool {
 	if t.s.Next() {
-		t.nextSeries++
+		t.series++
 		return true
 	}
 
 	if t.span != nil {
-		t.span.LogKV("nextSeries", t.nextSeries, "nextSamples", t.nextSamples)
+		t.span.LogKV("series", t.series, "samples", t.samples)
 		t.span.Finish()
 		// Nil to avoid double closing.
 		t.span = nil
@@ -41,7 +41,11 @@ func (t *tracingSet) Next() bool {
 }
 
 func (t *tracingSet) At() storage.Series {
-	return &tracingSeries{t, t.s.At()}
+	s := t.s.At()
+	if t.span != nil {
+		t.span.LogKV("at", s.Labels().String(), "current series", t.series, "current samples", t.samples)
+	}
+	return &tracingSeries{t, s}
 }
 
 func (t *tracingSet) Err() error {
@@ -68,7 +72,7 @@ type tracingIterator struct {
 
 func (t tracingIterator) Next() bool {
 	if t.it.Next() {
-		t.set.nextSamples++
+		t.set.samples++
 		return true
 	}
 	return false
@@ -76,7 +80,7 @@ func (t tracingIterator) Next() bool {
 
 func (t tracingIterator) Seek(ts int64) bool {
 	if t.it.Seek(ts) {
-		t.set.nextSamples++
+		t.set.samples++
 		return true
 	}
 	return false

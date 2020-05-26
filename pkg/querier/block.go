@@ -204,12 +204,7 @@ func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *bl
 		return chunks[i].MinTime < chunks[j].MinTime
 	})
 
-	b := labels.NewBuilder(nil)
-	for _, l := range lbls {
-		b.Set(l.Name, l.Value)
-	}
-
-	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}
+	return &blockQuerierSeries{labels: storepb.LabelsToPromLabelsUnsafe(lbls), chunks: chunks}
 }
 
 type blockQuerierSeries struct {

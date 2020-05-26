@@ -250,3 +250,26 @@ func mkLabels(s ...string) []storepb.Label {
 
 	return result
 }
+
+func Benchmark_newBlockQuerierSeries(b *testing.B) {
+	lbls := mkLabels(
+		"__name__", "test",
+		"label_1", "value_1",
+		"label_2", "value_2",
+		"label_3", "value_3",
+		"label_4", "value_4",
+		"label_5", "value_5",
+		"label_6", "value_6",
+		"label_7", "value_7",
+		"label_8", "value_8",
+		"label_9", "value_9")
+
+	chunks := []storepb.AggrChunk{
+		createChunkWithSineSamples(time.Now(), time.Now().Add(-time.Hour), time.Minute),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newBlockQuerierSeries(lbls, chunks)
+	}
+}

@@ -199,6 +199,7 @@ func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
+// newBlockQuerierSeries makes a new blockQuerierSeries. Input labels must be already sorted by name.
 func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].MinTime < chunks[j].MinTime

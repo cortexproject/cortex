@@ -112,9 +112,9 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 	bss := &blockQuerierSeriesSet{
 		series: []*storepb.Series{
-			// labels here are not sorted, but blockQuerierSeriesSet will sort it.
+			// first, with one chunk.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(100*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples (= 33334)
 				},
@@ -122,7 +122,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// continuation of previous series. Must have exact same labels.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now.Add(100*time.Second), now.Add(200*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples more, 66668 in total
 				},

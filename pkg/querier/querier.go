@@ -245,6 +245,7 @@ type querier struct {
 func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	log, ctx := spanlogger.New(q.ctx, "querier.Select")
 	defer log.Span.Finish()
+	level.Debug(log).Log("start", sp.Start, "end", sp.End, "step", sp.Step)
 
 	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.

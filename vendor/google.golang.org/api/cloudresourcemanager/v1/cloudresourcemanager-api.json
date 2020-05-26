@@ -376,7 +376,7 @@
               "type": "string"
             },
             "parent": {
-              "description": "Required. The name of the resource to list all attached Liens.\nFor example, `projects/1234`.",
+              "description": "Required. The name of the resource to list all attached Liens.\nFor example, `projects/1234`.\n\n(google.api.field_policy).resource_type annotation is not set since the\nparent depends on the meta api implementation. This field could be a\nproject or other sub project resources.",
               "location": "query",
               "type": "string"
             }
@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20200212",
+  "revision": "20200311",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {

@@ -247,7 +247,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	defer log.Span.Finish()
 
 	if sp != nil {
-		level.Debug(log).Log("start", sp.Start, "end", sp.End, "step", sp.Step)
+		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step)
 	}
 
 	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,

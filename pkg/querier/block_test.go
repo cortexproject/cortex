@@ -112,9 +112,9 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 	bss := &blockQuerierSeriesSet{
 		series: []*storepb.Series{
-			// labels here are not sorted, but blockQuerierSeriesSet will sort it.
+			// first, with one chunk.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(100*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples (= 33334)
 				},
@@ -122,7 +122,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// continuation of previous series. Must have exact same labels.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now.Add(100*time.Second), now.Add(200*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples more, 66668 in total
 				},
@@ -249,4 +249,27 @@ func mkLabels(s ...string) []storepb.Label {
 	}
 
 	return result
+}
+
+func Benchmark_newBlockQuerierSeries(b *testing.B) {
+	lbls := mkLabels(
+		"__name__", "test",
+		"label_1", "value_1",
+		"label_2", "value_2",
+		"label_3", "value_3",
+		"label_4", "value_4",
+		"label_5", "value_5",
+		"label_6", "value_6",
+		"label_7", "value_7",
+		"label_8", "value_8",
+		"label_9", "value_9")
+
+	chunks := []storepb.AggrChunk{
+		createChunkWithSineSamples(time.Now(), time.Now().Add(-time.Hour), time.Minute),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newBlockQuerierSeries(lbls, chunks)
+	}
 }

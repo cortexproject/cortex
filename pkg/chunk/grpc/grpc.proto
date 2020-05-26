@@ -18,7 +18,7 @@ service grpc_store {
 
     //table-client
     rpc ListTables(google.protobuf.Empty) returns (ListTablesResponse);
-    rpc CreateTable(TableDesc) returns (google.protobuf.Empty);
+    rpc CreateTable(CreateTableRequest) returns (google.protobuf.Empty);
     rpc DeleteTable(DeleteTableRequest) returns (google.protobuf.Empty);
     rpc DescribeTable(DescribeTableRequest) returns (DescribeTableResponse);
     rpc UpdateTable(UpdateTableRequest) returns (google.protobuf.Empty);
@@ -100,6 +100,10 @@ message UpdateTableRequest {
 message DescribeTableResponse {
     TableDesc desc  = 1;
     bool isActive   = 2;
+}
+
+message CreateTableRequest {
+    TableDesc desc = 1;
 }
 
 message TableDesc {

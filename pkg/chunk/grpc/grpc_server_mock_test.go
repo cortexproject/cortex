@@ -82,8 +82,8 @@ func (s server) ListTables(ctx context.Context, empty *empty.Empty) (*ListTables
 	}, nil
 }
 
-func (s server) CreateTable(ctx context.Context, desc *TableDesc) (*empty.Empty, error) {
-	if desc.Name == "chunk_2607" && !desc.UseOnDemandIOMode && desc.ProvisionedRead == 300 && desc.ProvisionedWrite == 1 && desc.Tags == nil {
+func (s server) CreateTable(ctx context.Context, createTableRequest *CreateTableRequest) (*empty.Empty, error) {
+	if createTableRequest.Desc.Name == "chunk_2607" && !createTableRequest.Desc.UseOnDemandIOMode && createTableRequest.Desc.ProvisionedRead == 300 && createTableRequest.Desc.ProvisionedWrite == 1 && createTableRequest.Desc.Tags == nil {
 		return &empty.Empty{}, nil
 	}
 	err := errors.New("create table from tableClient request doesn't match with test gRPC client")

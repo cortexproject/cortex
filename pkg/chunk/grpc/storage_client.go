@@ -31,7 +31,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient,
 }
 
 func (s *StorageClient) Stop() {
-	// In gRPC-store we don't have any use of Stop
+	s.connection.Close()
 }
 
 // PutChunks implements chunk.ObjectClient.

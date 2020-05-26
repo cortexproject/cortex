@@ -327,9 +327,11 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	// Since we have a new router and the request will not go through the default server
 	// HTTP middleware stack, we need to add a middleware to extract the trace context
 	// from the HTTP headers and inject it into the Go context.
-	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
+	// Additionally add use the weaveworks AuthenticateUser middleware to copy the OrgID header
+	// into the request context.
+	return middleware.AuthenticateUser.Wrap(nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
 		return "internalQuerier"
-	}))
+	})))
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the

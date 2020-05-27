@@ -621,7 +621,10 @@ The `querier_config` configures the Cortex querier.
 [query_ingesters_within: <duration> | default = 0s]
 
 # The time after which a metric should only be queried from storage and not just
-# ingesters. 0 means all queries are sent to store.
+# ingesters. 0 means all queries are sent to store. When running the
+# experimental blocks storage, if this option is enabled, the time range of the
+# query sent to the store will be manipulated to ensure the query end is not
+# more recent than 'now - query-store-after'.
 # CLI flag: -querier.query-store-after
 [query_store_after: <duration> | default = 0s]
 

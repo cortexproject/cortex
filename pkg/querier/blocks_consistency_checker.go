@@ -77,7 +77,7 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []*BlockMeta, knownDelet
 			deletionTime := time.Unix(mark.DeletionTime, 0)
 
 			if c.deletionGracePeriod > 0 && time.Since(deletionTime) > c.deletionGracePeriod {
-				level.Debug(c.logger).Log("msg", "block skipped from consistency check because marked for deletion", "block", meta.ULID.String(), "deletionTime", deletionTime.String())
+				level.Debug(c.logger).Log("msg", "block skipped from consistency check because it is marked for deletion", "block", meta.ULID.String(), "deletionTime", deletionTime.String())
 				continue
 			}
 		}

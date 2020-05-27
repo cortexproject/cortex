@@ -507,9 +507,8 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, error) {
 	tsdb := &tsdb{
-		pusher:    r.pusher,
-		userID:    userID,
-		queryable: r.queryable,
+		pusher: r.pusher,
+		userID: userID,
 	}
 
 	notifier, err := r.getOrCreateNotifier(userID)
@@ -523,7 +522,6 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, 
 	logger := log.With(r.logger, "user", userID)
 	opts := &rules.ManagerOptions{
 		Appendable:  tsdb,
-		TSDB:        tsdb,
 		QueryFunc:   r.queryFunc(r.queryable, r.cfg.EvaluationDelay),
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
@@ -531,6 +529,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, 
 		Logger:      logger,
 		Registerer:  reg,
 	}
+	opts.AlertHistory = rules.NewMetricsHistory(r.queryable, opts, logger)
 	return rules.NewManager(opts), nil
 }
 

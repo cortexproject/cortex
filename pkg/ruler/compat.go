@@ -55,9 +55,8 @@ func (a *appender) Rollback() error {
 // TSDB fulfills the storage.Storage interface for prometheus manager
 // it allows for alerts to be restored by the manager
 type tsdb struct {
-	pusher    Pusher
-	userID    string
-	queryable storage.Queryable
+	pusher Pusher
+	userID string
 }
 
 // Appender returns a storage.Appender
@@ -66,11 +65,6 @@ func (t *tsdb) Appender() storage.Appender {
 		pusher: t.pusher,
 		userID: t.userID,
 	}
-}
-
-// Querier returns a new Querier on the storage.
-func (t *tsdb) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
-	return t.queryable.Querier(ctx, mint, maxt)
 }
 
 // StartTime returns the oldest timestamp stored in the storage.

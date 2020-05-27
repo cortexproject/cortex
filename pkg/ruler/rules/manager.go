@@ -27,7 +27,6 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -626,21 +625,6 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 // RestoreForState restores the 'for' state of the alerts
 // by looking up last ActiveAt from storage.
 func (g *Group) RestoreForState(ts time.Time) {
-	maxtMS := int64(model.TimeFromUnixNano(ts.UnixNano()))
-	// We allow restoration only if alerts were active before after certain time.
-	mint := ts.Add(-g.opts.OutageTolerance)
-	mintMS := int64(model.TimeFromUnixNano(mint.UnixNano()))
-	q, err := g.opts.TSDB.Querier(g.opts.Context, mintMS, maxtMS)
-	if err != nil {
-		level.Error(g.logger).Log("msg", "Failed to get Querier", "err", err)
-		return
-	}
-	defer func() {
-		if err := q.Close(); err != nil {
-			level.Error(g.logger).Log("msg", "Failed to close Querier", "err", err)
-		}
-	}()
-
 	for _, rule := range g.Rules() {
 		alertRule, ok := rule.(*AlertingRule)
 		if !ok {
@@ -656,97 +640,8 @@ func (g *Group) RestoreForState(ts time.Time) {
 			continue
 		}
 
-		alertRule.ForEachActiveAlert(func(a *Alert) {
-			smpl := alertRule.forStateSample(a, time.Now(), 0)
-			var matchers []*labels.Matcher
-			for _, l := range smpl.Metric {
-				mt, err := labels.NewMatcher(labels.MatchEqual, l.Name, l.Value)
-				if err != nil {
-					panic(err)
-				}
-				matchers = append(matchers, mt)
-			}
+		g.opts.AlertHistory.RestoreForState(ts, alertRule)
 
-			sset, err, _ := q.Select(nil, matchers...)
-			if err != nil {
-				level.Error(g.logger).Log("msg", "Failed to restore 'for' state",
-					labels.AlertName, alertRule.Name(), "stage", "Select", "err", err)
-				return
-			}
-
-			seriesFound := false
-			var s storage.Series
-			for sset.Next() {
-				// Query assures that smpl.Metric is included in sset.At().Labels(),
-				// hence just checking the length would act like equality.
-				// (This is faster than calling labels.Compare again as we already have some info).
-				if len(sset.At().Labels()) == len(smpl.Metric) {
-					s = sset.At()
-					seriesFound = true
-					break
-				}
-			}
-
-			if !seriesFound {
-				return
-			}
-
-			// Series found for the 'for' state.
-			var t int64
-			var v float64
-			it := s.Iterator()
-			for it.Next() {
-				t, v = it.At()
-			}
-			if it.Err() != nil {
-				level.Error(g.logger).Log("msg", "Failed to restore 'for' state",
-					labels.AlertName, alertRule.Name(), "stage", "Iterator", "err", it.Err())
-				return
-			}
-			if value.IsStaleNaN(v) { // Alert was not active.
-				return
-			}
-
-			downAt := time.Unix(t/1000, 0)
-			restoredActiveAt := time.Unix(int64(v), 0)
-			timeSpentPending := downAt.Sub(restoredActiveAt)
-			timeRemainingPending := alertHoldDuration - timeSpentPending
-
-			if timeRemainingPending <= 0 {
-				// It means that alert was firing when prometheus went down.
-				// In the next Eval, the state of this alert will be set back to
-				// firing again if it's still firing in that Eval.
-				// Nothing to be done in this case.
-			} else if timeRemainingPending < g.opts.ForGracePeriod {
-				// (new) restoredActiveAt = (ts + m.opts.ForGracePeriod) - alertHoldDuration
-				//                            /* new firing time */      /* moving back by hold duration */
-				//
-				// Proof of correctness:
-				// firingTime = restoredActiveAt.Add(alertHoldDuration)
-				//            = ts + m.opts.ForGracePeriod - alertHoldDuration + alertHoldDuration
-				//            = ts + m.opts.ForGracePeriod
-				//
-				// Time remaining to fire = firingTime.Sub(ts)
-				//                        = (ts + m.opts.ForGracePeriod) - ts
-				//                        = m.opts.ForGracePeriod
-				restoredActiveAt = ts.Add(g.opts.ForGracePeriod).Add(-alertHoldDuration)
-			} else {
-				// By shifting ActiveAt to the future (ActiveAt + some_duration),
-				// the total pending time from the original ActiveAt
-				// would be `alertHoldDuration + some_duration`.
-				// Here, some_duration = downDuration.
-				downDuration := ts.Sub(downAt)
-				restoredActiveAt = restoredActiveAt.Add(downDuration)
-			}
-
-			a.ActiveAt = restoredActiveAt
-			level.Debug(g.logger).Log("msg", "'for' state restored",
-				labels.AlertName, alertRule.Name(), "restored_time", a.ActiveAt.Format(time.RFC850),
-				"labels", a.Labels.String())
-
-		})
-
-		alertRule.SetRestored(true)
 	}
 
 }
@@ -804,7 +699,7 @@ type ManagerOptions struct {
 	NotifyFunc      NotifyFunc
 	Context         context.Context
 	Appendable      Appendable
-	TSDB            storage.Storage
+	AlertHistory    AlertHistory
 	Logger          log.Logger
 	Registerer      prometheus.Registerer
 	OutageTolerance time.Duration

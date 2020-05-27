@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -96,8 +95,6 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		mint, maxt = sp.Start, sp.End
 	}
 	converted := convertMatchersToLabelMatcher(matchers)
-
-	level.Debug(log).Log("mint", model.Time(mint).Time().UTC().String(), "maxt", model.Time(maxt).Time().UTC().String(), "matchers", matchers)
 
 	// Returned series are sorted.
 	// No processing of responses is done here. Dealing with multiple responses

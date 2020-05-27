@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -279,8 +278,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	if sp != nil {
 		minT, maxT = sp.Start, sp.End
 	}
-
-	level.Debug(spanLog).Log("mint", model.Time(minT).Time().UTC().String(), "maxt", model.Time(maxT).Time().UTC().String(), "matchers", matchers)
 
 	// Find the list of blocks we need to query given the time range.
 	metas, deletionMarks, err := q.finder.GetBlocks(q.userID, minT, maxT)

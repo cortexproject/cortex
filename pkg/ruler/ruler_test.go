@@ -80,7 +80,7 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
-	ruler, err := NewRuler(cfg, CurriedPromDelayedQueryFunc(engine), noopQueryable, pusher, prometheus.NewRegistry(), l)
+	ruler, err := NewRuler(cfg, PromDelayedQueryFunc(engine), noopQueryable, pusher, prometheus.NewRegistry(), l)
 	require.NoError(t, err)
 
 	return ruler, cleanup

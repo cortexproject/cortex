@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 

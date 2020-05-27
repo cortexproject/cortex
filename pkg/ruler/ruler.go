@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	promRules "github.com/prometheus/prometheus/rules"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -152,7 +151,7 @@ type Ruler struct {
 	store          rules.RuleStore
 	mapper         *mapper
 	userManagerMtx sync.Mutex
-	userManagers   map[string]*promRules.Manager
+	userManagers   map[string]*rules.Manager
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -184,7 +183,7 @@ func NewRuler(cfg Config, queryFunc DelayedQueryFunc, queryable promStorage.Quer
 		store:        ruleStore,
 		pusher:       pusher,
 		mapper:       newMapper(cfg.RulePath, logger),
-		userManagers: map[string]*promRules.Manager{},
+		userManagers: map[string]*rules.Manager{},
 		registry:     reg,
 		logger:       logger,
 	}
@@ -268,7 +267,7 @@ func (r *Ruler) stopping(_ error) error {
 	for user, manager := range r.userManagers {
 		level.Debug(r.logger).Log("msg", "shutting down user  manager", "user", user)
 		wg.Add(1)
-		go func(manager *promRules.Manager, user string) {
+		go func(manager *rules.Manager, user string) {
 			manager.Stop()
 			wg.Done()
 			level.Debug(r.logger).Log("msg", "user manager shut down", "user", user)
@@ -284,13 +283,13 @@ func (r *Ruler) stopping(_ error) error {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
+	return func(ctx context.Context, expr string, alerts ...*rules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == promRules.StatePending {
+			if alert.State == rules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{
@@ -506,7 +505,7 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
-func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
+func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, error) {
 	tsdb := &tsdb{
 		pusher:    r.pusher,
 		userID:    userID,
@@ -522,7 +521,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
-	opts := &promRules.ManagerOptions{
+	opts := &rules.ManagerOptions{
 		Appendable:  tsdb,
 		TSDB:        tsdb,
 		QueryFunc:   r.queryFunc(r.queryable, r.cfg.EvaluationDelay),
@@ -532,7 +531,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		Logger:      logger,
 		Registerer:  reg,
 	}
-	return promRules.NewManager(opts), nil
+	return rules.NewManager(opts), nil
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
@@ -551,7 +550,7 @@ func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
-	var groups []*promRules.Group
+	var groups []*rules.Group
 	r.userManagerMtx.Lock()
 	if mngr, exists := r.userManagers[userID]; exists {
 		groups = mngr.RuleGroups()
@@ -588,7 +587,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
-			case *promRules.AlertingRule:
+			case *rules.AlertingRule:
 				rule.ActiveAlerts()
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
@@ -619,7 +618,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
-			case *promRules.RecordingRule:
+			case *rules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
 					Rule: &rules.RuleDesc{
 						Record: rule.Name(),

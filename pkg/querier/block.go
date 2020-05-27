@@ -114,7 +114,7 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 
 	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
 
-	return newTracingSet(b.ctx, "blocksQuerier.seriesSet", &blockQuerierSeriesSet{series: series}), warnings, nil
+	return &blockQuerierSeriesSet{series: series}, warnings, nil
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {

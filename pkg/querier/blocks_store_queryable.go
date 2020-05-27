@@ -395,7 +395,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		}
 	}
 
-	return newTracingSet(q.ctx, "blocksStoreQuerier.seriesSet", storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)), warnings, nil
+	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
 }
 
 func countSeriesBytes(series []*storepb.Series) (count uint64) {

@@ -142,7 +142,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		filters = append(filters, NewShardingMetadataFilter(g.ring, lifecyclerCfg.Addr, logger))
 	}
 
-	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "storegateway"}, reg))
+	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
 	}

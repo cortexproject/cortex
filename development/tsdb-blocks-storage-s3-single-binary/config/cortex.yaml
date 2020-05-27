@@ -37,6 +37,10 @@ store_gateway:
       consul:
         host: consul:8500
 
+querier:
+  blocks_consistency_check:
+    enabled: true
+
 tsdb:
   dir: /data/cortex-tsdb-ingester
   ship_interval: 1m

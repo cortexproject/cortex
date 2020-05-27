@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"

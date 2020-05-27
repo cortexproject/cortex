@@ -185,16 +185,17 @@ func createPrometheusAPI(store chunkstore.ChunkStore) *route.Router {
 	api := v1.NewAPI(
 		engine,
 		queryable,
-		DummyTargetRetriever{},
-		DummyAlertmanagerRetriever{},
+		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
+		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
 		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false,                              // Disable admin APIs.
+		nil,   // Only needed for admin APIs.
+		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
+		false, // Disable admin APIs.
 		util.Logger,
-		DummyRulesRetriever{},
+		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },

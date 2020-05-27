@@ -263,7 +263,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		nil,   // Only needed for admin APIs.
-		"",    // TODO(codesome): what should this be?
+		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
 		a.logger,
 		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },

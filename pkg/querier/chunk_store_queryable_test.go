@@ -192,7 +192,7 @@ func createPrometheusAPI(store chunkstore.ChunkStore) *route.Router {
 		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		nil,   // Only needed for admin APIs.
-		"",    // TODO(codesome): what should this be?
+		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
 		util.Logger,
 		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },

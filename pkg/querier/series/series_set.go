@@ -80,7 +80,26 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
-// Labels implements storage.Series
+// Add inserts a sample at the correct spot to maintain ordering. It discards the sample if a sample already
+// exists with the same timestamp.
+func (c *ConcreteSeries) Add(sample model.SamplePair) {
+	if len(c.samples) == 0 {
+		c.samples = []model.SamplePair{sample}
+		return
+	}
+
+	i := sort.Search(len(c.samples), func(i int) bool {
+		return sample.Timestamp >= c.samples[i].Timestamp
+	})
+	if c.samples[i].Timestamp != sample.Timestamp {
+		vec := append(c.samples[:i+1], sample)
+		vec = append(c.samples[i+1:]...)
+		c.samples = vec
+	}
+
+}
+
+// Labels impls storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
@@ -97,7 +116,14 @@ func (c *ConcreteSeries) TrimStart(start time.Time) {
 		return c.samples[i].Timestamp >= ts
 	})
 
-	c.samples = c.samples[i:]
+	if i == 0 {
+		return
+	}
+
+	// release the underlying allocations that are no longer needed
+	tmp := make([]model.SamplePair, len(c.samples[i:]))
+	copy(tmp, c.samples[i:])
+	c.samples = tmp
 }
 
 func (c *ConcreteSeries) Len() int {

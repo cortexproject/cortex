@@ -42,7 +42,7 @@ const (
 	// AlertMetricName is the metric name for synthetic alert timeseries.
 	alertMetricName = "ALERTS"
 	// AlertForStateMetricName is the metric name for 'for' state of alert.
-	alertForStateMetricName = "ALERTS_FOR_STATE"
+	AlertForStateMetricName = "ALERTS_FOR_STATE"
 
 	// AlertNameLabel is the label name indicating the name of an alert.
 	alertNameLabel = "alertname"
@@ -246,7 +246,7 @@ func (r *AlertingRule) forStateSample(alert *Alert, ts time.Time, v float64) pro
 		lb.Set(l.Name, l.Value)
 	}
 
-	lb.Set(labels.MetricName, alertForStateMetricName)
+	lb.Set(labels.MetricName, AlertForStateMetricName)
 	lb.Set(labels.AlertName, r.name)
 
 	s := promql.Sample{

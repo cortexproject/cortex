@@ -60,7 +60,7 @@ type tsdb struct {
 }
 
 // Appender returns a storage.Appender
-func (t *tsdb) Appender() storage.Appender {
+func (t *tsdb) Appender(_ rules.Rule) (storage.Appender, error) {
 	return &appender{
 		pusher: t.pusher,
 		userID: t.userID,

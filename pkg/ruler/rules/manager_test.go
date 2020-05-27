@@ -38,6 +38,12 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
+type AppendableAdapter struct{ storage.Storage }
+
+func (a AppendableAdapter) Appender(_ Rule) (storage.Appender, error) {
+	return a.Storage.Appender()
+}
+
 func TestAlertingRule(t *testing.T) {
 	suite, err := promql.NewTest(t, `
 		load 5m
@@ -357,7 +363,7 @@ func TestForStateRestore(t *testing.T) {
 
 	opts := &ManagerOptions{
 		QueryFunc:       EngineQueryFunc(suite.QueryEngine(), suite.Storage()),
-		Appendable:      suite.Storage(),
+		Appendable:      AppendableAdapter{suite.Storage()},
 		Context:         context.Background(),
 		Logger:          log.NewNopLogger(),
 		NotifyFunc:      func(ctx context.Context, expr string, alerts ...*Alert) {},
@@ -510,7 +516,7 @@ func TestStaleness(t *testing.T) {
 	engine := promql.NewEngine(engineOpts)
 	opts := &ManagerOptions{
 		QueryFunc:  EngineQueryFunc(engine, storage),
-		Appendable: storage,
+		Appendable: AppendableAdapter{storage},
 		Context:    context.Background(),
 		Logger:     log.NewNopLogger(),
 	}
@@ -653,7 +659,7 @@ func TestDeletedRuleMarkedStale(t *testing.T) {
 		rules:                []Rule{},
 		seriesInPreviousEval: []map[string]labels.Labels{},
 		opts: &ManagerOptions{
-			Appendable: storage,
+			Appendable: AppendableAdapter{storage},
 		},
 	}
 	newGroup.CopyState(oldGroup)
@@ -695,7 +701,7 @@ func TestUpdate(t *testing.T) {
 	}
 	engine := promql.NewEngine(opts)
 	mo := &ManagerOptions{
-		Appendable: storage,
+		Appendable: AppendableAdapter{storage},
 		QueryFunc:  EngineQueryFunc(engine, storage),
 		Context:    context.Background(),
 		Logger:     log.NewNopLogger(),
@@ -833,7 +839,7 @@ func TestNotify(t *testing.T) {
 	}
 	opts := &ManagerOptions{
 		QueryFunc:   EngineQueryFunc(engine, storage),
-		Appendable:  storage,
+		Appendable:  AppendableAdapter{storage},
 		Context:     context.Background(),
 		Logger:      log.NewNopLogger(),
 		NotifyFunc:  notifyFunc,
@@ -895,7 +901,7 @@ func TestMetricsUpdate(t *testing.T) {
 	}
 	engine := promql.NewEngine(opts)
 	mo := &ManagerOptions{
-		Appendable: storage,
+		Appendable: AppendableAdapter{storage},
 		QueryFunc:  EngineQueryFunc(engine, storage),
 		Context:    context.Background(),
 		Logger:     log.NewNopLogger(),

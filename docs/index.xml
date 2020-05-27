@@ -6575,6 +6575,10 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2626&#34;&gt;#2626&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Upgrade Thanos to &lt;a href=&#34;https://github.com/thanos-io/thanos/commit/f7802edbf830&#34;&gt;f7802edbf830&lt;/a&gt; and Prometheus to &lt;a href=&#34;https://github.com/prometheus/prometheus/commit/f4dd45609a05&#34;&gt;f4dd45609a05&lt;/a&gt; which is after v2.18.1. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2634&#34;&gt;#2634&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2506&#34;&gt;#2506&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixes &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2411&#34;&gt;#2411&lt;/a&gt;, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code&gt;-server.path-prefix&lt;/code&gt; is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2372&#34;&gt;#2372&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;&lt;/li&gt;

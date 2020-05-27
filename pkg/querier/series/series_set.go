@@ -18,6 +18,7 @@ package series
 
 import (
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -89,7 +90,21 @@ func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
-// concreteSeriesIterator implements chunkenc.Iterator.
+// TrimStart drops references to samples before start
+func (c *ConcreteSeries) TrimStart(start time.Time) {
+	ts := model.TimeFromUnixNano(start.UnixNano())
+	i := sort.Search(c.Len(), func(i int) bool {
+		return c.samples[i].Timestamp >= ts
+	})
+
+	c.samples = c.samples[i:]
+}
+
+func (c *ConcreteSeries) Len() int {
+	return len(c.samples)
+}
+
+// concreteSeriesIterator implements storage.SeriesIterator.
 type concreteSeriesIterator struct {
 	cur    int
 	series *ConcreteSeries

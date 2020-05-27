@@ -3,6 +3,7 @@ package series
 import (
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -25,6 +26,36 @@ func TestConcreteSeriesSet(t *testing.T) {
 	require.True(t, c.Next())
 	require.Equal(t, series2, c.At())
 	require.False(t, c.Next())
+}
+
+func TestConcreteSeriesTrimStart(t *testing.T) {
+	for _, tc := range []struct {
+		desc    string
+		in, out *ConcreteSeries
+		start   time.Time
+	}{
+		{
+			"start is inclusive",
+			NewConcreteSeries(labels.FromStrings("foo", "bar"), []model.SamplePair{{Value: 1, Timestamp: 1e3}}),
+			NewConcreteSeries(labels.FromStrings("foo", "bar"), []model.SamplePair{{Value: 1, Timestamp: 1e3}}),
+			time.Unix(1, 0),
+		},
+		{
+			"trims preceeding",
+			NewConcreteSeries(labels.FromStrings("foo", "bar"), []model.SamplePair{
+				{Value: 1, Timestamp: 1e3}, {Value: 2, Timestamp: 2e3}, {Value: 3, Timestamp: 3e3},
+			}),
+			NewConcreteSeries(labels.FromStrings("foo", "bar"), []model.SamplePair{
+				{Value: 2, Timestamp: 2e3}, {Value: 3, Timestamp: 3e3},
+			}),
+			time.Unix(2, 0),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			tc.in.TrimStart(tc.start)
+			require.Equal(t, tc.out, tc.in)
+		})
+	}
 }
 
 func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {

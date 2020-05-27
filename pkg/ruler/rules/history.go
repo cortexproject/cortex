@@ -3,7 +3,6 @@ package rules
 import (
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -17,16 +16,14 @@ type AlertHistory interface {
 
 // QuerierHistory embeds a Querier and determines last active at via the traditional Prometheus metric `ALERTS_FOR_STATE`
 type MetricsHistory struct {
-	q      storage.Queryable
-	opts   *ManagerOptions
-	logger log.Logger
+	q    storage.Queryable
+	opts *ManagerOptions
 }
 
-func NewMetricsHistory(q storage.Queryable, opts *ManagerOptions, logger log.Logger) *MetricsHistory {
+func NewMetricsHistory(q storage.Queryable, opts *ManagerOptions) *MetricsHistory {
 	return &MetricsHistory{
-		q:      q,
-		opts:   opts,
-		logger: logger,
+		q:    q,
+		opts: opts,
 	}
 }
 
@@ -37,12 +34,12 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 	mintMS := int64(model.TimeFromUnixNano(mint.UnixNano()))
 	q, err := m.q.Querier(m.opts.Context, mintMS, maxtMS)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "Failed to get Querier", "err", err)
+		level.Error(m.opts.Logger).Log("msg", "Failed to get Querier", "err", err)
 		return
 	}
 	defer func() {
 		if err := q.Close(); err != nil {
-			level.Error(m.logger).Log("msg", "Failed to close Querier", "err", err)
+			level.Error(m.opts.Logger).Log("msg", "Failed to close Querier", "err", err)
 		}
 	}()
 
@@ -59,7 +56,7 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 
 		sset, err, _ := q.Select(nil, matchers...)
 		if err != nil {
-			level.Error(m.logger).Log("msg", "Failed to restore 'for' state",
+			level.Error(m.opts.Logger).Log("msg", "Failed to restore 'for' state",
 				labels.AlertName, alertRule.Name(), "stage", "Select", "err", err)
 			return
 		}
@@ -89,7 +86,7 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 			t, v = it.At()
 		}
 		if it.Err() != nil {
-			level.Error(m.logger).Log("msg", "Failed to restore 'for' state",
+			level.Error(m.opts.Logger).Log("msg", "Failed to restore 'for' state",
 				labels.AlertName, alertRule.Name(), "stage", "Iterator", "err", it.Err())
 			return
 		}
@@ -131,7 +128,7 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 		}
 
 		a.ActiveAt = restoredActiveAt
-		level.Debug(m.logger).Log("msg", "'for' state restored",
+		level.Debug(m.opts.Logger).Log("msg", "'for' state restored",
 			labels.AlertName, alertRule.Name(), "restored_time", a.ActiveAt.Format(time.RFC850),
 			"labels", a.Labels.String())
 

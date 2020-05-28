@@ -536,7 +536,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				if _, ok := err.(promql.ErrQueryCanceled); !ok {
 					level.Warn(g.logger).Log("msg", "Evaluating rule failed", "rule", rule, "err", err)
 				}
-				g.metrics.evalFailures.Inc()
+				g.metrics.FailedEvaluate()
 				return
 			}
 

@@ -81,7 +81,7 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, logLevel 
 	}
 
 	if gatewayCfg.ShardingEnabled {
-		ringStore, err = kv.NewClient(gatewayCfg.ShardingRing.KVStore, ring.GetCodec())
+		ringStore, err = kv.NewClient(RingNameForClient, gatewayCfg.ShardingRing.KVStore, ring.GetCodec(), reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}

@@ -13,6 +13,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
+var (
+	RingNameForClient = "distributor"
+)
+
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the distributors ring. This config
 // is used to strip down the config to the minimum, and avoid confusion

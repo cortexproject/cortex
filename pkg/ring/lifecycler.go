@@ -147,7 +147,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	}
 	port := GetInstancePort(cfg.Port, cfg.ListenPort)
 	codec := GetCodec()
-	store, err := kv.NewClient(cfg.RingConfig.KVStore, codec)
+	// Suffix all client names with "-lifecycler" to denote this kv client is used by the lifecycler
+	store, err := kv.NewClient(ringName+"-lifecycler", cfg.RingConfig.KVStore, codec, nil)
 	if err != nil {
 		return nil, err
 	}

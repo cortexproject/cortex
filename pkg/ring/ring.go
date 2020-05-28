@@ -118,7 +118,8 @@ type Ring struct {
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string) (*Ring, error) {
 	codec := GetCodec()
-	store, err := kv.NewClient(cfg.KVStore, codec)
+	// Suffix all client names with "-ring" to denote this kv client is used by the ring
+	store, err := kv.NewClient(name+"-ring", cfg.KVStore, codec, nil)
 	if err != nil {
 		return nil, err
 	}

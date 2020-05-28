@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -97,19 +99,19 @@ type Client interface {
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewClient(cfg Config, codec codec.Codec) (Client, error) {
+func NewClient(name string, cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec)
+	return createClient(name, cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, reg)
 }
 
-func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec) (Client, error) {
+func createClient(name string, backend string, prefix string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	var client Client
 	var err error
 
-	switch name {
+	switch backend {
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec)
 
@@ -135,10 +137,10 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		}
 
 	case "multi":
-		client, err = buildMultiClient(cfg, codec)
+		client, err = buildMultiClient(name, cfg, codec, reg)
 
 	default:
-		return nil, fmt.Errorf("invalid KV store type: %s", name)
+		return nil, fmt.Errorf("invalid KV store type: %s", backend)
 	}
 
 	if err != nil {
@@ -149,10 +151,10 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		client = PrefixClient(client, prefix)
 	}
 
-	return metrics{client}, nil
+	return newMetricsClient(name, backend, client, reg), nil
 }
 
-func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
+func buildMultiClient(name string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -163,12 +165,12 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec)
+	primary, err := createClient(name+"-primary", cfg.Multi.Primary, "", cfg, codec, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec)
+	secondary, err := createClient(name+"-secondary", cfg.Multi.Secondary, "", cfg, codec, reg)
 	if err != nil {
 		return nil, err
 	}

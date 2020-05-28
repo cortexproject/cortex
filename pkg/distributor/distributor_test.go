@@ -369,7 +369,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 						KVStore:         kv.Config{Mock: mock},
 						UpdateTimeout:   100 * time.Millisecond,
 						FailoverTimeout: time.Second,
-					})
+					}, prometheus.NewRegistry())
 					require.NoError(t, err)
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
 					d.HATracker = r

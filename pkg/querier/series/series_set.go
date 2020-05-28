@@ -89,13 +89,18 @@ func (c *ConcreteSeries) Add(sample model.SamplePair) {
 	}
 
 	i := sort.Search(len(c.samples), func(i int) bool {
-		return sample.Timestamp >= c.samples[i].Timestamp
+		return sample.Timestamp <= c.samples[i].Timestamp
 	})
+
+	if i == len(c.samples) {
+		c.samples = append(c.samples, sample)
+		return
+	}
+
 	if c.samples[i].Timestamp != sample.Timestamp {
-		vec := make([]model.SamplePair, len(c.samples)+1)
-		copy(vec, c.samples[:i+1])
+		vec := append([]model.SamplePair{}, c.samples[:i]...)
 		vec = append(vec, sample)
-		vec = append(vec, c.samples[:i+1]...)
+		vec = append(vec, c.samples[i:]...)
 		c.samples = vec
 	}
 

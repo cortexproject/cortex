@@ -115,10 +115,18 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	for _, key := range misses {
 		// Only need to consider one of the queries as they have the same table & hash.
 		queries := queriesByKey[key]
-		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
+		query := chunk.IndexQuery{
 			TableName: queries[0].TableName,
 			HashValue: queries[0].HashValue,
-		})
+		}
+
+		if cache.IsEmptyTieredCache(s.cache) {
+			query.RangeValueStart = queries[0].RangeValueStart
+			query.RangeValuePrefix = queries[0].RangeValuePrefix
+			query.ValueEqual = queries[0].ValueEqual
+		}
+
+		cacheableMissed = append(cacheableMissed, query)
 
 		rb := ReadBatch{
 			Key:    key,

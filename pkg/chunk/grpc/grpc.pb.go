@@ -1994,20 +1994,30 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type GrpcStoreClient interface {
-	//index-client
+	/// WriteIndex writes batch of indexes to the index tables.
 	WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	/// QueryIndex reads the indexes required for given query & sends back the batch of rows
+	/// in rpc streams
 	QueryIndex(ctx context.Context, in *QueryIndexRequest, opts ...grpc.CallOption) (GrpcStore_QueryIndexClient, error)
+	/// DeleteIndex deletes the batch of index entries from the index tables
 	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	//storage-client
+	/// PutChunks saves the batch of chunks into the chunk tables.
 	PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	//In GetChunks rpc request send buf as nil
+	/// GetChunks requests for batch of chunks and the batch of chunks are sent back in rpc streams
+	/// batching needs to be performed at server level as per requirement instead of sending single chunk per stream.
+	/// In GetChunks rpc request send buf as nil
 	GetChunks(ctx context.Context, in *GetChunksRequest, opts ...grpc.CallOption) (GrpcStore_GetChunksClient, error)
+	/// DeleteChunks deletes the chunks based on chunkID.
 	DeleteChunks(ctx context.Context, in *ChunkID, opts ...grpc.CallOption) (*empty.Empty, error)
-	//table-client
+	/// Lists all the tables that exists in the database.
 	ListTables(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error)
+	/// Creates a table with provided name & attributes.
 	CreateTable(ctx context.Context, in *CreateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	// Deletes a table using table name provided.
 	DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	// Describes a table information for the provided table.
 	DescribeTable(ctx context.Context, in *DescribeTableRequest, opts ...grpc.CallOption) (*DescribeTableResponse, error)
+	// Update a table with newly provided table information.
 	UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
@@ -2166,20 +2176,30 @@ func (c *grpcStoreClient) UpdateTable(ctx context.Context, in *UpdateTableReques
 
 // GrpcStoreServer is the server API for GrpcStore service.
 type GrpcStoreServer interface {
-	//index-client
+	/// WriteIndex writes batch of indexes to the index tables.
 	WriteIndex(context.Context, *WriteIndexRequest) (*empty.Empty, error)
+	/// QueryIndex reads the indexes required for given query & sends back the batch of rows
+	/// in rpc streams
 	QueryIndex(*QueryIndexRequest, GrpcStore_QueryIndexServer) error
+	/// DeleteIndex deletes the batch of index entries from the index tables
 	DeleteIndex(context.Context, *DeleteIndexRequest) (*empty.Empty, error)
-	//storage-client
+	/// PutChunks saves the batch of chunks into the chunk tables.
 	PutChunks(context.Context, *PutChunksRequest) (*empty.Empty, error)
-	//In GetChunks rpc request send buf as nil
+	/// GetChunks requests for batch of chunks and the batch of chunks are sent back in rpc streams
+	/// batching needs to be performed at server level as per requirement instead of sending single chunk per stream.
+	/// In GetChunks rpc request send buf as nil
 	GetChunks(*GetChunksRequest, GrpcStore_GetChunksServer) error
+	/// DeleteChunks deletes the chunks based on chunkID.
 	DeleteChunks(context.Context, *ChunkID) (*empty.Empty, error)
-	//table-client
+	/// Lists all the tables that exists in the database.
 	ListTables(context.Context, *empty.Empty) (*ListTablesResponse, error)
+	/// Creates a table with provided name & attributes.
 	CreateTable(context.Context, *CreateTableRequest) (*empty.Empty, error)
+	// Deletes a table using table name provided.
 	DeleteTable(context.Context, *DeleteTableRequest) (*empty.Empty, error)
+	// Describes a table information for the provided table.
 	DescribeTable(context.Context, *DescribeTableRequest) (*DescribeTableResponse, error)
+	// Update a table with newly provided table information.
 	UpdateTable(context.Context, *UpdateTableRequest) (*empty.Empty, error)
 }
 

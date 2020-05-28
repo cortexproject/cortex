@@ -5,22 +5,38 @@ package grpc;
 import "google/protobuf/empty.proto";
 
 service grpc_store {
-    //index-client
+    /// index-client
+
+    /// WriteIndex writes batch of indexes to the index tables.
     rpc WriteIndex(WriteIndexRequest) returns (google.protobuf.Empty);
+    /// QueryIndex reads the indexes required for given query & sends back the batch of rows
+    /// in rpc streams
     rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+    /// DeleteIndex deletes the batch of index entries from the index tables
     rpc DeleteIndex(DeleteIndexRequest) returns (google.protobuf.Empty);
 
-    //storage-client
+    /// storage-client
+
+    /// PutChunks saves the batch of chunks into the chunk tables.
     rpc PutChunks(PutChunksRequest) returns (google.protobuf.Empty);
-    //In GetChunks rpc request send buf as nil
+    /// GetChunks requests for batch of chunks and the batch of chunks are sent back in rpc streams
+    /// batching needs to be performed at server level as per requirement instead of sending single chunk per stream.
+    /// In GetChunks rpc request send buf as nil
     rpc GetChunks(GetChunksRequest) returns (stream GetChunksResponse);
+    /// DeleteChunks deletes the chunks based on chunkID.
     rpc DeleteChunks(ChunkID) returns (google.protobuf.Empty);
 
-    //table-client
+    /// table-client
+
+    /// Lists all the tables that exists in the database.
     rpc ListTables(google.protobuf.Empty) returns (ListTablesResponse);
+    /// Creates a table with provided name & attributes.
     rpc CreateTable(CreateTableRequest) returns (google.protobuf.Empty);
+    // Deletes a table using table name provided.
     rpc DeleteTable(DeleteTableRequest) returns (google.protobuf.Empty);
+    // Describes a table information for the provided table.
     rpc DescribeTable(DescribeTableRequest) returns (DescribeTableResponse);
+    // Update a table with newly provided table information.
     rpc UpdateTable(UpdateTableRequest) returns (google.protobuf.Empty);
 }
 

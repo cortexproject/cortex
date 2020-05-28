@@ -84,15 +84,15 @@ func (c *TableClient) UpdateTable(ctx context.Context, current, expected chunk.T
 }
 
 func (c *TableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
-	tableDesc := &CreateTableRequest{}
-	tableDesc.Desc = &TableDesc{}
-	tableDesc.Desc.Name = desc.Name
-	tableDesc.Desc.ProvisionedRead = desc.ProvisionedRead
-	tableDesc.Desc.ProvisionedWrite = desc.ProvisionedWrite
-	tableDesc.Desc.Tags = desc.Tags
-	tableDesc.Desc.UseOnDemandIOMode = desc.UseOnDemandIOMode
+	req := &CreateTableRequest{}
+	req.Desc = &TableDesc{}
+	req.Desc.Name = desc.Name
+	req.Desc.ProvisionedRead = desc.ProvisionedRead
+	req.Desc.ProvisionedWrite = desc.ProvisionedWrite
+	req.Desc.Tags = desc.Tags
+	req.Desc.UseOnDemandIOMode = desc.UseOnDemandIOMode
 
-	_, err := c.client.CreateTable(ctx, tableDesc)
+	_, err := c.client.CreateTable(ctx, req)
 	if err != nil {
 		return errors.WithStack(err)
 	}

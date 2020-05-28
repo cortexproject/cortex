@@ -150,7 +150,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 
 	if gatewayCfg.ShardingEnabled {
 		storesRingCfg := gatewayCfg.ShardingRing.ToRingConfig()
-		storesRingBackend, err := kv.NewClient(storegateway.RingNameForClient, storesRingCfg.KVStore, ring.GetCodec(), reg)
+		storesRingBackend, err := kv.NewClient(storegateway.RingNameForClient+"-block-store", storesRingCfg.KVStore, ring.GetCodec(), reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store-gateway ring backend")
 		}

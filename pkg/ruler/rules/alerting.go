@@ -238,8 +238,8 @@ func (r *AlertingRule) sample(alert *Alert, ts time.Time) promql.Sample {
 	return s
 }
 
-// forStateSample returns the sample for ALERTS_FOR_STATE.
-func (r *AlertingRule) forStateSample(alert *Alert, ts time.Time, v float64) promql.Sample {
+// ForStateSample returns the sample for ALERTS_FOR_STATE.
+func (r *AlertingRule) ForStateSample(alert *Alert, ts time.Time, v float64) promql.Sample {
 	lb := labels.NewBuilder(r.labels)
 
 	for _, l := range alert.Labels {
@@ -414,7 +414,7 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 
 		if r.restored {
 			vec = append(vec, r.sample(a, ts))
-			vec = append(vec, r.forStateSample(a, ts, float64(a.ActiveAt.Unix())))
+			vec = append(vec, r.ForStateSample(a, ts, float64(a.ActiveAt.Unix())))
 		}
 	}
 

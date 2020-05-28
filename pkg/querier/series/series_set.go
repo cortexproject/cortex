@@ -81,7 +81,7 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 }
 
 // Add inserts a sample at the correct spot to maintain ordering. It discards the sample if a sample already
-// exists with the same timestamp.
+// exists with the same timestamp. NB: is not efficient due to copies.
 func (c *ConcreteSeries) Add(sample model.SamplePair) {
 	if len(c.samples) == 0 {
 		c.samples = []model.SamplePair{sample}
@@ -92,8 +92,10 @@ func (c *ConcreteSeries) Add(sample model.SamplePair) {
 		return sample.Timestamp >= c.samples[i].Timestamp
 	})
 	if c.samples[i].Timestamp != sample.Timestamp {
-		vec := append(c.samples[:i+1], sample)
-		vec = append(c.samples[i+1:]...)
+		vec := make([]model.SamplePair, len(c.samples)+1)
+		copy(vec, c.samples[:i+1])
+		vec = append(vec, sample)
+		vec = append(vec, c.samples[:i+1]...)
 		c.samples = vec
 	}
 

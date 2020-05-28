@@ -63,6 +63,10 @@ type Metrics struct {
 	groupRules          *prometheus.GaugeVec
 }
 
+func (m *Metrics) FailedEvaluate() {
+	m.evalFailures.Inc()
+}
+
 // NewGroupMetrics makes a new Metrics and registers them with the provided registerer,
 // if not nil.
 func NewGroupMetrics(reg prometheus.Registerer) *Metrics {

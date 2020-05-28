@@ -44,7 +44,7 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 	}()
 
 	alertRule.ForEachActiveAlert(func(a *Alert) {
-		smpl := alertRule.forStateSample(a, time.Now(), 0)
+		smpl := alertRule.ForStateSample(a, time.Now(), 0)
 		var matchers []*labels.Matcher
 		for _, l := range smpl.Metric {
 			mt, err := labels.NewMatcher(labels.MatchEqual, l.Name, l.Value)

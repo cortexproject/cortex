@@ -529,7 +529,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, 
 		Logger:      logger,
 		Registerer:  reg,
 	}
-	opts.AlertHistory = rules.NewMetricsHistory(r.queryable, opts, logger)
+	opts.AlertHistory = rules.NewMetricsHistory(r.queryable, opts)
 	return rules.NewManager(opts), nil
 }
 

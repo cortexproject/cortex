@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -32,7 +33,7 @@ type RefCache struct {
 
 // refCacheStripe holds a subset of the series references for a single tenant.
 type refCacheStripe struct {
-	refsMu sync.Mutex
+	refsMu sync.RWMutex
 	refs   map[model.Fingerprint][]refCacheEntry
 }
 
@@ -81,20 +82,19 @@ func (c *RefCache) Purge(keepUntil time.Time) {
 }
 
 func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
-	s.refsMu.Lock()
-	defer s.refsMu.Unlock()
+	s.refsMu.RLock()
+	defer s.refsMu.RUnlock()
 
 	entries, ok := s.refs[fp]
 	if !ok {
 		return 0, false
 	}
 
-	for ix, entry := range entries {
-		if labels.Equal(entry.lbs, series) {
-			// Touch the timestamp before releasing the lock
-			//entry.touchedAt = now.UnixNano()
-			entries[ix].touchedAt = now.UnixNano()
-			return entry.ref, true
+	for ix := range entries {
+		if labels.Equal(entries[ix].lbs, series) {
+			// Since we use read-only lock, we need to use atomic update.
+			atomic.StoreInt64(&entries[ix].touchedAt, now.UnixNano())
+			return entries[ix].ref, true
 		}
 	}
 

@@ -17,7 +17,7 @@ const (
 	// the scrape interval of a series is greater than this TTL.
 	DefaultRefCacheTTL = 10 * time.Minute
 
-	numRefCacheStripes = 128
+	numRefCacheStripes = 512
 )
 
 // RefCache is a single-tenant cache mapping a labels set with the reference
@@ -48,7 +48,7 @@ func NewRefCache() *RefCache {
 	c := &RefCache{}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
-	for i := uint8(0); i < numRefCacheStripes; i++ {
+	for i := 0; i < numRefCacheStripes; i++ {
 		c.stripes[i] = &refCacheStripe{
 			refs: map[model.Fingerprint][]*refCacheEntry{},
 		}
@@ -77,7 +77,7 @@ func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 // Purge removes expired entries from the cache. This function should be called
 // periodically to avoid memory leaks.
 func (c *RefCache) Purge(keepUntil time.Time) {
-	for s := uint8(0); s < numRefCacheStripes; s++ {
+	for s := 0; s < numRefCacheStripes; s++ {
 		c.stripes[s].purge(keepUntil)
 	}
 }

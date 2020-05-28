@@ -28,7 +28,9 @@ import (
 
 func main() {
 	var (
-		cfg cortex.Config
+		cfg    cortex.Config
+		asAt   string
+		tenant string
 	)
 	configFile := parseConfigFileParameter(os.Args[1:])
 
@@ -46,6 +48,9 @@ func main() {
 	// Ignore -config.file here, since it was already parsed, but it's still present on command line.
 	flagext.IgnoredFlag(flag.CommandLine, configFileOption, "Configuration file to load.")
 
+	flag.StringVar(&asAt, "as-at", "", "When to run the query as-at")
+	flag.StringVar(&tenant, "tenant", "fake", "Tenant ID to query for")
+
 	flag.Parse()
 
 	util.InitLogger(&cfg.Server)
@@ -58,13 +63,13 @@ func main() {
 	// 3 levels of stuff to initialize before we can get started
 	overrides, err := validation.NewOverrides(cfg.LimitsConfig, nil)
 	if err != nil {
-		level.Error(util.Logger).Log("failed to set up overrides", err)
+		level.Error(util.Logger).Log("msg", "failed to set up overrides", "err", err)
 		os.Exit(1)
 	}
 
 	chunkStore, err := storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, overrides, nil, nil)
 	if err != nil {
-		level.Error(util.Logger).Log("failed to set up chunk store", err)
+		level.Error(util.Logger).Log("msg", "failed to set up chunk store", "err", err)
 		os.Exit(1)
 	}
 	defer chunkStore.Stop()
@@ -73,17 +78,27 @@ func main() {
 	_, engine := querier.New(cfg.Querier, noopQuerier{}, storeQueryable, nil, nil)
 
 	if flag.NArg() != 1 {
-		level.Error(util.Logger).Log("usage: oneshot <options> promql-query")
+		level.Error(util.Logger).Log("msg", "usage: oneshot <options> promql-query")
 		os.Exit(1)
 	}
 
+	var asAtTime time.Time
+	if asAt == "" {
+		asAtTime = time.Now().Add(-1 * time.Minute)
+	} else {
+		asAtTime, err = time.Parse(time.RFC3339, asAt)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "invalid as-at time", "err", err)
+			os.Exit(1)
+		}
+	}
 	// Now execute the query
-	query, err := engine.NewInstantQuery(storeQueryable, flag.Arg(0), time.Now().Add(-time.Hour*24))
+	query, err := engine.NewInstantQuery(storeQueryable, flag.Arg(0), asAtTime)
 	if err != nil {
-		level.Error(util.Logger).Log("error in query:", err)
+		level.Error(util.Logger).Log("msg", "error in query", "err", err)
 		os.Exit(1)
 	}
-	ctx := user.InjectOrgID(context.Background(), "2")
+	ctx := user.InjectOrgID(context.Background(), tenant)
 
 	result := query.Exec(ctx)
 

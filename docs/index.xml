@@ -6586,6 +6586,7 @@ replica: replica2
 &lt;ul&gt;
 &lt;li&gt;TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2651&#34;&gt;#2651&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2506&#34;&gt;#2506&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Fixes &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2411&#34;&gt;#2411&lt;/a&gt;, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code&gt;-server.path-prefix&lt;/code&gt; is set. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2372&#34;&gt;#2372&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2400&#34;&gt;#2400&lt;/a&gt;&lt;/li&gt;

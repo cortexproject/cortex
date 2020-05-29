@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -93,6 +94,63 @@ func TestRefCache_Purge(t *testing.T) {
 			assert.Equal(t, false, ok)
 		}
 	}
+}
+
+var series1M = prepareSeries(1e6)
+
+func BenchmarkRefCacheConcurrency_1m_50(b *testing.B) {
+	benchmarkRefCacheConcurrency(b, series1M, 50)
+}
+
+func BenchmarkRefCacheConcurrency_1m_250(b *testing.B) {
+	benchmarkRefCacheConcurrency(b, series1M, 100)
+}
+
+func BenchmarkRefCacheConcurrency_1m_1000(b *testing.B) {
+	benchmarkRefCacheConcurrency(b, series1M, 500)
+}
+
+func prepareSeries(numSeries int) []labels.Labels {
+	series := make([]labels.Labels, numSeries)
+
+	for s := 0; s < numSeries; s++ {
+		series[s] = labels.Labels{
+			{Name: "a", Value: strconv.Itoa(s)},
+		}
+	}
+
+	return series
+}
+
+func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutines int) {
+	c := NewRefCache()
+
+	fn := func(wg *sync.WaitGroup, start chan struct{}, step int) {
+		defer wg.Done()
+		<-start
+
+		for i := 0; i < b.N; i++ {
+			now := time.Now()
+
+			for s := 0; s < len(series); s += step {
+				_, ok := c.Ref(now, series[s])
+				if !ok {
+					c.SetRef(now, series[s], uint64(s))
+				}
+			}
+		}
+	}
+
+	start := make(chan struct{})
+	wg := &sync.WaitGroup{}
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go fn(wg, start, 1+(i%10))
+	}
+
+	b.ResetTimer()
+	close(start)
+	wg.Wait()
 }
 
 func BenchmarkRefCache_SetRef(b *testing.B) {

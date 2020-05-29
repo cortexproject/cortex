@@ -125,11 +125,13 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 	s.refsMu.Lock()
 	defer s.refsMu.Unlock()
 
+	keepUntilNanos := keepUntil.UnixNano()
+
 	for fp, entries := range s.refs {
 		// Since we do expect very few fingerprint collisions, we
 		// have an optimized implementation for the common case.
 		if len(entries) == 1 {
-			if entries[0].touchedAt < keepUntil.UnixNano() {
+			if entries[0].touchedAt < keepUntilNanos {
 				delete(s.refs, fp)
 			}
 
@@ -139,7 +141,7 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 		// We have more entries, which means there's a collision,
 		// so we have to iterate over the entries.
 		for i := 0; i < len(entries); {
-			if entries[i].touchedAt < keepUntil.UnixNano() {
+			if entries[i].touchedAt < keepUntilNanos {
 				entries = append(entries[:i], entries[i+1:]...)
 			} else {
 				i++

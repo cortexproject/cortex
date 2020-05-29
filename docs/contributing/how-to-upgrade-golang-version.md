@@ -14,6 +14,7 @@ To upgrade the Golang version:
    - Update the Docker image tag in `.circleci/config.yml`
 2. Upgrade integration tests version
    - Update the Golang version installed in the `integration` job in `.circleci/config.yml`
+   - Update the Golang version installed in the `integration` job in `.github/workflows/integration-tests.yml`
 
 If the minimum support Golang version should be upgraded as well:
 

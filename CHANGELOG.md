@@ -40,6 +40,8 @@
   * `cortex_compactor_block_cleanup_failed_total`
   * `cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds`
 * [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626 #2640
+* [ENHANCEMENT] Upgrade Thanos to [f7802edbf830](https://github.com/thanos-io/thanos/commit/f7802edbf830) and Prometheus to [f4dd45609a05](https://github.com/prometheus/prometheus/commit/f4dd45609a05) which is after v2.18.1. #2634
+  * TSDB now does memory-mapping of Head chunks and reduces memory usage.
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
@@ -49,6 +51,7 @@
 * [BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. #2565
 * [BUGFIX] QueryFrontend: fixed a panic (`integer divide by zero`) in the query-frontend. The query-frontend now requires the `-querier.default-evaluation-interval` config to be set to the same value of the querier. #2603
 * [BUGFIX] Experimental TSDB: when the querier receives a `/series` request with a time range older than the data stored in the ingester, it now ignores the requested time range and returns known series anyway instead of returning an empty response. This aligns the behaviour with the chunks storage. #2617
+* [BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. #2639
 
 ## 1.1.0 / 2020-05-21
 

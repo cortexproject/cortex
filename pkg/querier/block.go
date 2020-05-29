@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -108,9 +109,9 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return &blockQuerierSeriesSet{
-		series: series,
-	}, warnings, nil
+	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
+
+	return &blockQuerierSeriesSet{series: series}, warnings, nil
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {

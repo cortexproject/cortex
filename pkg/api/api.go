@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"net/http"
@@ -255,16 +256,17 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	api := v1.NewAPI(
 		engine,
 		queryable,
-		querier.DummyTargetRetriever{},
-		querier.DummyAlertmanagerRetriever{},
+		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
+		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
 		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false,                              // Disable admin APIs.
+		nil,   // Only needed for admin APIs.
+		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
+		false, // Disable admin APIs.
 		a.logger,
-		querier.DummyRulesRetriever{},
+		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },

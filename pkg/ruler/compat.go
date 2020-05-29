@@ -17,6 +17,15 @@ import (
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
+
+type UserAppendable interface {
+	Appendable(userID string) rules.Appendable
+}
+
+type UserAppendableFunc func(userID string) rules.Appendable
+
+func (fn UserAppendableFunc) Appendable(userID string) rules.Appendable { return fn(userID) }
+
 type appender struct {
 	pusher  Pusher
 	labels  []labels.Labels
@@ -50,6 +59,15 @@ func (a *appender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
 	return nil
+}
+
+func TSDBAppendable(p Pusher) UserAppendableFunc {
+	return UserAppendableFunc(func(userID string) rules.Appendable {
+		return &tsdb{
+			pusher: p,
+			userID: userID,
+		}
+	})
 }
 
 // TSDB fulfills the storage.Storage interface for prometheus manager

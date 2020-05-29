@@ -53,7 +53,7 @@
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
-* [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
+* [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2655
 * [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2590
 * [BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. #2565

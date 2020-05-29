@@ -125,8 +125,9 @@ func prepareSeries(numSeries int) []labels.Labels {
 func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutines int) {
 	c := NewRefCache()
 
-	fn := func(wg *sync.WaitGroup, step int) {
+	fn := func(wg *sync.WaitGroup, start chan struct{}, step int) {
 		defer wg.Done()
+		<-start
 
 		for i := 0; i < b.N; i++ {
 			now := time.Now()
@@ -140,14 +141,15 @@ func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutin
 		}
 	}
 
+	start := make(chan struct{})
 	wg := &sync.WaitGroup{}
-
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
-		go fn(wg, 1+(i%10))
+		go fn(wg, start, 1+(i%10))
 	}
 
 	b.ResetTimer()
+	close(start)
 	wg.Wait()
 }
 

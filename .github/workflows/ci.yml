@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     name: Build
+    runs-on: ubuntu-latest
     container: quay.io/cortexproject/build-image:share-traffic-mirroring-with-envoy-2af1da4d8-WIP
     steps:
       - name: Checkout code

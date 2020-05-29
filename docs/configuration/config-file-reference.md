@@ -1848,6 +1848,11 @@ delete_store:
   # Name of the table which stores delete requests
   # CLI flag: -deletes.requests-table-name
   [requests_table_name: <string> | default = "delete_requests"]
+
+grpc_store:
+  # Hostname or IP of the gRPC store instance.
+  # CLI flag: -grpc-store.server-address
+  [server_address: <string> | default = ""]
 ```
 
 ### `flusher_config`

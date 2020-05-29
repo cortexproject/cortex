@@ -6533,7 +6533,7 @@ replica: replica2
 &lt;li&gt;[CHANGE] &lt;code&gt;-promql.lookback-delta&lt;/code&gt; is now deprecated and has been replaced by &lt;code&gt;-querier.lookback-delta&lt;/code&gt; along with &lt;code&gt;lookback_delta&lt;/code&gt; entry under &lt;code&gt;querier&lt;/code&gt; in the config file. &lt;code&gt;-promql.lookback-delta&lt;/code&gt; will be removed in v1.4.0. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2604&#34;&gt;#2604&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client &amp;amp; Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2502&#34;&gt;#2502&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[FEATURE] The flag &lt;code&gt;-frontend.max-cache-freshness&lt;/code&gt; is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from &lt;code&gt;results_cache.max_freshness&lt;/code&gt; to &lt;code&gt;limits_config.max_cache_freshness&lt;/code&gt;. The legacy YAML config parameter (&lt;code&gt;results_cache.max_freshness&lt;/code&gt;) will continue to be supported till Cortex release &lt;code&gt;v1.4.0&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2609&#34;&gt;#2609&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2580&#34;&gt;#2580&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2583&#34;&gt;#2583&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2589&#34;&gt;#2589&lt;/a&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2580&#34;&gt;#2580&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2583&#34;&gt;#2583&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2589&#34;&gt;#2589&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2654&#34;&gt;#2654&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_appender_add_duration_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_appender_commit_duration_seconds&lt;/code&gt;&lt;/li&gt;
@@ -6550,6 +6550,13 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_deletions_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_creations_failed_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_checkpoint_creations_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_wal_truncate_duration_seconds&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_head_active_appenders&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_head_series_not_found_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_head_chunks&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_mmap_chunk_corruptions_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_head_chunks_created_total&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_tsdb_head_chunks_removed_total&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2573&#34;&gt;#2573&lt;/a&gt;
 &lt;ul&gt;

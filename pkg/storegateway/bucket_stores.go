@@ -276,7 +276,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
-		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.

@@ -225,14 +225,22 @@ type tsdbMetrics struct {
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
 
 	// Metrics aggregated from TSDB.
-	tsdbCompactionsTotal    *prometheus.Desc
-	tsdbCompactionDuration  *prometheus.Desc
-	tsdbFsyncDuration       *prometheus.Desc
-	tsdbPageFlushes         *prometheus.Desc
-	tsdbPageCompletions     *prometheus.Desc
-	tsdbTruncateFail        *prometheus.Desc
-	tsdbTruncateTotal       *prometheus.Desc
-	tsdbWritesFailed        *prometheus.Desc
+	tsdbCompactionsTotal         *prometheus.Desc
+	tsdbCompactionDuration       *prometheus.Desc
+	tsdbFsyncDuration            *prometheus.Desc
+	tsdbPageFlushes              *prometheus.Desc
+	tsdbPageCompletions          *prometheus.Desc
+	tsdbTruncateFail             *prometheus.Desc
+	tsdbTruncateTotal            *prometheus.Desc
+	tsdbTruncateDuration         *prometheus.Desc
+	tsdbWritesFailed             *prometheus.Desc
+	tsdbActiveAppenders          *prometheus.Desc
+	tsdbSeriesNotFound           *prometheus.Desc
+	tsdbChunks                   *prometheus.Desc
+	tsdbChunksCreatedTotal       *prometheus.Desc
+	tsdbChunksRemovedTotal       *prometheus.Desc
+	tsdbMmapChunkCorruptionTotal *prometheus.Desc
+
 	checkpointDeleteFail    *prometheus.Desc
 	checkpointDeleteTotal   *prometheus.Desc
 	checkpointCreationFail  *prometheus.Desc
@@ -294,9 +302,37 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_truncations_total",
 			"Total number of TSDB  WAL truncations attempted.",
 			nil, nil),
+		tsdbTruncateDuration: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_truncate_duration_seconds",
+			"Duration of TSDB WAL truncation.",
+			nil, nil),
 		tsdbWritesFailed: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
+			nil, nil),
+		tsdbActiveAppenders: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_active_appenders",
+			"Number of currently active TSDB appender transactions.",
+			nil, nil),
+		tsdbSeriesNotFound: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_series_not_found_total",
+			"Total number of TSDB requests for series that were not found.",
+			nil, nil),
+		tsdbChunks: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_chunks",
+			"Total number of chunks in the TSDB head block.",
+			nil, nil),
+		tsdbChunksCreatedTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_chunks_created_total",
+			"Total number of series created in the TSDB head.",
+			[]string{"user"}, nil),
+		tsdbChunksRemovedTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_chunks_removed_total",
+			"Total number of series removed in the TSDB head.",
+			[]string{"user"}, nil),
+		tsdbMmapChunkCorruptionTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_mmap_chunk_corruptions_total",
+			"Total number of memory-mapped TSDB chunk corruptions.",
 			nil, nil),
 		checkpointDeleteFail: prometheus.NewDesc(
 			"cortex_ingester_tsdb_checkpoint_deletions_failed_total",
@@ -338,7 +374,14 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbPageCompletions
 	out <- sm.tsdbTruncateFail
 	out <- sm.tsdbTruncateTotal
+	out <- sm.tsdbTruncateDuration
 	out <- sm.tsdbWritesFailed
+	out <- sm.tsdbActiveAppenders
+	out <- sm.tsdbSeriesNotFound
+	out <- sm.tsdbChunks
+	out <- sm.tsdbChunksCreatedTotal
+	out <- sm.tsdbChunksRemovedTotal
+	out <- sm.tsdbMmapChunkCorruptionTotal
 	out <- sm.checkpointDeleteFail
 	out <- sm.checkpointDeleteTotal
 	out <- sm.checkpointCreationFail
@@ -346,6 +389,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 
 	out <- sm.memSeriesCreatedTotal
 	out <- sm.memSeriesRemovedTotal
+
 }
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
@@ -364,7 +408,14 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbPageCompletions, "prometheus_tsdb_wal_completed_pages_total")
 	data.SendSumOfCounters(out, sm.tsdbTruncateFail, "prometheus_tsdb_wal_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbTruncateTotal, "prometheus_tsdb_wal_truncations_total")
+	data.SendSumOfSummaries(out, sm.tsdbTruncateDuration, "prometheus_tsdb_wal_truncate_duration_seconds")
 	data.SendSumOfCounters(out, sm.tsdbWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
+	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
+	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
+	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")
+	data.SendSumOfCountersPerUser(out, sm.tsdbChunksCreatedTotal, "prometheus_tsdb_head_chunks_created_total")
+	data.SendSumOfCountersPerUser(out, sm.tsdbChunksRemovedTotal, "prometheus_tsdb_head_chunks_removed_total")
+	data.SendSumOfCounters(out, sm.tsdbMmapChunkCorruptionTotal, "prometheus_tsdb_mmap_chunk_corruptions_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")

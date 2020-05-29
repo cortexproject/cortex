@@ -6,7 +6,7 @@
 * [CHANGE] `-promql.lookback-delta` is now deprecated and has been replaced by `-querier.lookback-delta` along with `lookback_delta` entry under `querier` in the config file. `-promql.lookback-delta` will be removed in v1.4.0. #2604
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
 * [FEATURE] The flag `-frontend.max-cache-freshness` is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from `results_cache.max_freshness` to `limits_config.max_cache_freshness`. The legacy YAML config parameter (`results_cache.max_freshness`) will continue to be supported till Cortex release `v1.4.0`. #2609
-* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589 #2654
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
@@ -22,6 +22,13 @@
   * `cortex_ingester_tsdb_checkpoint_deletions_total`
   * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
   * `cortex_ingester_tsdb_checkpoint_creations_total`
+  * `cortex_ingester_tsdb_wal_truncate_duration_seconds`
+  * `cortex_ingester_tsdb_head_active_appenders`
+  * `cortex_ingester_tsdb_head_series_not_found_total`
+  * `cortex_ingester_tsdb_head_chunks`
+  * `cortex_ingester_tsdb_mmap_chunk_corruptions_total`
+  * `cortex_ingester_tsdb_head_chunks_created_total`
+  * `cortex_ingester_tsdb_head_chunks_removed_total`
 * [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_timestamp_seconds`
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)

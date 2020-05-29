@@ -503,8 +503,6 @@ func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing
 	outOfBoundReq := client.ToWriteRequest(metrics, samples, nil, client.API)
 
 	// Run the benchmark.
-	b.ResetTimer()
-
 	wg := sync.WaitGroup{}
 	wg.Add(numConcurrentClients)
 	start := make(chan struct{})
@@ -520,6 +518,7 @@ func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing
 		}()
 	}
 
+	b.ResetTimer()
 	close(start)
 	wg.Wait()
 }

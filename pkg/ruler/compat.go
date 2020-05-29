@@ -13,18 +13,24 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
+// AppendableHistoryFunc allows creation of an Appendable and AlertHistory to be joined. The default implementation
+// does not take advantage of this option.
+type AppendableHistoryFunc = func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.AlertHistory)
+
+// This is the default implementation which returns an unlinked Appendable/AlertHistory.
+func DefaultAppendableHistoryFunc(p Pusher, q storage.Queryable) AppendableHistoryFunc {
+	return func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.AlertHistory) {
+		return &appender{
+			pusher: p,
+			userID: userID,
+		}, rules.NewMetricsHistory(q, opts)
+	}
+}
+
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
-
-type UserAppendable interface {
-	Appendable(userID string) rules.Appendable
-}
-
-type UserAppendableFunc func(userID string) rules.Appendable
-
-func (fn UserAppendableFunc) Appendable(userID string) rules.Appendable { return fn(userID) }
 
 type appender struct {
 	pusher  Pusher
@@ -32,6 +38,8 @@ type appender struct {
 	samples []client.Sample
 	userID  string
 }
+
+func (a *appender) Appender(_ rules.Rule) (storage.Appender, error) { return a, nil }
 
 func (a *appender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
@@ -58,40 +66,6 @@ func (a *appender) Commit() error {
 func (a *appender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
-	return nil
-}
-
-func TSDBAppendable(p Pusher) UserAppendableFunc {
-	return UserAppendableFunc(func(userID string) rules.Appendable {
-		return &tsdb{
-			pusher: p,
-			userID: userID,
-		}
-	})
-}
-
-// TSDB fulfills the storage.Storage interface for prometheus manager
-// it allows for alerts to be restored by the manager
-type tsdb struct {
-	pusher Pusher
-	userID string
-}
-
-// Appender returns a storage.Appender
-func (t *tsdb) Appender(_ rules.Rule) (storage.Appender, error) {
-	return &appender{
-		pusher: t.pusher,
-		userID: t.userID,
-	}
-}
-
-// StartTime returns the oldest timestamp stored in the storage.
-func (t *tsdb) StartTime() (int64, error) {
-	return 0, nil
-}
-
-// Close closes the storage and all its underlying resources.
-func (t *tsdb) Close() error {
 	return nil
 }
 

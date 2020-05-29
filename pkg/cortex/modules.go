@@ -417,7 +417,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		t.Cfg.Ruler,
 		ruler.PromDelayedQueryFunc(engine),
 		queryable,
-		ruler.TSDBAppendable(t.Distributor),
+		ruler.DefaultAppendableHistoryFunc(t.Distributor, queryable),
 		prometheus.DefaultRegisterer,
 		util.Logger,
 	)

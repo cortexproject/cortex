@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -138,7 +137,6 @@ type Ruler struct {
 	services.Service
 
 	cfg               Config
-	queryable         promStorage.Queryable
 	appendableHistory AppendableHistoryFunc
 	alertURL          *url.URL
 	notifierCfg       *config.Config
@@ -162,7 +160,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, queryFunc DelayedQueryFunc, queryable promStorage.Queryable, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -176,7 +174,6 @@ func NewRuler(cfg Config, queryFunc DelayedQueryFunc, queryable promStorage.Quer
 	ruler := &Ruler{
 		cfg:               cfg,
 		queryFunc:         queryFunc,
-		queryable:         queryable,
 		alertURL:          cfg.ExternalURL.URL,
 		notifierCfg:       ncfg,
 		notifiers:         map[string]*rulerNotifier{},
@@ -517,7 +514,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, 
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
 	opts := &rules.ManagerOptions{
-		QueryFunc:   r.queryFunc(r.queryable, r.cfg.EvaluationDelay),
+		QueryFunc:   r.queryFunc(r.cfg.EvaluationDelay),
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),

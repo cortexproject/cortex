@@ -117,6 +117,39 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_memory_series_removed_total{user="user1"} 74070
 			cortex_ingester_memory_series_removed_total{user="user2"} 514722
 			cortex_ingester_memory_series_removed_total{user="user3"} 5994
+
+			# HELP cortex_ingester_tsdb_head_active_appenders Number of currently active TSDB appender transactions.
+			# TYPE cortex_ingester_tsdb_head_active_appenders gauge
+			cortex_ingester_tsdb_head_active_appenders 1982620
+
+			# HELP cortex_ingester_tsdb_head_series_not_found_total Total number of TSDB requests for series that were not found.
+			# TYPE cortex_ingester_tsdb_head_series_not_found_total counter
+			cortex_ingester_tsdb_head_series_not_found_total 2081751
+
+			# HELP cortex_ingester_tsdb_head_chunks Total number of chunks in the TSDB head block.
+			# TYPE cortex_ingester_tsdb_head_chunks gauge
+			cortex_ingester_tsdb_head_chunks 2180882
+
+			# HELP cortex_ingester_tsdb_head_chunks_created_total Total number of series created in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_chunks_created_total counter
+			cortex_ingester_tsdb_head_chunks_created_total{user="user1"} 283935
+			cortex_ingester_tsdb_head_chunks_created_total{user="user2"} 1973101
+			cortex_ingester_tsdb_head_chunks_created_total{user="user3"} 22977
+
+			# HELP cortex_ingester_tsdb_head_chunks_removed_total Total number of series removed in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_chunks_removed_total counter
+			cortex_ingester_tsdb_head_chunks_removed_total{user="user1"} 296280
+			cortex_ingester_tsdb_head_chunks_removed_total{user="user2"} 2058888
+			cortex_ingester_tsdb_head_chunks_removed_total{user="user3"} 23976
+
+			# HELP cortex_ingester_tsdb_wal_truncate_duration_seconds Duration of TSDB WAL truncation.
+			# TYPE cortex_ingester_tsdb_wal_truncate_duration_seconds summary
+			cortex_ingester_tsdb_wal_truncate_duration_seconds_sum 75
+			cortex_ingester_tsdb_wal_truncate_duration_seconds_count 3
+
+			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
+			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
+			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
 	`))
 	require.NoError(t, err)
 }
@@ -233,6 +266,48 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of checkpoint creations attempted.",
 	})
 	checkpointCreationTotal.Add(19 * base)
+
+	activeAppenders := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_active_appenders",
+		Help: "Number of currently active appender transactions",
+	})
+	activeAppenders.Set(20 * base)
+
+	seriesNotFound := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_series_not_found_total",
+		Help: "Total number of requests for series that were not found.",
+	})
+	seriesNotFound.Add(21 * base)
+
+	chunks := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_chunks",
+		Help: "Total number of chunks in the head block.",
+	})
+	chunks.Set(22 * base)
+
+	chunksCreated := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_chunks_created_total",
+		Help: "Total number of chunks created in the head",
+	})
+	chunksCreated.Add(23 * base)
+
+	chunksRemoved := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_chunks_removed_total",
+		Help: "Total number of chunks removed in the head",
+	})
+	chunksRemoved.Add(24 * base)
+
+	walTruncateDuration := promauto.With(r).NewSummary(prometheus.SummaryOpts{
+		Name: "prometheus_tsdb_wal_truncate_duration_seconds",
+		Help: "Duration of WAL truncation.",
+	})
+	walTruncateDuration.Observe(25)
+
+	mmapChunkCorruptionTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_mmap_chunk_corruptions_total",
+		Help: "Total number of memory-mapped chunk corruptions.",
+	})
+	mmapChunkCorruptionTotal.Add(26 * base)
 
 	return r
 }

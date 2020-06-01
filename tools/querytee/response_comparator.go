@@ -6,13 +6,10 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-// ResponsesComparatorFunc helps with comparing different responses from various routes.
-type ResponsesComparatorFunc func(expected, actual []byte) error
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
 type SamplesComparatorFunc func(expected, actual json.RawMessage) error
@@ -25,18 +22,24 @@ type SamplesResponse struct {
 	}
 }
 
-var samplesComparator = map[string]SamplesComparatorFunc{
-	"matrix": compareMatrix,
-	"vector": compareVector,
-	"scalar": compareScalar,
+func NewSamplesComparator() *SamplesComparator {
+	return &SamplesComparator{map[string]SamplesComparatorFunc{
+		"matrix": compareMatrix,
+		"vector": compareVector,
+		"scalar": compareScalar,
+	}}
+}
+
+type SamplesComparator struct {
+	sampleTypesComparator map[string]SamplesComparatorFunc
 }
 
 // RegisterSamplesComparator helps with registering custom sample types
-func RegisterSamplesComparator(samplesType string, comparator SamplesComparatorFunc) {
-	samplesComparator[samplesType] = comparator
+func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator SamplesComparatorFunc) {
+	s.sampleTypesComparator[samplesType] = comparator
 }
 
-func CompareSamplesResponse(expectedResponse, actualResponse []byte) error {
+func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte) error {
 	var expected, actual SamplesResponse
 
 	err := json.Unmarshal(expectedResponse, &expected)
@@ -57,7 +60,7 @@ func CompareSamplesResponse(expectedResponse, actualResponse []byte) error {
 		return fmt.Errorf("expected resultType %s but got %s", expected.Data.ResultType, actual.Data.ResultType)
 	}
 
-	comparator, ok := samplesComparator[expected.Data.ResultType]
+	comparator, ok := s.sampleTypesComparator[expected.Data.ResultType]
 	if !ok {
 		return fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
 	}
@@ -65,42 +68,35 @@ func CompareSamplesResponse(expectedResponse, actualResponse []byte) error {
 	return comparator(expected.Data.Result, actual.Data.Result)
 }
 
-type matrixResult struct {
-	Result []struct {
-		Metric map[string]string
-		Values [][]interface{}
-	}
-}
-
 func compareMatrix(expectedRaw, actualRaw json.RawMessage) error {
-	var expected, actual matrixResult
+	var expected, actual model.Matrix
 
-	err := json.Unmarshal(expectedRaw, &expected.Result)
+	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(actualRaw, &actual.Result)
+	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
 		return err
 	}
 
-	if len(expected.Result) != len(actual.Result) {
-		return fmt.Errorf("expected %d metrics but got %d", len(expected.Result),
-			len(actual.Result))
+	if len(expected) != len(actual) {
+		return fmt.Errorf("expected %d metrics but got %d", len(expected),
+			len(actual))
 	}
 
-	metricStringToIndexMap := make(map[string]int, len(expected.Result))
-	for i, actualMetric := range actual.Result {
-		metricStringToIndexMap[labels.FromMap(actualMetric.Metric).String()] = i
+	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
+	for i, actualMetric := range actual {
+		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
 	}
 
-	for _, expectedMetric := range expected.Result {
-		actualMetricIndex, ok := metricStringToIndexMap[labels.FromMap(expectedMetric.Metric).String()]
+	for _, expectedMetric := range expected {
+		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
 			return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
 		}
 
-		actualMetric := actual.Result[actualMetricIndex]
+		actualMetric := actual[actualMetricIndex]
 		expectedMetricLen := len(expectedMetric.Values)
 		actualMetricLen := len(actualMetric.Values)
 
@@ -108,9 +104,9 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage) error {
 			err := fmt.Errorf("expected %d samples for metric %s but got %d", expectedMetricLen,
 				expectedMetric.Metric, actualMetricLen)
 			if expectedMetricLen > 0 && actualMetricLen > 0 {
-				level.Error(util.Logger).Log("msg", err.Error(), "oldest-expected-ts", int64(expectedMetric.Values[0][0].(float64)),
-					"newest-expected-ts", int64(expectedMetric.Values[expectedMetricLen-1][0].(float64)),
-					"oldest-actual-ts", int64(actualMetric.Values[0][0].(float64)), "newest-actual-ts", int64(actualMetric.Values[actualMetricLen-1][0].(float64)))
+				level.Error(util.Logger).Log("msg", err.Error(), "oldest-expected-ts", int64(expectedMetric.Values[0].Timestamp),
+					"newest-expected-ts", int64(expectedMetric.Values[expectedMetricLen-1].Timestamp),
+					"oldest-actual-ts", int64(actualMetric.Values[0].Timestamp), "newest-actual-ts", int64(actualMetric.Values[actualMetricLen-1].Timestamp))
 			}
 			return err
 		}
@@ -127,54 +123,9 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage) error {
 	return nil
 }
 
-type vectorResult struct {
-	Result []struct {
-		Metric map[string]string
-		Value  []interface{}
-	}
-}
-
 func compareVector(expectedRaw, actualRaw json.RawMessage) error {
-	var expected, actual vectorResult
+	var expected, actual model.Vector
 
-	err := json.Unmarshal(expectedRaw, &expected.Result)
-	if err != nil {
-		return err
-	}
-
-	err = json.Unmarshal(actualRaw, &actual.Result)
-	if err != nil {
-		return err
-	}
-
-	if len(expected.Result) != len(actual.Result) {
-		return fmt.Errorf("expected %d metrics but got %d", len(expected.Result),
-			len(actual.Result))
-	}
-
-	metricStringToIndexMap := make(map[string]int, len(expected.Result))
-	for i, actualMetric := range actual.Result {
-		metricStringToIndexMap[labels.FromMap(actualMetric.Metric).String()] = i
-	}
-
-	for _, expectedMetric := range expected.Result {
-		actualMetricIndex, ok := metricStringToIndexMap[labels.FromMap(expectedMetric.Metric).String()]
-		if !ok {
-			return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
-		}
-
-		actualMetric := actual.Result[actualMetricIndex]
-		err := compareSamplePair(expectedMetric.Value, actualMetric.Value)
-		if err != nil {
-			return errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
-		}
-	}
-
-	return nil
-}
-
-func compareScalar(expectedRaw, actualRaw json.RawMessage) error {
-	var expected, actual []interface{}
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
 		return err
@@ -185,23 +136,65 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage) error {
 		return err
 	}
 
-	return compareSamplePair(expected, actual)
+	if len(expected) != len(actual) {
+		return fmt.Errorf("expected %d metrics but got %d", len(expected),
+			len(actual))
+	}
+
+	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
+	for i, actualMetric := range actual {
+		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
+	}
+
+	for _, expectedMetric := range expected {
+		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
+		if !ok {
+			return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
+		}
+
+		actualMetric := actual[actualMetricIndex]
+		err := compareSamplePair(model.SamplePair{
+			Timestamp: expectedMetric.Timestamp,
+			Value:     expectedMetric.Value,
+		}, model.SamplePair{
+			Timestamp: actualMetric.Timestamp,
+			Value:     actualMetric.Value,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
+		}
+	}
+
+	return nil
 }
 
-func compareSamplePair(expected, actual []interface{}) error {
-	if len(expected) != 2 {
-		return fmt.Errorf("expected 2 values in samplePair for expected response but got %d", len(expected))
+func compareScalar(expectedRaw, actualRaw json.RawMessage) error {
+	var expected, actual model.Scalar
+	err := json.Unmarshal(expectedRaw, &expected)
+	if err != nil {
+		return err
 	}
 
-	if len(actual) != 2 {
-		return fmt.Errorf("expected 2 values in samplePair but got %d", len(actual))
+	err = json.Unmarshal(actualRaw, &actual)
+	if err != nil {
+		return err
 	}
 
-	if expected[0] != actual[0] {
-		return fmt.Errorf("expected timestamp %d but got %d", int64(expected[0].(float64)), int64(actual[0].(float64)))
+	return compareSamplePair(model.SamplePair{
+		Timestamp: expected.Timestamp,
+		Value:     expected.Value,
+	}, model.SamplePair{
+		Timestamp: actual.Timestamp,
+		Value:     actual.Value,
+	})
+}
+
+func compareSamplePair(expected, actual model.SamplePair) error {
+	if expected.Timestamp != actual.Timestamp {
+		return fmt.Errorf("expected timestamp %d but got %d", int64(expected.Timestamp), int64(actual.Timestamp))
 	}
-	if expected[1] != actual[1] {
-		return fmt.Errorf("expected value %s for timestamp %d but got %s", expected[1].(string), int64(expected[0].(float64)), actual[1].(string))
+	if expected.Value != actual.Value {
+		return fmt.Errorf("expected value %s for timestamp %d but got %s", expected.Value, int64(expected.Timestamp), actual.Value)
 	}
 
 	return nil

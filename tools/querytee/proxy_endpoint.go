@@ -13,17 +13,21 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
+type ResponsesComparator interface {
+	Compare(expected, actual []byte) error
+}
+
 type ProxyEndpoint struct {
 	backends   []*ProxyBackend
 	metrics    *ProxyMetrics
 	logger     log.Logger
-	comparator ResponsesComparatorFunc
+	comparator ResponsesComparator
 
 	// The route name used to track metrics.
 	routeName string
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparatorFunc) *ProxyEndpoint {
+func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator) *ProxyEndpoint {
 	return &ProxyEndpoint{
 		backends:   backends,
 		routeName:  routeName,
@@ -133,10 +137,6 @@ func (p *ProxyEndpoint) pickResponseForDownstream(responses []*backendResponse) 
 }
 
 func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) error {
-	if p.comparator == nil {
-		return nil
-	}
-
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
 		return fmt.Errorf("skipped comparison of response because we got status code %d from preferred backend's response", expectedResponse.status)
@@ -150,7 +150,7 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backe
 		return fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
 	}
 
-	return p.comparator(expectedResponse.body, actualResponse.body)
+	return p.comparator.Compare(expectedResponse.body, actualResponse.body)
 }
 
 type backendResponse struct {

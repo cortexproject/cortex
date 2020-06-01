@@ -43,7 +43,7 @@ type Route struct {
 	Path               string
 	RouteName          string
 	Methods            string
-	ResponseComparator ResponsesComparatorFunc
+	ResponseComparator ResponsesComparator
 }
 
 type Proxy struct {

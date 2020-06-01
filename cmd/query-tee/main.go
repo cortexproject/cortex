@@ -57,9 +57,10 @@ func main() {
 }
 
 func cortexReadRoutes() []querytee.Route {
+	samplesComparator := querytee.NewSamplesComparator()
 	return []querytee.Route{
-		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: querytee.CompareSamplesResponse},
-		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: "GET", ResponseComparator: querytee.CompareSamplesResponse},
+		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: samplesComparator},
+		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: "GET", ResponseComparator: samplesComparator},
 		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: "GET", ResponseComparator: nil},
 		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: "GET", ResponseComparator: nil},
 		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: "GET", ResponseComparator: nil},

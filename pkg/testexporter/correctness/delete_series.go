@@ -29,6 +29,12 @@ var (
 		Name:      "delete_requests_creation_attempts_total",
 		Help:      "Total number of delete requests creation attempts with status",
 	}, []string{"status"})
+	deleteRequestVerificationsSkippedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: subsystem,
+		Name:      "delete_request_verification_skipped_total",
+		Help:      "Total number of queries verifying delete series that were skipped",
+	}, []string{"test_name"})
 )
 
 type DeleteSeriesTestConfig struct {
@@ -85,6 +91,7 @@ func (d *DeleteSeriesTest) Stop() {
 }
 
 func (d *DeleteSeriesTest) sendDeleteRequestLoop() {
+	defer d.wg.Done()
 	// send a delete request as soon as we start to avoid missing creation of delete request across restarts.
 	err := d.sendDeleteRequest()
 	if err != nil {
@@ -117,6 +124,7 @@ func (d *DeleteSeriesTest) Test(ctx context.Context, client v1.API, selectors st
 	// we do not want to query data after the start time of last delete request sent to simplify things.
 	lastDeleteRequestInterval := d.lastDeleteRequestInterval
 	if !queryInterval.end.Before(lastDeleteRequestInterval.start) {
+		deleteRequestVerificationsSkippedTotal.WithLabelValues(d.Name()).Inc()
 		level.Info(log).Log("msg", fmt.Sprintf("skipping test for %d to %d requesting samples after last sent delete request's start time %d",
 			start.Add(-duration).Unix(), start.Unix(), lastDeleteRequestInterval.end.Unix()))
 		return true, nil

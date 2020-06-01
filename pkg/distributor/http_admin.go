@@ -87,9 +87,9 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 
 	// jpe : json tags
 	util.RenderHTTPResponse(w, struct {
-		Now               time.Time
-		Stats             []UserIDStats
-		ReplicationFactor int
+		Now               time.Time     `json:"now"`
+		Stats             []UserIDStats `json:"stats"`
+		ReplicationFactor int           `json:"replicationFactor"`
 	}{
 		Now:               time.Now(),
 		Stats:             stats,

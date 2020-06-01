@@ -140,10 +140,14 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 
 		ingesters = append(ingesters, struct {
-			ID, State, Address, Timestamp, Zone string
-			Tokens                              []uint32
-			NumTokens                           int
-			Ownership                           float64
+			ID        string   `json:"id"`
+			State     string   `json:"state"`
+			Address   string   `json:"address"`
+			Timestamp string   `json:"timestamp"`
+			Zone      string   `json:"zone"`
+			Tokens    []uint32 `json:"tokens"`
+			NumTokens int      `json:"-"`
+			Ownership float64  `json:"-"`
 		}{
 			ID:        id,
 			State:     state,
@@ -160,9 +164,9 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	// jpe : add json tag names? change "Ingesters" to "Shards" or instances or something.  same method called by distrib, ruler, store
 	util.RenderHTTPResponse(w, struct {
-		Ingesters  []interface{}
-		Now        time.Time
-		ShowTokens bool
+		Ingesters  []interface{} `json:"shards"`
+		Now        time.Time     `json:"now"`
+		ShowTokens bool          `json:"-"`
 	}{
 		Ingesters:  ingesters,
 		Now:        time.Now(),

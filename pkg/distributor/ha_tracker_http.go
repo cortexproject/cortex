@@ -58,9 +58,12 @@ func init() {
 func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.electedLock.RLock()
 	type replica struct {
-		UserID, Cluster, Replica string
-		ElectedAt                time.Time
-		UpdateTime, FailoverTime time.Duration
+		UserID       string        `json:"userID"`
+		Cluster      string        `json:"cluster"`
+		Replica      string        `json:"replica"`
+		ElectedAt    time.Time     `json:"electedAt"`
+		UpdateTime   time.Duration `json:"updateDuration"`
+		FailoverTime time.Duration `json:"failoverDuration"`
 	}
 
 	electedReplicas := []replica{}
@@ -90,8 +93,8 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	// jpe : json tags
 	util.RenderHTTPResponse(w, struct {
-		Elected []replica
-		Now     time.Time
+		Elected []replica `json:"elected"`
+		Now     time.Time `json:"now"`
 	}{
 		Elected: electedReplicas,
 		Now:     time.Now(),

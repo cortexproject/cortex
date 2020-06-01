@@ -55,7 +55,7 @@
 * [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
 * [ENHANCEMENT] The following endpoints now respond appropriately to an `Accepts` header with the value `application/json` #2673
   * `/distributor/all_user_stats`
-  * `/distributor/ha-tracker`
+  * `/distributor/ha_tracker`
   * `/ingester/ring`
   * `/store-gateway/ring`
   * `/compactor/ring`

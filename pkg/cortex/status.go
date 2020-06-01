@@ -43,8 +43,8 @@ const tpl = `
 var tmpl *template.Template
 
 type renderService struct {
-	Name   string
-	Status string
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 func init() {
@@ -64,9 +64,10 @@ func (t *Cortex) servicesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: this could be extended to also print sub-services, if given service has any
+	// jpe : json tags
 	util.RenderHTTPResponse(w, struct {
-		Now      time.Time
-		Services []renderService
+		Now      time.Time       `json:"now"`
+		Services []renderService `json:"services"`
 	}{
 		Now:      time.Now(),
 		Services: svcs,

@@ -63,7 +63,9 @@ type StoreConfig struct {
 	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 
-	DisableChunksDedupe bool
+	// When DisableChunksDeduplication is true, cache would not be checked for whether chunk is already written.
+	// It would still write the chunk back to cache for reads.
+	DisableChunksDeduplication bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

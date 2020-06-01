@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
@@ -130,6 +131,13 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket client")
 	}
+
+	// Blocks scanner doesn't use chunks, but we pass config for consistency.
+	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	if err != nil {
+		return nil, errors.Wrapf(err, "create caching bucket")
+	}
+	bucketClient = cachingBucket
 
 	scanner := NewBlocksScanner(BlocksScannerConfig{
 		ScanInterval:             storageCfg.BucketStore.SyncInterval,

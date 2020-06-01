@@ -621,7 +621,10 @@ The `querier_config` configures the Cortex querier.
 [query_ingesters_within: <duration> | default = 0s]
 
 # The time after which a metric should only be queried from storage and not just
-# ingesters. 0 means all queries are sent to store.
+# ingesters. 0 means all queries are sent to store. When running the
+# experimental blocks storage, if this option is enabled, the time range of the
+# query sent to the store will be manipulated to ensure the query end is not
+# more recent than 'now - query-store-after'.
 # CLI flag: -querier.query-store-after
 [query_store_after: <duration> | default = 0s]
 
@@ -672,11 +675,6 @@ blocks_consistency_check:
   # blocks have been queried.
   # CLI flag: -experimental.querier.blocks-consistency-check.enabled
   [enabled: <boolean> | default = false]
-
-  # The grace period allowed before a new block is included in the consistency
-  # check.
-  # CLI flag: -experimental.querier.blocks-consistency-check.upload-grace-period
-  [upload_grace_period: <duration> | default = 1h]
 ```
 
 ### `query_frontend_config`
@@ -1850,6 +1848,11 @@ delete_store:
   # Name of the table which stores delete requests
   # CLI flag: -deletes.requests-table-name
   [requests_table_name: <string> | default = "delete_requests"]
+
+grpc_store:
+  # Hostname or IP of the gRPC store instance.
+  # CLI flag: -grpc-store.server-address
+  [server_address: <string> | default = ""]
 ```
 
 ### `flusher_config`
@@ -2682,11 +2685,6 @@ bucket_store:
   # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
   [meta_sync_concurrency: <int> | default = 20]
 
-  # Whether the bucket store should use the binary index header. If false, it
-  # uses the JSON index header.
-  # CLI flag: -experimental.tsdb.bucket-store.binary-index-header-enabled
-  [binary_index_header_enabled: <boolean> | default = true]
-
   # Minimum age of a block before it's being read. Set it to safe value (e.g
   # 30m) if your object storage is eventually consistent. GCS and S3 are
   # (roughly) strongly consistent.
@@ -3011,7 +3009,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
 # be removed.
 # CLI flag: -compactor.consistency-delay
-[consistency_delay: <duration> | default = 30m]
+[consistency_delay: <duration> | default = 0s]
 
 # Data directory in which to cache blocks and process compactions
 # CLI flag: -compactor.data-dir
@@ -3025,6 +3023,10 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 # interval
 # CLI flag: -compactor.compaction-retries
 [compaction_retries: <int> | default = 3]
+
+# Max number of concurrent compactions running.
+# CLI flag: -compactor.compaction-concurrency
+[compaction_concurrency: <int> | default = 1]
 
 # Time before a block marked for deletion is deleted from bucket. If not 0,
 # blocks will be marked for deletion and compactor component will delete blocks
@@ -3086,15 +3088,6 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
-
-# Number of shards a single tenant blocks should be grouped into (0 or 1 means
-# per-tenant blocks sharding is disabled).
-# CLI flag: -compactor.per-tenant-num-shards
-[per_tenant_num_shards: <int> | default = 1]
-
-# Number of concurrent shards compacted for a single tenant.
-# CLI flag: -compactor.per-tenant-shards-concurrency
-[per_tenant_shards_concurrency: <int> | default = 1]
 ```
 
 ### `store_gateway_config`

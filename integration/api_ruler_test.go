@@ -14,6 +14,21 @@ import (
 )
 
 func TestRulerAPI(t *testing.T) {
+	var (
+		namespaceOne = "test_/encoded_+namespace/?"
+		namespaceTwo = "test_/encoded_+namespace/?/two"
+
+		ruleGroup = rulefmt.RuleGroup{
+			Name:     "test_encoded_+\"+group_name/?",
+			Interval: 100,
+			Rules: []rulefmt.Rule{
+				{
+					Record: "test_rule",
+					Expr:   "up",
+				},
+			},
+		}
+	)
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -32,22 +47,8 @@ func TestRulerAPI(t *testing.T) {
 	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
 	require.NoError(t, err)
 
-	// Create example namespace and rule group to use for tests, using strings that
-	// require url escaping.
-	namespace := "test_encoded_+namespace?"
-	rg := rulefmt.RuleGroup{
-		Name:     "test_encoded_+\"+group_name?",
-		Interval: 100,
-		Rules: []rulefmt.Rule{
-			{
-				Record: "test_rule",
-				Expr:   "up",
-			},
-		},
-	}
-
 	// Set the rule group into the ruler
-	require.NoError(t, c.SetRuleGroup(rg, namespace))
+	require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceOne))
 
 	// Wait until the user manager is created
 	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
@@ -56,13 +57,32 @@ func TestRulerAPI(t *testing.T) {
 	rgs, err := c.GetRuleGroups()
 	require.NoError(t, err)
 
-	retrievedNamespace, exists := rgs[namespace]
+	retrievedNamespace, exists := rgs[namespaceOne]
 	require.True(t, exists)
 	require.Len(t, retrievedNamespace, 1)
-	require.Equal(t, retrievedNamespace[0].Name, rg.Name)
+	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
 
-	// Delete the set rule group
-	require.NoError(t, c.DeleteRuleGroup(namespace, rg.Name))
+	// Add a second rule group with a similar namespace
+	require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceTwo))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(2), "cortex_prometheus_rule_group_rules"))
+
+	// Check to ensure the rules running in the ruler match what was set
+	rgs, err = c.GetRuleGroups()
+	require.NoError(t, err)
+
+	retrievedNamespace, exists = rgs[namespaceOne]
+	require.True(t, exists)
+	require.Len(t, retrievedNamespace, 1)
+	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
+
+	retrievedNamespace, exists = rgs[namespaceTwo]
+	require.True(t, exists)
+	require.Len(t, retrievedNamespace, 1)
+	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
+
+	// Delete the set rule groups
+	require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
+	require.NoError(t, c.DeleteRuleGroup(namespaceTwo, ruleGroup.Name))
 
 	// Wait until the users manager has been terminated
 	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))

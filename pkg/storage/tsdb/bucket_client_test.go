@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/objstore/gcs"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -53,24 +51,20 @@ func TestNewBucketClient(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config       string
-		expectedErr  error
-		expectedType interface{}
+		config      string
+		expectedErr error
 	}{
 		"should create an S3 bucket": {
-			config:       configWithS3Backend,
-			expectedErr:  nil,
-			expectedType: &s3.Bucket{},
+			config:      configWithS3Backend,
+			expectedErr: nil,
 		},
 		"should create a GCS bucket": {
-			config:       configWithGCSBackend,
-			expectedErr:  nil,
-			expectedType: &gcs.Bucket{},
+			config:      configWithGCSBackend,
+			expectedErr: nil,
 		},
 		"should return error on unknown backend": {
-			config:       configWithUnknownBackend,
-			expectedErr:  errUnsupportedStorageBackend,
-			expectedType: nil,
+			config:      configWithUnknownBackend,
+			expectedErr: errUnsupportedStorageBackend,
 		},
 	}
 
@@ -91,8 +85,6 @@ func TestNewBucketClient(t *testing.T) {
 
 			if testData.expectedErr == nil {
 				require.NotNil(t, bucketClient)
-				assert.IsType(t, testData.expectedType, bucketClient)
-
 				bucketClient.Close()
 			} else {
 				assert.Equal(t, nil, bucketClient)

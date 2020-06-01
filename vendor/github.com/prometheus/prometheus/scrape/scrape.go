@@ -969,11 +969,11 @@ mainLoop:
 		// we still call sl.append to trigger stale markers.
 		total, added, seriesAdded, appErr := sl.append(b, contentType, start)
 		if appErr != nil {
-			level.Debug(sl.l).Log("msg", "append failed", "err", appErr)
+			level.Debug(sl.l).Log("msg", "Append failed", "err", appErr)
 			// The append failed, probably due to a parse error or sample limit.
 			// Call sl.append again with an empty scrape to trigger stale markers.
 			if _, _, _, err := sl.append([]byte{}, "", start); err != nil {
-				level.Warn(sl.l).Log("msg", "append failed", "err", err)
+				level.Warn(sl.l).Log("msg", "Append failed", "err", err)
 			}
 		}
 
@@ -984,7 +984,7 @@ mainLoop:
 		}
 
 		if err := sl.report(start, time.Since(start), total, added, seriesAdded, scrapeErr); err != nil {
-			level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
+			level.Warn(sl.l).Log("msg", "Appending scrape report failed", "err", err)
 		}
 		last = start
 
@@ -1140,7 +1140,7 @@ loop:
 
 		if ok {
 			err = app.AddFast(ce.ref, t, v)
-			sampleAdded, err = sl.checkAddError(ce, met, tp, err, &sampleLimitErr, appErrs)
+			sampleAdded, err = sl.checkAddError(ce, met, tp, err, &sampleLimitErr, &appErrs)
 			// In theory this should never happen.
 			if err == storage.ErrNotFound {
 				ok = false
@@ -1169,10 +1169,10 @@ loop:
 
 			var ref uint64
 			ref, err = app.Add(lset, t, v)
-			sampleAdded, err = sl.checkAddError(nil, met, tp, err, &sampleLimitErr, appErrs)
+			sampleAdded, err = sl.checkAddError(nil, met, tp, err, &sampleLimitErr, &appErrs)
 			if err != nil {
 				if err != storage.ErrNotFound {
-					level.Debug(sl.l).Log("msg", "unexpected error", "series", string(met), "err", err)
+					level.Debug(sl.l).Log("msg", "Unexpected error", "series", string(met), "err", err)
 				}
 				break loop
 			}
@@ -1231,7 +1231,7 @@ func yoloString(b []byte) string {
 // Adds samples to the appender, checking the error, and then returns the # of samples added,
 // whether the caller should continue to process more samples, and any sample limit errors.
 
-func (sl *scrapeLoop) checkAddError(ce *cacheEntry, met []byte, tp *int64, err error, sampleLimitErr *error, appErrs appendErrors) (bool, error) {
+func (sl *scrapeLoop) checkAddError(ce *cacheEntry, met []byte, tp *int64, err error, sampleLimitErr *error, appErrs *appendErrors) (bool, error) {
 	switch errors.Cause(err) {
 	case nil:
 		if tp == nil && ce != nil {

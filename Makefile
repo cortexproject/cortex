@@ -66,6 +66,7 @@ pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
+pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 
 all: $(UPTODATE_FILES)
 test: protos
@@ -129,7 +130,7 @@ protos: $(PROTO_GOS)
 %.pb.go:
 	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
 	@# to configure all such relative paths.
-	protoc -I $(GOPATH)/src:./vendor/github.com/thanos-io/thanos/pkg/store:./vendor/github.com/thanos-io/thanos/pkg/store/storepb:./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	protoc -I $(GOPATH)/src:./vendor/github.com/thanos-io/thanos/pkg:./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
 	misspell -error docs

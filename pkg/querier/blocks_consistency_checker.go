@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -15,15 +17,17 @@ import (
 type BlocksConsistencyChecker struct {
 	uploadGracePeriod   time.Duration
 	deletionGracePeriod time.Duration
+	logger              log.Logger
 
 	checksTotal  prometheus.Counter
 	checksFailed prometheus.Counter
 }
 
-func NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod time.Duration, reg prometheus.Registerer) *BlocksConsistencyChecker {
+func NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod time.Duration, logger log.Logger, reg prometheus.Registerer) *BlocksConsistencyChecker {
 	return &BlocksConsistencyChecker{
 		uploadGracePeriod:   uploadGracePeriod,
 		deletionGracePeriod: deletionGracePeriod,
+		logger:              logger,
 		checksTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_querier_blocks_consistency_checks_total",
 			Help: "Total number of consistency checks run on queried blocks.",
@@ -35,7 +39,7 @@ func NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod time.Dur
 	}
 }
 
-func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeletionMarks map[ulid.ULID]*metadata.DeletionMark, queriedBlocks map[string][]hintspb.Block) error {
+func (c *BlocksConsistencyChecker) Check(expectedBlocks []*BlockMeta, knownDeletionMarks map[ulid.ULID]*metadata.DeletionMark, queriedBlocks map[string][]hintspb.Block) error {
 	c.checksTotal.Inc()
 
 	// Reverse the map of queried blocks, so that we can easily look for missing ones
@@ -52,7 +56,7 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 	missingBlocks := map[string][]string{}
 	var missingBlockIDs []string
 
-	for _, blockID := range expectedBlocks {
+	for _, meta := range expectedBlocks {
 		// Some recently uploaded blocks, already discovered by the querier, may not have been discovered
 		// and loaded by the store-gateway yet. In order to avoid false positives, we grant some time
 		// to the store-gateway to discover them. It's safe to exclude recently uploaded blocks because:
@@ -60,7 +64,8 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 		//   on the configured retention period).
 		// - Blocks uploaded by compactor: the source blocks are marked for deletion but will continue to be
 		//   queried by store-gateways for a while (depends on the configured deletion marks delay).
-		if ulid.Now()-blockID.Time() < uint64(c.uploadGracePeriod.Milliseconds()) {
+		if c.uploadGracePeriod > 0 && time.Since(meta.UploadedAt) < c.uploadGracePeriod {
+			level.Debug(c.logger).Log("msg", "block skipped from consistency check because it was uploaded recently", "block", meta.ULID.String(), "uploadedAt", meta.UploadedAt.String())
 			continue
 		}
 
@@ -68,13 +73,16 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []ulid.ULID, knownDeleti
 		// on blocks that can't be queried because they were offloaded. For this reason, we don't run the consistency check on any block
 		// which has been marked for deletion more then "grace period" time ago. Basically, the grace period is the time
 		// we still expect a block marked for deletion to be still queried.
-		if mark := knownDeletionMarks[blockID]; mark != nil {
-			if time.Since(time.Unix(mark.DeletionTime, 0)) > c.deletionGracePeriod {
+		if mark := knownDeletionMarks[meta.ULID]; mark != nil {
+			deletionTime := time.Unix(mark.DeletionTime, 0)
+
+			if c.deletionGracePeriod > 0 && time.Since(deletionTime) > c.deletionGracePeriod {
+				level.Debug(c.logger).Log("msg", "block skipped from consistency check because it is marked for deletion", "block", meta.ULID.String(), "deletionTime", deletionTime.String())
 				continue
 			}
 		}
 
-		id := blockID.String()
+		id := meta.ULID.String()
 		if gatewayAddrs, ok := actualBlocks[id]; !ok {
 			missingBlocks[id] = gatewayAddrs
 			missingBlockIDs = append(missingBlockIDs, id)

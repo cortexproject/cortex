@@ -2,6 +2,7 @@ package querier
 
 import (
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestBlockQuerierSeries(t *testing.T) {
@@ -112,9 +115,9 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 	bss := &blockQuerierSeriesSet{
 		series: []*storepb.Series{
-			// labels here are not sorted, but blockQuerierSeriesSet will sort it.
+			// first, with one chunk.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now, now.Add(100*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples (= 33334)
 				},
@@ -122,7 +125,7 @@ func TestBlockQuerierSeriesSet(t *testing.T) {
 
 			// continuation of previous series. Must have exact same labels.
 			{
-				Labels: mkLabels("a", "a", "__name__", "first"),
+				Labels: mkLabels("__name__", "first", "a", "a"),
 				Chunks: []storepb.AggrChunk{
 					createChunkWithSineSamples(now.Add(100*time.Second), now.Add(200*time.Second), 3*time.Millisecond), // ceil(100 / 0.003) samples more, 66668 in total
 				},
@@ -249,4 +252,64 @@ func mkLabels(s ...string) []storepb.Label {
 	}
 
 	return result
+}
+
+func Benchmark_newBlockQuerierSeries(b *testing.B) {
+	lbls := mkLabels(
+		"__name__", "test",
+		"label_1", "value_1",
+		"label_2", "value_2",
+		"label_3", "value_3",
+		"label_4", "value_4",
+		"label_5", "value_5",
+		"label_6", "value_6",
+		"label_7", "value_7",
+		"label_8", "value_8",
+		"label_9", "value_9")
+
+	chunks := []storepb.AggrChunk{
+		createChunkWithSineSamples(time.Now(), time.Now().Add(-time.Hour), time.Minute),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newBlockQuerierSeries(lbls, chunks)
+	}
+}
+
+func Benchmark_blockQuerierSeriesSet_iteration(b *testing.B) {
+	const (
+		numSeries          = 8000
+		numSamplesPerChunk = 240
+		numChunksPerSeries = 24
+	)
+
+	// Generate series.
+	series := make([]*storepb.Series, 0, numSeries)
+	for seriesID := 0; seriesID < numSeries; seriesID++ {
+		lbls := mkLabels("__name__", "test", "series_id", strconv.Itoa(seriesID))
+		chunks := make([]storepb.AggrChunk, 0, numChunksPerSeries)
+
+		// Create chunks with 1 sample per second.
+		for minT := int64(0); minT < numChunksPerSeries*numSamplesPerChunk; minT += numSamplesPerChunk {
+			chunks = append(chunks, createChunkWithSineSamples(util.TimeFromMillis(minT), util.TimeFromMillis(minT+numSamplesPerChunk), time.Millisecond))
+		}
+
+		series = append(series, &storepb.Series{
+			Labels: lbls,
+			Chunks: chunks,
+		})
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		set := blockQuerierSeriesSet{series: series}
+
+		for set.Next() {
+			for t := set.At().Iterator(); t.Next(); {
+				t.At()
+			}
+		}
+	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
@@ -54,7 +55,7 @@ type BlocksFinder interface {
 
 	// GetBlocks returns known blocks for userID containing samples within the range minT
 	// and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-	GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error)
+	GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error)
 }
 
 // BlocksStoreClient is the interface that should be implemented by any client used
@@ -68,13 +69,11 @@ type BlocksStoreClient interface {
 }
 
 type BlocksConsistencyCheckConfig struct {
-	Enabled           bool          `yaml:"enabled"`
-	UploadGracePeriod time.Duration `yaml:"upload_grace_period"`
+	Enabled bool `yaml:"enabled"`
 }
 
 func (cfg *BlocksConsistencyCheckConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether the querier should run a consistency check to ensure all expected blocks have been queried.")
-	f.DurationVar(&cfg.UploadGracePeriod, prefix+".upload-grace-period", time.Hour, "The grace period allowed before a new block is included in the consistency check.")
 }
 
 // BlocksStoreQueryable is a queryable which queries blocks storage via
@@ -82,10 +81,11 @@ func (cfg *BlocksConsistencyCheckConfig) RegisterFlagsWithPrefix(prefix string, 
 type BlocksStoreQueryable struct {
 	services.Service
 
-	stores      BlocksStoreSet
-	finder      BlocksFinder
-	consistency *BlocksConsistencyChecker
-	logger      log.Logger
+	stores          BlocksStoreSet
+	finder          BlocksFinder
+	consistency     *BlocksConsistencyChecker
+	logger          log.Logger
+	queryStoreAfter time.Duration
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -95,7 +95,7 @@ type BlocksStoreQueryable struct {
 	storesHit prometheus.Histogram
 }
 
-func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
+func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, queryStoreAfter time.Duration, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
 
 	manager, err := services.NewManager(stores, finder)
@@ -107,6 +107,7 @@ func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consist
 		stores:             stores,
 		finder:             finder,
 		consistency:        consistency,
+		queryStoreAfter:    queryStoreAfter,
 		logger:             logger,
 		subservices:        manager,
 		subservicesWatcher: services.NewFailureWatcher(),
@@ -130,6 +131,13 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket client")
 	}
+
+	// Blocks scanner doesn't use chunks, but we pass config for consistency.
+	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	if err != nil {
+		return nil, errors.Wrapf(err, "create caching bucket")
+	}
+	bucketClient = cachingBucket
 
 	scanner := NewBlocksScanner(BlocksScannerConfig{
 		ScanInterval:             storageCfg.BucketStore.SyncInterval,
@@ -171,16 +179,19 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	var consistency *BlocksConsistencyChecker
 	if querierCfg.BlocksConsistencyCheck.Enabled {
 		consistency = NewBlocksConsistencyChecker(
-			querierCfg.BlocksConsistencyCheck.UploadGracePeriod,
+			// Exclude blocks which have been recently uploaded, in order to give enough time to store-gateways
+			// to discover and load them (3 times the sync interval).
+			storageCfg.BucketStore.ConsistencyDelay+(3*storageCfg.BucketStore.SyncInterval),
 			// To avoid any false positive in the consistency check, we do exclude blocks which have been
 			// recently marked for deletion, until the "ignore delay / 2". This means the consistency checker
 			// exclude such blocks about 50% of the time before querier and store-gateway stops querying them.
 			storageCfg.BucketStore.IgnoreDeletionMarksDelay/2,
+			logger,
 			reg,
 		)
 	}
 
-	return NewBlocksStoreQueryable(stores, scanner, consistency, logger, reg)
+	return NewBlocksStoreQueryable(stores, scanner, consistency, querierCfg.QueryStoreAfter, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {
@@ -220,15 +231,16 @@ func (q *BlocksStoreQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 	}
 
 	return &blocksStoreQuerier{
-		ctx:         ctx,
-		minT:        mint,
-		maxT:        maxt,
-		userID:      userID,
-		finder:      q.finder,
-		stores:      q.stores,
-		storesHit:   q.storesHit,
-		consistency: q.consistency,
-		logger:      q.logger,
+		ctx:             ctx,
+		minT:            mint,
+		maxT:            maxt,
+		userID:          userID,
+		finder:          q.finder,
+		stores:          q.stores,
+		storesHit:       q.storesHit,
+		consistency:     q.consistency,
+		logger:          q.logger,
+		queryStoreAfter: q.queryStoreAfter,
 	}, nil
 }
 
@@ -241,6 +253,10 @@ type blocksStoreQuerier struct {
 	storesHit   prometheus.Histogram
 	consistency *BlocksConsistencyChecker
 	logger      log.Logger
+
+	// If set, the querier manipulates the max time to not be greater than
+	// "now - queryStoreAfter" so that most recent blocks are not queried.
+	queryStoreAfter time.Duration
 }
 
 // Select implements storage.Querier interface.
@@ -279,6 +295,26 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		minT, maxT = sp.Start, sp.End
 	}
 
+	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
+	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
+	// optimization is particularly important for the blocks storage because can be used to skip
+	// querying most recent not-compacted-yet blocks from the storage.
+	if q.queryStoreAfter > 0 {
+		now := time.Now()
+		origMaxT := maxT
+		maxT = util.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+
+		if origMaxT != maxT {
+			level.Debug(spanLog).Log("msg", "query max time has been manipulated", "original", origMaxT, "updated", maxT)
+		}
+
+		if maxT < minT {
+			q.storesHit.Observe(0)
+			level.Debug(spanLog).Log("msg", "empty query time range after max time manipulation")
+			return series.NewEmptySeriesSet(), nil, nil
+		}
+	}
+
 	// Find the list of blocks we need to query given the time range.
 	metas, deletionMarks, err := q.finder.GetBlocks(q.userID, minT, maxT)
 	if err != nil {
@@ -286,22 +322,20 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 
 	if len(metas) == 0 {
-		if q.storesHit != nil {
-			q.storesHit.Observe(0)
-		}
-
+		q.storesHit.Observe(0)
+		level.Debug(spanLog).Log("msg", "no blocks found")
 		return series.NewEmptySeriesSet(), nil, nil
 	}
 
-	blockIDs := getULIDsFromMetas(metas)
-	level.Debug(spanLog).Log("expected blocks", blockIDs)
+	level.Debug(spanLog).Log("msg", "found blocks to query", "expected", BlockMetas(metas).String())
 
 	// Find the set of store-gateway instances having the blocks.
+	blockIDs := getULIDsFromBlockMetas(metas)
 	clients, err := q.stores.GetClientsFor(blockIDs)
 	if err != nil {
 		return nil, nil, err
 	}
-	level.Debug(spanLog).Log("num store-gateway instances:", len(clients))
+	level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients))
 
 	req := &storepb.SeriesRequest{
 		MinTime:                 minT,
@@ -361,7 +395,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 				}
 			}
 
-			level.Debug(spanLog).Log("store-gateway", c, "num received series", len(mySeries), "bytes received series", countSeriesBytes(mySeries))
+			level.Debug(spanLog).Log("msg", "received series from store-gateway", "instance", c, "num series", len(mySeries), "bytes series", countSeriesBytes(mySeries))
 
 			// Store the result.
 			mtx.Lock()
@@ -379,28 +413,18 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		return nil, nil, err
 	}
 
-	level.Debug(spanLog).Log("queried blocks", queriedBlocks)
-	if q.storesHit != nil {
-		q.storesHit.Observe(float64(len(clients)))
-	}
+	level.Debug(spanLog).Log("msg", "received series from all store-gateways", "queried blocks", queriedBlocks)
+	q.storesHit.Observe(float64(len(clients)))
 
 	// Ensure all expected blocks have been queried.
 	if q.consistency != nil {
-		if err := q.consistency.Check(blockIDs, deletionMarks, queriedBlocks); err != nil {
+		if err := q.consistency.Check(metas, deletionMarks, queriedBlocks); err != nil {
 			level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
 			return nil, nil, err
 		}
 	}
 
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
-}
-
-func getULIDsFromMetas(metas []*metadata.Meta) []ulid.ULID {
-	ids := make([]ulid.ULID, len(metas))
-	for i, m := range metas {
-		ids[i] = m.ULID
-	}
-	return ids
 }
 
 func countSeriesBytes(series []*storepb.Series) (count uint64) {

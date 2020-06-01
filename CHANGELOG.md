@@ -4,6 +4,7 @@
 
 * [CHANGE] Query Frontend now uses Round Robin to choose a tenant queue to service next. #2553
 * [CHANGE] `-promql.lookback-delta` is now deprecated and has been replaced by `-querier.lookback-delta` along with `lookback_delta` entry under `querier` in the config file. `-promql.lookback-delta` will be removed in v1.4.0. #2604
+* [CHANGE] Experimental TSDB: removed `-experimental.tsdb.bucket-store.binary-index-header-enabled` flag. Now the binary index-header is always enabled.
 * [CHANGE] Experimental TSDB: Renamed index-cache metrics to use original metric names from Thanos, as Cortex is not aggregating them in any way:
   * `cortex_<service>_blocks_index_cache_items_evicted_total` => `thanos_store_index_cache_items_evicted_total{name="index-cache"}`
   * `cortex_<service>_blocks_index_cache_items_added_total` => `thanos_store_index_cache_items_added_total{name="index-cache"}`
@@ -46,7 +47,8 @@
   * `cortex_<service>_blocks_last_successful_sync_timestamp_seconds` => `cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds{component="<service>"}`
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
 * [FEATURE] The flag `-frontend.max-cache-freshness` is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from `results_cache.max_freshness` to `limits_config.max_cache_freshness`. The legacy YAML config parameter (`results_cache.max_freshness`) will continue to be supported till Cortex release `v1.4.0`. #2609
-* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
+* [FEATURE] Experimental gRPC Store: Added support to 3rd parties index and chunk stores using gRPC client/server plugin mechanism. #2220
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589 #2654
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
@@ -62,6 +64,13 @@
   * `cortex_ingester_tsdb_checkpoint_deletions_total`
   * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
   * `cortex_ingester_tsdb_checkpoint_creations_total`
+  * `cortex_ingester_tsdb_wal_truncate_duration_seconds`
+  * `cortex_ingester_tsdb_head_active_appenders`
+  * `cortex_ingester_tsdb_head_series_not_found_total`
+  * `cortex_ingester_tsdb_head_chunks`
+  * `cortex_ingester_tsdb_mmap_chunk_corruptions_total`
+  * `cortex_ingester_tsdb_head_chunks_created_total`
+  * `cortex_ingester_tsdb_head_chunks_removed_total`
 * [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_timestamp_seconds`
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)
@@ -69,7 +78,6 @@
   * `cortex_storegateway_blocks_last_successful_sync_timestamp_seconds`
 * [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
 * [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
-* [ENHANCEMENT] Experimental TSDB: added per-tenant blocks sharding support in the compactor, in order to parallelize blocks compaction for a single tenant in a single node. Sharding can be enabled via `-compactor.per-tenant-num-shards` while the parallelization can be controlled with `-compactor.per-tenant-shards-concurrency`. #2599
 * [ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. #2587
 * [ENHANCEMENT] `query-tee` supports `/metadata`, `/alerts`, and `/rules` #2600
 * [ENHANCEMENT] Thanos and Prometheus upgraded to [806479182a6b](https://github.com/thanos-io/thanos/commit/806479182a6b) and [cd73b3d33e06](https://github.com/prometheus/prometheus/commit/cd73b3d33e06) respectively. #2604
@@ -80,16 +88,21 @@
   * `cortex_compactor_block_cleanup_completed_total`
   * `cortex_compactor_block_cleanup_failed_total`
   * `cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds`
-* [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626
+* [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626 #2640
+* [ENHANCEMENT] Upgrade Thanos to [f7802edbf830](https://github.com/thanos-io/thanos/commit/f7802edbf830) and Prometheus to [f4dd45609a05](https://github.com/prometheus/prometheus/commit/f4dd45609a05) which is after v2.18.1. #2634
+  * TSDB now does memory-mapping of Head chunks and reduces memory usage.
+* [ENHANCEMENT] Experimental TSDB: when `-querier.query-store-after` is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than 'now - query-store-after'. #2642
+* [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
-* [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
+* [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2655
 * [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
 * [BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. #2590
 * [BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. #2565
 * [BUGFIX] QueryFrontend: fixed a panic (`integer divide by zero`) in the query-frontend. The query-frontend now requires the `-querier.default-evaluation-interval` config to be set to the same value of the querier. #2603
 * [BUGFIX] Experimental TSDB: when the querier receives a `/series` request with a time range older than the data stored in the ingester, it now ignores the requested time range and returns known series anyway instead of returning an empty response. This aligns the behaviour with the chunks storage. #2617
+* [BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. #2639
 
 ## 1.1.0 / 2020-05-21
 

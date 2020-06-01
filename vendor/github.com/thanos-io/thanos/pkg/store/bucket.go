@@ -41,6 +41,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/pool"
+	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
@@ -251,7 +252,6 @@ type BucketStore struct {
 	filterConfig             *FilterConfig
 	advLabelSets             []storepb.LabelSet
 	enableCompatibilityLabel bool
-	enableIndexHeader        bool
 
 	// Reencode postings using diff+varint+snappy when storing to cache.
 	// This makes them smaller, but takes extra CPU and memory.
@@ -279,7 +279,6 @@ func NewBucketStore(
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
 	enableCompatibilityLabel bool,
-	enableIndexHeader bool,
 	enablePostingsCompression bool,
 	postingOffsetsInMemSampling int,
 	enableSeriesHints bool, // TODO(pracucci) Thanos 0.12 and below doesn't gracefully handle new fields in SeriesResponse. Drop this flag and always enable hints once we can drop backward compatibility.
@@ -317,7 +316,6 @@ func NewBucketStore(
 		samplesLimiter:              NewLimiter(maxSampleCount, metrics.queriesDropped),
 		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
 		enableCompatibilityLabel:    enableCompatibilityLabel,
-		enableIndexHeader:           enableIndexHeader,
 		enablePostingsCompression:   enablePostingsCompression,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
 		enableSeriesHints:           enableSeriesHints,
@@ -477,17 +475,9 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	lset := labels.FromMap(meta.Thanos.Labels)
 	h := lset.Hash()
 
-	var indexHeaderReader indexheader.Reader
-	if s.enableIndexHeader {
-		indexHeaderReader, err = indexheader.NewBinaryReader(ctx, s.logger, s.bkt, s.dir, meta.ULID, s.postingOffsetsInMemSampling)
-		if err != nil {
-			return errors.Wrap(err, "create index header reader")
-		}
-	} else {
-		indexHeaderReader, err = indexheader.NewJSONReader(ctx, s.logger, s.bkt, s.dir, meta.ULID)
-		if err != nil {
-			return errors.Wrap(err, "create index cache reader")
-		}
+	indexHeaderReader, err := indexheader.NewBinaryReader(ctx, s.logger, s.bkt, s.dir, meta.ULID, s.postingOffsetsInMemSampling)
+	if err != nil {
+		return errors.Wrap(err, "create index header reader")
 	}
 	defer func() {
 		if err != nil {
@@ -865,7 +855,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 	defer s.queryGate.Done()
 
-	matchers, err := translateMatchers(req.Matchers)
+	matchers, err := promclient.TranslateMatchers(req.Matchers)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}

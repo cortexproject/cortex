@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -84,7 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
-	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
+	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the experimental blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	f.StringVar(&cfg.StoreGatewayAddresses, "experimental.querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the experimental blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
@@ -242,6 +243,13 @@ type querier struct {
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	log, ctx := spanlogger.New(q.ctx, "querier.Select")
+	defer log.Span.Finish()
+
+	if sp != nil {
+		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step, "matchers", matchers)
+	}
+
 	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
@@ -250,7 +258,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return q.metadataQuerier.Select(true, nil, matchers...)
 	}
 
-	userID, err := user.ExtractOrgID(q.ctx)
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
@@ -293,8 +301,8 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
-		case <-q.ctx.Done():
-			return nil, nil, q.ctx.Err()
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
 		}
 	}
 

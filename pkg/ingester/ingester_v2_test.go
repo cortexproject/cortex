@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -452,6 +454,73 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+}
+
+func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing.B) {
+	const (
+		numSamplesPerRequest = 1000
+		numRequestsPerClient = 10
+		numConcurrentClients = 10000
+	)
+
+	registry := prometheus.NewRegistry()
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	ingester, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
+	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ingester.lifecycler.GetState()
+	})
+
+	// Push a single time series to set the TSDB min time.
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+	currTimeReq := client.ToWriteRequest(
+		[]labels.Labels{metricLabels},
+		[]client.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
+		nil,
+		client.API)
+	_, err = ingester.v2Push(ctx, currTimeReq)
+	require.NoError(b, err)
+
+	// Prepare a request containing out of bound samples.
+	metrics := make([]labels.Labels, 0, numSamplesPerRequest)
+	samples := make([]client.Sample, 0, numSamplesPerRequest)
+	for i := 0; i < numSamplesPerRequest; i++ {
+		metrics = append(metrics, metricLabels)
+		samples = append(samples, client.Sample{Value: float64(i), TimestampMs: 0})
+	}
+	outOfBoundReq := client.ToWriteRequest(metrics, samples, nil, client.API)
+
+	// Run the benchmark.
+	wg := sync.WaitGroup{}
+	wg.Add(numConcurrentClients)
+	start := make(chan struct{})
+
+	for c := 0; c < numConcurrentClients; c++ {
+		go func() {
+			defer wg.Done()
+			<-start
+
+			for n := 0; n < numRequestsPerClient; n++ {
+				ingester.v2Push(ctx, outOfBoundReq) // nolint:errcheck
+			}
+		}()
+	}
+
+	b.ResetTimer()
+	close(start)
+	wg.Wait()
 }
 
 func Test_Ingester_v2LabelNames(t *testing.T) {

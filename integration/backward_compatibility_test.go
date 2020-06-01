@@ -19,33 +19,67 @@ import (
 var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
-	previousVersionImages = []string{
+	previousVersionImages = map[string]func(map[string]string) map[string]string{
 		// 0.6.0 used 204 status code for querier and ingester
 		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0",
+		"quay.io/cortexproject/cortex:v0.6.0": preCortex1Flags,
 
 		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0",
+		"quay.io/cortexproject/cortex:v0.7.0": preCortex1Flags,
+
+		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
+			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
+				"-experimental.store-gateway.sharding-enabled":              "",
+				"-experimental.store-gateway.sharding-ring.store":           "",
+				"-experimental.store-gateway.sharding-ring.consul.hostname": "",
+				"-experimental.store-gateway.replication-factor":            "",
+			})
+		},
+
+		"quay.io/cortexproject/cortex:v1.1.0": nil,
 	}
 )
 
+func preCortex1Flags(flags map[string]string) map[string]string {
+	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
+		"-schema-config-file":                                       "",
+		"-config-yaml":                                              flags["-schema-config-file"],
+		"-table-manager.poll-interval":                              "",
+		"-dynamodb.poll-interval":                                   flags["-table-manager.poll-interval"],
+		"-experimental.store-gateway.sharding-enabled":              "",
+		"-experimental.store-gateway.sharding-ring.store":           "",
+		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
+		"-experimental.store-gateway.replication-factor":            "",
+	})
+}
+
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
-	for _, previousImage := range previousVersionImages {
+	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			runBackwardCompatibilityTestWithChunksStorage(t, previousImage)
+			flags := ChunksStorageFlags
+			if flagsFn != nil {
+				flags = flagsFn(flags)
+			}
+
+			runBackwardCompatibilityTestWithChunksStorage(t, previousImage, flags)
 		})
 	}
 }
 
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
-	for _, previousImage := range previousVersionImages {
+	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage)
+			flags := ChunksStorageFlags
+			if flagsFn != nil {
+				flags = flagsFn(flags)
+			}
+
+			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage, flags)
 		})
 	}
 }
 
-func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage string) {
+func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage string, flagsForOldImage map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -54,18 +88,6 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	dynamo := e2edb.NewDynamoDB()
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
-
-	// Keep empty values because they will be used to remove default flags.
-	flagsForOldImage := e2e.MergeFlagsWithoutRemovingEmpty(ChunksStorageFlags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              ChunksStorageFlags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   ChunksStorageFlags["-table-manager.poll-interval"],
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
-	})
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
@@ -118,7 +140,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 }
 
 // Check for issues like https://github.com/cortexproject/cortex/issues/2356
-func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previousImage string) {
+func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previousImage string, flagsForPreviousImage map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -127,19 +149,6 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	dynamo := e2edb.NewDynamoDB()
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
-
-	// Keep empty values because they will be used to remove default flags.
-	flagsForOldImage := e2e.MergeFlagsWithoutRemovingEmpty(ChunksStorageFlags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              ChunksStorageFlags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   ChunksStorageFlags["-table-manager.poll-interval"],
-		"-distributor.replication-factor":                           "3",
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
-	})
 
 	flagsForNewImage := mergeFlags(ChunksStorageFlags, map[string]string{
 		"-distributor.replication-factor": "3",
@@ -157,9 +166,9 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
 	// Start other Cortex components (ingester running on previous version).
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	ingester3 := e2ecortex.NewIngester("ingester-3", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
+	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
+	ingester3 := e2ecortex.NewIngester("ingester-3", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForNewImage, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, ingester2, ingester3))
 
@@ -180,7 +189,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	checkQueries(t, consul, distributor,
 		expectedVector,
 		previousImage,
-		flagsForOldImage, flagsForNewImage,
+		flagsForPreviousImage, flagsForNewImage,
 		now,
 		s,
 		3,

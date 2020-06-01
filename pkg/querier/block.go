@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -108,9 +109,9 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return &blockQuerierSeriesSet{
-		series: series,
-	}, warnings, nil
+	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
+
+	return &blockQuerierSeriesSet{series: series}, warnings, nil
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
@@ -199,17 +200,13 @@ func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
+// newBlockQuerierSeries makes a new blockQuerierSeries. Input labels must be already sorted by name.
 func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].MinTime < chunks[j].MinTime
 	})
 
-	b := labels.NewBuilder(nil)
-	for _, l := range lbls {
-		b.Set(l.Name, l.Value)
-	}
-
-	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}
+	return &blockQuerierSeries{labels: storepb.LabelsToPromLabelsUnsafe(lbls), chunks: chunks}
 }
 
 type blockQuerierSeries struct {

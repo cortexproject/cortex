@@ -44,12 +44,15 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, user1Block2.ULID, blocks[0].ULID)
 	assert.Equal(t, user1Block1.ULID, blocks[1].ULID)
+	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
 	blocks, deletionMarks, err = s.GetBlocks("user-2", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, user2Block1.ULID, blocks[0].ULID)
+	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
 	assert.Equal(t, map[ulid.ULID]*metadata.DeletionMark{
 		user2Block1.ULID: &user2Mark1,
 	}, deletionMarks)
@@ -154,6 +157,8 @@ func TestBlocksScanner_PeriodicScanFindsNewUser(t *testing.T) {
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ULID)
 	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
 	assert.Equal(t, map[ulid.ULID]*metadata.DeletionMark{
 		block2.ULID: &mark2,
 	}, deletionMarks)
@@ -172,6 +177,7 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
 	assert.Equal(t, block1.ULID, blocks[0].ULID)
+	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -184,6 +190,8 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 	require.Equal(t, 2, len(blocks))
 	assert.Equal(t, block2.ULID, blocks[0].ULID)
 	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
 	assert.Empty(t, deletionMarks)
 }
 

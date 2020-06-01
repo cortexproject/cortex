@@ -11,10 +11,13 @@ import (
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
@@ -22,14 +25,15 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 	const (
 		metricName = "test_metric"
-		minT       = 10
-		maxT       = 20
+		minT       = int64(10)
+		maxT       = int64(20)
 	)
 
 	var (
@@ -52,7 +56,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		finderResult   []*metadata.Meta
+		finderResult   []*BlockMeta
 		finderErr      error
 		storeSetResult []BlocksStoreClient
 		storeSetErr    error
@@ -68,17 +72,17 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			expectedErr: "unable to find blocks",
 		},
 		"error while getting clients to query the store-gateway": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetErr: errors.New("no client found"),
 			expectedErr: "no client found",
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -98,9 +102,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -126,9 +130,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -151,9 +155,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping blocks (single returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -177,9 +181,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping blocks (multiple returned series)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -215,9 +219,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			},
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -229,10 +233,10 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
-			finderResult: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3}},
+			finderResult: []*BlockMeta{
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
 			},
 			storeSetResult: []BlocksStoreClient{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
@@ -255,10 +259,8 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				mockedResult: testData.storeSetResult,
 				mockedErr:    testData.storeSetErr,
 			}
-			finder := &blocksFinderMock{
-				mockedResult: testData.finderResult,
-				mockedErr:    testData.finderErr,
-			}
+			finder := &blocksFinderMock{}
+			finder.On("GetBlocks", "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*metadata.DeletionMark(nil), testData.finderErr)
 
 			q := &blocksStoreQuerier{
 				ctx:         ctx,
@@ -267,8 +269,9 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				userID:      "user-1",
 				finder:      finder,
 				stores:      stores,
-				consistency: NewBlocksConsistencyChecker(0, 0, nil),
+				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
 				logger:      log.NewNopLogger(),
+				storesHit:   prometheus.NewHistogram(prometheus.HistogramOpts{}),
 			}
 
 			matchers := []*labels.Matcher{
@@ -313,6 +316,83 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 	}
 }
 
+func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T) {
+	now := time.Now()
+
+	tests := map[string]struct {
+		queryStoreAfter time.Duration
+		queryMinT       int64
+		queryMaxT       int64
+		expectedMinT    int64
+		expectedMaxT    int64
+	}{
+		"should not manipulate query time range if queryStoreAfter is disabled": {
+			queryStoreAfter: 0,
+			queryMinT:       util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:       util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:    util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-30 * time.Minute)),
+		},
+		"should not manipulate query time range if queryStoreAfter is enabled but query max time is older": {
+			queryStoreAfter: time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:       util.TimeToMillis(now.Add(-70 * time.Minute)),
+			expectedMinT:    util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-70 * time.Minute)),
+		},
+		"should manipulate query time range if queryStoreAfter is enabled and query max time is recent": {
+			queryStoreAfter: time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:       util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:    util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-60 * time.Minute)),
+		},
+		"should skip the query if the query min time is more recent than queryStoreAfter": {
+			queryStoreAfter: time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-50 * time.Minute)),
+			queryMaxT:       util.TimeToMillis(now.Add(-20 * time.Minute)),
+			expectedMinT:    0,
+			expectedMaxT:    0,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			finder := &blocksFinderMock{}
+			finder.On("GetBlocks", "user-1", mock.Anything, mock.Anything).Return([]*BlockMeta(nil), map[ulid.ULID]*metadata.DeletionMark(nil), error(nil))
+
+			q := &blocksStoreQuerier{
+				ctx:             context.Background(),
+				minT:            testData.queryMinT,
+				maxT:            testData.queryMaxT,
+				userID:          "user-1",
+				finder:          finder,
+				stores:          &blocksStoreSetMock{},
+				consistency:     NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+				logger:          log.NewNopLogger(),
+				storesHit:       prometheus.NewHistogram(prometheus.HistogramOpts{}),
+				queryStoreAfter: testData.queryStoreAfter,
+			}
+
+			sp := &storage.SelectHints{
+				Start: testData.queryMinT,
+				End:   testData.queryMaxT,
+			}
+
+			_, _, err := q.selectSorted(sp, nil)
+			require.NoError(t, err)
+
+			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
+				assert.Len(t, finder.Calls, 0)
+			} else {
+				require.Len(t, finder.Calls, 1)
+				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(1))
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(2), float64(5*time.Second.Milliseconds()))
+			}
+		})
+	}
+}
+
 type blocksStoreSetMock struct {
 	services.Service
 
@@ -326,13 +406,12 @@ func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID) ([]BlocksStoreClient, 
 
 type blocksFinderMock struct {
 	services.Service
-
-	mockedResult []*metadata.Meta
-	mockedErr    error
+	mock.Mock
 }
 
-func (m *blocksFinderMock) GetBlocks(userID string, minT, maxT int64) ([]*metadata.Meta, map[ulid.ULID]*metadata.DeletionMark, error) {
-	return m.mockedResult, nil, m.mockedErr
+func (m *blocksFinderMock) GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error) {
+	args := m.Called(userID, minT, maxT)
+	return args.Get(0).([]*BlockMeta), args.Get(1).(map[ulid.ULID]*metadata.DeletionMark), args.Error(2)
 }
 
 type storeGatewayClientMock struct {

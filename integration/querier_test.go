@@ -709,6 +709,13 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
+		if userID == 0 { // No need to repeat this test for each user.
+			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			require.NoError(t, err)
+			require.Equal(t, 422, res.StatusCode)
+			require.Contains(t, string(body), "query must contain metric name")
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()

@@ -210,11 +210,6 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
     [meta_sync_concurrency: <int> | default = 20]
 
-    # Whether the bucket store should use the binary index header. If false, it
-    # uses the JSON index header.
-    # CLI flag: -experimental.tsdb.bucket-store.binary-index-header-enabled
-    [binary_index_header_enabled: <boolean> | default = true]
-
     # Minimum age of a block before it's being read. Set it to safe value (e.g
     # 30m) if your object storage is eventually consistent. GCS and S3 are
     # (roughly) strongly consistent.
@@ -620,7 +615,7 @@ compactor:
   # Malformed blocks older than the maximum of consistency-delay and 48h0m0s
   # will be removed.
   # CLI flag: -compactor.consistency-delay
-  [consistency_delay: <duration> | default = 30m]
+  [consistency_delay: <duration> | default = 0s]
 
   # Data directory in which to cache blocks and process compactions
   # CLI flag: -compactor.data-dir
@@ -634,6 +629,10 @@ compactor:
   # interval
   # CLI flag: -compactor.compaction-retries
   [compaction_retries: <int> | default = 3]
+
+  # Max number of concurrent compactions running.
+  # CLI flag: -compactor.compaction-concurrency
+  [compaction_concurrency: <int> | default = 1]
 
   # Time before a block marked for deletion is deleted from bucket. If not 0,
   # blocks will be marked for deletion and compactor component will delete
@@ -696,15 +695,6 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
-
-  # Number of shards a single tenant blocks should be grouped into (0 or 1 means
-  # per-tenant blocks sharding is disabled).
-  # CLI flag: -compactor.per-tenant-num-shards
-  [per_tenant_num_shards: <int> | default = 1]
-
-  # Number of concurrent shards compacted for a single tenant.
-  # CLI flag: -compactor.per-tenant-shards-concurrency
-  [per_tenant_shards_concurrency: <int> | default = 1]
 ```
 
 ## Known issues

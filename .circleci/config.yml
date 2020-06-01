@@ -152,6 +152,8 @@ jobs:
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           docker pull quay.io/cortexproject/cortex:v0.6.0
           docker pull quay.io/cortexproject/cortex:v0.7.0
+          docker pull quay.io/cortexproject/cortex:v1.0.0
+          docker pull quay.io/cortexproject/cortex:v1.1.0
           docker pull shopify/bigtable-emulator:0.1.0
           docker pull rinscy/cassandra:3.11.0
           docker pull memcached:1.6.1
@@ -163,7 +165,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${CIRCLE_TAG:-$(./tools/image-tag)}"
           export CORTEX_CHECKOUT_DIR="/home/circleci/.go_workspace/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 600s -v -count=1 ./integration/...
+          go test -tags=requires_docker -timeout 1200s -v -count=1 ./integration/...
         no_output_timeout: 20m
 
   build:

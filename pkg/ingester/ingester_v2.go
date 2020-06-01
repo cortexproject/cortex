@@ -348,7 +348,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
-					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
+					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().UTC().Format(time.RFC3339Nano))
 				}
 
 				switch cause {
@@ -632,7 +632,8 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	_, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+	log, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+	defer log.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -715,6 +716,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
+	level.Debug(log).Log("series", numSeries, "samples", numSamples)
 	return nil
 }
 

@@ -62,6 +62,8 @@ type StoreConfig struct {
 	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
 	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
+
+	DisableChunksDedupe bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

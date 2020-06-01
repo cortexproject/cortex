@@ -27,9 +27,9 @@ type metrics struct {
 }
 
 func newMetricsClient(name string, backend string, c Client, reg prometheus.Registerer) Client {
-	// TODO: Ensure all clients are passed a valid registry and remove the following check
+	// If no Registerer is provided return the raw client
 	if reg == nil {
-		reg = prometheus.DefaultRegisterer
+		return c
 	}
 
 	return &metrics{

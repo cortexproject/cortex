@@ -6582,7 +6582,7 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_failed_total&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2626&#34;&gt;#2626&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2626&#34;&gt;#2626&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2640&#34;&gt;#2640&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Upgrade Thanos to &lt;a href=&#34;https://github.com/thanos-io/thanos/commit/f7802edbf830&#34;&gt;f7802edbf830&lt;/a&gt; and Prometheus to &lt;a href=&#34;https://github.com/prometheus/prometheus/commit/f4dd45609a05&#34;&gt;f4dd45609a05&lt;/a&gt; which is after v2.18.1. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2634&#34;&gt;#2634&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li&gt;

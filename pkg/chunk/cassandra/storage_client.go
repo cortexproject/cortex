@@ -200,7 +200,8 @@ func (cfg *Config) createKeyspace() error {
 type StorageClient struct {
 	cfg            Config
 	schemaCfg      chunk.SchemaConfig
-	session        *gocql.Session
+	readSession    *gocql.Session
+	writeSession   *gocql.Session
 	querySemaphore *semaphore.Weighted
 }
 
@@ -208,7 +209,12 @@ type StorageClient struct {
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	session, err := cfg.session()
+	readSession, err := cfg.session()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	writeSession, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -221,7 +227,8 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient,
 	client := &StorageClient{
 		cfg:            cfg,
 		schemaCfg:      schemaCfg,
-		session:        session,
+		readSession:    readSession,
+		writeSession:   writeSession,
 		querySemaphore: querySemaphore,
 	}
 	return client, nil
@@ -229,7 +236,8 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient,
 
 // Stop implement chunk.IndexClient.
 func (s *StorageClient) Stop() {
-	s.session.Close()
+	s.readSession.Close()
+	s.writeSession.Close()
 }
 
 // Cassandra batching isn't really useful in this case, its more to do multiple
@@ -266,7 +274,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	b := batch.(*writeBatch)
 
 	for _, entry := range b.entries {
-		err := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
+		err := s.writeSession.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
 			entry.TableName), entry.HashValue, entry.RangeValue, entry.Value).WithContext(ctx).Exec()
 		if err != nil {
 			return errors.WithStack(err)
@@ -274,7 +282,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	}
 
 	for _, entry := range b.deletes {
-		err := s.session.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
+		err := s.writeSession.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName), entry.HashValue, entry.RangeValue).WithContext(ctx).Exec()
 		if err != nil {
 			return errors.WithStack(err)
@@ -301,27 +309,27 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 
 	switch {
 	case len(query.RangeValuePrefix) > 0 && query.ValueEqual == nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ?",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ?",
 			query.TableName), query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'))
 
 	case len(query.RangeValuePrefix) > 0 && query.ValueEqual != nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ? AND value = ? ALLOW FILTERING",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'), query.ValueEqual)
 
 	case len(query.RangeValueStart) > 0 && query.ValueEqual == nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
 			query.TableName), query.HashValue, query.RangeValueStart)
 
 	case len(query.RangeValueStart) > 0 && query.ValueEqual != nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ? ALLOW FILTERING",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.RangeValueStart, query.ValueEqual)
 
 	case query.ValueEqual == nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?",
 			query.TableName), query.HashValue)
 
 	case query.ValueEqual != nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
+		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.ValueEqual)
 	}
 
@@ -387,7 +395,7 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 
 		// Must provide a range key, even though its not useds - hence 0x00.
-		q := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)",
+		q := s.writeSession.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)",
 			tableName), key, buf)
 		if err := q.WithContext(ctx).Exec(); err != nil {
 			return errors.WithStack(err)
@@ -416,7 +424,7 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	}
 
 	var buf []byte
-	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
+	if err := s.readSession.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, errors.WithStack(err)
 	}

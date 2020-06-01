@@ -16,8 +16,22 @@ spec:
         prometheus.io.scrape: "false"
     spec:
       containers:
-      - name: s3
-        image: lphoward/fake-s3
+      - name: minio
+        image: minio/minio
+        args:
+        - server
+        - /storage
+        env:
+        - name: MINIO_ACCESS_KEY
+          value: "abc"
+        - name: MINIO_SECRET_KEY
+          value: "123"
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 4569
+        volumeMounts:
+        - name: storage
+          mountPath: "/storage"
+      volumes:
+      - name: storage
+        emptyDir: {}

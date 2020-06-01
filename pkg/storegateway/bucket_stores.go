@@ -186,10 +186,10 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 // Series makes a series request to the underlying user bucket store.
 func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	log, ctx := spanlogger.New(srv.Context(), "BucketStores.Series")
-	defer log.Span.Finish()
+	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
+	defer spanLog.Span.Finish()
 
-	userID := getUserIDFromGRPCContext(ctx)
+	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return fmt.Errorf("no userID")
 	}
@@ -199,7 +199,10 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
-	return store.Series(req, srv)
+	return store.Series(req, spanSeriesServer{
+		Store_SeriesServer: srv,
+		ctx:                spanCtx,
+	})
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
@@ -330,4 +333,14 @@ func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*tha
 		metas[u].Thanos.Labels = l
 	}
 	return nil
+}
+
+type spanSeriesServer struct {
+	storepb.Store_SeriesServer
+
+	ctx context.Context
+}
+
+func (s spanSeriesServer) Context() context.Context {
+	return s.ctx
 }

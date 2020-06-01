@@ -38,7 +38,6 @@ type BucketStores struct {
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
 	metaFetcherMetrics *MetadataFetcherMetrics
-	indexCacheMetrics  prometheus.Collector
 	filters            []block.MetadataFilter
 
 	// Index cache shared across all tenants.
@@ -60,8 +59,6 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
 
-	indexCacheRegistry := prometheus.NewRegistry()
-
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
@@ -71,25 +68,24 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
-		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "blocks_sync_seconds",
+			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "blocks_last_successful_sync_timestamp_seconds",
+			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}
 
 	// Init the index cache.
-	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, indexCacheRegistry); err != nil {
+	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, reg); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}
 
 	if reg != nil {
-		reg.MustRegister(u.bucketStoreMetrics, u.metaFetcherMetrics, u.indexCacheMetrics)
+		reg.MustRegister(u.bucketStoreMetrics, u.metaFetcherMetrics)
 	}
 
 	return u, nil

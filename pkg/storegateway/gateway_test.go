@@ -271,11 +271,11 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 
 			// Assert on the number of blocks loaded extracting this information from metrics.
 			metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(registries)
-			assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_storegateway_bucket_store_blocks_loaded"))
+			assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
 
 			// The total number of blocks synced (before filtering) is always equal to the total
 			// number of blocks for each instance.
-			assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_storegateway_blocks_meta_synced"))
+			assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
 		})
 	}
 }

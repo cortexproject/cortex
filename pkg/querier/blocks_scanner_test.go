@@ -58,21 +58,21 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 	}, deletionMarks)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_querier_blocks_meta_syncs_total Total blocks metadata synchronization attempts
-		# TYPE cortex_querier_blocks_meta_syncs_total counter
-		cortex_querier_blocks_meta_syncs_total 2
+		# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE cortex_blocks_meta_syncs_total counter
+		cortex_blocks_meta_syncs_total{component="querier"} 2
 
-		# HELP cortex_querier_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
-		# TYPE cortex_querier_blocks_meta_sync_failures_total counter
-		cortex_querier_blocks_meta_sync_failures_total 0
+		# HELP cortex_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE cortex_blocks_meta_sync_failures_total counter
+		cortex_blocks_meta_sync_failures_total{component="querier"} 0
 
-		# HELP cortex_querier_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
-		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
-		cortex_querier_blocks_meta_sync_consistency_delay_seconds 0
+		# HELP cortex_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
+		# TYPE cortex_blocks_meta_sync_consistency_delay_seconds gauge
+		cortex_blocks_meta_sync_consistency_delay_seconds{component="querier"} 0
 	`),
-		"cortex_querier_blocks_meta_syncs_total",
-		"cortex_querier_blocks_meta_sync_failures_total",
-		"cortex_querier_blocks_meta_sync_consistency_delay_seconds",
+		"cortex_blocks_meta_syncs_total",
+		"cortex_blocks_meta_sync_failures_total",
+		"cortex_blocks_meta_sync_consistency_delay_seconds",
 	))
 
 	assert.Greater(t, testutil.ToFloat64(s.scanLastSuccess), float64(0))
@@ -110,25 +110,25 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 	assert.Nil(t, deletionMarks)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_querier_blocks_meta_syncs_total Total blocks metadata synchronization attempts
-		# TYPE cortex_querier_blocks_meta_syncs_total counter
-		cortex_querier_blocks_meta_syncs_total 3
+		# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE cortex_blocks_meta_syncs_total counter
+		cortex_blocks_meta_syncs_total{component="querier"} 3
 
-		# HELP cortex_querier_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
-		# TYPE cortex_querier_blocks_meta_sync_failures_total counter
-		cortex_querier_blocks_meta_sync_failures_total 3
+		# HELP cortex_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE cortex_blocks_meta_sync_failures_total counter
+		cortex_blocks_meta_sync_failures_total{component="querier"} 3
 
-		# HELP cortex_querier_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
-		# TYPE cortex_querier_blocks_meta_sync_consistency_delay_seconds gauge
-		cortex_querier_blocks_meta_sync_consistency_delay_seconds 0
+		# HELP cortex_blocks_meta_sync_consistency_delay_seconds Configured consistency delay in seconds.
+		# TYPE cortex_blocks_meta_sync_consistency_delay_seconds gauge
+		cortex_blocks_meta_sync_consistency_delay_seconds{component="querier"} 0
 
 		# HELP cortex_querier_blocks_last_successful_scan_timestamp_seconds Unix timestamp of the last successful blocks scan.
 		# TYPE cortex_querier_blocks_last_successful_scan_timestamp_seconds gauge
 		cortex_querier_blocks_last_successful_scan_timestamp_seconds 0
 	`),
-		"cortex_querier_blocks_meta_syncs_total",
-		"cortex_querier_blocks_meta_sync_failures_total",
-		"cortex_querier_blocks_meta_sync_consistency_delay_seconds",
+		"cortex_blocks_meta_syncs_total",
+		"cortex_blocks_meta_sync_failures_total",
+		"cortex_blocks_meta_sync_consistency_delay_seconds",
 		"cortex_querier_blocks_last_successful_scan_timestamp_seconds",
 	))
 }

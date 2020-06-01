@@ -142,7 +142,6 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 	// lets wrap all caches with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers
 	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	chunksCache = cache.NewCacheGenNumMiddleware(chunksCache)
 	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()

@@ -10,6 +10,11 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
+var (
+	primaryLabel   = prometheus.Labels{"role": "primary"}
+	secondaryLabel = prometheus.Labels{"role": "secondary"}
+)
+
 // errorCode converts an error into an HTTP status code, modified from weaveworks/common/instrument
 func errorCode(err error) string {
 	if err == nil {
@@ -26,7 +31,7 @@ type metrics struct {
 	requestDuration *instrument.HistogramCollector
 }
 
-func newMetricsClient(name string, backend string, c Client, reg prometheus.Registerer) Client {
+func newMetricsClient(backend string, c Client, reg prometheus.Registerer) Client {
 	// If no Registerer is provided return the raw client
 	if reg == nil {
 		return c
@@ -41,7 +46,6 @@ func newMetricsClient(name string, backend string, c Client, reg prometheus.Regi
 				Help:      "Time spent on kv store requests.",
 				Buckets:   prometheus.DefBuckets,
 				ConstLabels: prometheus.Labels{
-					"name": name,
 					"type": backend,
 				},
 			}, []string{"operation", "status_code"}),

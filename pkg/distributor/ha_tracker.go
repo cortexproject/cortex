@@ -157,7 +157,11 @@ func newClusterTracker(cfg HATrackerConfig, reg prometheus.Registerer) (*haTrack
 	}
 
 	if cfg.EnableHATracker {
-		client, err := kv.NewClient(RingNameForClient, cfg.KVStore, GetReplicaDescCodec(), reg)
+		client, err := kv.NewClient(
+			cfg.KVStore,
+			GetReplicaDescCodec(),
+			prometheus.WrapRegistererWith(prometheus.Labels{"name": RingNameForClient}, reg),
+		)
 		if err != nil {
 			return nil, err
 		}

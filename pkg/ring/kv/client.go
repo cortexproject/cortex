@@ -99,15 +99,15 @@ type Client interface {
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewClient(name string, cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	return createClient(name, cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, reg)
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, reg)
 }
 
-func createClient(name string, backend string, prefix string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	var client Client
 	var err error
 
@@ -137,7 +137,7 @@ func createClient(name string, backend string, prefix string, cfg StoreConfig, c
 		}
 
 	case "multi":
-		client, err = buildMultiClient(name, cfg, codec, reg)
+		client, err = buildMultiClient(cfg, codec, reg)
 
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", backend)
@@ -151,10 +151,10 @@ func createClient(name string, backend string, prefix string, cfg StoreConfig, c
 		client = PrefixClient(client, prefix)
 	}
 
-	return newMetricsClient(name, backend, client, reg), nil
+	return newMetricsClient(backend, client, reg), nil
 }
 
-func buildMultiClient(name string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -165,12 +165,12 @@ func buildMultiClient(name string, cfg StoreConfig, codec codec.Codec, reg prome
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(name+"-primary", cfg.Multi.Primary, "", cfg, codec, reg)
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, prometheus.WrapRegistererWith(primaryLabel, reg))
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(name+"-secondary", cfg.Multi.Secondary, "", cfg, codec, reg)
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, prometheus.WrapRegistererWith(secondaryLabel, reg))
 	if err != nil {
 		return nil, err
 	}

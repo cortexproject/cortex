@@ -140,7 +140,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool, reg prometheus.Registerer) (*Lifecycler, error) {
 	addr, err := GetInstanceAddr(cfg.Addr, cfg.InfNames)
 	if err != nil {
 		return nil, err
@@ -148,7 +148,11 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	port := GetInstancePort(cfg.Port, cfg.ListenPort)
 	codec := GetCodec()
 	// Suffix all client names with "-lifecycler" to denote this kv client is used by the lifecycler
-	store, err := kv.NewClient(ringName+"-lifecycler", cfg.RingConfig.KVStore, codec, nil)
+	store, err := kv.NewClient(
+		cfg.RingConfig.KVStore,
+		codec,
+		prometheus.WrapRegistererWith(prometheus.Labels{"name": ringName + "-lifecycler"}, reg),
+	)
 	if err != nil {
 		return nil, err
 	}

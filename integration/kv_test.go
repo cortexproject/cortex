@@ -33,7 +33,7 @@ func TestKV_List_Delete(t *testing.T) {
 
 	reg := prometheus.NewRegistry()
 
-	etcdKv, err := kv.NewClient("test-etcd", kv.Config{
+	etcdKv, err := kv.NewClient(kv.Config{
 		Store:  "etcd",
 		Prefix: "keys/",
 		StoreConfig: kv.StoreConfig{
@@ -46,7 +46,7 @@ func TestKV_List_Delete(t *testing.T) {
 	}, stringCodec{}, reg)
 	require.NoError(t, err)
 
-	consulKv, err := kv.NewClient("test-consul", kv.Config{
+	consulKv, err := kv.NewClient(kv.Config{
 		Store:  "consul",
 		Prefix: "keys/",
 		StoreConfig: kv.StoreConfig{

@@ -153,7 +153,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		storesRingBackend, err := kv.NewClient(
 			storesRingCfg.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, storegateway.RingNameForClient+"-block-store"),
+			kv.RegistererWithKVName(reg, "querier-store-gateway"),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store-gateway ring backend")

@@ -149,7 +149,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	// ruler's dependency)
 	canJoinDistributorsRing := (t.Cfg.Target == All || t.Cfg.Target == Distributor)
 
-	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, nil)
+	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

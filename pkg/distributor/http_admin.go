@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const tpl = `
@@ -83,7 +85,8 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := tmpl.Execute(w, struct {
+	// jpe : json tags
+	util.RenderHTTPResponse(w, struct {
 		Now               time.Time
 		Stats             []UserIDStats
 		ReplicationFactor int
@@ -91,8 +94,5 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 		Now:               time.Now(),
 		Stats:             stats,
 		ReplicationFactor: d.ingestersRing.ReplicationFactor(),
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	}, tmpl, r)
 }

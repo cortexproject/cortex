@@ -158,7 +158,8 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	tokensParam := req.URL.Query().Get("tokens")
 
-	if err := pageTemplate.Execute(w, struct {
+	// jpe : add json tag names? change "Ingesters" to "Shards" or instances or something.  same method called by distrib, ruler, store
+	util.RenderHTTPResponse(w, struct {
 		Ingesters  []interface{}
 		Now        time.Time
 		ShowTokens bool
@@ -166,8 +167,5 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		Ingesters:  ingesters,
 		Now:        time.Now(),
 		ShowTokens: tokensParam == "true",
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	}, pageTemplate, req)
 }

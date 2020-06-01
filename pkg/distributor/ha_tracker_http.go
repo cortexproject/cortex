@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 )
 
@@ -86,14 +87,12 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return first.Cluster < second.Cluster
 	})
 
-	if err := trackerTmpl.Execute(w, struct {
+	// jpe : json tags
+	util.RenderHTTPResponse(w, struct {
 		Elected []replica
 		Now     time.Time
 	}{
 		Elected: electedReplicas,
 		Now:     time.Now(),
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	}, trackerTmpl, req)
 }

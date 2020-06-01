@@ -1,18 +1,74 @@
 package cortex
 
 import (
-	"fmt"
+	"html/template"
 	"net/http"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
+
+const tpl = `
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Cortex Services Status</title>
+	</head>
+	<body>
+		<h1>Cortex Services Status</h1>
+		<p>Current time: {{ .Now }}</p>
+		<form action="" method="POST">
+			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
+			<table border="1">
+				<thead>
+					<tr>
+						<th>Service</th>
+						<th>Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{ range .Services }}
+					<tr>
+						<td>{{ .Name }}</td>
+						<td>{{ .Status }}</td>
+					</tr>
+					{{ end }}
+				</tbody>
+			</table>
+		</form>
+	</body>
+</html>`
+
+var tmpl *template.Template
+
+type renderService struct {
+	Name   string
+	Status string
+}
+
+func init() {
+	tmpl = template.Must(template.New("webpage").Parse(tpl))
+}
 
 func (t *Cortex) servicesHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 	w.Header().Set("Content-Type", "text/plain")
 
-	// TODO: this could be extended to also print sub-services, if given service has any
+	svcs := make([]renderService, 0)
 	for mod, s := range t.ServiceMap {
-		if s != nil {
-			fmt.Fprintf(w, "%v => %v\n", mod, s.State())
-		}
+		svcs = append(svcs, renderService{
+			Name:   mod,
+			Status: s.State().String(),
+		})
 	}
+
+	// TODO: this could be extended to also print sub-services, if given service has any
+	util.RenderHTTPResponse(w, struct {
+		Now      time.Time
+		Services []renderService
+	}{
+		Now:      time.Now(),
+		Services: svcs,
+	}, tmpl, r)
 }

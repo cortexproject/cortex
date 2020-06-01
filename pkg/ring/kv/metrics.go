@@ -15,6 +15,16 @@ var (
 	secondaryLabel = prometheus.Labels{"role": "secondary"}
 )
 
+// RegistererWithKVName wraps the provided Registerer with the KV name label. If a nil reg
+// is provided, a nil registry is returned
+func RegistererWithKVName(reg prometheus.Registerer, name string) prometheus.Registerer {
+	if reg == nil {
+		return nil
+	}
+
+	return prometheus.WrapRegistererWith(prometheus.Labels{"name": name}, reg)
+}
+
 // errorCode converts an error into an HTTP status code, modified from weaveworks/common/instrument
 func errorCode(err error) string {
 	if err == nil {

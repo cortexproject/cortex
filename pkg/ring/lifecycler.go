@@ -151,7 +151,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	store, err := kv.NewClient(
 		cfg.RingConfig.KVStore,
 		codec,
-		prometheus.WrapRegistererWith(prometheus.Labels{"name": ringName + "-lifecycler"}, reg),
+		kv.RegistererWithKVName(reg, ringName+"-lifecycler"),
 	)
 	if err != nil {
 		return nil, err

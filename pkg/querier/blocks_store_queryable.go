@@ -153,7 +153,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		storesRingBackend, err := kv.NewClient(
 			storesRingCfg.KVStore,
 			ring.GetCodec(),
-			prometheus.WrapRegistererWith(prometheus.Labels{"name": storegateway.RingNameForClient + "-block-store"}, reg),
+			kv.RegistererWithKVName(reg, storegateway.RingNameForClient+"-block-store"),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store-gateway ring backend")

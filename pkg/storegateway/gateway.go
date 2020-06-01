@@ -84,7 +84,7 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, logLevel 
 		ringStore, err = kv.NewClient(
 			gatewayCfg.ShardingRing.KVStore,
 			ring.GetCodec(),
-			prometheus.WrapRegistererWith(prometheus.Labels{"name": RingNameForClient}, reg),
+			kv.RegistererWithKVName(reg, RingNameForClient),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")

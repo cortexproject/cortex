@@ -122,7 +122,7 @@ func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error)
 	store, err := kv.NewClient(
 		cfg.KVStore,
 		codec,
-		prometheus.WrapRegistererWith(prometheus.Labels{"name": name + "-ring"}, reg),
+		kv.RegistererWithKVName(reg, name+"-ring"),
 	)
 	if err != nil {
 		return nil, err

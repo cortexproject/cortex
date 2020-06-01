@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/timestamp"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const trackerTpl = `

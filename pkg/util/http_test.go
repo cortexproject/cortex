@@ -57,7 +57,7 @@ func TestRenderHTTPResponse(t *testing.T) {
 
 			RenderHTTPResponse(writer, tt.value, tmpl, request)
 
-			assert.Equal(t, tt.expected, string(writer.Body.Bytes()))
+			assert.Equal(t, tt.expected, writer.Body.String())
 		})
 	}
 }

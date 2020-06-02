@@ -286,6 +286,9 @@ func getFieldType(t reflect.Type) (string, error) {
 
 		return "list of " + elemType, nil
 
+	case reflect.Map:
+		return fmt.Sprintf("map of %s to %s", t.Key(), t.Elem().String()), nil
+
 	default:
 		return "", fmt.Errorf("unsupported data type %s", t.Kind())
 	}

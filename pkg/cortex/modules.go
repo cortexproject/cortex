@@ -383,7 +383,18 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.Cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient, bucketClient, prometheus.DefaultRegisterer)
+	var extraTables []chunk.ExtraTables
+	if t.Cfg.DataPurgerConfig.Enable {
+		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage)
+		if err != nil {
+			return nil, err
+		}
+
+		extraTables = append(extraTables, chunk.ExtraTables{TableClient: deleteStoreTableClient, Tables: t.Cfg.Storage.DeleteStoreConfig.GetTables()})
+	}
+
+	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient,
+		bucketClient, extraTables, prometheus.DefaultRegisterer)
 	return t.TableManager, err
 }
 

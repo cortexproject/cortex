@@ -60,6 +60,25 @@ func (s *CompositeHTTPService) WaitSumMetrics(isExpected func(sums ...float64) b
 	return fmt.Errorf("unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
 }
 
+func (s *CompositeHTTPService) WaitSumMetricWithLabels(isExpected func(sums float64) bool, metricName string, expectedLabels map[string]string) error {
+	lastSum := 0.0
+
+	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
+		lastSum, err := s.SumMetricWithLabels(metricName, expectedLabels)
+		if err != nil {
+			return err
+		}
+
+		if isExpected(lastSum) {
+			return nil
+		}
+
+		s.retryBackoff.Wait()
+	}
+
+	return fmt.Errorf("unable to find metric %s with labels %v with expected value. Last value: %v", metricName, expectedLabels, lastSum)
+}
+
 // SumMetrics returns the sum of the values of each given metric names.
 func (s *CompositeHTTPService) SumMetrics(metricNames ...string) ([]float64, error) {
 	sums := make([]float64, len(metricNames))
@@ -80,4 +99,20 @@ func (s *CompositeHTTPService) SumMetrics(metricNames ...string) ([]float64, err
 	}
 
 	return sums, nil
+}
+
+// SumMetricWithLabels returns the sum of the values of metric with matching labels across all services.
+func (s *CompositeHTTPService) SumMetricWithLabels(metricName string, expectedLabels map[string]string) (float64, error) {
+	sum := 0.0
+
+	for _, service := range s.services {
+		s, err := service.SumMetricWithLabels(metricName, expectedLabels)
+		if err != nil {
+			return 0, err
+		}
+
+		sum += s
+	}
+
+	return sum, nil
 }

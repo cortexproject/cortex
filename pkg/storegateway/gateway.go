@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -141,12 +142,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		filters = append(filters, NewShardingMetadataFilter(g.ring, lifecyclerCfg.Addr, logger))
 	}
 
-	var storesReg prometheus.Registerer
-	if reg != nil {
-		storesReg = prometheus.WrapRegistererWithPrefix("cortex_storegateway_", reg)
-	}
-
-	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, storesReg)
+	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
 	}

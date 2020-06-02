@@ -18,25 +18,22 @@ const tpl = `
 	<body>
 		<h1>Cortex Services Status</h1>
 		<p>Current time: {{ .Now }}</p>
-		<form action="" method="POST">
-			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
-			<table border="1">
-				<thead>
-					<tr>
-						<th>Service</th>
-						<th>Status</th>
-					</tr>
-				</thead>
-				<tbody>
-					{{ range .Services }}
-					<tr>
-						<td>{{ .Name }}</td>
-						<td>{{ .Status }}</td>
-					</tr>
-					{{ end }}
-				</tbody>
-			</table>
-		</form>
+		<table border="1">
+			<thead>
+				<tr>
+					<th>Service</th>
+					<th>Status</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{ range .Services }}
+				<tr>
+					<td>{{ .Name }}</td>
+					<td>{{ .Status }}</td>
+				</tr>
+				{{ end }}
+			</tbody>
+		</table>
 	</body>
 </html>`
 

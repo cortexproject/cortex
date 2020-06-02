@@ -1726,6 +1726,10 @@ cassandra:
   # CLI flag: -cassandra.query-concurrency
   [query_concurrency: <int> | default = 0]
 
+  # Number of TCP connections per host.
+  # CLI flag: -cassandra.num-connections
+  [num_connections: <int> | default = 2]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir

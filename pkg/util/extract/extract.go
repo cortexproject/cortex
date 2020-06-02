@@ -51,3 +51,12 @@ func MetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher,
 	// Return all matchers if none are metric name matchers
 	return nil, matchers, false
 }
+
+// MetricNameFromLabels extracts the metric name from a list of Prometheus Labels.
+func MetricNameFromLabels(lbls labels.Labels) (metricName string, err error) {
+	metricName = lbls.Get(model.MetricNameLabel)
+	if metricName == "" {
+		err = fmt.Errorf("No metric name label")
+	}
+	return
+}

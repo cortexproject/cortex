@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/extract"
 	"io"
 	"math"
 	"net/http"
@@ -46,7 +47,10 @@ type Shipper interface {
 
 type userTSDB struct {
 	*tsdb.DB
-	refCache *cortex_tsdb.RefCache
+	userID         string
+	refCache       *cortex_tsdb.RefCache
+	seriesInMetric *metricCounter
+	limiter        *Limiter
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper       Shipper
@@ -56,6 +60,49 @@ type userTSDB struct {
 	// for statistics
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
+}
+
+// PreCreation implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PreCreation(metric labels.Labels) error {
+	if u.limiter == nil {
+		return nil
+	}
+
+	// Total series limit.
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.DB.Head().NumSeries())); err != nil {
+		return makeLimitError(perUserSeriesLimit, err)
+	}
+
+	// Series per metric name limit.
+	metricName, err := extract.MetricNameFromLabels(metric)
+	if err != nil {
+		// TODO(codesome): what should be the action?
+	}
+	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
+		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
+	}
+
+	return nil
+}
+
+// PostCreation implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PostCreation(metric labels.Labels) {
+	metricName, err := extract.MetricNameFromLabels(metric)
+	if err != nil {
+		// TODO(codesome): what should be the action?
+	}
+	u.seriesInMetric.seriesAddedFor(metricName)
+}
+
+// PostDeletion implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+	for _, metric := range metrics {
+		metricName, err := extract.MetricNameFromLabels(metric)
+		if err != nil {
+			// TODO(codesome): what should be the action?
+		}
+		u.seriesInMetric.removeMetricName(metricName)
+	}
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -73,6 +120,8 @@ type TSDBState struct {
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
+
+	seriesInMetric *metricCounter
 
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
@@ -156,6 +205,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+	i.TSDBState.seriesInMetric = newMetricCounter(i.limiter)
 
 	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
@@ -788,26 +838,33 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.TSDBConfig.BlockRanges.ToMilliseconds()
 
+	userDB := &userTSDB{
+		userID:              userID,
+		refCache:            cortex_tsdb.NewRefCache(),
+		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+	}
+
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration: i.cfg.TSDBConfig.Retention.Milliseconds(),
-		MinBlockDuration:  blockRanges[0],
-		MaxBlockDuration:  blockRanges[len(blockRanges)-1],
-		NoLockfile:        true,
-		StripeSize:        i.cfg.TSDBConfig.StripeSize,
-		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
+		RetentionDuration:       i.cfg.TSDBConfig.Retention.Milliseconds(),
+		MinBlockDuration:        blockRanges[0],
+		MaxBlockDuration:        blockRanges[len(blockRanges)-1],
+		NoLockfile:              true,
+		StripeSize:              i.cfg.TSDBConfig.StripeSize,
+		WALCompression:          i.cfg.TSDBConfig.WALCompressionEnabled,
+		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
 		return nil, err
 	}
 	db.DisableCompactions() // we will compact on our own schedule
 
-	userDB := &userTSDB{
-		DB:                  db,
-		refCache:            cortex_tsdb.NewRefCache(),
-		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-	}
+	userDB.DB = db
+	userDB.seriesInMetric = i.TSDBState.seriesInMetric
+	// We set the limiter here because we don't want to limit
+	// series during WAL replay.
+	userDB.limiter = i.limiter
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading

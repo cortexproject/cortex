@@ -34,7 +34,6 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
 func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
-
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		WriteJSONResponse(w, v)

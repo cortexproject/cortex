@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/blang/semver"
 	"github.com/gogo/protobuf/proto"
@@ -33,9 +34,9 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
 func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
-	// jpe any defines here?
-	accepts := r.Header.Get("Accepts")
-	if accepts == "application/json" {
+
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") {
 		WriteJSONResponse(w, v)
 		return
 	}

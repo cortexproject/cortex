@@ -85,7 +85,6 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// jpe : json tags
 	util.RenderHTTPResponse(w, struct {
 		Now               time.Time     `json:"now"`
 		Stats             []UserIDStats `json:"stats"`

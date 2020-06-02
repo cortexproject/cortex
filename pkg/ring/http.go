@@ -162,7 +162,6 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	tokensParam := req.URL.Query().Get("tokens")
 
-	// jpe : add json tag names? change "Ingesters" to "Shards" or instances or something.  same method called by distrib, ruler, store
 	util.RenderHTTPResponse(w, struct {
 		Ingesters  []interface{} `json:"shards"`
 		Now        time.Time     `json:"now"`

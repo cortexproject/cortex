@@ -91,7 +91,6 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return first.Cluster < second.Cluster
 	})
 
-	// jpe : json tags
 	util.RenderHTTPResponse(w, struct {
 		Elected []replica `json:"elected"`
 		Now     time.Time `json:"now"`

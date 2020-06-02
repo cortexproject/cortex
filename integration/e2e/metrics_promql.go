@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 var (
@@ -171,21 +172,17 @@ func (sq samplesQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 	return sq, nil
 }
 
-func (sq samplesQueryable) SelectSorted(_ *storage.SelectParams, matcher ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (sq samplesQueryable) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	var series []storage.Series
 
 	for _, s := range sq {
-		if s.matches(matcher...) {
+		if s.matches(matchers...) {
 			series = append(series, s)
 		}
 	}
 
 	sort.Sort(byLabels(series))
 	return &seriesSet{cur: -1, series: series}, nil, nil
-}
-
-func (sq samplesQueryable) Select(params *storage.SelectParams, matcher ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return sq.SelectSorted(params, matcher...)
 }
 
 func (sq samplesQueryable) LabelValues(name string) ([]string, storage.Warnings, error) {
@@ -236,7 +233,7 @@ func (c sample) Labels() labels.Labels {
 	return b.Labels()
 }
 
-func (c sample) Iterator() storage.SeriesIterator {
+func (c sample) Iterator() chunkenc.Iterator {
 	return newSampleIterator(c.ts, c.val)
 }
 
@@ -250,7 +247,7 @@ func (c sample) matches(matcher ...*labels.Matcher) bool {
 	return true
 }
 
-var _ storage.SeriesIterator = &singleSampleIterator{}
+var _ chunkenc.Iterator = &singleSampleIterator{}
 
 type singleSampleIterator struct {
 	nextCalled bool
@@ -258,7 +255,7 @@ type singleSampleIterator struct {
 	val        float64
 }
 
-func newSampleIterator(ts int64, val float64) storage.SeriesIterator {
+func newSampleIterator(ts int64, val float64) chunkenc.Iterator {
 	return &singleSampleIterator{
 		ts:  ts,
 		val: val,

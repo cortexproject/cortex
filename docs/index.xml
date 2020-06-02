@@ -6716,6 +6716,16 @@ replica: replica2
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: when &lt;code&gt;-querier.query-store-after&lt;/code&gt; is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than &amp;lsquo;now - query-store-after&amp;rsquo;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2642&#34;&gt;#2642&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2651&#34;&gt;#2651&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] The following endpoints now respond appropriately to an &lt;code&gt;Accepts&lt;/code&gt; header with the value &lt;code&gt;application/json&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2673&#34;&gt;#2673&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;/distributor/all_user_stats&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/distributor/ha_tracker&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/ingester/ring&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/store-gateway/ring&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/compactor/ring&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/ruler/ring&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/services&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Add &lt;code&gt;-cassandra.num-connections&lt;/code&gt; to allow increasing the number of TCP connections to each Cassandra server. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2666&#34;&gt;#2666&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Use separate Cassandra clients and connections for reads and writes. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2666&#34;&gt;#2666&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2506&#34;&gt;#2506&lt;/a&gt;&lt;/li&gt;

@@ -413,6 +413,15 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				continue
 			}
 
+			if ve, ok := cause.(*validationError); ok {
+				// Caused by limits.
+				if firstPartialErr == nil {
+					firstPartialErr = ve
+				}
+				validation.DiscardedSamples.WithLabelValues(ve.errorType, userID).Inc()
+				continue
+			}
+
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
 				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)

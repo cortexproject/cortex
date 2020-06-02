@@ -94,6 +94,14 @@
   * TSDB now does memory-mapping of Head chunks and reduces memory usage.
 * [ENHANCEMENT] Experimental TSDB: when `-querier.query-store-after` is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than 'now - query-store-after'. #2642
 * [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
+* [ENHANCEMENT] The following endpoints now respond appropriately to an `Accepts` header with the value `application/json` #2673
+  * `/distributor/all_user_stats`
+  * `/distributor/ha_tracker`
+  * `/ingester/ring`
+  * `/store-gateway/ring`
+  * `/compactor/ring`
+  * `/ruler/ring`
+  * `/services`
 * [ENHANCEMENT] Add `-cassandra.num-connections` to allow increasing the number of TCP connections to each Cassandra server. #2666
 * [ENHANCEMENT] Use separate Cassandra clients and connections for reads and writes. #2666
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506

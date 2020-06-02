@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
@@ -44,6 +45,7 @@ type Config struct {
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
 	QueryConcurrency         int                 `yaml:"query_concurrency"`
 	NumConnections           int                 `yaml:"num_connections"`
+	ConvictHosts             bool                `yaml:"convict_hosts"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -70,6 +72,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
+	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts", true, "Convict hosts of being down on failure. (Default is true)")
 }
 
 func (cfg *Config) Validate() error {
@@ -98,12 +101,18 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
+	cluster.Logger = log.With(pkgutil.Logger, "module", "gocql", "client", name)
+	cluster.Registerer = prometheus.WrapRegistererWith(
+		prometheus.Labels{"client": name}, prometheus.DefaultRegisterer)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
 			Min:        cfg.MinBackoff,
 			Max:        cfg.MaxBackoff,
 		}
+	}
+	if cfg.ConvictHosts {
+		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
 	if err = cfg.setClusterConfig(cluster); err != nil {
 		return nil, errors.WithStack(err)
@@ -439,3 +448,16 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
 	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
 }
+
+type noopConvictionPolicy struct{}
+
+// AddFailure should return `true` if the host should be convicted, `false` otherwise.
+// Convicted means connections are removed - we don't want that.
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
+	level.Error(pkgutil.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
+	return false
+}
+
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}

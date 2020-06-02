@@ -92,6 +92,7 @@
 * [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626 #2640
 * [ENHANCEMENT] Upgrade Thanos to [f7802edbf830](https://github.com/thanos-io/thanos/commit/f7802edbf830) and Prometheus to [f4dd45609a05](https://github.com/prometheus/prometheus/commit/f4dd45609a05) which is after v2.18.1. #2634
   * TSDB now does memory-mapping of Head chunks and reduces memory usage.
+* [ENHANCEMENT] Experimental TSDB: Series limit per user and per metric now work in TSDB blocks. #2676
 * [ENHANCEMENT] Experimental TSDB: when `-querier.query-store-after` is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than 'now - query-store-after'. #2642
 * [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
 * [ENHANCEMENT] The following endpoints now respond appropriately to an `Accepts` header with the value `application/json` #2673

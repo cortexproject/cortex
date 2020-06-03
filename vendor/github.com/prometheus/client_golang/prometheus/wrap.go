@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"sort"
 
+	//lint:ignore SA1019 Need to keep deprecated package for compatibility.
 	"github.com/golang/protobuf/proto"
 
 	dto "github.com/prometheus/client_model/go"
@@ -80,6 +81,9 @@ type wrappingRegisterer struct {
 }
 
 func (r *wrappingRegisterer) Register(c Collector) error {
+	if r.wrappedRegisterer == nil {
+		return nil
+	}
 	return r.wrappedRegisterer.Register(&wrappingCollector{
 		wrappedCollector: c,
 		prefix:           r.prefix,
@@ -88,6 +92,9 @@ func (r *wrappingRegisterer) Register(c Collector) error {
 }
 
 func (r *wrappingRegisterer) MustRegister(cs ...Collector) {
+	if r.wrappedRegisterer == nil {
+		return
+	}
 	for _, c := range cs {
 		if err := r.Register(c); err != nil {
 			panic(err)
@@ -96,6 +103,9 @@ func (r *wrappingRegisterer) MustRegister(cs ...Collector) {
 }
 
 func (r *wrappingRegisterer) Unregister(c Collector) bool {
+	if r.wrappedRegisterer == nil {
+		return false
+	}
 	return r.wrappedRegisterer.Unregister(&wrappingCollector{
 		wrappedCollector: c,
 		prefix:           r.prefix,

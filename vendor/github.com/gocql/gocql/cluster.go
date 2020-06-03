@@ -5,9 +5,13 @@
 package gocql
 
 import (
+	"context"
 	"errors"
 	"net"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // PoolConfig configures the connection pool used by the driver, it defaults to
@@ -19,8 +23,8 @@ type PoolConfig struct {
 	HostSelectionPolicy HostSelectionPolicy
 }
 
-func (p PoolConfig) buildPool(session *Session) *policyConnPool {
-	return newPolicyConnPool(session)
+func (p PoolConfig) buildPool(logger log.Logger, registerer prometheus.Registerer, session *Session) *policyConnPool {
+	return newPolicyConnPool(logger, registerer, session)
 }
 
 // ClusterConfig is a struct to configure the default cluster implementation
@@ -146,10 +150,23 @@ type ClusterConfig struct {
 
 	// Dialer will be used to establish all connections created for this Cluster.
 	// If not provided, a default dialer configured with ConnectTimeout will be used.
-	Dialer *net.Dialer
+	Dialer Dialer
 
 	// internal config for testing
 	disableControlConn bool
+
+	// Logger to use throughout the codebase.
+	Logger log.Logger
+
+	// Registerer for the client to add metrics to.
+	// Nil means no metrics will be expose.  Feel free to set to prometheus.DefaultRegisterer.
+	// NB if you have multiple clients per process, you will need to give them distinct labels
+	// ie use prometheus.WrapRegistererWith(prometheus.Labels{"client": name}, prometheus.DefaultRegisterer)
+	Registerer prometheus.Registerer
+}
+
+type Dialer interface {
+	DialContext(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // NewCluster generates a new config for the default cluster implementation.

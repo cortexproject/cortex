@@ -87,7 +87,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session() (*gocql.Session, error) {
+func (cfg *Config) session(name string) (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -223,12 +223,12 @@ type StorageClient struct {
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	readSession, err := cfg.session()
+	readSession, err := cfg.session("index-read")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session()
+	writeSession, err := cfg.session("index-write")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -408,7 +408,12 @@ type ObjectClient struct {
 func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig) (*ObjectClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	session, err := cfg.session("chunks")
+	readSession, err := cfg.session("chunks-read")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	writeSession, err := cfg.session("chunks-write")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -486,7 +491,8 @@ func (s *ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
 
 // Stop implement chunk.ObjectClient.
 func (s *ObjectClient) Stop() {
-	s.session.Close()
+	s.readSession.Close()
+	s.writeSession.Close()
 }
 
 type noopConvictionPolicy struct{}

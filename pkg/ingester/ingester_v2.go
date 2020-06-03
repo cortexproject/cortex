@@ -3,7 +3,6 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"io"
 	"math"
 	"net/http"
@@ -31,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -77,6 +77,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	metricName, err := extract.MetricNameFromLabels(metric)
 	if err != nil {
 		// TODO(codesome): what should be the action?
+		return nil
 	}
 	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
 		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
@@ -90,6 +91,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	metricName, err := extract.MetricNameFromLabels(metric)
 	if err != nil {
 		// TODO(codesome): what should be the action?
+		return
 	}
 	u.seriesInMetric.seriesAddedFor(metricName)
 }
@@ -100,6 +102,7 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 		metricName, err := extract.MetricNameFromLabels(metric)
 		if err != nil {
 			// TODO(codesome): what should be the action?
+			continue
 		}
 		u.seriesInMetric.removeMetricName(metricName)
 	}
@@ -120,8 +123,6 @@ type TSDBState struct {
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
-
-	seriesInMetric *metricCounter
 
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
@@ -205,7 +206,6 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
-	i.TSDBState.seriesInMetric = newMetricCounter(i.limiter)
 
 	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
@@ -456,7 +456,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 
 	if firstPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
+		code := http.StatusBadRequest
+		if ve, ok := errors.Cause(firstPartialErr).(*validationError); ok {
+			code = ve.code
+		}
+		return &client.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
 	return &client.WriteResponse{}, nil
@@ -850,6 +854,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userDB := &userTSDB{
 		userID:              userID,
 		refCache:            cortex_tsdb.NewRefCache(),
+		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 	}
@@ -870,7 +875,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	db.DisableCompactions() // we will compact on our own schedule
 
 	userDB.DB = db
-	userDB.seriesInMetric = i.TSDBState.seriesInMetric
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter

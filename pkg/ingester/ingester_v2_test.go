@@ -1136,26 +1136,8 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*cl
 }
 
 func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, func(), error) {
-	clientCfg := defaultClientTestConfig()
-	limits := defaultLimitsTestConfig()
-
-	overrides, err := validation.NewOverrides(limits, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	// Create a temporary directory for TSDB
 	tempDir, err := ioutil.TempDir("", "tsdb")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ingesterCfg.TSDBEnabled = true
-	ingesterCfg.TSDBConfig.Dir = tempDir
-	ingesterCfg.TSDBConfig.Backend = "s3"
-	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
-
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1165,7 +1147,30 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 		os.RemoveAll(tempDir)
 	}
 
-	return ingester, cleanup, nil
+	ingester, err := newIngesterMockWithTSDBStorageAndLimits(ingesterCfg, defaultLimitsTestConfig(), tempDir, registerer)
+
+	return ingester, cleanup, err
+}
+
+func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validation.Limits, dir string, registerer prometheus.Registerer) (*Ingester, error) {
+	clientCfg := defaultClientTestConfig()
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	ingesterCfg.TSDBEnabled = true
+	ingesterCfg.TSDBConfig.Dir = dir
+	ingesterCfg.TSDBConfig.Backend = "s3"
+	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+
+	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
+	if err != nil {
+		return nil, err
+	}
+
+	return ingester, nil
 }
 
 func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {

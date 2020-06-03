@@ -56,6 +56,11 @@ func Fixtures() ([]testutils.Fixture, error) {
 		return nil, err
 	}
 
+	objectClient, err := NewObjectClient(cfg, schemaConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	tableClient, err := NewTableClient(context.Background(), cfg)
 	if err != nil {
 		return nil, err
@@ -65,7 +70,7 @@ func Fixtures() ([]testutils.Fixture, error) {
 		fixture{
 			name:         "Cassandra",
 			indexClient:  storageClient,
-			objectClient: storageClient,
+			objectClient: objectClient,
 			tableClient:  tableClient,
 			schemaConfig: schemaConfig,
 		},

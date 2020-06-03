@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -393,8 +395,41 @@ func (b *readBatchIter) Value() []byte {
 	return b.value
 }
 
+// ObjectClient implements chunk.ObjectClient for Cassandra.
+type ObjectClient struct {
+	cfg            Config
+	schemaCfg      chunk.SchemaConfig
+	readSession    *gocql.Session
+	writeSession   *gocql.Session
+	querySemaphore *semaphore.Weighted
+}
+
+// NewObjectClient returns a new ObjectClient.
+func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig) (*ObjectClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
+	session, err := cfg.session("chunks")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var querySemaphore *semaphore.Weighted
+	if cfg.QueryConcurrency > 0 {
+		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
+	}
+
+	client := &ObjectClient{
+		cfg:            cfg,
+		schemaCfg:      schemaCfg,
+		readSession:    readSession,
+		writeSession:   writeSession,
+		querySemaphore: querySemaphore,
+	}
+	return client, nil
+}
+
 // PutChunks implements chunk.ObjectClient.
-func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -418,11 +453,11 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 // GetChunks implements chunk.ObjectClient.
-func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, input, s.getChunk)
 }
 
-func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return input, err
@@ -444,9 +479,14 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
-func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+func (s *ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
 	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
+}
+
+// Stop implement chunk.ObjectClient.
+func (s *ObjectClient) Stop() {
+	s.session.Close()
 }
 
 type noopConvictionPolicy struct{}

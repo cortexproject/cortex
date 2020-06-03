@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -502,12 +503,23 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 }
 
 func TestIngesterUserLimitExceeded(t *testing.T) {
+	dirname, err := ioutil.TempDir("", "limits")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(dirname))
+	}()
+
+	cfg := defaultIngesterTestConfig()
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.Recover = true
+	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
-	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), limits, nil)
 
 	userID := "1"
 	// Series
@@ -531,54 +543,76 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 	// Append only one series and one metadata first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 	require.NoError(t, err)
 
-	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
-	}
-	// Append two metadata, expect no error since metadata is a best effort approach.
-	_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
-	require.NoError(t, err)
+	testLimits := func() {
+		// Append to two series, expect series-exceeded error.
+		_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+			t.Fatalf("expected error about exceeding metrics per user, got %v", err)
+		}
+		// Append two metadata, expect no error since metadata is a best effort approach.
+		_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+		require.NoError(t, err)
 
-	// Read samples back via ingester queries.
-	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
-	require.NoError(t, err)
+		// Read samples back via ingester queries.
+		res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+		require.NoError(t, err)
 
-	expected := model.Matrix{
-		{
-			Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
-			Values: []model.SamplePair{
-				{
-					Timestamp: model.Time(sample1.TimestampMs),
-					Value:     model.SampleValue(sample1.Value),
-				},
-				{
-					Timestamp: model.Time(sample2.TimestampMs),
-					Value:     model.SampleValue(sample2.Value),
+		expected := model.Matrix{
+			{
+				Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
+				Values: []model.SamplePair{
+					{
+						Timestamp: model.Time(sample1.TimestampMs),
+						Value:     model.SampleValue(sample1.Value),
+					},
+					{
+						Timestamp: model.Time(sample2.TimestampMs),
+						Value:     model.SampleValue(sample2.Value),
+					},
 				},
 			},
-		},
+		}
+
+		// Verify samples
+		require.Equal(t, expected, res)
+
+		// Verify metadata
+		m, err := ing.MetricsMetadata(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
 	}
 
-	// Verify samples
-	require.Equal(t, expected, res)
+	testLimits()
 
-	// Verify metadata
-	m, err := ing.MetricsMetadata(ctx, nil)
-	require.NoError(t, err)
-	assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
+	// Limits should hold after restart.
+	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), limits, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	testLimits()
 }
 
 func TestIngesterMetricLimitExceeded(t *testing.T) {
+	dirname, err := ioutil.TempDir("", "limits")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(dirname))
+	}()
+
+	cfg := defaultIngesterTestConfig()
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.Recover = true
+	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
+
 	limits := defaultLimitsTestConfig()
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
-	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), limits, nil)
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -602,46 +636,57 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 
 	// Append only one series and one metadata first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 	require.NoError(t, err)
 
-	// Append two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected error about exceeding series per metric, got %v", err)
-	}
+	testLimits := func() {
+		// Append two series, expect series-exceeded error.
+		_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+			t.Fatalf("expected error about exceeding series per metric, got %v", err)
+		}
 
-	// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
-	_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
-	require.NoError(t, err)
+		// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
+		_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+		require.NoError(t, err)
 
-	// Read samples back via ingester queries.
-	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
-	require.NoError(t, err)
+		// Read samples back via ingester queries.
+		res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+		require.NoError(t, err)
 
-	// Verify Series
-	expected := model.Matrix{
-		{
-			Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
-			Values: []model.SamplePair{
-				{
-					Timestamp: model.Time(sample1.TimestampMs),
-					Value:     model.SampleValue(sample1.Value),
-				},
-				{
-					Timestamp: model.Time(sample2.TimestampMs),
-					Value:     model.SampleValue(sample2.Value),
+		// Verify Series
+		expected := model.Matrix{
+			{
+				Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
+				Values: []model.SamplePair{
+					{
+						Timestamp: model.Time(sample1.TimestampMs),
+						Value:     model.SampleValue(sample1.Value),
+					},
+					{
+						Timestamp: model.Time(sample2.TimestampMs),
+						Value:     model.SampleValue(sample2.Value),
+					},
 				},
 			},
-		},
+		}
+
+		assert.Equal(t, expected, res)
+
+		// Verify metadata
+		m, err := ing.MetricsMetadata(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
 	}
 
-	assert.Equal(t, expected, res)
+	testLimits()
 
-	// Verify metadata
-	m, err := ing.MetricsMetadata(ctx, nil)
-	require.NoError(t, err)
-	assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
+	// Limits should hold after restart.
+	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), limits, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	testLimits()
 }
 
 func TestIngesterValidation(t *testing.T) {

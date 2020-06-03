@@ -6738,6 +6738,7 @@ replica: replica2
 &lt;li&gt;[BUGFIX] QueryFrontend: fixed a panic (&lt;code&gt;integer divide by zero&lt;/code&gt;) in the query-frontend. The query-frontend now requires the &lt;code&gt;-querier.default-evaluation-interval&lt;/code&gt; config to be set to the same value of the querier. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2603&#34;&gt;#2603&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Experimental TSDB: when the querier receives a &lt;code&gt;/series&lt;/code&gt; request with a time range older than the data stored in the ingester, it now ignores the requested time range and returns known series anyway instead of returning an empty response. This aligns the behaviour with the chunks storage. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2617&#34;&gt;#2617&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2639&#34;&gt;#2639&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2674&#34;&gt;#2674&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;1-1-0-2020-05-21&#34;&gt;1.1.0 / 2020-05-21&lt;/h2&gt;
 &lt;p&gt;This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!&lt;/p&gt;

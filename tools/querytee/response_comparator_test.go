@@ -68,7 +68,7 @@ func TestCompareMatrix(t *testing.T) {
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[3,"2"]]}
 						]`),
 			// timestamps are parsed from seconds to ms which are then added to errors as is so adding 3 0s to expected error.
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 2000 but got 3000"),
+			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 2 but got 3"),
 		},
 		{
 			name: "difference in sample value",
@@ -78,7 +78,7 @@ func TestCompareMatrix(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[2,"3"]]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 2 for timestamp 2000 but got 3"),
+			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 2 for timestamp 2 but got 3"),
 		},
 		{
 			name: "correct samples",
@@ -151,7 +151,7 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"value":[2,"1"]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 1000 but got 2000"),
+			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 1 but got 2"),
 		},
 		{
 			name: "difference in sample value",
@@ -161,7 +161,7 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"value":[1,"2"]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 1 for timestamp 1000 but got 2"),
+			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 1 for timestamp 1 but got 2"),
 		},
 		{
 			name: "correct samples",
@@ -196,13 +196,13 @@ func TestCompareScalar(t *testing.T) {
 			name:     "difference in timestamp",
 			expected: json.RawMessage(`[1,"1"]`),
 			actual:   json.RawMessage(`[2,"1"]`),
-			err:      errors.New("expected timestamp 1000 but got 2000"),
+			err:      errors.New("expected timestamp 1 but got 2"),
 		},
 		{
 			name:     "difference in value",
 			expected: json.RawMessage(`[1,"1"]`),
 			actual:   json.RawMessage(`[1,"2"]`),
-			err:      errors.New("expected value 1 for timestamp 1000 but got 2"),
+			err:      errors.New("expected value 1 for timestamp 1 but got 2"),
 		},
 		{
 			name:     "correct values",

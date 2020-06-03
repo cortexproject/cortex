@@ -104,9 +104,9 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage) error {
 			err := fmt.Errorf("expected %d samples for metric %s but got %d", expectedMetricLen,
 				expectedMetric.Metric, actualMetricLen)
 			if expectedMetricLen > 0 && actualMetricLen > 0 {
-				level.Error(util.Logger).Log("msg", err.Error(), "oldest-expected-ts", int64(expectedMetric.Values[0].Timestamp),
-					"newest-expected-ts", int64(expectedMetric.Values[expectedMetricLen-1].Timestamp),
-					"oldest-actual-ts", int64(actualMetric.Values[0].Timestamp), "newest-actual-ts", int64(actualMetric.Values[actualMetricLen-1].Timestamp))
+				level.Error(util.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedMetric.Values[0].Timestamp,
+					"newest-expected-ts", expectedMetric.Values[expectedMetricLen-1].Timestamp,
+					"oldest-actual-ts", actualMetric.Values[0].Timestamp, "newest-actual-ts", actualMetric.Values[actualMetricLen-1].Timestamp)
 			}
 			return err
 		}
@@ -191,10 +191,10 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage) error {
 
 func compareSamplePair(expected, actual model.SamplePair) error {
 	if expected.Timestamp != actual.Timestamp {
-		return fmt.Errorf("expected timestamp %d but got %d", int64(expected.Timestamp), int64(actual.Timestamp))
+		return fmt.Errorf("expected timestamp %v but got %v", expected.Timestamp, actual.Timestamp)
 	}
 	if expected.Value != actual.Value {
-		return fmt.Errorf("expected value %s for timestamp %d but got %s", expected.Value, int64(expected.Timestamp), actual.Value)
+		return fmt.Errorf("expected value %s for timestamp %v but got %s", expected.Value, expected.Timestamp, actual.Value)
 	}
 
 	return nil

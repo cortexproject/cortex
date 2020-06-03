@@ -151,10 +151,20 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		client = PrefixClient(client, prefix)
 	}
 
+	// If no Registerer is provided return the raw client
+	if reg == nil {
+		return client, nil
+	}
+
 	return newMetricsClient(backend, client, reg), nil
 }
 
 func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+	var (
+		primaryLabel   = prometheus.Labels{"role": "primary"}
+		secondaryLabel = prometheus.Labels{"role": "secondary"}
+	)
+
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}

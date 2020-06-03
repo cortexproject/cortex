@@ -193,7 +193,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, ring.RulerRingKey),
+			kv.RegistererWithKVName(reg, "ruler"),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")

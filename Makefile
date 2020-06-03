@@ -95,7 +95,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated
 
-exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -174,6 +174,12 @@ web-build: web-pre
 web-deploy:
 	./tools/website/web-deploy.sh
 
+# Generates the config file documentation.
+doc: clean-doc
+	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template >> ./docs/configuration/config-file-reference.md
+	go run ./tools/doc-generator ./docs/operations/blocks-storage.template           >> ./docs/operations/blocks-storage.md
+	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
+
 endif
 
 clean:
@@ -198,12 +204,6 @@ load-images:
 			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
 		fi \
 	done
-
-# Generates the config file documentation.
-doc: clean-doc
-	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template >> ./docs/configuration/config-file-reference.md
-	go run ./tools/doc-generator ./docs/operations/blocks-storage.template           >> ./docs/operations/blocks-storage.md
-	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 
 clean-doc:
 	rm -f ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md

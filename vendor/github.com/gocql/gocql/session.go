@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql/internal/lru"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -86,27 +87,6 @@ var queryPool = &sync.Pool{
 	},
 }
 
-func addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
-	var hosts []*HostInfo
-	for _, hostport := range addrs {
-		resolvedHosts, err := hostInfo(hostport, defaultPort)
-		if err != nil {
-			// Try other hosts if unable to resolve DNS name
-			if _, ok := err.(*net.DNSError); ok {
-				Logger.Printf("gocql: dns error: %v\n", err)
-				continue
-			}
-			return nil, err
-		}
-
-		hosts = append(hosts, resolvedHosts...)
-	}
-	if len(hosts) == 0 {
-		return nil, errors.New("failed to resolve any of the provided hostnames")
-	}
-	return hosts, nil
-}
-
 // NewSession wraps an existing Node.
 func NewSession(cfg ClusterConfig) (*Session, error) {
 	// Check that hosts in the ClusterConfig is not empty
@@ -143,8 +123,8 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 
 	s.schemaDescriber = newSchemaDescriber(s)
 
-	s.nodeEvents = newEventDebouncer("NodeEvents", s.handleNodeEvent)
-	s.schemaEvents = newEventDebouncer("SchemaEvents", s.handleSchemaEvent)
+	s.nodeEvents = newEventDebouncer(logger, "NodeEvents", s.handleNodeEvent)
+	s.schemaEvents = newEventDebouncer(logger, "SchemaEvents", s.handleSchemaEvent)
 
 	s.routingKeyInfoCache.lru = lru.New(cfg.MaxRoutingKeyInfo)
 
@@ -192,7 +172,7 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 }
 
 func (s *Session) init() error {
-	hosts, err := addrsToHosts(s.cfg.Hosts, s.cfg.Port)
+	hosts, err := s.addrsToHosts(s.cfg.Hosts, s.cfg.Port)
 	if err != nil {
 		return err
 	}
@@ -296,6 +276,27 @@ func (s *Session) init() error {
 	return nil
 }
 
+func (s *Session) addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
+	var hosts []*HostInfo
+	for _, hostport := range addrs {
+		resolvedHosts, err := hostInfo(hostport, defaultPort)
+		if err != nil {
+			// Try other hosts if unable to resolve DNS name
+			if _, ok := err.(*net.DNSError); ok {
+				level.Error(s.logger).Log("msg", "dns error", "error", err)
+				continue
+			}
+			return nil, err
+		}
+
+		hosts = append(hosts, resolvedHosts...)
+	}
+	if len(hosts) == 0 {
+		return nil, errors.New("failed to resolve any of the provided hostnames")
+	}
+	return hosts, nil
+}
+
 // AwaitSchemaAgreement will wait until schema versions across all nodes in the
 // cluster are the same (as seen from the point of view of the control connection).
 // The maximum amount of time this takes is governed
@@ -326,7 +327,7 @@ func (s *Session) reconnectDownedHosts(intv time.Duration) {
 				for _, h := range hosts {
 					buf.WriteString("[" + h.ConnectAddress().String() + ":" + h.State().String() + "]")
 				}
-				Logger.Println(buf.String())
+				level.Debug(s.logger).Log("msg", "reconnect ticker", "ring", buf.String())
 			}
 
 			for _, h := range hosts {
@@ -711,7 +712,7 @@ func (s *Session) MapExecuteBatchCAS(batch *Batch, dest map[string]interface{}) 
 type hostMetrics struct {
 	// Attempts is count of how many times this query has been attempted for this host.
 	// An attempt is either a retry or fetching next page of results.
-	Attempts     int
+	Attempts int
 
 	// TotalLatency is the sum of attempt latencies for this host in nanoseconds.
 	TotalLatency int64
@@ -885,7 +886,7 @@ func (q *Query) Latency() int64 {
 }
 
 func (q *Query) AddLatency(l int64, host *HostInfo) {
-	q.metrics.attempt(0, time.Duration(l) * time.Nanosecond, host, false)
+	q.metrics.attempt(0, time.Duration(l)*time.Nanosecond, host, false)
 }
 
 // Consistency sets the consistency level for this query. If no consistency
@@ -1621,7 +1622,7 @@ func (b *Batch) Latency() int64 {
 }
 
 func (b *Batch) AddLatency(l int64, host *HostInfo) {
-	b.metrics.attempt(0, time.Duration(l) * time.Nanosecond, host, false)
+	b.metrics.attempt(0, time.Duration(l)*time.Nanosecond, host, false)
 }
 
 // GetConsistency returns the currently configured consistency level for the batch

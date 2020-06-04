@@ -42,7 +42,7 @@ require (
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/alertmanager v0.20.0
-	github.com/prometheus/client_golang v1.6.1-0.20200604093051-8961609f9115
+	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
 	github.com/prometheus/prometheus v1.8.2-0.20200604055556-c729df3d0fdf
@@ -78,4 +78,4 @@ replace k8s.io/client-go => k8s.io/client-go v0.18.3
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 
-replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200604093716-e7ba7a134482
+replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200604163347-a8642710dbb1

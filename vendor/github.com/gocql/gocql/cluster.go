@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -215,8 +216,8 @@ func (cfg *ClusterConfig) translateAddressPort(addr net.IP, port int) (net.IP, i
 		return addr, port
 	}
 	newAddr, newPort := cfg.AddressTranslator.Translate(addr, port)
-	if gocqlDebug {
-		Logger.Printf("gocql: translating address '%v:%d' to '%v:%d'", addr, port, newAddr, newPort)
+	if cfg.Logger != nil {
+		level.Debug(cfg.Logger).Log("msg", "translating address", "oldAddr", addr, "oldPort", port, "newAddr", newAddr, "newPort", newPort)
 	}
 	return newAddr, newPort
 }

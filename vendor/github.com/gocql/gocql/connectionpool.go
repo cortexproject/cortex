@@ -81,6 +81,8 @@ type policyConnPool struct {
 	hostConnPools map[string]*hostConnPool
 
 	endpoints []string
+
+	numHosts prometheus.GaugeFunc
 }
 
 func connConfig(cfg *ClusterConfig) (*ConnConfig, error) {
@@ -127,7 +129,7 @@ func newPolicyConnPool(logger log.Logger, registerer prometheus.Registerer, sess
 	pool.endpoints = make([]string, len(session.cfg.Hosts))
 	copy(pool.endpoints, session.cfg.Hosts)
 
-	promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+	pool.numHosts = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "gocql_connection_pool_hosts",
 		Help: "Current number of hosts in the connection pool.",
 	}, func() float64 {
@@ -215,12 +217,17 @@ func (p *policyConnPool) getPool(host *HostInfo) (pool *hostConnPool, ok bool) {
 }
 
 func (p *policyConnPool) Close() {
+	if p.registerer != nil {
+		p.registerer.Unregister(p.numHosts)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// close the pools
 	for addr, pool := range p.hostConnPools {
 		delete(p.hostConnPools, addr)
+		pool.deregisterMetrics()
 		pool.Close()
 	}
 }

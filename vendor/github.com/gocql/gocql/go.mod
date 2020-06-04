@@ -6,7 +6,7 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
-	github.com/prometheus/client_golang v1.6.1-0.20200604093051-8961609f9115
+	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	gopkg.in/inf.v0 v0.9.1
 )
 

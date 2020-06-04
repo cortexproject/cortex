@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -226,12 +227,14 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	var ringTickerChan <-chan time.Time
 	var ringLastState ring.ReplicationSet
 
-	syncTicker := time.NewTicker(g.storageCfg.BucketStore.SyncInterval)
+	// Apply a jitter to the sync frequency in order to increase the probability
+	// of hitting the shared cache (if any).
+	syncTicker := time.NewTicker(util.DurationWithJitter(g.storageCfg.BucketStore.SyncInterval, 0.2))
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
 		ringLastState, _ = g.ring.GetAll(ring.BlocksSync) // nolint:errcheck
-		ringTicker := time.NewTicker(g.gatewayCfg.ShardingRing.RingCheckPeriod)
+		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
 	}

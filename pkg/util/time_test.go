@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,5 +22,15 @@ func TestTimeFromMillis(t *testing.T) {
 			res := TimeFromMillis(c.input)
 			require.Equal(t, c.expected, res)
 		})
+	}
+}
+
+func TestDurationWithJitter(t *testing.T) {
+	const numRuns = 1000
+
+	for i := 0; i < numRuns; i++ {
+		actual := DurationWithJitter(time.Minute, 0.5)
+		assert.GreaterOrEqual(t, int64(actual), int64(30*time.Second))
+		assert.LessOrEqual(t, int64(actual), int64(90*time.Second))
 	}
 }

@@ -6698,10 +6698,11 @@ replica: replica2
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called &amp;ldquo;caching bucket&amp;rdquo;, which can currently cache fetched chunks into shared memcached server. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2572&#34;&gt;#2572&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2587&#34;&gt;#2587&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] &lt;code&gt;query-tee&lt;/code&gt; supports &lt;code&gt;/metadata&lt;/code&gt;, &lt;code&gt;/alerts&lt;/code&gt;, and &lt;code&gt;/rules&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2600&#34;&gt;#2600&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Thanos and Prometheus upgraded to &lt;a href=&#34;https://github.com/thanos-io/thanos/commit/806479182a6b&#34;&gt;806479182a6b&lt;/a&gt; and &lt;a href=&#34;https://github.com/prometheus/prometheus/commit/cd73b3d33e06&#34;&gt;cd73b3d33e06&lt;/a&gt; respectively. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2604&#34;&gt;#2604&lt;/a&gt;
+&lt;li&gt;[ENHANCEMENT] Thanos and Prometheus upgraded. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2604&#34;&gt;#2604&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2634&#34;&gt;#2634&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2686&#34;&gt;#2686&lt;/a&gt;
 &lt;ul&gt;
 &lt;li&gt;TSDB now supports isolation of append and queries.&lt;/li&gt;
 &lt;li&gt;TSDB now holds less WAL files after Head Truncation.&lt;/li&gt;
+&lt;li&gt;TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: decoupled blocks deletion from blocks compaction in the compactor, so that blocks deletion is not blocked by a busy compactor. The following metrics have been added: &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2623&#34;&gt;#2623&lt;/a&gt;
 &lt;ul&gt;
@@ -6711,10 +6712,6 @@ replica: replica2
 &lt;li&gt;&lt;code&gt;cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2626&#34;&gt;#2626&lt;/a&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2640&#34;&gt;#2640&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;[ENHANCEMENT] Upgrade Thanos to &lt;a href=&#34;https://github.com/thanos-io/thanos/commit/f7802edbf830&#34;&gt;f7802edbf830&lt;/a&gt; and Prometheus to &lt;a href=&#34;https://github.com/prometheus/prometheus/commit/f4dd45609a05&#34;&gt;f4dd45609a05&lt;/a&gt; which is after v2.18.1. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2634&#34;&gt;#2634&lt;/a&gt;
-&lt;ul&gt;
-&lt;li&gt;TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: when &lt;code&gt;-querier.query-store-after&lt;/code&gt; is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than &amp;lsquo;now - query-store-after&amp;rsquo;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2642&#34;&gt;#2642&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2651&#34;&gt;#2651&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[ENHANCEMENT] The following endpoints now respond appropriately to an &lt;code&gt;Accepts&lt;/code&gt; header with the value &lt;code&gt;application/json&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pull/2673&#34;&gt;#2673&lt;/a&gt;

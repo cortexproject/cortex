@@ -55,10 +55,6 @@ func TestSyncerMetrics(t *testing.T) {
 			cortex_compactor_meta_sync_duration_seconds_sum 33.333000000000006
 			cortex_compactor_meta_sync_duration_seconds_count 3
 
-			# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
-			# TYPE cortex_compactor_garbage_collected_blocks_total counter
-			cortex_compactor_garbage_collected_blocks_total 444440
-
 			# HELP cortex_compactor_garbage_collection_total Total number of garbage collection operations.
 			# TYPE cortex_compactor_garbage_collection_total counter
 			cortex_compactor_garbage_collection_total 555550
@@ -123,7 +119,6 @@ func generateTestData(base float64) *prometheus.Registry {
 	m.metaSyncFailures.Add(2 * base)
 	m.metaSyncDuration.Observe(3 * base / 10000)
 	m.metaSyncConsistencyDelay.Set(300)
-	m.garbageCollectedBlocks.Add(4 * base)
 	m.garbageCollections.Add(5 * base)
 	m.garbageCollectionFailures.Add(6 * base)
 	m.garbageCollectionDuration.Observe(7 * base / 10000)
@@ -151,7 +146,6 @@ type testSyncerMetrics struct {
 	metaSyncFailures          prometheus.Counter
 	metaSyncDuration          prometheus.Histogram
 	metaSyncConsistencyDelay  prometheus.Gauge
-	garbageCollectedBlocks    prometheus.Counter
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
 	garbageCollectionDuration prometheus.Histogram
@@ -183,10 +177,6 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 		Help: "Configured consistency delay in seconds.",
 	})
 
-	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "thanos_compact_garbage_collected_blocks_total",
-		Help: "Total number of blocks marked for deletion by compactor.",
-	})
 	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collection_total",
 		Help: "Total number of garbage collection operations.",
@@ -228,7 +218,6 @@ func newTestSyncerMetrics(reg prometheus.Registerer) *testSyncerMetrics {
 			m.metaSyncFailures,
 			m.metaSyncDuration,
 			m.metaSyncConsistencyDelay,
-			m.garbageCollectedBlocks,
 			m.garbageCollections,
 			m.garbageCollectionFailures,
 			m.garbageCollectionDuration,

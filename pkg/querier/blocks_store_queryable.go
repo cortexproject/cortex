@@ -405,8 +405,8 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 				"instance", c,
 				"num series", len(mySeries),
 				"bytes series", countSeriesBytes(mySeries),
-				"requested blocks", convertULIDsToString(blockIDs),
-				"queried blocks", convertBlockHintsToString(myQueriedBlocks))
+				"requested blocks", strings.Join(convertULIDsToString(blockIDs), ","),
+				"queried blocks", strings.Join(convertBlockHintsToString(myQueriedBlocks), ","))
 
 			// Store the result.
 			mtx.Lock()

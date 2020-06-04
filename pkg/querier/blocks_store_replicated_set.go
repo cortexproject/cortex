@@ -88,11 +88,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) (map[Blo
 		// Pick the first store-gateway instance.
 		addr := set.Ingesters[0].Addr
 
-		if _, ok := shards[addr]; ok {
-			shards[addr] = append(shards[addr], blockID)
-		} else {
-			shards[addr] = []ulid.ULID{blockID}
-		}
+		shards[addr] = append(shards[addr], blockID)
 	}
 
 	clients := map[BlocksStoreClient][]ulid.ULID{}

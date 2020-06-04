@@ -31,6 +31,9 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, 
 }
 
 func (f fixture) Teardown() error {
+	f.indexClient.Stop()
+	f.objectClient.Stop()
+	f.tableClient.Stop()
 	return nil
 }
 

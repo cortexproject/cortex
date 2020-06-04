@@ -24,72 +24,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-func Test_findSmallestInstanceSet(t *testing.T) {
-	tests := map[string]struct {
-		input    []ring.ReplicationSet
-		expected []string
-	}{
-		"empty replication set": {
-			input:    nil,
-			expected: nil,
-		},
-		"single replication set": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}},
-			},
-			expected: []string{"instance-1"},
-		},
-		"no replication": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-3"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}}},
-			},
-			expected: []string{"instance-1", "instance-3"},
-		},
-		"all replication sets share the same instance": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-3"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-4"}, {Addr: "instance-2"}}},
-			},
-			expected: []string{"instance-2"},
-		},
-		"all replication sets share the same instance except one": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-3"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-4"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-5"}, {Addr: "instance-1"}}},
-			},
-			expected: []string{"instance-2", "instance-5"},
-		},
-		"few replication sets share the same instance": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-3"}, {Addr: "instance-4"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-5"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-4"}, {Addr: "instance-6"}}},
-			},
-			expected: []string{"instance-1", "instance-4"},
-		},
-		"no replication set share the same instance": {
-			input: []ring.ReplicationSet{
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-3"}, {Addr: "instance-4"}}},
-				{Ingesters: []ring.IngesterDesc{{Addr: "instance-5"}, {Addr: "instance-6"}}},
-			},
-			expected: []string{"instance-1", "instance-3", "instance-5"},
-		},
-	}
-
-	for testName, testData := range tests {
-		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, findSmallestInstanceSet(testData.input))
-		})
-	}
-}
-
 func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 	// The following block IDs have been picked to have increasing hash values
 	// in order to simplify the tests.
@@ -107,25 +41,29 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 		replicationFactor int
 		setup             func(*ring.Desc)
 		queryBlocks       []ulid.ULID
-		expectedClients   []string
+		expectedClients   map[string][]ulid.ULID
 	}{
 		"single instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
 			},
-			queryBlocks:     []ulid.ULID{block1, block2},
-			expectedClients: []string{"127.0.0.1"},
+			queryBlocks: []ulid.ULID{block1, block2},
+			expectedClients: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block2},
+			},
 		},
 		"single instance in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
 			},
-			queryBlocks:     []ulid.ULID{block1, block2},
-			expectedClients: []string{"127.0.0.1"},
+			queryBlocks: []ulid.ULID{block1, block2},
+			expectedClients: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block2},
+			},
 		},
-		"multiple instances in the ring with replication factor = 1": {
+		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 1": {
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
@@ -133,10 +71,14 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				d.AddIngester("instance-3", "127.0.0.3", "", []uint32{block3Hash + 1}, ring.ACTIVE)
 				d.AddIngester("instance-4", "127.0.0.4", "", []uint32{block4Hash + 1}, ring.ACTIVE)
 			},
-			queryBlocks:     []ulid.ULID{block1, block3, block4},
-			expectedClients: []string{"127.0.0.1", "127.0.0.3", "127.0.0.4"},
+			queryBlocks: []ulid.ULID{block1, block3, block4},
+			expectedClients: map[string][]ulid.ULID{
+				"127.0.0.1": {block1},
+				"127.0.0.3": {block3},
+				"127.0.0.4": {block4},
+			},
 		},
-		"multiple instances in the ring with replication factor = 2": {
+		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 2": {
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
@@ -144,8 +86,24 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				d.AddIngester("instance-3", "127.0.0.3", "", []uint32{block3Hash + 1}, ring.ACTIVE)
 				d.AddIngester("instance-4", "127.0.0.4", "", []uint32{block4Hash + 1}, ring.ACTIVE)
 			},
-			queryBlocks:     []ulid.ULID{block1, block3, block4},
-			expectedClients: []string{"127.0.0.1", "127.0.0.4" /* block4 is also replicated by instance-4 */},
+			queryBlocks: []ulid.ULID{block1, block3, block4},
+			expectedClients: map[string][]ulid.ULID{
+				"127.0.0.1": {block1},
+				"127.0.0.3": {block3},
+				"127.0.0.4": {block4},
+			},
+		},
+		"multiple instances in the ring with multiple requested blocks belonging to the same store-gateway and replication factor = 2": {
+			replicationFactor: 2,
+			setup: func(d *ring.Desc) {
+				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
+				d.AddIngester("instance-2", "127.0.0.2", "", []uint32{block3Hash + 1}, ring.ACTIVE)
+			},
+			queryBlocks: []ulid.ULID{block1, block2, block3, block4},
+			expectedClients: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block4},
+				"127.0.0.2": {block2, block3},
+			},
 		},
 	}
 
@@ -186,7 +144,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 
 			clients, err := s.GetClientsFor(testData.queryBlocks)
 			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expectedClients, getStoreGatewayClientAddrs(clients))
+			assert.Equal(t, testData.expectedClients, getStoreGatewayClientAddrs(clients))
 
 			assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
 				# HELP cortex_storegateway_clients The current number of store-gateway clients in the pool.
@@ -197,10 +155,10 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 	}
 }
 
-func getStoreGatewayClientAddrs(clients []BlocksStoreClient) []string {
-	var addrs []string
-	for _, c := range clients {
-		addrs = append(addrs, c.RemoteAddress())
+func getStoreGatewayClientAddrs(clients map[BlocksStoreClient][]ulid.ULID) map[string][]ulid.ULID {
+	addrs := map[string][]ulid.ULID{}
+	for c, blockIDs := range clients {
+		addrs[c.RemoteAddress()] = blockIDs
 	}
 	return addrs
 }

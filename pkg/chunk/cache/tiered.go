@@ -15,10 +15,8 @@ func NewTiered(caches []Cache) Cache {
 
 // IsEmptyTieredCache is used to determine whether the current Cache is implemented by an empty tiered.
 func IsEmptyTieredCache(cache Cache) bool {
-	if c, ok := cache.(tiered); ok && len(c) == 0 {
-		return true
-	}
-	return false
+	c, ok := cache.(tiered)
+	return ok && len(c) == 0
 }
 
 func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
@@ -46,7 +48,7 @@ type BlocksStoreSet interface {
 
 	// GetClientsFor returns the store gateway clients that should be used to
 	// query the set of blocks in input.
-	GetClientsFor(blockIDs []ulid.ULID) ([]BlocksStoreClient, error)
+	GetClientsFor(blockIDs []ulid.ULID) (map[BlocksStoreClient][]ulid.ULID, error)
 }
 
 // BlocksFinder is the interface used to find blocks for a given user and time range.
@@ -341,28 +343,28 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 	level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients))
 
-	req := &storepb.SeriesRequest{
-		MinTime:                 minT,
-		MaxTime:                 maxT,
-		Matchers:                convertMatchersToLabelMatcher(matchers),
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	}
-
 	var (
-		reqCtx        = grpc_metadata.AppendToOutgoingContext(spanCtx, cortex_tsdb.TenantIDExternalLabel, q.userID)
-		g, gCtx       = errgroup.WithContext(reqCtx)
-		mtx           = sync.Mutex{}
-		seriesSets    = []storage.SeriesSet(nil)
-		warnings      = storage.Warnings(nil)
-		queriedBlocks = map[string][]hintspb.Block{}
+		reqCtx            = grpc_metadata.AppendToOutgoingContext(spanCtx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		g, gCtx           = errgroup.WithContext(reqCtx)
+		mtx               = sync.Mutex{}
+		seriesSets        = []storage.SeriesSet(nil)
+		warnings          = storage.Warnings(nil)
+		queriedBlocks     = map[string][]hintspb.Block{}
+		convertedMatchers = convertMatchersToLabelMatcher(matchers)
 	)
 
 	// Concurrently fetch series from all clients.
-	for _, c := range clients {
-		// Change variable scope since it will be used in a goroutine.
+	for c, blockIDs := range clients {
+		// Change variables scope since it will be used in a goroutine.
 		c := c
+		blockIDs := blockIDs
 
 		g.Go(func() error {
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, blockIDs)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create series request")
+			}
+
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
 				return errors.Wrapf(err, "failed to fetch series from %s", c)
@@ -399,7 +401,12 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 				}
 			}
 
-			level.Debug(spanLog).Log("msg", "received series from store-gateway", "instance", c, "num series", len(mySeries), "bytes series", countSeriesBytes(mySeries))
+			level.Debug(spanLog).Log("msg", "received series from store-gateway",
+				"instance", c,
+				"num series", len(mySeries),
+				"bytes series", countSeriesBytes(mySeries),
+				"requested blocks", strings.Join(convertULIDsToString(blockIDs), ","),
+				"queried blocks", strings.Join(convertBlockHintsToString(myQueriedBlocks), ","))
 
 			// Store the result.
 			mtx.Lock()
@@ -429,6 +436,48 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
+}
+
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+	// Selectively query only specific blocks.
+	hints := &hintspb.SeriesRequestHints{
+		BlockMatchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_RE,
+				Name:  block.BlockIDLabel,
+				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
+			},
+		},
+	}
+
+	anyHints, err := types.MarshalAny(hints)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to marshal request hints")
+	}
+
+	return &storepb.SeriesRequest{
+		MinTime:                 minT,
+		MaxTime:                 maxT,
+		Matchers:                matchers,
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		Hints:                   anyHints,
+	}, nil
+}
+
+func convertULIDsToString(ids []ulid.ULID) []string {
+	res := make([]string, len(ids))
+	for idx, id := range ids {
+		res[idx] = id.String()
+	}
+	return res
+}
+
+func convertBlockHintsToString(hints []hintspb.Block) []string {
+	res := make([]string, len(hints))
+	for idx, hint := range hints {
+		res[idx] = hint.Id
+	}
+	return res
 }
 
 func countSeriesBytes(series []*storepb.Series) (count uint64) {

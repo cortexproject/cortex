@@ -104,6 +104,7 @@
   * `/services`
 * [ENHANCEMENT] Add `-cassandra.num-connections` to allow increasing the number of TCP connections to each Cassandra server. #2666
 * [ENHANCEMENT] Use separate Cassandra clients and connections for reads and writes. #2666
+* [ENHANCEMENT] Add `-cassandra.reconnect-interval` to allow specifying the reconnect interval to a Cassandra server that has been marked `DOWN` by the gocql driver. Also change the default value of the reconnect interval from `60s` to `1s`. #2687
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

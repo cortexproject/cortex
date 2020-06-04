@@ -73,9 +73,7 @@ replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+inc
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 
-// Without this, it attempts to upgrade to v0.18.x which has some conflicts with upstream Prometheus.
-// Also, v0.17.5 is chosen to be consistent with Thanos and more clear than using a commit hash.
-replace k8s.io/client-go => k8s.io/client-go v0.17.5
+replace k8s.io/client-go => k8s.io/client-go v0.18.3
 
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0

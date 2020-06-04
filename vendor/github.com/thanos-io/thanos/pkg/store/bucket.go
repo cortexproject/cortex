@@ -984,8 +984,9 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
 		begin := time.Now()
 
-		// NOTE: We "carefully" assume series and chunks are sorted within each SeriesSet. This should be guaranteed by
-		// blockSeries method. In worst case deduplication logic won't deduplicate correctly, which will be accounted later.
+		// Merge series set into an union of all block sets. This exposes all blocks are single seriesSet.
+		// Chunks of returned series might be out of order w.r.t to their time range.
+		// This must be accounted for later by clients.
 		set := storepb.MergeSeriesSets(res...)
 		for set.Next() {
 			var series storepb.Series

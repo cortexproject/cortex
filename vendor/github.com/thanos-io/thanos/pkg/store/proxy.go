@@ -474,7 +474,6 @@ func (s *streamSeriesSet) At() ([]storepb.Label, []storepb.AggrChunk) {
 	}
 	return s.currSeries.Labels, s.currSeries.Chunks
 }
-
 func (s *streamSeriesSet) Err() error {
 	s.errMtx.Lock()
 	defer s.errMtx.Unlock()

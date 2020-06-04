@@ -75,15 +75,29 @@ func main() {
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
 
+	usage := flag.CommandLine.Usage
+	flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
+	flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
+
+	err := flag.CommandLine.Parse(os.Args[1:])
+	if err == flag.ErrHelp {
+		// Print available parameters to stdout, so that users can grep/less it easily.
+		flag.CommandLine.SetOutput(os.Stdout)
+		usage()
+		if !testMode {
+			os.Exit(2)
+		}
+	} else if err != nil {
+		fmt.Fprintln(flag.CommandLine.Output(), "Run with -help to get list of available parameters")
+		if !testMode {
+			os.Exit(2)
+		}
+	}
+
 	if testMode {
-		// Don't exit on error in test mode. Just parse parameters, dump config and stop.
-		flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
-		flag.Parse()
 		DumpYaml(&cfg)
 		return
 	}
-
-	flag.Parse()
 
 	if mutexProfileFraction > 0 {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
@@ -92,7 +106,7 @@ func main() {
 	util.InitLogger(&cfg.Server)
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err := cfg.Validate(util.Logger)
+	err = cfg.Validate(util.Logger)
 	if err != nil {
 		fmt.Printf("error validating config: %v\n", err)
 		os.Exit(1)

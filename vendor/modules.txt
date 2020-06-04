@@ -340,13 +340,14 @@ github.com/mattn/go-isatty
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.29
 github.com/miekg/dns
-# github.com/minio/minio-go/v6 v6.0.53
+# github.com/minio/minio-go/v6 v6.0.56
 github.com/minio/minio-go/v6
 github.com/minio/minio-go/v6/pkg/credentials
 github.com/minio/minio-go/v6/pkg/encrypt
 github.com/minio/minio-go/v6/pkg/s3utils
 github.com/minio/minio-go/v6/pkg/set
 github.com/minio/minio-go/v6/pkg/signer
+github.com/minio/minio-go/v6/pkg/tags
 # github.com/minio/sha256-simd v0.1.1
 github.com/minio/sha256-simd
 # github.com/mitchellh/go-homedir v1.1.0
@@ -534,7 +535,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.12.3-0.20200529100726-ce77c2d3b7d2
+# github.com/thanos-io/thanos v0.12.3-0.20200603113103-6d3e730e154d
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata

@@ -82,17 +82,16 @@
 * [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
 * [ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. #2587
 * [ENHANCEMENT] `query-tee` supports `/metadata`, `/alerts`, and `/rules` #2600
-* [ENHANCEMENT] Thanos and Prometheus upgraded to [806479182a6b](https://github.com/thanos-io/thanos/commit/806479182a6b) and [cd73b3d33e06](https://github.com/prometheus/prometheus/commit/cd73b3d33e06) respectively. #2604
+* [ENHANCEMENT] Thanos and Prometheus upgraded. #2604 #2634 #2686
   * TSDB now supports isolation of append and queries.
   * TSDB now holds less WAL files after Head Truncation.
+  * TSDB now does memory-mapping of Head chunks and reduces memory usage.
 * [ENHANCEMENT] Experimental TSDB: decoupled blocks deletion from blocks compaction in the compactor, so that blocks deletion is not blocked by a busy compactor. The following metrics have been added: #2623
   * `cortex_compactor_block_cleanup_started_total`
   * `cortex_compactor_block_cleanup_completed_total`
   * `cortex_compactor_block_cleanup_failed_total`
   * `cortex_compactor_block_cleanup_last_successful_run_timestamp_seconds`
 * [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626 #2640
-* [ENHANCEMENT] Upgrade Thanos to [f7802edbf830](https://github.com/thanos-io/thanos/commit/f7802edbf830) and Prometheus to [f4dd45609a05](https://github.com/prometheus/prometheus/commit/f4dd45609a05) which is after v2.18.1. #2634
-  * TSDB now does memory-mapping of Head chunks and reduces memory usage.
 * [ENHANCEMENT] Experimental TSDB: when `-querier.query-store-after` is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than 'now - query-store-after'. #2642
 * [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
 * [ENHANCEMENT] The following endpoints now respond appropriately to an `Accepts` header with the value `application/json` #2673

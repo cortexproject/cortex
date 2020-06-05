@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
@@ -11,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -70,8 +72,13 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, blacklist map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	shards := map[string][]ulid.ULID{}
+
+	// Easy way to handle the case of a missing blacklist.
+	if blacklist == nil {
+		blacklist = map[ulid.ULID][]string{}
+	}
 
 	// Find the replication set of each block we need to query.
 	for _, blockID := range blockIDs {
@@ -85,8 +92,11 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) (map[Blo
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}
 
-		// Pick the first store-gateway instance.
-		addr := set.Ingesters[0].Addr
+		// Pick the first non blacklisted store-gateway instance.
+		addr := getFirstNonBlacklistedInstanceAddr(set, blacklist[blockID])
+		if addr == "" {
+			return nil, fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", blockID.String())
+		}
 
 		shards[addr] = append(shards[addr], blockID)
 	}
@@ -104,4 +114,14 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) (map[Blo
 	}
 
 	return clients, nil
+}
+
+func getFirstNonBlacklistedInstanceAddr(set ring.ReplicationSet, blacklist []string) string {
+	for _, instance := range set.Ingesters {
+		if !util.StringsContain(blacklist, instance.Addr) {
+			return instance.Addr
+		}
+	}
+
+	return ""
 }

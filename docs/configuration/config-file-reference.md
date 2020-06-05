@@ -667,14 +667,6 @@ store_gateway_client:
   # TLS CA path for the client
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
-
-# Configures the consistency check done by the querier on queried blocks when
-# running the experimental blocks storage.
-blocks_consistency_check:
-  # Whether the querier should run a consistency check to ensure all expected
-  # blocks have been queried.
-  # CLI flag: -experimental.querier.blocks-consistency-check.enabled
-  [enabled: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`

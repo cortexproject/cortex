@@ -335,6 +335,9 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 	level.Debug(spanLog).Log("msg", "found blocks to query", "expected", BlockMetas(metas).String())
 
+	// Convert matchers.
+	convertedMatchers := convertMatchersToLabelMatcher(matchers)
+
 	// Find the set of store-gateway instances having the blocks.
 	blockIDs := getULIDsFromBlockMetas(metas)
 	clients, err := q.stores.GetClientsFor(blockIDs)
@@ -343,14 +346,37 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 	level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients))
 
+	seriesSets, queriedBlocks, warnings, err := q.fetchSeriesFromStores(spanCtx, clients, minT, maxT, convertedMatchers)
+
+	level.Debug(spanLog).Log("msg", "received series from all store-gateways", "queried blocks", queriedBlocks)
+	q.storesHit.Observe(float64(len(clients)))
+
+	// Ensure all expected blocks have been queried.
+	if q.consistency != nil {
+		if err := q.consistency.Check(metas, deletionMarks, queriedBlocks); err != nil {
+			level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
+			return nil, nil, err
+		}
+	}
+
+	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
+}
+
+func (q *blocksStoreQuerier) fetchSeriesFromStores(
+	ctx context.Context,
+	clients map[BlocksStoreClient][]ulid.ULID,
+	minT int64,
+	maxT int64,
+	matchers []storepb.LabelMatcher,
+) ([]storage.SeriesSet, map[string][]hintspb.Block, storage.Warnings, error) {
 	var (
-		reqCtx            = grpc_metadata.AppendToOutgoingContext(spanCtx, cortex_tsdb.TenantIDExternalLabel, q.userID)
-		g, gCtx           = errgroup.WithContext(reqCtx)
-		mtx               = sync.Mutex{}
-		seriesSets        = []storage.SeriesSet(nil)
-		warnings          = storage.Warnings(nil)
-		queriedBlocks     = map[string][]hintspb.Block{}
-		convertedMatchers = convertMatchersToLabelMatcher(matchers)
+		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		g, gCtx       = errgroup.WithContext(reqCtx)
+		mtx           = sync.Mutex{}
+		seriesSets    = []storage.SeriesSet(nil)
+		warnings      = storage.Warnings(nil)
+		queriedBlocks = map[string][]hintspb.Block{}
+		spanLog       = spanlogger.FromContext(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -360,7 +386,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		blockIDs := blockIDs
 
 		g.Go(func() error {
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, blockIDs)
+			req, err := createSeriesRequest(minT, maxT, matchers, blockIDs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -421,21 +447,10 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 	// Wait until all client requests complete.
 	if err := g.Wait(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	level.Debug(spanLog).Log("msg", "received series from all store-gateways", "queried blocks", queriedBlocks)
-	q.storesHit.Observe(float64(len(clients)))
-
-	// Ensure all expected blocks have been queried.
-	if q.consistency != nil {
-		if err := q.consistency.Check(metas, deletionMarks, queriedBlocks); err != nil {
-			level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
-			return nil, nil, err
-		}
-	}
-
-	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge), warnings, nil
+	return seriesSets, queriedBlocks, warnings, nil
 }
 
 func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {

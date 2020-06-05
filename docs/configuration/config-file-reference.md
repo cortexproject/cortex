@@ -1734,9 +1734,9 @@ cassandra:
   # CLI flag: -cassandra.num-connections
   [num_connections: <int> | default = 2]
 
-  # Convict hosts of being down on failure. (Default is true)
-  # CLI flag: -cassandra.convict-hosts
-  [convict_hosts: <boolean> | default = true]
+  # Convict hosts of being down on failure.
+  # CLI flag: -cassandra.convict-hosts-on-failure
+  [convict_hosts_on_failure: <boolean> | default = true]
 
 boltdb:
   # Location of BoltDB index files.

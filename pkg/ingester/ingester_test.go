@@ -536,7 +536,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
-		test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
 			return ing.lifecycler.GetState()
 		})
 
@@ -657,7 +657,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
-		test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
 			return ing.lifecycler.GetState()
 		})
 

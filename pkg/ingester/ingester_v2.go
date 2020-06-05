@@ -88,18 +88,22 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 // PostCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostCreation(metric labels.Labels) {
 	metricName, err := extract.MetricNameFromLabels(metric)
-	if err == nil {
-		u.seriesInMetric.seriesAddedFor(metricName)
+	if err != nil {
+		// This should never happen because it has already been checked in PreCreation().
+		return
 	}
+	u.seriesInMetric.increaseSeriesForMetric(metricName)
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 	for _, metric := range metrics {
 		metricName, err := extract.MetricNameFromLabels(metric)
-		if err == nil {
-			u.seriesInMetric.removeMetricName(metricName)
+		if err != nil {
+			// This should never happen because it has already been checked in PreCreation().
+			continue
 		}
+		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 	}
 }
 
@@ -453,7 +457,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 
 	if firstPartialErr != nil {
 		code := http.StatusBadRequest
-		if ve, ok := errors.Cause(firstPartialErr).(*validationError); ok {
+		var ve *validationError
+		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
 		return &client.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())

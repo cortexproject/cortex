@@ -218,7 +218,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	u.memSeriesCreatedTotal.Inc()
 	u.memSeries.Inc()
-	u.seriesInMetric.seriesAddedFor(metricName)
+	u.seriesInMetric.increaseSeriesForMetric(metricName)
 
 	if record != nil {
 		lbls := make(labels.Labels, 0, len(metric))
@@ -249,7 +249,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 		panic("No metric name label")
 	}
 
-	u.seriesInMetric.removeMetricName(metricName)
+	u.seriesInMetric.decreaseSeriesForMetric(metricName)
 
 	u.memSeriesRemovedTotal.Inc()
 	u.memSeries.Dec()
@@ -345,7 +345,7 @@ func newMetricCounter(limiter *Limiter) *metricCounter {
 	}
 }
 
-func (m *metricCounter) removeMetricName(metricName string) {
+func (m *metricCounter) decreaseSeriesForMetric(metricName string) {
 	shard := m.getShard(metricName)
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
@@ -369,7 +369,7 @@ func (m *metricCounter) canAddSeriesFor(userID, metric string) error {
 	return m.limiter.AssertMaxSeriesPerMetric(userID, shard.m[metric])
 }
 
-func (m *metricCounter) seriesAddedFor(metric string) {
+func (m *metricCounter) increaseSeriesForMetric(metric string) {
 	shard := m.getShard(metric)
 	shard.mtx.Lock()
 	shard.m[metric]++

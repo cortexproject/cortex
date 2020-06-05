@@ -135,7 +135,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeout:          time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -165,7 +165,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -200,7 +200,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -235,7 +235,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -286,7 +286,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -347,7 +347,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -430,7 +430,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeout:          testData.updateTimeout,
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
-			})
+			}, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck

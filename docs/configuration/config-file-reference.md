@@ -1710,6 +1710,10 @@ cassandra:
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
+  # Interval to retry connecting to cassandra nodes marked as DOWN.
+  # CLI flag: -cassandra.reconnent-interval
+  [reconnect_interval: <duration> | default = 1s]
+
   # Number of retries to perform on a request. (Default is 0: no retries)
   # CLI flag: -cassandra.max-retries
   [max_retries: <int> | default = 0]

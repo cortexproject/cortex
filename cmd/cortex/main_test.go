@@ -16,19 +16,24 @@ import (
 
 func TestFlagParsing(t *testing.T) {
 	for name, tc := range map[string]struct {
-		arguments     []string
-		yaml          string
-		stdoutMessage string // string that must be included in stdout
-		stderrMessage string // string that must be included in stderr
+		arguments      []string
+		yaml           string
+		stdoutMessage  string // string that must be included in stdout
+		stderrMessage  string // string that must be included in stderr
+		stdoutExcluded string // string that must NOT be included in stdout
+		stderrExcluded string // string that must NOT be included in stderr
 	}{
 		"help": {
-			arguments:     []string{"-h"},
-			stderrMessage: configFileOption,
+			arguments:      []string{"-h"},
+			stdoutMessage:  "Usage of", // Usage must be on stdout, not stderr.
+			stderrExcluded: "Usage of",
 		},
 
 		"unknown flag": {
-			arguments:     []string{"-unknown.flag"},
-			stderrMessage: "-unknown.flag",
+			arguments:      []string{"-unknown.flag"},
+			stderrMessage:  "Run with -help to get list of available parameters",
+			stdoutExcluded: "Usage of", // No usage description on unknown flag.
+			stderrExcluded: "Usage of",
 		},
 
 		"new flag, with config": {
@@ -62,20 +67,26 @@ func TestFlagParsing(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_ = os.Setenv("TARGET", "ingester")
-			testSingle(t, tc.arguments, tc.yaml, []byte(tc.stdoutMessage), []byte(tc.stderrMessage))
+			testSingle(t, tc.arguments, tc.yaml, []byte(tc.stdoutMessage), []byte(tc.stderrMessage), []byte(tc.stdoutExcluded), []byte(tc.stderrExcluded))
 		})
 	}
 }
 
-func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, stderrMessage []byte) {
+func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, stderrMessage, stdoutExcluded, stderrExcluded []byte) {
 	t.Helper()
 	oldArgs, oldStdout, oldStderr, oldTestMode := os.Args, os.Stdout, os.Stderr, testMode
-	defer func() {
+	restored := false
+	restoreIfNeeded := func() {
+		if restored {
+			return
+		}
 		os.Stdout = oldStdout
 		os.Stderr = oldStderr
 		os.Args = oldArgs
 		testMode = oldTestMode
-	}()
+		restored = true
+	}
+	defer restoreIfNeeded()
 
 	if yaml != "" {
 		tempFile, err := ioutil.TempFile("", "test")
@@ -104,11 +115,20 @@ func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, st
 	main()
 
 	stdout, stderr := co.Done()
+
+	// Restore stdout and stderr before reporting errors to make them visible.
+	restoreIfNeeded()
 	if !bytes.Contains(stdout, stdoutMessage) {
 		t.Errorf("Expected on stdout: %q, stdout: %s\n", stdoutMessage, stdout)
 	}
 	if !bytes.Contains(stderr, stderrMessage) {
 		t.Errorf("Expected on stderr: %q, stderr: %s\n", stderrMessage, stderr)
+	}
+	if len(stdoutExcluded) > 0 && bytes.Contains(stdout, stdoutExcluded) {
+		t.Errorf("Unexpected output on stdout: %q, stdout: %s\n", stdoutExcluded, stdout)
+	}
+	if len(stderrExcluded) > 0 && bytes.Contains(stderr, stderrExcluded) {
+		t.Errorf("Unexpected output on stderr: %q, stderr: %s\n", stderrExcluded, stderr)
 	}
 }
 

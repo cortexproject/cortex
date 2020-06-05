@@ -107,7 +107,7 @@ func (t *Cortex) initServer() (services.Service, error) {
 func (t *Cortex) initRing() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	// ruler's dependency)
 	canJoinDistributorsRing := (t.Cfg.Target == All || t.Cfg.Target == Distributor)
 
-	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing)
+	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

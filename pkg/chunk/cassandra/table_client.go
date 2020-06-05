@@ -17,7 +17,7 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	session, err := cfg.session("table_manager")
+	session, err := cfg.session("table-manager")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

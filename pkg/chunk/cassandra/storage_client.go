@@ -47,7 +47,7 @@ type Config struct {
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
 	QueryConcurrency         int                 `yaml:"query_concurrency"`
 	NumConnections           int                 `yaml:"num_connections"`
-	ConvictHosts             bool                `yaml:"convict_hosts"`
+	ConvictHosts             bool                `yaml:"convict_hosts_on_failure"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -74,7 +74,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
-	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts", true, "Convict hosts of being down on failure. (Default is true)")
+	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 }
 
 func (cfg *Config) Validate() error {
@@ -113,7 +113,7 @@ func (cfg *Config) session(name string) (*gocql.Session, error) {
 			Max:        cfg.MaxBackoff,
 		}
 	}
-	if cfg.ConvictHosts {
+	if !cfg.ConvictHosts {
 		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
 	if err = cfg.setClusterConfig(cluster); err != nil {

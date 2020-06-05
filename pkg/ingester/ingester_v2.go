@@ -76,8 +76,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	// Series per metric name limit.
 	metricName, err := extract.MetricNameFromLabels(metric)
 	if err != nil {
-		// TODO(codesome): what should be the action?
-		return nil
+		return err
 	}
 	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
 		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
@@ -89,22 +88,18 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 // PostCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostCreation(metric labels.Labels) {
 	metricName, err := extract.MetricNameFromLabels(metric)
-	if err != nil {
-		// TODO(codesome): what should be the action?
-		return
+	if err == nil {
+		u.seriesInMetric.seriesAddedFor(metricName)
 	}
-	u.seriesInMetric.seriesAddedFor(metricName)
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 	for _, metric := range metrics {
 		metricName, err := extract.MetricNameFromLabels(metric)
-		if err != nil {
-			// TODO(codesome): what should be the action?
-			continue
+		if err == nil {
+			u.seriesInMetric.removeMetricName(metricName)
 		}
-		u.seriesInMetric.removeMetricName(metricName)
 	}
 }
 
@@ -413,7 +408,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				continue
 			}
 
-			if ve, ok := cause.(*validationError); ok {
+			var ve *validationError
+			if errors.As(cause, &ve) {
 				// Caused by limits.
 				if firstPartialErr == nil {
 					firstPartialErr = ve

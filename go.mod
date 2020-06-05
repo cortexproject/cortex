@@ -79,4 +79,4 @@ replace k8s.io/client-go => k8s.io/client-go v0.18.3
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
-replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200604163347-a8642710dbb1
+replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

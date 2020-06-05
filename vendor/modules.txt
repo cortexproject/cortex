@@ -180,7 +180,7 @@ github.com/go-openapi/swag
 github.com/go-openapi/validate
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7 => github.com/grafana/gocql v0.0.0-20200604163347-a8642710dbb1
+# github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7 => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur

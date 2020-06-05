@@ -189,7 +189,7 @@ func (s *Session) addNewNode(host *HostInfo) {
 }
 
 func (s *Session) handleNewNode(ip net.IP, port int, waitForBinary bool) {
-	level.Error(s.logger).Log("msg", "Session.handleNewNode", "ip", ip.String(), "port", port)
+	level.Info(s.logger).Log("msg", "Session.handleNewNode", "ip", ip.String(), "port", port)
 
 	ip, port = s.cfg.translateAddressPort(ip, port)
 
@@ -244,7 +244,7 @@ func (s *Session) handleRemovedNode(ip net.IP, port int) {
 }
 
 func (s *Session) handleNodeUp(eventIp net.IP, eventPort int, waitForBinary bool) {
-	level.Error(s.logger).Log("msg", "Session.handleNodeUp", "ip", eventIp.String(), "port", eventPort)
+	level.Info(s.logger).Log("msg", "Session.handleNodeUp", "ip", eventIp.String(), "port", eventPort)
 
 	ip, _ := s.cfg.translateAddressPort(eventIp, eventPort)
 
@@ -268,7 +268,7 @@ func (s *Session) handleNodeUp(eventIp net.IP, eventPort int, waitForBinary bool
 }
 
 func (s *Session) handleNodeDown(ip net.IP, port int) {
-	level.Error(s.logger).Log("msg", "Session.handleNodeDown", "ip", ip.String(), "port", port)
+	level.Info(s.logger).Log("msg", "Session.handleNodeDown", "ip", ip.String(), "port", port)
 
 	host := s.ring.getHost(ip)
 	if host == nil {

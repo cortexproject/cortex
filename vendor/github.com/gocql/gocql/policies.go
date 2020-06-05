@@ -250,7 +250,7 @@ func (d *DowngradingConsistencyRetryPolicy) Attempt(q RetryableQuery) bool {
 	} else if currentAttempt > 0 {
 		q.SetConsistency(d.ConsistencyLevelsToTry[currentAttempt-1])
 		if d.logger != nil {
-			level.Error(d.logger).Log("msg", "DowngradingConsistencyRetryPolicy set consistency", "consistency", d.ConsistencyLevelsToTry[currentAttempt-1])
+			level.Info(d.logger).Log("msg", "DowngradingConsistencyRetryPolicy set consistency", "consistency", d.ConsistencyLevelsToTry[currentAttempt-1])
 		}
 	}
 	return true
@@ -465,7 +465,7 @@ func (t *tokenAwareHostPolicy) SetPartitioner(partitioner string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.partitioner == partitioner {
+	if t.partitioner != partitioner {
 		t.fallback.SetPartitioner(partitioner)
 		t.partitioner = partitioner
 		meta := t.getMetadataForUpdate()

@@ -203,6 +203,32 @@ to find the latest stable version tag and use it in the command bellow (currentl
 &lt;pre&gt;&lt;code&gt;docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.1.0 -config.file=/etc/single-process-config.yaml
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;In case you prefer to run the master version, please follow this &lt;a href=&#34;/docs/getting-started/getting-started-chunks-storage/&#34;&gt;documentation&lt;/a&gt; on how to build Cortex from source.&lt;/p&gt;
+&lt;h3 id=&#34;configure-the-index-and-chunk-table-options&#34;&gt;Configure the index and chunk table options&lt;/h3&gt;
+&lt;p&gt;In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
+If you want to configure the table options, use the &lt;code&gt;storage.cassandra.table_options&lt;/code&gt; property or &lt;code&gt;cassandra.table-options&lt;/code&gt; flag.
+This configuration property is just &lt;code&gt;string&lt;/code&gt; type and this value used as plain text on &lt;code&gt;WITH&lt;/code&gt; option of table creation query.
+It is recommended to enclose the value of &lt;code&gt;table_options&lt;/code&gt; in double-quotes because you should enclose strings of table options in quotes on Cassandra.&lt;/p&gt;
+&lt;p&gt;For example, suppose the name of index(or chunk) table is &amp;lsquo;test_table&amp;rsquo;.
+Details about column definitions of the table are omitted.
+If no table options configured, then Cortex will generate the query to create a table without a &lt;code&gt;WITH&lt;/code&gt; clause to use default table options:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;CREATE TABLE IF NOT EXISTS cortex.test_table (...)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;If table options configured with &lt;code&gt;table_options&lt;/code&gt; as below:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;storage:
+cassandra:
+addresses: 127.0.0.1
+keyspace: cortex
+table_options: &amp;quot;gc_grace_seocnds = 86400
+AND comments = &#39;this is a test table&#39;
+AND COMPACT STORAGE
+AND caching = { &#39;keys&#39;: &#39;ALL&#39;, &#39;rows_per_partition&#39;: 1024 }&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Then Cortex will generate the query to create a table with a &lt;code&gt;WITH&lt;/code&gt; clause as below:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = &#39;this is a test table&#39; AND COMPACT STORAGE AND caching = { &#39;keys&#39;: &#39;ALL&#39;, &#39;rows_per_partition&#39;: 1024 }
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
+For details about table options, see the official document of storage you are using.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;WARNING&lt;/strong&gt;: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by Table Manager at runtime and seriously affect your Cortex.&lt;/p&gt;
 &lt;h2 id=&#34;configure-prometheus-to-send-series-to-cortex&#34;&gt;Configure Prometheus to send series to Cortex&lt;/h2&gt;
 &lt;p&gt;Now that Cortex is up, it should be running on &lt;code&gt;http://localhost:9009&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.&lt;/p&gt;

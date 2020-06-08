@@ -58,6 +58,7 @@ func main() {
 	if runnerConfig.EnableDeleteSeriesTest {
 		runnerConfig.DeleteSeriesTestConfig.ExtraSelectors = runnerConfig.ExtraSelectors
 		runnerConfig.DeleteSeriesTestConfig.PrometheusAddr = runnerConfig.PrometheusAddr
+		runnerConfig.DeleteSeriesTestConfig.UserID = runnerConfig.UserID
 		runner.Add(correctness.NewDeleteSeriesTest("delete_series", func(t time.Time) float64 {
 			return t.Sub(unixStart).Seconds()
 		}, runnerConfig.DeleteSeriesTestConfig, runnerConfig.CommonTestConfig))

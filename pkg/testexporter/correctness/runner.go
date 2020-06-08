@@ -45,7 +45,7 @@ type RunnerConfig struct {
 	testQueryMinSize       time.Duration
 	testQueryMaxSize       time.Duration
 	PrometheusAddr         string
-	userID                 string
+	UserID                 string
 	ExtraSelectors         string
 	EnableDeleteSeriesTest bool
 	CommonTestConfig       CommonTestConfig
@@ -59,7 +59,7 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.testQueryMaxSize, "test-query-max-size", 60*time.Minute, "The max query size to Prometheus.")
 
 	f.StringVar(&cfg.PrometheusAddr, "prometheus-address", "", "Address of Prometheus instance to query.")
-	f.StringVar(&cfg.userID, "user-id", "", "UserID to send to Cortex.")
+	f.StringVar(&cfg.UserID, "user-id", "", "UserID to send to Cortex.")
 
 	f.StringVar(&cfg.ExtraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
 	f.BoolVar(&cfg.EnableDeleteSeriesTest, "enable-delete-series-test", false, "Enable tests for checking deletion of series.")
@@ -83,10 +83,10 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	apiCfg := api.Config{
 		Address: cfg.PrometheusAddr,
 	}
-	if cfg.userID != "" {
+	if cfg.UserID != "" {
 		apiCfg.RoundTripper = &nethttp.Transport{
 			RoundTripper: promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
+				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.UserID), req)
 				return api.DefaultRoundTripper.RoundTrip(req)
 			}),
 		}

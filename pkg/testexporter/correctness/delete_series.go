@@ -15,6 +15,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -42,14 +43,17 @@ type DeleteSeriesTestConfig struct {
 	deleteDataForRange            time.Duration
 	timeQueryStart                TimeValue
 	durationQuerySince            time.Duration
+	purgerAddr                    string
 
 	PrometheusAddr string
 	ExtraSelectors string
+	UserID         string
 }
 
 func (cfg *DeleteSeriesTestConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.deleteRequestCreationInterval, "delete-request-creation-interval", 5*time.Minute, "The interval at which delete request should be sent.")
 	f.DurationVar(&cfg.deleteDataForRange, "delete-data-for-range", 2*time.Minute, "Time range for which data is deleted.")
+	f.StringVar(&cfg.purgerAddr, "purger-addr", "", "Purger address to send delete requests. Keep empty to use same address as prometheus-address.")
 
 	// By default, we only query for values from when this process started
 	cfg.timeQueryStart = NewTimeValue(time.Now())
@@ -78,6 +82,10 @@ func NewDeleteSeriesTest(name string, f func(time.Time) float64, cfg DeleteSerie
 		cfg:              cfg,
 		commonTestConfig: commonTestConfig,
 		quit:             make(chan struct{}),
+	}
+
+	if cfg.purgerAddr == "" {
+		test.cfg.purgerAddr = test.cfg.PrometheusAddr
 	}
 
 	test.wg.Add(1)
@@ -145,12 +153,18 @@ func (d *DeleteSeriesTest) Test(ctx context.Context, client v1.API, selectors st
 		return true, nil
 	}
 
+	level.Debug(log).Log("start", start.Unix(), "query-start", queryInterval.start.Unix(),
+		"query-end", queryInterval.end.Unix(), "non-deleted-intervals")
+
 	verifyPairsFrom, verifyPairsTo := 0, 0
 	for _, nonDeletedInterval := range nonDeletedIntervals {
 		for ; verifyPairsTo < len(pairs); verifyPairsTo++ {
 			pair := pairs[verifyPairsTo]
-			if pair.Timestamp.Time().Before(nonDeletedInterval.start) {
-				return false, fmt.Errorf("unexpected sample at timestamp %d", pair.Timestamp.Unix())
+			// do not fail the test if difference is just by couple of ms or ns.
+			if pair.Timestamp.Time().Before(nonDeletedInterval.start) && pair.Timestamp.Unix() != nonDeletedInterval.start.Unix() {
+				level.Error(log).Log("msg", "unexpected sample", "timestamp", pair.Timestamp.Unix(), "non-deleted-interval.start", nonDeletedInterval.start.Unix(),
+					"non-deleted-interval.end", nonDeletedInterval.end.Unix())
+				return false, nil
 			} else if pair.Timestamp.Time().After(nonDeletedInterval.end) {
 				break
 			}
@@ -158,8 +172,11 @@ func (d *DeleteSeriesTest) Test(ctx context.Context, client v1.API, selectors st
 
 		passed := verifySamples(ctx, d, pairs[verifyPairsFrom:verifyPairsTo], nonDeletedInterval.end.Sub(nonDeletedInterval.start), d.commonTestConfig)
 		if !passed {
+			verifyingPairs := pairs[verifyPairsFrom:verifyPairsTo]
 			level.Error(log).Log("msg", "failed to verify samples batch", "query start", start.Unix(), "query duration", duration,
-				"batch duration", nonDeletedInterval.end.Sub(nonDeletedInterval.start), "batch", pairs[verifyPairsFrom:verifyPairsTo])
+				"batch length", len(verifyingPairs),
+				"batch duration", nonDeletedInterval.end.Sub(nonDeletedInterval.start), "batch-start", verifyingPairs[0].Timestamp.Unix(),
+				"batch-end", verifyingPairs[len(verifyingPairs)-1].Timestamp.Unix())
 			return false, nil
 		}
 
@@ -185,7 +202,7 @@ func (d *DeleteSeriesTest) sendDeleteRequest() (err error) {
 		deleteRequestCreationAttemptsTotal.WithLabelValues(status).Inc()
 	}()
 
-	baseURL, err := url.Parse(d.cfg.PrometheusAddr)
+	baseURL, err := url.Parse(d.cfg.purgerAddr)
 	if err != nil {
 		return
 	}
@@ -198,8 +215,21 @@ func (d *DeleteSeriesTest) sendDeleteRequest() (err error) {
 	query.Add("end", fmt.Sprint(endTime.Unix()))
 	baseURL.RawQuery = query.Encode()
 
+	r, err := http.NewRequest("POST", baseURL.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	if d.cfg.UserID != "" {
+		r = r.WithContext(user.InjectOrgID(r.Context(), d.cfg.UserID))
+		err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+		if err != nil {
+			return err
+		}
+	}
+
 	level.Error(util.Logger).Log("msg", "sending delete request", "selector", selectors, "starttime", startTime, "endtime", endTime)
-	resp, err := http.Post(baseURL.String(), "text/plain", nil)
+	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return
 	}

@@ -118,6 +118,44 @@ docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-pro
 ```
 In case you prefer to run the master version, please follow this [documentation](../getting-started/getting-started-chunks.md) on how to build Cortex from source.
 
+### Configure the index and chunk table options
+
+In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
+If you want to configure the table options, use the `storage.cassandra.table_options` property or `cassandra.table-options` flag.
+This configuration property is just `string` type and this value used as plain text on `WITH` option of table creation query.
+It is recommended to enclose the value of `table_options` in double-quotes because you should enclose strings of table options in quotes on Cassandra.
+
+For example, suppose the name of index(or chunk) table is 'test_table'.
+Details about column definitions of the table are omitted.
+If no table options configured, then Cortex will generate the query to create a table without a `WITH` clause to use default table options:
+
+```
+CREATE TABLE IF NOT EXISTS cortex.test_table (...)
+```
+
+If table options configured with `table_options` as below:
+
+```
+storage:
+  cassandra:
+    addresses: 127.0.0.1
+    keyspace: cortex
+    table_options: "gc_grace_seocnds = 86400
+      AND comments = 'this is a test table'
+      AND COMPACT STORAGE
+      AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }"
+```
+
+Then Cortex will generate the query to create a table with a `WITH` clause as below:
+
+```
+CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = 'this is a test table' AND COMPACT STORAGE AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }
+```
+
+Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
+For details about table options, see the official document of storage you are using.
+
+**WARNING**: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by Table Manager at runtime and seriously affect your Cortex.
 
 ## Configure Prometheus to send series to Cortex
 

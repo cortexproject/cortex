@@ -157,6 +157,7 @@ Please make sure to review renamed metrics, and update your dashboards and alert
 * [FEATURE] TLS config options added to the Server. #2535
 * [FEATURE] Experimental: Added support for `/api/v1/metadata` Prometheus-based endpoint. #2549
 * [FEATURE] Add ability to limit concurrent queries to Cassandra with `-cassandra.query-concurrency` flag. #2562
+* [FEATURE] Add `-cassandra.table-options` flag to customize table options of Cassandra when creating the index or chunk table. #2575
 * [ENHANCEMENT] Experimental TSDB: sample ingestion errors are now reported via existing `cortex_discarded_samples_total` metric. #2370
 * [ENHANCEMENT] Failures on samples at distributors and ingesters return the first validation error as opposed to the last. #2383
 * [ENHANCEMENT] Experimental TSDB: Added `cortex_querier_blocks_meta_synced`, which reflects current state of synced blocks over all tenants. #2392

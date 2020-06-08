@@ -1,7 +1,8 @@
-package main
+package querytee
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,11 +23,35 @@ var (
 	errMinBackends = errors.New("at least 1 backend is required")
 )
 
+type ProxyConfig struct {
+	ServerServicePort  int
+	BackendEndpoints   string
+	PreferredBackend   string
+	BackendReadTimeout time.Duration
+	CompareResponses   bool
+}
+
+func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
+	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
+	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client.")
+	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
+	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
+}
+
+type Route struct {
+	Path               string
+	RouteName          string
+	Methods            string
+	ResponseComparator ResponsesComparator
+}
+
 type Proxy struct {
-	cfg      Config
+	cfg      ProxyConfig
 	backends []*ProxyBackend
 	logger   log.Logger
 	metrics  *ProxyMetrics
+	routes   []Route
 
 	// The HTTP server used to run the proxy service.
 	srv         *http.Server
@@ -36,11 +61,16 @@ type Proxy struct {
 	done sync.WaitGroup
 }
 
-func NewProxy(cfg Config, logger log.Logger, registerer prometheus.Registerer) (*Proxy, error) {
+func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer prometheus.Registerer) (*Proxy, error) {
+	if cfg.CompareResponses && cfg.PreferredBackend == "" {
+		return nil, fmt.Errorf("when enabling comparion of results -backend.preferred flag must be set to hostname of preferred backend")
+	}
+
 	p := &Proxy{
 		cfg:     cfg,
 		logger:  logger,
 		metrics: NewProxyMetrics(registerer),
+		routes:  routes,
 	}
 
 	// Parse the backend endpoints (comma separated).
@@ -77,6 +107,10 @@ func NewProxy(cfg Config, logger log.Logger, registerer prometheus.Registerer) (
 		return nil, errMinBackends
 	}
 
+	if cfg.CompareResponses && len(p.backends) != 2 {
+		return nil, fmt.Errorf("when enabling comparison of results number of backends should be 2 exactly")
+	}
+
 	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
 		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfil the purpose of the proxy and compare results.")
@@ -99,24 +133,9 @@ func (p *Proxy) Start() error {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	endpoints := []struct {
-		endpoint  string
-		methods   string
-		routeName string
-	}{
-		{"/api/v1/query", "GET", "api_v1_query"},
-		{"/api/v1/query_range", "GET", "api_v1_query_range"},
-		{"/api/v1/labels", "GET", "api_v1_labels"},
-		{"/api/v1/label/{name}/values", "GET", "api_v1_label_name_values"},
-		{"/api/v1/series", "GET", "api_v1_series"},
-		{"/api/v1/metadata", "GET", "api_v1_metadata"},
-		{"/api/v1/rules", "GET", "api_v1_rules"},
-		{"/api/v1/alerts", "GET", "api_v1_alerts"},
-	}
-
-	// Read endpoints
-	for _, e := range endpoints {
-		router.Path(e.endpoint).Methods(e.methods).Handler(NewProxyEndpoint(p.backends, e.routeName, p.metrics, p.logger))
+	// register routes
+	for _, route := range p.routes {
+		router.Path(route.Path).Methods(route.Methods).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, route.ResponseComparator))
 	}
 
 	p.srvListener = listener

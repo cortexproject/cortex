@@ -1,30 +1,39 @@
-package main
+package querytee
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 )
 
+type ResponsesComparator interface {
+	Compare(expected, actual []byte) error
+}
+
 type ProxyEndpoint struct {
-	backends []*ProxyBackend
-	metrics  *ProxyMetrics
-	logger   log.Logger
+	backends   []*ProxyBackend
+	metrics    *ProxyMetrics
+	logger     log.Logger
+	comparator ResponsesComparator
 
 	// The route name used to track metrics.
 	routeName string
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger) *ProxyEndpoint {
+func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator) *ProxyEndpoint {
 	return &ProxyEndpoint{
-		backends:  backends,
-		routeName: routeName,
-		metrics:   metrics,
-		logger:    logger,
+		backends:   backends,
+		routeName:  routeName,
+		metrics:    metrics,
+		logger:     logger,
+		comparator: comparator,
 	}
 }
 
@@ -87,6 +96,25 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			level.Warn(p.logger).Log("msg", "Unable to write response", "err", err)
 		}
 	}
+
+	if p.comparator != nil {
+		go func() {
+			expectedResponse := responses[0]
+			actualResponse := responses[1]
+			if responses[1].backend.preferred {
+				expectedResponse, actualResponse = actualResponse, expectedResponse
+			}
+
+			result := resultSuccess
+			err := p.compareResponses(expectedResponse, actualResponse)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "response comparison failed", "route-name", p.routeName, "err", err)
+				result = resultFailed
+			}
+
+			p.metrics.responsesComparedTotal.WithLabelValues(p.routeName, result).Inc()
+		}()
+	}
 }
 
 func (p *ProxyEndpoint) pickResponseForDownstream(responses []*backendResponse) *backendResponse {
@@ -106,6 +134,23 @@ func (p *ProxyEndpoint) pickResponseForDownstream(responses []*backendResponse) 
 
 	// No successful response, so let's pick the first one.
 	return responses[0]
+}
+
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) error {
+	// compare response body only if we get a 200
+	if expectedResponse.status != 200 {
+		return fmt.Errorf("skipped comparison of response because we got status code %d from preferred backend's response", expectedResponse.status)
+	}
+
+	if actualResponse.status != 200 {
+		return fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", expectedResponse.status)
+	}
+
+	if expectedResponse.status != actualResponse.status {
+		return fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+	}
+
+	return p.comparator.Compare(expectedResponse.body, actualResponse.body)
 }
 
 type backendResponse struct {

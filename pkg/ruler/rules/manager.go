@@ -15,6 +15,7 @@ package rules
 
 import (
 	"context"
+	"fmt"
 	html_template "html/template"
 	"math"
 	"net/url"
@@ -703,7 +704,7 @@ type NotifyFunc func(ctx context.Context, expr string, alerts ...*Alert)
 type ManagerOptions struct {
 	ExternalURL     *url.URL
 	QueryFunc       QueryFunc
-	ParseExpr       func(string) (parser.Expr, error)
+	ParseExpr       func(string) (fmt.Stringer, error)
 	NotifyFunc      NotifyFunc
 	Context         context.Context
 	Appendable      Appendable
@@ -725,7 +726,7 @@ func NewManager(o *ManagerOptions) *Manager {
 	}
 
 	if o.ParseExpr == nil {
-		o.ParseExpr = parser.ParseExpr
+		o.ParseExpr = func(s string) (fmt.Stringer, error) { return parser.ParseExpr(s) }
 	}
 
 	m := &Manager{

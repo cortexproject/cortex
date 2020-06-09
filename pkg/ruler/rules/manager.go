@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -30,6 +29,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
@@ -222,6 +222,7 @@ type Rule interface {
 // Group is a set of rules that have a logical relation.
 type Group struct {
 	name                 string
+	file                 string
 	interval             time.Duration
 	rules                []Rule
 	seriesInPreviousEval []map[string]labels.Labels // One per Rule.
@@ -242,19 +243,20 @@ type Group struct {
 }
 
 // NewGroup makes a new Group with the given name, options, and rules.
-func NewGroup(name string, interval time.Duration, rules []Rule, shouldRestore bool, opts *ManagerOptions) *Group {
+func NewGroup(name, file string, interval time.Duration, rules []Rule, shouldRestore bool, opts *ManagerOptions) *Group {
 	metrics := opts.Metrics
 	if metrics == nil {
 		metrics = NewGroupMetrics(opts.Registerer)
 	}
 
-	metrics.groupLastEvalTime.WithLabelValues(name)
-	metrics.groupLastDuration.WithLabelValues(name)
-	metrics.groupRules.WithLabelValues(name).Set(float64(len(rules)))
-	metrics.groupInterval.WithLabelValues(name).Set(interval.Seconds())
+	metrics.groupLastEvalTime.WithLabelValues(groupKey(file, name))
+	metrics.groupLastDuration.WithLabelValues(groupKey(file, name))
+	metrics.groupRules.WithLabelValues(groupKey(file, name)).Set(float64(len(rules)))
+	metrics.groupInterval.WithLabelValues(groupKey(file, name)).Set(interval.Seconds())
 
 	return &Group{
 		name:                 name,
+		file:                 file,
 		interval:             interval,
 		rules:                rules,
 		shouldRestore:        shouldRestore,
@@ -269,6 +271,9 @@ func NewGroup(name string, interval time.Duration, rules []Rule, shouldRestore b
 
 // Name returns the group name.
 func (g *Group) Name() string { return g.name }
+
+// File returns the group's file.
+func (g *Group) File() string { return g.file }
 
 // Rules returns the group's rules.
 func (g *Group) Rules() []Rule { return g.rules }
@@ -289,6 +294,7 @@ func (g *Group) run(ctx context.Context) {
 
 	ctx = promql.NewOriginContext(ctx, map[string]interface{}{
 		"ruleGroup": map[string]string{
+			"file": g.File(),
 			"name": g.Name(),
 		},
 	})
@@ -363,6 +369,7 @@ func (g *Group) stop() {
 func (g *Group) hash() uint64 {
 	l := labels.New(
 		labels.Label{Name: "name", Value: g.name},
+		labels.Label{Name: "file", Value: g.file},
 	)
 	return l.Hash()
 }
@@ -408,7 +415,7 @@ func (g *Group) GetEvaluationDuration() time.Duration {
 
 // setEvaluationDuration sets the time in seconds the last evaluation took.
 func (g *Group) setEvaluationDuration(dur time.Duration) {
-	g.metrics.groupLastDuration.WithLabelValues(g.name).Set(dur.Seconds())
+	g.metrics.groupLastDuration.WithLabelValues(groupKey(g.file, g.name)).Set(dur.Seconds())
 
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
@@ -424,7 +431,7 @@ func (g *Group) GetEvaluationTimestamp() time.Time {
 
 // setEvaluationTimestamp updates evaluationTimestamp to the timestamp of when the rule group was last evaluated.
 func (g *Group) setEvaluationTimestamp(ts time.Time) {
-	g.metrics.groupLastEvalTime.WithLabelValues(g.name).Set(float64(ts.UnixNano()) / 1e9)
+	g.metrics.groupLastEvalTime.WithLabelValues(groupKey(g.file, g.name)).Set(float64(ts.UnixNano()) / 1e9)
 
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
@@ -649,6 +656,10 @@ func (g *Group) Equals(ng *Group) bool {
 		return false
 	}
 
+	if g.file != ng.file {
+		return false
+	}
+
 	if g.interval != ng.interval {
 		return false
 	}
@@ -743,11 +754,11 @@ func (m *Manager) Stop() {
 
 // Update the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
-func (m *Manager) Update(interval time.Duration, list RuleGroupList) error {
+func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	groups, errs := m.LoadGroups(interval, list...)
+	groups, errs := m.LoadGroups(interval, externalLabels, files...)
 	if errs != nil {
 		for _, e := range errs {
 			level.Error(m.logger).Log("msg", "loading groups failed", "err", e)
@@ -762,11 +773,12 @@ func (m *Manager) Update(interval time.Duration, list RuleGroupList) error {
 		// check if new group equals with the old group, if yes then skip it.
 		// If not equals, stop it and wait for it to finish the current iteration.
 		// Then copy it into the new group.
-		oldg, ok := m.groups[newg.name]
-		delete(m.groups, newg.name)
+		gn := groupKey(newg.file, newg.name)
+		oldg, ok := m.groups[gn]
+		delete(m.groups, gn)
 
 		if ok && oldg.Equals(newg) {
-			groups[newg.name] = oldg
+			groups[gn] = oldg
 			continue
 		}
 
@@ -806,50 +818,61 @@ func (m *Manager) Update(interval time.Duration, list RuleGroupList) error {
 
 // LoadGroups reads groups from a list of files.
 func (m *Manager) LoadGroups(
-	interval time.Duration, descs ...*RuleGroupDesc,
+	interval time.Duration, externalLabels labels.Labels, filenames ...string,
 ) (map[string]*Group, []error) {
 	groups := make(map[string]*Group)
 
 	shouldRestore := !m.restored
 
-	for _, desc := range descs {
-		itv := interval
-		if desc.Interval != 0 {
-			itv = desc.Interval
+	for _, fn := range filenames {
+		rgs, errs := rulefmt.ParseFile(fn)
+		if errs != nil {
+			return nil, errs
 		}
 
-		rules := make([]Rule, 0, len(desc.Rules))
-		for _, r := range desc.Rules {
-			// TODO: agnostic parsing
-			expr, err := promql.ParseExpr(r.Expr)
-			if err != nil {
-				return nil, []error{errors.Wrap(err, desc.Name)}
+		for _, rg := range rgs.Groups {
+			itv := interval
+			if rg.Interval != 0 {
+				itv = time.Duration(rg.Interval)
 			}
 
-			if r.Alert != "" {
-				rules = append(rules, NewAlertingRule(
-					r.Alert,
+			rules := make([]Rule, 0, len(rg.Rules))
+			for _, r := range rg.Rules {
+				expr, err := promql.ParseExpr(r.Expr.Value)
+				if err != nil {
+					return nil, []error{errors.Wrap(err, fn)}
+				}
+
+				if r.Alert.Value != "" {
+					rules = append(rules, NewAlertingRule(
+						r.Alert.Value,
+						expr,
+						time.Duration(r.For),
+						labels.FromMap(r.Labels),
+						labels.FromMap(r.Annotations),
+						externalLabels,
+						m.restored,
+						log.With(m.logger, "alert", r.Alert),
+					))
+					continue
+				}
+				rules = append(rules, NewRecordingRule(
+					r.Record.Value,
 					expr,
-					r.For,
-					client.FromLabelAdaptersToLabels(r.Labels),
-					client.FromLabelAdaptersToLabels(r.Annotations),
-					nil,
-					m.restored,
-					log.With(m.logger, "alert", r.Alert),
+					labels.FromMap(r.Labels),
 				))
-				continue
 			}
-			rules = append(rules, NewRecordingRule(
-				r.Record,
-				expr,
-				client.FromLabelAdaptersToLabels(r.Labels),
-			))
-		}
 
-		groups[desc.Name] = NewGroup(desc.Name, itv, rules, shouldRestore, m.opts)
+			groups[groupKey(fn, rg.Name)] = NewGroup(rg.Name, fn, itv, rules, shouldRestore, m.opts)
+		}
 	}
 
 	return groups, nil
+}
+
+// Group names need not be unique across filenames.
+func groupKey(file, name string) string {
+	return file + ";" + name
 }
 
 // RuleGroups returns the list of manager's rule groups.
@@ -863,6 +886,9 @@ func (m *Manager) RuleGroups() []*Group {
 	}
 
 	sort.Slice(rgs, func(i, j int) bool {
+		if rgs[i].file != rgs[j].file {
+			return rgs[i].file < rgs[j].file
+		}
 		return rgs[i].name < rgs[j].name
 	})
 

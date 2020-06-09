@@ -460,7 +460,7 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 				Series: &storepb.Series{
 					Labels: series1,
 					Chunks: []storepb.AggrChunk{
-						createAggrChunkWithSamples(series1Samples[3:]...),
+						createAggrChunkWithSamples(series1Samples[3:]...), // Second half.
 					},
 				},
 			},

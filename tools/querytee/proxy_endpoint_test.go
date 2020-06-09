@@ -12,16 +12,16 @@ import (
 )
 
 func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
-	backendUrl1, err := url.Parse("http://backend-1/")
+	backendURL1, err := url.Parse("http://backend-1/")
 	require.NoError(t, err)
-	backendUrl2, err := url.Parse("http://backend-2/")
+	backendURL2, err := url.Parse("http://backend-2/")
 	require.NoError(t, err)
-	backendUrl3, err := url.Parse("http://backend-3/")
+	backendURL3, err := url.Parse("http://backend-3/")
 	require.NoError(t, err)
 
-	backendPref := NewProxyBackend("backend-1", backendUrl1, time.Second, true)
-	backendOther1 := NewProxyBackend("backend-2", backendUrl2, time.Second, false)
-	backendOther2 := NewProxyBackend("backend-3", backendUrl3, time.Second, false)
+	backendPref := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	backendOther1 := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	backendOther2 := NewProxyBackend("backend-3", backendURL3, time.Second, false)
 
 	tests := map[string]struct {
 		backends  []*ProxyBackend

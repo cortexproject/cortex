@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"testing"
 	"time"
@@ -382,7 +381,7 @@ func TestForStateRestore(t *testing.T) {
 		nil, nil, true, nil,
 	)
 
-	group := NewGroup("default", "", time.Second, []Rule{rule}, true, opts)
+	group := NewGroup("default", time.Second, []Rule{rule}, true, opts)
 	groups := make(map[string]*Group)
 	groups["default;"] = group
 
@@ -441,7 +440,7 @@ func TestForStateRestore(t *testing.T) {
 			labels.FromStrings("severity", "critical"),
 			nil, nil, false, nil,
 		)
-		newGroup := NewGroup("default", "", time.Second, []Rule{newRule}, true, opts)
+		newGroup := NewGroup("default", time.Second, []Rule{newRule}, true, opts)
 
 		newGroups := make(map[string]*Group)
 		newGroups["default;"] = newGroup
@@ -525,7 +524,7 @@ func TestStaleness(t *testing.T) {
 	expr, err := promql.ParseExpr("a + 1")
 	testutil.Ok(t, err)
 	rule := NewRecordingRule("a_plus_one", expr, labels.Labels{})
-	group := NewGroup("default", "", time.Second, []Rule{rule}, true, opts)
+	group := NewGroup("default", time.Second, []Rule{rule}, true, opts)
 
 	// A time series that has two samples and then goes stale.
 	app, _ := storage.Appender()
@@ -687,7 +686,8 @@ func TestDeletedRuleMarkedStale(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	files := []string{"fixtures/rules.yaml"}
+	ruleGroupList, err := loadRuleGroupList("fixtures/rules.yaml")
+	testutil.Ok(t, err)
 	expected := map[string]labels.Labels{
 		"test": labels.FromStrings("name", "value"),
 	}
@@ -712,7 +712,7 @@ func TestUpdate(t *testing.T) {
 	ruleManager.Run()
 	defer ruleManager.Stop()
 
-	err := ruleManager.Update(10*time.Second, files, nil)
+	err = ruleManager.Update(10*time.Second, ruleGroupList)
 	testutil.Ok(t, err)
 	testutil.Assert(t, len(ruleManager.groups) > 0, "expected non-empty rule groups")
 	ogs := map[string]*Group{}
@@ -723,7 +723,7 @@ func TestUpdate(t *testing.T) {
 		ogs[h] = g
 	}
 
-	err = ruleManager.Update(10*time.Second, files, nil)
+	err = ruleManager.Update(10*time.Second, ruleGroupList)
 	testutil.Ok(t, err)
 	for h, g := range ruleManager.groups {
 		for _, actual := range g.seriesInPreviousEval {
@@ -733,40 +733,53 @@ func TestUpdate(t *testing.T) {
 		testutil.Equals(t, ogs[h], g)
 	}
 
-	// Groups will be recreated if updated.
-	rgs, errs := rulefmt.ParseFile("fixtures/rules.yaml")
-	testutil.Assert(t, len(errs) == 0, "file parsing failures")
-
-	tmpFile, err := ioutil.TempFile("", "rules.test.*.yaml")
-	testutil.Ok(t, err)
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	err = ruleManager.Update(10*time.Second, []string{tmpFile.Name()}, nil)
+	err = ruleManager.Update(10*time.Second, nil)
 	testutil.Ok(t, err)
 
 	for h, g := range ruleManager.groups {
 		ogs[h] = g
 	}
 
+	// reload the list for modification
+	rgs, err := loadRuleGroupList("fixtures/rules.yaml")
+	testutil.Ok(t, err)
+
 	// Update interval and reload.
-	for i, g := range rgs.Groups {
+	for _, g := range rgs {
 		if g.Interval != 0 {
-			rgs.Groups[i].Interval = g.Interval * 2
+			g.Interval = g.Interval * 2
 		} else {
-			rgs.Groups[i].Interval = model.Duration(10)
+			g.Interval = 10
 		}
 
 	}
-	reloadAndValidate(rgs, t, tmpFile, ruleManager, expected, ogs)
+	reloadAndValidate(rgs, t, ruleManager, ogs)
 
 	// Change group rules and reload.
-	for i, g := range rgs.Groups {
-		for j, r := range g.Rules {
-			rgs.Groups[i].Rules[j].Expr.SetString(fmt.Sprintf("%s * 0", r.Expr.Value))
+	for _, g := range rgs {
+		for _, r := range g.Rules {
+			r.Expr = fmt.Sprintf("%s * 0", r.Expr)
 		}
 	}
-	reloadAndValidate(rgs, t, tmpFile, ruleManager, expected, ogs)
+	reloadAndValidate(rgs, t, ruleManager, ogs)
+}
+
+func loadRuleGroupList(f string) (RuleGroupList, error) {
+	b, err := ioutil.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+
+	x := &struct {
+		Groups []*RuleGroupDesc `json:"groups,omitempty"`
+	}{}
+
+	err = yaml.Unmarshal(b, x)
+	if err != nil {
+		return nil, err
+	}
+
+	return RuleGroupList(x.Groups), nil
 }
 
 // ruleGroupsTest for running tests over rules.
@@ -807,13 +820,8 @@ func formatRules(r *rulefmt.RuleGroups) ruleGroupsTest {
 	}
 }
 
-func reloadAndValidate(rgs *rulefmt.RuleGroups, t *testing.T, tmpFile *os.File, ruleManager *Manager, expected map[string]labels.Labels, ogs map[string]*Group) {
-	bs, err := yaml.Marshal(formatRules(rgs))
-	testutil.Ok(t, err)
-	tmpFile.Seek(0, 0)
-	_, err = tmpFile.Write(bs)
-	testutil.Ok(t, err)
-	err = ruleManager.Update(10*time.Second, []string{tmpFile.Name()}, nil)
+func reloadAndValidate(rgs RuleGroupList, t *testing.T, ruleManager *Manager, ogs map[string]*Group) {
+	err := ruleManager.Update(10*time.Second, rgs)
 	testutil.Ok(t, err)
 	for h, g := range ruleManager.groups {
 		if ogs[h] == g {
@@ -850,7 +858,7 @@ func TestNotify(t *testing.T) {
 	expr, err := promql.ParseExpr("a > 1")
 	testutil.Ok(t, err)
 	rule := NewAlertingRule("aTooHigh", expr, 0, labels.Labels{}, labels.Labels{}, nil, true, log.NewNopLogger())
-	group := NewGroup("alert", "", time.Second, []Rule{rule}, true, opts)
+	group := NewGroup("alert", time.Second, []Rule{rule}, true, opts)
 
 	app, _ := storage.Appender()
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
@@ -951,7 +959,13 @@ func TestMetricsUpdate(t *testing.T) {
 	}
 
 	for i, c := range cases {
-		err := ruleManager.Update(time.Second, c.files, nil)
+		var list RuleGroupList
+		for _, f := range c.files {
+			xs, err := loadRuleGroupList(f)
+			testutil.Ok(t, err)
+			list = append(list, xs...)
+		}
+		err := ruleManager.Update(time.Second, list)
 		testutil.Ok(t, err)
 		time.Sleep(2 * time.Second)
 		testutil.Equals(t, c.metrics, countMetrics(), "test %d: invalid count of metrics", i)

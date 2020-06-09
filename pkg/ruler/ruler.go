@@ -147,7 +147,6 @@ type Ruler struct {
 	subservices *services.Manager
 
 	store          rules.RuleStore
-	mapper         *mapper
 	userManagerMtx sync.Mutex
 	userManagers   map[string]*rules.Manager
 
@@ -179,7 +178,6 @@ func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableH
 		notifiers:         map[string]*rulerNotifier{},
 		store:             ruleStore,
 		appendableHistory: appendableHist,
-		mapper:            newMapper(cfg.RulePath, logger),
 		userManagers:      map[string]*rules.Manager{},
 		registry:          reg,
 		logger:            logger,
@@ -471,32 +469,22 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 	r.userManagerMtx.Lock()
 	defer r.userManagerMtx.Unlock()
 
-	// Map the files to disk and return the file names to be passed to the users manager if they
-	// have been updated
-	update, files, err := r.mapper.MapRules(user, groups.Formatted())
-	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to map rule files", "user", user, "err", err)
-		return
-	}
-
-	if update {
-		level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
-		configUpdatesTotal.WithLabelValues(user).Inc()
-		manager, exists := r.userManagers[user]
-		if !exists {
-			manager, err = r.newManager(ctx, user)
-			if err != nil {
-				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
-				return
-			}
-			manager.Run()
-			r.userManagers[user] = manager
-		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
+	level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
+	configUpdatesTotal.WithLabelValues(user).Inc()
+	manager, exists := r.userManagers[user]
+	if !exists {
+		manager, err = r.newManager(ctx, user)
 		if err != nil {
-			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
+			level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 			return
 		}
+		manager.Run()
+		r.userManagers[user] = manager
+	}
+	err = manager.Update(r.cfg.EvaluationInterval, groups)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
+		return
 	}
 }
 

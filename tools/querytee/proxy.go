@@ -134,8 +134,8 @@ func (p *Proxy) Start() error {
 	}))
 
 	// register routes
+	var comparator ResponsesComparator
 	for _, route := range p.routes {
-		var comparator ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}

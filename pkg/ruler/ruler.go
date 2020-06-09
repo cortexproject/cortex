@@ -141,6 +141,7 @@ type Ruler struct {
 	alertURL          *url.URL
 	notifierCfg       *config.Config
 	queryFunc         DelayedQueryFunc
+	parseExpr         func(string) (promql.Expr, error)
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -160,7 +161,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, parseExpr func(string) (promql.Expr, error), logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -174,6 +175,7 @@ func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableH
 	ruler := &Ruler{
 		cfg:               cfg,
 		queryFunc:         queryFunc,
+		parseExpr:         parseExpr,
 		alertURL:          cfg.ExternalURL.URL,
 		notifierCfg:       ncfg,
 		notifiers:         map[string]*rulerNotifier{},
@@ -515,6 +517,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, 
 	logger := log.With(r.logger, "user", userID)
 	opts := &rules.ManagerOptions{
 		QueryFunc:   r.queryFunc(r.cfg.EvaluationDelay),
+		ParseExpr:   r.parseExpr,
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),

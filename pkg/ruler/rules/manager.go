@@ -702,6 +702,7 @@ type NotifyFunc func(ctx context.Context, expr string, alerts ...*Alert)
 type ManagerOptions struct {
 	ExternalURL     *url.URL
 	QueryFunc       QueryFunc
+	ParseExpr       func(string) (promql.Expr, error)
 	NotifyFunc      NotifyFunc
 	Context         context.Context
 	Appendable      Appendable
@@ -720,6 +721,10 @@ type ManagerOptions struct {
 func NewManager(o *ManagerOptions) *Manager {
 	if o.Metrics == nil {
 		o.Metrics = NewGroupMetrics(o.Registerer)
+	}
+
+	if o.ParseExpr == nil {
+		o.ParseExpr = promql.ParseExpr
 	}
 
 	m := &Manager{
@@ -838,7 +843,7 @@ func (m *Manager) LoadGroups(
 
 			rules := make([]Rule, 0, len(rg.Rules))
 			for _, r := range rg.Rules {
-				expr, err := promql.ParseExpr(r.Expr.Value)
+				expr, err := m.opts.ParseExpr(r.Expr.Value)
 				if err != nil {
 					return nil, []error{errors.Wrap(err, fn)}
 				}

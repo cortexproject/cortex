@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -702,7 +703,7 @@ type NotifyFunc func(ctx context.Context, expr string, alerts ...*Alert)
 type ManagerOptions struct {
 	ExternalURL     *url.URL
 	QueryFunc       QueryFunc
-	ParseExpr       func(string) (promql.Expr, error)
+	ParseExpr       func(string) (parser.Expr, error)
 	NotifyFunc      NotifyFunc
 	Context         context.Context
 	Appendable      Appendable
@@ -724,7 +725,7 @@ func NewManager(o *ManagerOptions) *Manager {
 	}
 
 	if o.ParseExpr == nil {
-		o.ParseExpr = promql.ParseExpr
+		o.ParseExpr = parser.ParseExpr
 	}
 
 	m := &Manager{

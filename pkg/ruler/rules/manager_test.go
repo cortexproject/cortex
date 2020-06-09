@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
@@ -41,7 +42,7 @@ import (
 type AppendableAdapter struct{ storage.Storage }
 
 func (a AppendableAdapter) Appender(_ Rule) (storage.Appender, error) {
-	return a.Storage.Appender()
+	return a.Storage.Appender(), nil
 }
 
 func TestAlertingRule(t *testing.T) {
@@ -56,7 +57,7 @@ func TestAlertingRule(t *testing.T) {
 	err = suite.Run()
 	testutil.Ok(t, err)
 
-	expr, err := promql.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
+	expr, err := parser.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
 	testutil.Ok(t, err)
 
 	rule := NewAlertingRule(
@@ -197,7 +198,7 @@ func TestForStateAddSamples(t *testing.T) {
 	err = suite.Run()
 	testutil.Ok(t, err)
 
-	expr, err := promql.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
+	expr, err := parser.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
 	testutil.Ok(t, err)
 
 	rule := NewAlertingRule(
@@ -358,7 +359,7 @@ func TestForStateRestore(t *testing.T) {
 	err = suite.Run()
 	testutil.Ok(t, err)
 
-	expr, err := promql.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
+	expr, err := parser.ParseExpr(`http_requests{group="canary", job="app-server"} < 100`)
 	testutil.Ok(t, err)
 
 	opts := &ManagerOptions{
@@ -522,13 +523,13 @@ func TestStaleness(t *testing.T) {
 	}
 	opts.AlertHistory = NewMetricsHistory(storage, opts)
 
-	expr, err := promql.ParseExpr("a + 1")
+	expr, err := parser.ParseExpr("a + 1")
 	testutil.Ok(t, err)
 	rule := NewRecordingRule("a_plus_one", expr, labels.Labels{})
 	group := NewGroup("default", "", time.Second, []Rule{rule}, true, opts)
 
 	// A time series that has two samples and then goes stale.
-	app, _ := storage.Appender()
+	app := storage.Appender()
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 0, 1)
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, math.Float64frombits(value.StaleNaN))
@@ -550,7 +551,7 @@ func TestStaleness(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "a_plus_one")
 	testutil.Ok(t, err)
 
-	set, _, err := querier.Select(nil, matcher)
+	set, _, err := querier.Select(false, nil, matcher)
 	testutil.Ok(t, err)
 
 	samples, err := readSeriesSet(set)
@@ -673,7 +674,7 @@ func TestDeletedRuleMarkedStale(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, "l1", "v1")
 	testutil.Ok(t, err)
 
-	set, _, err := querier.Select(nil, matcher)
+	set, _, err := querier.Select(false, nil, matcher)
 	testutil.Ok(t, err)
 
 	samples, err := readSeriesSet(set)
@@ -847,12 +848,12 @@ func TestNotify(t *testing.T) {
 	}
 	opts.AlertHistory = NewMetricsHistory(storage, opts)
 
-	expr, err := promql.ParseExpr("a > 1")
+	expr, err := parser.ParseExpr("a > 1")
 	testutil.Ok(t, err)
 	rule := NewAlertingRule("aTooHigh", expr, 0, labels.Labels{}, labels.Labels{}, nil, true, log.NewNopLogger())
 	group := NewGroup("alert", "", time.Second, []Rule{rule}, true, opts)
 
-	app, _ := storage.Appender()
+	app := storage.Appender()
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, 3)
 	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 5000, 3)

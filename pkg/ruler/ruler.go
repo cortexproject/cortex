@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -141,7 +141,7 @@ type Ruler struct {
 	alertURL          *url.URL
 	notifierCfg       *config.Config
 	queryFunc         DelayedQueryFunc
-	parseExpr         func(string) (promql.Expr, error)
+	parseExpr         func(string) (parser.Expr, error)
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -161,7 +161,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, parseExpr func(string) (promql.Expr, error), logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, parseExpr func(string) (parser.Expr, error), logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err

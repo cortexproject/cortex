@@ -54,7 +54,7 @@ func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) 
 			matchers = append(matchers, mt)
 		}
 
-		sset, err, _ := q.Select(nil, matchers...)
+		sset, err, _ := q.Select(false, nil, matchers...)
 		if err != nil {
 			level.Error(m.opts.Logger).Log("msg", "Failed to restore 'for' state",
 				labels.AlertName, alertRule.Name(), "stage", "Select", "err", err)

@@ -367,6 +367,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 			// If it's a retry and we get an error, it means there are no more store-gateways left
 			// from which running another attempt, so we're just stopping retrying.
 			if attempt > 1 {
+				level.Warn(spanLog).Log("msg", "unable to get store-gateway clients while retrying to fetch missing blocks", "err", err)
 				break
 			}
 

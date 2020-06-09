@@ -108,7 +108,8 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			result := resultSuccess
 			err := p.compareResponses(expectedResponse, actualResponse)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "response comparison failed", "route-name", p.routeName, "err", err)
+				level.Error(util.Logger).Log("msg", "response comparison failed", "route-name", p.routeName,
+					"query", r.URL.RawQuery, "err", err)
 				result = resultFailed
 			}
 

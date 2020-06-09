@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -22,6 +23,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -393,6 +395,126 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 			}
 		})
 	}
+}
+
+func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	series1 := []storepb.Label{{Name: "__name__", Value: "metric_1"}}
+	series2 := []storepb.Label{{Name: "__name__", Value: "metric_2"}}
+
+	series1Samples := []promql.Point{
+		{T: 1589759955000, V: 1},
+		{T: 1589759970000, V: 1},
+		{T: 1589759985000, V: 1},
+		{T: 1589760000000, V: 1},
+		{T: 1589760015000, V: 1},
+		{T: 1589760030000, V: 1},
+	}
+
+	series2Samples := []promql.Point{
+		{T: 1589759955000, V: 2},
+		{T: 1589759970000, V: 2},
+		{T: 1589759985000, V: 2},
+		{T: 1589760000000, V: 2},
+		{T: 1589760015000, V: 2},
+		{T: 1589760030000, V: 2},
+	}
+
+	// Mock the finder to simulate we need to query two blocks.
+	finder := &blocksFinderMock{
+		Service: services.NewIdleService(nil, nil),
+	}
+	finder.On("GetBlocks", "user-1", mock.Anything, mock.Anything).Return([]*BlockMeta{
+		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+	}, map[ulid.ULID]*metadata.DeletionMark(nil), error(nil))
+
+	// Mock the store to simulate each block is queried from a different store-gateway.
+	gateway1 := &storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
+		{
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series1,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series1Samples[:3]...), // First half.
+					},
+				},
+			},
+		}, {
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series2,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series2Samples[:3]...),
+					},
+				},
+			},
+		},
+		mockHintsResponse(block1),
+	}}
+
+	gateway2 := &storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
+		{
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series1,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series1Samples[3:]...), // Second half.
+					},
+				},
+			},
+		}, {
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series2,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series2Samples[3:]...),
+					},
+				},
+			},
+		},
+		mockHintsResponse(block2),
+	}}
+
+	stores := &blocksStoreSetMock{
+		Service: services.NewIdleService(nil, nil),
+		mockedResult: map[BlocksStoreClient][]ulid.ULID{
+			gateway1: {block1},
+			gateway2: {block2},
+		},
+	}
+
+	// Instance the querier that will be executed to run the query.
+	logger := log.NewNopLogger()
+	queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), 0, logger, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), queryable))
+	defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:     logger,
+		Timeout:    10 * time.Second,
+		MaxSamples: 1e6,
+	})
+
+	// Run a query.
+	q, err := engine.NewRangeQuery(queryable, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+	res := q.Exec(ctx)
+	require.NoError(t, err)
+	require.NoError(t, res.Err)
+
+	matrix, err := res.Matrix()
+	require.NoError(t, err)
+	require.Len(t, matrix, 2)
+
+	assert.Equal(t, storepb.LabelsToPromLabels(series1), matrix[0].Metric)
+	assert.Equal(t, storepb.LabelsToPromLabels(series2), matrix[1].Metric)
+	assert.Equal(t, series1Samples, matrix[0].Points)
+	assert.Equal(t, series2Samples, matrix[1].Points)
 }
 
 type blocksStoreSetMock struct {

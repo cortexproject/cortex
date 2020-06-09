@@ -411,7 +411,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 	// We've not been able to query all expected blocks after all retries.
 	err = fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
-	level.Warn(util.WithContext(q.ctx, q.logger)).Log("msg", "failed consistency check", "err", err)
+	level.Warn(util.WithContext(spanCtx, q.logger)).Log("msg", "failed consistency check", "err", err)
 
 	return nil, nil, err
 }

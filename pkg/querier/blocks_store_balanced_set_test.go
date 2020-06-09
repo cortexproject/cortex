@@ -103,7 +103,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude list for block %s", block1.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after filtering out excluded instances for block %s", block1.String()),
 		},
 		"multiple instances available and one is excluded for the queried blocks": {
 			serviceAddrs: []string{"127.0.0.1", "127.0.0.2"},
@@ -123,7 +123,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1", "127.0.0.2"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude list for block %s", block1.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after filtering out excluded instances for block %s", block1.String()),
 		},
 	}
 

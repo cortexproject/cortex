@@ -76,7 +76,7 @@ func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, exclude map
 		// Pick the first non excluded store-gateway instance.
 		addr := getFirstNonExcludedAddr(addresses, exclude[blockID])
 		if addr == "" {
-			return nil, fmt.Errorf("no store-gateway instance left after checking exclude list for block %s", blockID.String())
+			return nil, fmt.Errorf("no store-gateway instance left after filtering out excluded instances for block %s", blockID.String())
 		}
 
 		c, err := s.clientsPool.GetClientFor(addr)

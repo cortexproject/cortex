@@ -75,11 +75,6 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	shards := map[string][]ulid.ULID{}
 
-	// Easy way to handle the case of a missing exclude list.
-	if exclude == nil {
-		exclude = map[ulid.ULID][]string{}
-	}
-
 	// Find the replication set of each block we need to query.
 	for _, blockID := range blockIDs {
 		// Buffer internally used by the ring (give extra room for a JOINING + LEAVING instance).

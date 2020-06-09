@@ -39,10 +39,10 @@ import (
 )
 
 const (
-	// The maximum number of times we retry fetching missing blocks from different
+	// The maximum number of times we attempt fetching missing blocks from different
 	// store-gateways. If no more store-gateways are left (ie. due to lower replication
 	// factor) than we'll end the retries earlier.
-	maxFetchSeriesTries = 3
+	maxFetchSeriesAttempts = 3
 )
 
 var (
@@ -54,7 +54,8 @@ type BlocksStoreSet interface {
 	services.Service
 
 	// GetClientsFor returns the store gateway clients that should be used to
-	// query the set of blocks in input.
+	// query the set of blocks in input. The exclude parameter is the map of
+	// blocks -> store-gateway addresses that should be excluded.
 	GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
 }
 
@@ -358,20 +359,20 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		resQueriedBlocks  = []ulid.ULID(nil)
 	)
 
-	for retry := 0; retry < maxFetchSeriesTries; retry++ {
-		// Find the set of store-gateway instances having the blocks. The exclude list passed is the
+	for attempt := 1; attempt <= maxFetchSeriesAttempts; attempt++ {
+		// Find the set of store-gateway instances having the blocks. The exclude parameter is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.
 		clients, err := q.stores.GetClientsFor(remainingBlocks, attemptedBlocks)
 		if err != nil {
 			// If it's a retry and we get an error, it means there are no more store-gateways left
 			// from which running another attempt, so we're just stopping retrying.
-			if retry > 0 {
+			if attempt > 1 {
 				break
 			}
 
 			return nil, nil, err
 		}
-		level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients), "retry", retry)
+		level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients), "attempt", attempt)
 
 		// Fetch series from stores. If an error occur we do not retry because retries
 		// are only meant to cover missing blocks.
@@ -398,20 +399,20 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		missingBlocks := q.consistency.Check(knownMetas, knownDeletionMarks, resQueriedBlocks)
 		if len(missingBlocks) == 0 {
 			q.metrics.storesHit.Observe(float64(len(touchedStores)))
-			q.metrics.refetches.Observe(float64(retry))
+			q.metrics.refetches.Observe(float64(attempt - 1))
 
 			return storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge), resWarnings, nil
 		}
 
-		level.Debug(spanLog).Log("msg", "consistency check failed", "missing blocks", strings.Join(convertULIDsToString(missingBlocks), " "))
+		level.Debug(spanLog).Log("msg", "consistency check failed", "attempt", attempt, "missing blocks", strings.Join(convertULIDsToString(missingBlocks), " "))
 
-		// The next retry should just query the missing blocks.
+		// The next attempt should just query the missing blocks.
 		remainingBlocks = missingBlocks
 	}
 
 	// We've not been able to query all expected blocks after all retries.
 	err = fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
-	level.Warn(util.WithContext(spanCtx, q.logger)).Log("msg", "failed consistency check", "err", err)
+	level.Warn(util.WithContext(spanCtx, spanLog)).Log("msg", "failed consistency check", "err", err)
 
 	return nil, nil, err
 }

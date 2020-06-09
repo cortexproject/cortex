@@ -41,7 +41,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 		replicationFactor int
 		setup             func(*ring.Desc)
 		queryBlocks       []ulid.ULID
-		blacklist         map[ulid.ULID][]string
+		exclude           map[ulid.ULID][]string
 		expectedClients   map[string][]ulid.ULID
 		expectedErr       error
 	}{
@@ -55,24 +55,24 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				"127.0.0.1": {block1, block2},
 			},
 		},
-		"single instance in the ring with replication factor = 1 but blacklisted": {
+		"single instance in the ring with replication factor = 1 but excluded": {
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
 			},
 			queryBlocks: []ulid.ULID{block1, block2},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", block1.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),
 		},
-		"single instance in the ring with replication factor = 1 but blacklisted for non queried block": {
+		"single instance in the ring with replication factor = 1 but excluded for non queried block": {
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
 			},
 			queryBlocks: []ulid.ULID{block1, block2},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block3: {"127.0.0.1"},
 			},
 			expectedClients: map[string][]ulid.ULID{
@@ -104,7 +104,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				"127.0.0.4": {block4},
 			},
 		},
-		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 1 but blacklisted": {
+		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 1 but excluded": {
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
@@ -113,10 +113,10 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				d.AddIngester("instance-4", "127.0.0.4", "", []uint32{block4Hash + 1}, ring.ACTIVE)
 			},
 			queryBlocks: []ulid.ULID{block1, block3, block4},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block3: {"127.0.0.3"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", block3.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block3.String()),
 		},
 		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 2": {
 			replicationFactor: 2,
@@ -145,7 +145,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				"127.0.0.2": {block2, block3},
 			},
 		},
-		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 2 and some blocks blacklisted but with replacement available": {
+		"multiple instances in the ring with each requested block belonging to a different store-gateway and replication factor = 2 and some blocks excluded but with replacement available": {
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
@@ -154,7 +154,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				d.AddIngester("instance-4", "127.0.0.4", "", []uint32{block4Hash + 1}, ring.ACTIVE)
 			},
 			queryBlocks: []ulid.ULID{block1, block3, block4},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block3: {"127.0.0.3"},
 				block1: {"127.0.0.1"},
 			},
@@ -200,7 +200,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				return err == nil && len(all.Ingesters) > 0
 			})
 
-			clients, err := s.GetClientsFor(testData.queryBlocks, testData.blacklist)
+			clients, err := s.GetClientsFor(testData.queryBlocks, testData.exclude)
 			assert.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

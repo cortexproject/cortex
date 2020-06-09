@@ -69,46 +69,46 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 	`)))
 }
 
-func TestBlocksStoreBalancedSet_GetClientsFor_Blacklist(t *testing.T) {
+func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 	block1 := ulid.MustNew(1, nil)
 	block2 := ulid.MustNew(2, nil)
 
 	tests := map[string]struct {
 		serviceAddrs    []string
 		queryBlocks     []ulid.ULID
-		blacklist       map[ulid.ULID][]string
+		exclude         map[ulid.ULID][]string
 		expectedClients map[string][]ulid.ULID
 		expectedErr     error
 	}{
-		"no blacklist": {
+		"no exclude": {
 			serviceAddrs: []string{"127.0.0.1"},
 			queryBlocks:  []ulid.ULID{block1, block2},
 			expectedClients: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block2},
 			},
 		},
-		"single instance available and blacklisted for a non-queried block": {
+		"single instance available and excluded for a non-queried block": {
 			serviceAddrs: []string{"127.0.0.1"},
 			queryBlocks:  []ulid.ULID{block1},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block2: {"127.0.0.1"},
 			},
 			expectedClients: map[string][]ulid.ULID{
 				"127.0.0.1": {block1},
 			},
 		},
-		"single instance available and blacklisted for the queried block": {
+		"single instance available and excluded for the queried block": {
 			serviceAddrs: []string{"127.0.0.1"},
 			queryBlocks:  []ulid.ULID{block1},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", block1.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),
 		},
-		"multiple instances available and one is blacklisted for the queried blocks": {
+		"multiple instances available and one is excluded for the queried blocks": {
 			serviceAddrs: []string{"127.0.0.1", "127.0.0.2"},
 			queryBlocks:  []ulid.ULID{block1, block2},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1"},
 				block2: {"127.0.0.2"},
 			},
@@ -117,13 +117,13 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Blacklist(t *testing.T) {
 				"127.0.0.2": {block1},
 			},
 		},
-		"multiple instances available and all are blacklisted for the queried block": {
+		"multiple instances available and all are excluded for the queried block": {
 			serviceAddrs: []string{"127.0.0.1", "127.0.0.2"},
 			queryBlocks:  []ulid.ULID{block1, block2},
-			blacklist: map[ulid.ULID][]string{
+			exclude: map[ulid.ULID][]string{
 				block1: {"127.0.0.1", "127.0.0.2"},
 			},
-			expectedErr: fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", block1.String()),
+			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),
 		},
 	}
 
@@ -138,7 +138,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Blacklist(t *testing.T) {
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
-			clients, err := s.GetClientsFor(testData.queryBlocks, testData.blacklist)
+			clients, err := s.GetClientsFor(testData.queryBlocks, testData.exclude)
 			assert.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

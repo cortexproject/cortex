@@ -72,12 +72,12 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, blacklist map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	shards := map[string][]ulid.ULID{}
 
-	// Easy way to handle the case of a missing blacklist.
-	if blacklist == nil {
-		blacklist = map[ulid.ULID][]string{}
+	// Easy way to handle the case of a missing exclude list.
+	if exclude == nil {
+		exclude = map[ulid.ULID][]string{}
 	}
 
 	// Find the replication set of each block we need to query.
@@ -92,10 +92,10 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, blacklis
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}
 
-		// Pick the first non blacklisted store-gateway instance.
-		addr := getFirstNonBlacklistedInstanceAddr(set, blacklist[blockID])
+		// Pick the first non excluded store-gateway instance.
+		addr := getFirstNonExcludedInstanceAddr(set, exclude[blockID])
 		if addr == "" {
-			return nil, fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", blockID.String())
+			return nil, fmt.Errorf("no store-gateway instance left after checking exclude for block %s", blockID.String())
 		}
 
 		shards[addr] = append(shards[addr], blockID)
@@ -116,9 +116,9 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, blacklis
 	return clients, nil
 }
 
-func getFirstNonBlacklistedInstanceAddr(set ring.ReplicationSet, blacklist []string) string {
+func getFirstNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string) string {
 	for _, instance := range set.Ingesters {
-		if !util.StringsContain(blacklist, instance.Addr) {
+		if !util.StringsContain(exclude, instance.Addr) {
 			return instance.Addr
 		}
 	}

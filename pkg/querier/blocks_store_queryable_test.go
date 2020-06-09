@@ -278,7 +278,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 					}}: {block1},
 				},
 				// Second attempt returns an error because there are no other store-gateways left.
-				errors.New("no store-gateway remaining after blacklist"),
+				errors.New("no store-gateway remaining after exclude"),
 			},
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
@@ -302,7 +302,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 					}}: {block2},
 				},
 				// Second attempt returns an error because there are no other store-gateways left.
-				errors.New("no store-gateway remaining after blacklist"),
+				errors.New("no store-gateway remaining after exclude"),
 			},
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
 		},
@@ -612,9 +612,11 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 
 	stores := &blocksStoreSetMock{
 		Service: services.NewIdleService(nil, nil),
-		mockedResult: map[BlocksStoreClient][]ulid.ULID{
-			gateway1: {block1},
-			gateway2: {block2},
+		mockedResponses: []interface{}{
+			map[BlocksStoreClient][]ulid.ULID{
+				gateway1: {block1},
+				gateway2: {block2},
+			},
 		},
 	}
 

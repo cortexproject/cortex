@@ -58,7 +58,7 @@ func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
 	return nil
 }
 
-func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, blacklist map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	addresses := s.dnsProvider.Addresses()
 	if len(addresses) == 0 {
 		return nil, fmt.Errorf("no address resolved for the store-gateway service addresses %s", strings.Join(s.serviceAddresses, ","))
@@ -69,14 +69,14 @@ func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, blacklist m
 		addresses[i], addresses[j] = addresses[j], addresses[i]
 	})
 
-	// Pick a non blacklisted client for each block.
+	// Pick a non excluded client for each block.
 	clients := map[BlocksStoreClient][]ulid.ULID{}
 
 	for _, blockID := range blockIDs {
-		// Pick the first non blacklisted store-gateway instance.
-		addr := getFirstNonBlacklistedAddr(addresses, blacklist[blockID])
+		// Pick the first non excluded store-gateway instance.
+		addr := getFirstNonExcludedAddr(addresses, exclude[blockID])
 		if addr == "" {
-			return nil, fmt.Errorf("no store-gateway instance left after checking blacklist for block %s", blockID.String())
+			return nil, fmt.Errorf("no store-gateway instance left after checking exclude list for block %s", blockID.String())
 		}
 
 		c, err := s.clientsPool.GetClientFor(addr)
@@ -90,9 +90,9 @@ func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, blacklist m
 	return clients, nil
 }
 
-func getFirstNonBlacklistedAddr(addresses, blacklist []string) string {
+func getFirstNonExcludedAddr(addresses, exclude []string) string {
 	for _, addr := range addresses {
-		if !util.StringsContain(blacklist, addr) {
+		if !util.StringsContain(exclude, addr) {
 			return addr
 		}
 	}

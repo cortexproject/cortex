@@ -55,7 +55,7 @@ type BlocksStoreSet interface {
 
 	// GetClientsFor returns the store gateway clients that should be used to
 	// query the set of blocks in input.
-	GetClientsFor(blockIDs []ulid.ULID, blacklist map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
+	GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
 }
 
 // BlocksFinder is the interface used to find blocks for a given user and time range.
@@ -359,7 +359,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	)
 
 	for retry := 0; retry < maxFetchSeriesTries; retry++ {
-		// Find the set of store-gateway instances having the blocks. The blacklist passed is the
+		// Find the set of store-gateway instances having the blocks. The exclude list passed is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.
 		clients, err := q.stores.GetClientsFor(remainingBlocks, attemptedBlocks)
 		if err != nil {

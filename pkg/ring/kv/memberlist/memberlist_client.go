@@ -91,6 +91,9 @@ type KVConfig struct {
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
+	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff"`
+	MaxJoinBackoff   time.Duration       `yaml:"max_join_backoff"`
+	MaxJoinRetries   int                 `yaml:"max_join_retries"`
 	AbortIfJoinFails bool                `yaml:"abort_if_cluster_join_fails"`
 
 	// Remove LEFT ingesters from ring after this timeout.
@@ -116,6 +119,9 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 0, "The timeout for establishing a connection with a remote node, and for read/write operations. Uses memberlist LAN defaults if 0.")
 	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", 0, "Multiplication factor used when sending out messages (factor * log(N+1)).")
 	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. Memberlist store is EXPERIMENTAL.")
+	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
+	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
+	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
 	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", true, "If this node fails to join memberlist cluster, abort.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 5*time.Second, "Timeout for leaving memberlist cluster.")
@@ -288,8 +294,9 @@ func NewKV(cfg KVConfig) (*KV, error) {
 			return nil, err
 		}
 
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
+		if reached == 0 && cfg.MaxJoinRetries > 0 {
+			level.Debug(util.Logger).Log("msg", "failed to join memberlist cluster, keep trying in the background", "node", cfg.NodeName, "err", err)
+			go mlkv.retryJoinWithBackoff(cfg.JoinMembers)
 		} else {
 			level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		}
@@ -312,6 +319,32 @@ func (m *KV) GetListeningPort() int {
 // See https://godoc.org/github.com/hashicorp/memberlist#Memberlist.Join
 func (m *KV) JoinMembers(members []string) (int, error) {
 	return m.memberlist.Join(members)
+}
+
+func (m *KV) retryJoinWithBackoff(members []string) {
+	cfg := util.BackoffConfig{
+		MinBackoff: m.cfg.MinJoinBackoff,
+		MaxBackoff: m.cfg.MaxJoinBackoff,
+		MaxRetries: m.cfg.MaxJoinRetries,
+	}
+
+	backoff := util.NewBackoff(context.Background(), cfg)
+
+	for backoff.Ongoing() {
+		reached, err := m.memberlist.Join(members)
+		if reached == 0 {
+			level.Debug(util.Logger).Log("msg", "retry to join memberlist cluster", "node", m.cfg.NodeName, "attempts", backoff.NumRetries(), "err", err)
+			backoff.Wait()
+			continue
+		}
+
+		level.Debug(util.Logger).Log("msg", "joined memberlist cluster", "node", m.cfg.NodeName, "reached", reached)
+		break
+	}
+
+	if backoff.Err() != nil {
+		level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "node", m.cfg.NodeName, "err", backoff.Err())
+	}
 }
 
 // Stop tries to leave memberlist cluster and then shutdown memberlist client.

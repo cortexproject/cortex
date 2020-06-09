@@ -2303,6 +2303,18 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
+# Min backoff duration to join other cluster members.
+# CLI flag: -memberlist.min-join-backoff
+[min_join_backoff: <duration> | default = 1s]
+
+# Max backoff duration to join other cluster members.
+# CLI flag: -memberlist.max-join-backoff
+[max_join_backoff: <duration> | default = 1m]
+
+# Max number of retries to join other cluster members.
+# CLI flag: -memberlist.max-join-retries
+[max_join_retries: <int> | default = 10]
+
 # If this node fails to join memberlist cluster, abort.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = true]

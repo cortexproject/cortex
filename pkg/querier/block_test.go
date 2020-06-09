@@ -226,7 +226,7 @@ func createAggrChunkWithSineSamples(minTime, maxTime time.Time, step time.Durati
 	stepMillis := step.Milliseconds()
 
 	for t := minT; t < maxT; t += stepMillis {
-		samples = append(samples, promql.Point{t, math.Sin(float64(t))})
+		samples = append(samples, promql.Point{T: t, V: math.Sin(float64(t))})
 	}
 
 	return createAggrChunk(minT, maxT, samples...)

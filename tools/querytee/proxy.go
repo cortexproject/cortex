@@ -134,8 +134,12 @@ func (p *Proxy) Start() error {
 	}))
 
 	// register routes
+	var comparator ResponsesComparator
 	for _, route := range p.routes {
-		router.Path(route.Path).Methods(route.Methods).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, route.ResponseComparator))
+		if p.cfg.CompareResponses {
+			comparator = route.ResponseComparator
+		}
+		router.Path(route.Path).Methods(route.Methods).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, comparator))
 	}
 
 	p.srvListener = listener

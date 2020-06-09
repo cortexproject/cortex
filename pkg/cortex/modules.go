@@ -418,6 +418,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		ruler.PromDelayedQueryFunc(engine, queryable),
 		ruler.DefaultAppendableHistoryFunc(t.Distributor, queryable),
 		prometheus.DefaultRegisterer,
+		nil,
 		util.Logger,
 	)
 	if err != nil {

@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	resultSuccess = "success"
-	resultFailed  = "fail"
+	comparisonSuccess = "success"
+	comparisonFailed  = "fail"
 )
 
 type ProxyMetrics struct {
@@ -28,7 +28,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "cortex_querytee",
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route name by result",
-		}, []string{"route_name", "result"}),
+		}, []string{"route", "result"}),
 	}
 
 	return m

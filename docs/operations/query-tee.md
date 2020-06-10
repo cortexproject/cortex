@@ -87,7 +87,11 @@ cortex_querytee_request_duration_seconds_bucket{backend="<hostname>",method="<me
 cortex_querytee_request_duration_seconds_sum{backend="<hostname>",method="<method>",route="<route>",status_code="<status>"}
 cortex_querytee_request_duration_seconds_count{backend="<hostname>",method="<method>",route="<route>",status_code="<status>"}
 
-# HELP cortex_querytee_responses_compared_total Total number of responses compared per route name by result
+# HELP cortex_querytee_responses_total Total number of responses sent back to the client by the selected backend.
+# TYPE cortex_querytee_responses_total counter
+cortex_querytee_responses_total{backend="<hostname>",method="<method>",route="<route>"}
+
+# HELP cortex_querytee_responses_compared_total Total number of responses compared per route name by result.
 # TYPE cortex_querytee_responses_compared_total counter
 cortex_querytee_responses_compared_total{route="<route>",result="<success|fail>"}
 ```

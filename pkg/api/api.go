@@ -83,10 +83,10 @@ func New(cfg Config, s *server.Server, logger log.Logger, reg prometheus.Registe
 	reg.MustRegister(querierRequestDuration)
 
 	api := &API{
-		cfg:            cfg,
-		authMiddleware: cfg.HTTPAuthMiddleware,
-		server:         s,
-		logger:         logger,
+		cfg:                    cfg,
+		authMiddleware:         cfg.HTTPAuthMiddleware,
+		server:                 s,
+		logger:                 logger,
 		querierRequestDuration: querierRequestDuration,
 	}
 

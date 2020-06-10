@@ -82,7 +82,9 @@
 * [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
 * [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
 * [ENHANCEMENT] Ruler: Automatically remove unhealthy rulers from the ring. #2587
-* [ENHANCEMENT] `query-tee` supports `/metadata`, `/alerts`, and `/rules` #2600
+* [ENHANCEMENT] Query-tee: added support to `/metadata`, `/alerts`, and `/rules` endpoints #2600
+* [ENHANCEMENT] Query-tee: added support to query results comparison between two different backends. The comparison is disabled by default and can be enabled via `-proxy.compare-responses=true`. #2611
+* [ENHANCEMENT] Query-tee: improved the query-tee to not wait all backend responses before sending back the response to the client. The query-tee now sends back to the client first successful response, while honoring the `-backend.preferred` option. #2702
 * [ENHANCEMENT] Thanos and Prometheus upgraded. #2604 #2634 #2686
   * TSDB now supports isolation of append and queries.
   * TSDB now holds less WAL files after Head Truncation.

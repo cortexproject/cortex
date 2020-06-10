@@ -128,7 +128,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
-	chunkCacheCfg.Prefix = "chunks"
+	chunkCacheCfg.Prefix = "chunks."
 	chunksCache, err := cache.New(chunkCacheCfg)
 	if err != nil {
 		return nil, err

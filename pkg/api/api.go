@@ -14,15 +14,15 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-
-	"github.com/gorilla/mux"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -65,17 +65,29 @@ type API struct {
 	authMiddleware middleware.Func
 	server         *server.Server
 	logger         log.Logger
+
+	querierRequestDuration *prometheus.HistogramVec
 }
 
-func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
+func New(cfg Config, s *server.Server, logger log.Logger, reg prometheus.Registerer) (*API, error) {
 	// Ensure the encoded path is used. Required for the rules API
 	s.HTTP.UseEncodedPath()
+
+		// Prometheus histograms for requests.
+		querierRequestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "querier_request_duration_seconds",
+			Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"method", "route", "status_code", "ws"})
+		reg.MustRegister(querierRequestDuration)
 
 	api := &API{
 		cfg:            cfg,
 		authMiddleware: cfg.HTTPAuthMiddleware,
 		server:         s,
 		logger:         logger,
+		querierRequestDuration: querierRequestDuration,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -288,10 +300,17 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 		router = a.server.HTTP
 	}
 
+	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
+	// running Cortex as a single binary.
+	inst := middleware.Instrument{
+		Duration:     a.querierRequestDuration,
+		RouteMatcher: router,
+	}
+
 	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
 	api.Register(promRouter)
 	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
-	promHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(promRouter))
+	promHandler := fakeRemoteAddr(inst.Wrap(cacheGenHeaderMiddleware.Wrap(promRouter)))
 
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true, "GET", "POST")
@@ -305,7 +324,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 
 	legacyPromRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.LegacyHTTPPrefix + "/api/v1")
 	api.Register(legacyPromRouter)
-	legacyPromHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(legacyPromRouter))
+	legacyPromHandler := fakeRemoteAddr(inst.Wrap(cacheGenHeaderMiddleware.Wrap(legacyPromRouter)))
 
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true, "GET", "POST")
@@ -331,31 +350,34 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	}))
 }
 
+// RegisterQueryAPI registers the Prometheus routes supported by the
+// Cortex querier service. Currently this can not be registered simultaneously
+// with the Querier.
+func (a *API) RegisterQueryAPI(handler http.Handler) {
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", handler, true, "POST")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", handler, true, "GET")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", handler, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", handler, true, "GET")
+
+	// Register Legacy Routers
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", handler, true, "POST")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", handler, true, "GET", "POST")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", handler, true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", handler, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", handler, true, "GET")
+}
+
 // RegisterQueryFrontend registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the Querier.
 func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	frontend.RegisterFrontendServer(a.server.GRPC, f)
-
-	// Previously the frontend handled all calls to the provided prefix. Instead explicit
-	// routing is used since it will be required to enable the frontend to be run as part
-	// of a single binary in the future.
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true, "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true, "GET")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", f.Handler(), true, "GET", "POST", "DELETE")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", f.Handler(), true, "GET")
-
-	// Register Legacy Routers
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true, "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", f.Handler(), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", f.Handler(), true, "GET", "POST", "DELETE")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", f.Handler(), true, "GET")
+	a.RegisterQueryAPI(f.Handler())
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

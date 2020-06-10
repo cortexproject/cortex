@@ -66,7 +66,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
-	a, err := api.New(t.Cfg.API, t.Server, util.Logger)
+	a, err := api.New(t.Cfg.API, t.Server, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

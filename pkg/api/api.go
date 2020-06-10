@@ -73,14 +73,14 @@ func New(cfg Config, s *server.Server, logger log.Logger, reg prometheus.Registe
 	// Ensure the encoded path is used. Required for the rules API
 	s.HTTP.UseEncodedPath()
 
-		// Prometheus histograms for requests.
-		querierRequestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_request_duration_seconds",
-			Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
-			Buckets:   instrument.DefBuckets,
-		}, []string{"method", "route", "status_code", "ws"})
-		reg.MustRegister(querierRequestDuration)
+	// Prometheus histograms for requests.
+	querierRequestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_request_duration_seconds",
+		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
+		Buckets:   instrument.DefBuckets,
+	}, []string{"method", "route", "status_code", "ws"})
+	reg.MustRegister(querierRequestDuration)
 
 	api := &API{
 		cfg:            cfg,

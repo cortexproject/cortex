@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const ACTIVE = 1
@@ -209,9 +210,9 @@ func TestBasicGetAndCas(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv.Stop()
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -265,9 +266,9 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 		Codecs:       []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv.Stop()
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -409,10 +410,10 @@ func TestMultipleCAS(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
+	mkv := NewKV(cfg)
 	mkv.maxCasRetries = 20
-	defer mkv.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -516,8 +517,8 @@ func TestMultipleClients(t *testing.T) {
 			Codecs: []codec.Codec{c},
 		}
 
-		mkv, err := NewKV(cfg)
-		require.NoError(t, err)
+		mkv := NewKV(cfg)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)
@@ -740,7 +741,7 @@ func getTimestamps(members map[string]member) (min int64, max int64, avg int64) 
 
 func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConnect int, start <-chan struct{}, stop <-chan struct{}) {
 	// stop gossipping about the ring(s)
-	defer kv.kv.Stop()
+	defer services.StopAndAwaitTerminated(context.Background(), kv.kv) //nolint:errcheck
 
 	for {
 		select {
@@ -849,9 +850,9 @@ func TestMultipleCodecs(t *testing.T) {
 		},
 	}
 
-	mkv1, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv1.Stop()
+	mkv1 := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 
 	kv1, err := NewClient(mkv1, dataCodec{})
 	require.NoError(t, err)
@@ -892,9 +893,9 @@ func TestMultipleCodecs(t *testing.T) {
 	require.NoError(t, err)
 
 	// We will read values from second KV, which will join the first one
-	mkv2, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv2.Stop()
+	mkv2 := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
 
 	// Join second KV to first one. That will also trigger state transfer.
 	_, err = mkv2.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", mkv1.GetListeningPort())})

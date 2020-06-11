@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -49,11 +50,21 @@ func NewClient(kv *KV, codec codec.Codec) (*Client, error) {
 
 // List is part of kv.Client interface.
 func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return c.kv.List(prefix), nil
 }
 
 // Get is part of kv.Client interface.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return c.kv.Get(key, c.codec)
 }
 
@@ -64,18 +75,50 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 
 // CAS is part of kv.Client interface
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return err
+	}
+
 	return c.kv.CAS(ctx, key, c.codec, f)
 }
 
 // WatchKey is part of kv.Client interface.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return
+	}
+
 	c.kv.WatchKey(ctx, key, c.codec, f)
 }
 
 // WatchPrefix calls f whenever any value stored under prefix changes.
 // Part of kv.Client interface.
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return
+	}
+
 	c.kv.WatchPrefix(ctx, prefix, c.codec, f)
+}
+
+// We want to use KV in Running and Stopping states.
+func (c *Client) awaitKVRunningOrStopping(ctx context.Context) error {
+	s := c.kv.State()
+	switch s {
+	case services.Running, services.Stopping:
+		return nil
+	case services.New, services.Starting:
+		err := c.kv.AwaitRunning(ctx)
+		if ns := c.kv.State(); ns == services.Stopping {
+			return nil
+		}
+		return err
+	default:
+		return fmt.Errorf("unexpected state: %v", s)
+	}
 }
 
 // KVConfig is a config for memberlist.KV
@@ -150,9 +193,9 @@ func generateRandomSuffix() string {
 // KV implements Key-Value store on top of memberlist library. KV store has API similar to kv.Client,
 // except methods also need explicit codec for each operation.
 type KV struct {
-	cfg KVConfig
+	services.Service
 
-	initWG     sync.WaitGroup
+	cfg        KVConfig
 	memberlist *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
 
@@ -220,58 +263,13 @@ var (
 	errTooManyRetries   = errors.New("too many retries")
 )
 
-// NewKV creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
-// to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
-// client is created.
-func NewKV(cfg KVConfig) (*KV, error) {
-	util.WarnExperimentalUse("Gossip memberlist ring")
-
+// NewKV creates new gossip-based KV service. Note that service needs to be started, until then it doesn't initialize
+// gossiping part. Only after service is in Running state, it is really gossiping.
+// Starting the service will also trigger connecting to the existing memberlist cluster, if cfg.JoinMembers is set.
+// If that fails and AbortIfJoinFails is true, error is returned and service enters Failed state.
+func NewKV(cfg KVConfig) *KV {
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
-
-	tr, err := NewTCPTransport(cfg.TCPTransport)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transport: %v", err)
-	}
-
-	mlCfg := memberlist.DefaultLANConfig()
-
-	if cfg.StreamTimeout != 0 {
-		mlCfg.TCPTimeout = cfg.StreamTimeout
-	}
-	if cfg.RetransmitMult != 0 {
-		mlCfg.RetransmitMult = cfg.RetransmitMult
-	}
-	if cfg.PushPullInterval != 0 {
-		mlCfg.PushPullInterval = cfg.PushPullInterval
-	}
-	if cfg.GossipInterval != 0 {
-		mlCfg.GossipInterval = cfg.GossipInterval
-	}
-	if cfg.GossipNodes != 0 {
-		mlCfg.GossipNodes = cfg.GossipNodes
-	}
-	if cfg.GossipToTheDeadTime > 0 {
-		mlCfg.GossipToTheDeadTime = cfg.GossipToTheDeadTime
-	}
-	if cfg.DeadNodeReclaimTime > 0 {
-		mlCfg.DeadNodeReclaimTime = cfg.DeadNodeReclaimTime
-	}
-	if cfg.NodeName != "" {
-		mlCfg.Name = cfg.NodeName
-	}
-	if cfg.RandomizeNodeName {
-		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
-		level.Info(util.Logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
-	}
-
-	mlCfg.LogOutput = newMemberlistLoggerAdapter(util.Logger, false)
-	mlCfg.Transport = tr
-
-	// Memberlist uses UDPBufferSize to figure out how many messages it can put into single "packet".
-	// As we don't use UDP for sending packets, we can use higher value here.
-	mlCfg.UDPBufferSize = 10 * 1024 * 1024
 
 	mlkv := &KV{
 		cfg:                  cfg,
@@ -290,43 +288,94 @@ func NewKV(cfg KVConfig) (*KV, error) {
 		mlkv.codecs[c.CodecID()] = c
 	}
 
-	mlCfg.Delegate = mlkv
+	mlkv.Service = services.NewIdleService(mlkv.starting, mlkv.stopping)
+	return mlkv
+}
 
-	// Wait for memberlist and broadcasts creation because
-	// memberlist may start calling delegate methods if it
-	// receives traffic.
-	// See https://godoc.org/github.com/hashicorp/memberlist#Delegate
-	mlkv.initWG.Add(1)
+func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
+	tr, err := NewTCPTransport(m.cfg.TCPTransport)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transport: %v", err)
+	}
+
+	mlCfg := memberlist.DefaultLANConfig()
+	mlCfg.Delegate = m
+
+	if m.cfg.StreamTimeout != 0 {
+		mlCfg.TCPTimeout = m.cfg.StreamTimeout
+	}
+	if m.cfg.RetransmitMult != 0 {
+		mlCfg.RetransmitMult = m.cfg.RetransmitMult
+	}
+	if m.cfg.PushPullInterval != 0 {
+		mlCfg.PushPullInterval = m.cfg.PushPullInterval
+	}
+	if m.cfg.GossipInterval != 0 {
+		mlCfg.GossipInterval = m.cfg.GossipInterval
+	}
+	if m.cfg.GossipNodes != 0 {
+		mlCfg.GossipNodes = m.cfg.GossipNodes
+	}
+	if m.cfg.GossipToTheDeadTime > 0 {
+		mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
+	}
+	if m.cfg.DeadNodeReclaimTime > 0 {
+		mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
+	}
+	if m.cfg.NodeName != "" {
+		mlCfg.Name = m.cfg.NodeName
+	}
+	if m.cfg.RandomizeNodeName {
+		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
+		level.Info(util.Logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
+	}
+
+	mlCfg.LogOutput = newMemberlistLoggerAdapter(util.Logger, false)
+	mlCfg.Transport = tr
+
+	// Memberlist uses UDPBufferSize to figure out how many messages it can put into single "packet".
+	// As we don't use UDP for sending packets, we can use higher value here.
+	mlCfg.UDPBufferSize = 10 * 1024 * 1024
+	return mlCfg, nil
+}
+
+func (m *KV) starting(_ context.Context) error {
+	util.WarnExperimentalUse("Gossip memberlist ring")
+
+	mlCfg, err := m.buildMemberlistConfig()
+	if err != nil {
+		return err
+	}
+
 	list, err := memberlist.Create(mlCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create memberlist: %v", err)
+		return fmt.Errorf("failed to create memberlist: %v", err)
 	}
 
-	// finish delegate initialization
-	mlkv.memberlist = list
-	mlkv.broadcasts = &memberlist.TransmitLimitedQueue{
+	// Finish delegate initialization.
+	m.memberlist = list
+	m.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       list.NumMembers,
-		RetransmitMult: cfg.RetransmitMult,
+		RetransmitMult: m.cfg.RetransmitMult,
 	}
-	mlkv.initWG.Done()
 
-	// Join the cluster
-	if len(cfg.JoinMembers) > 0 {
-		reached, err := mlkv.JoinMembers(cfg.JoinMembers)
-		if err != nil && cfg.AbortIfJoinFails {
-			_ = mlkv.memberlist.Shutdown()
-			return nil, err
+	// Join the cluster, if configured.
+	if len(m.cfg.JoinMembers) > 0 {
+		reached, err := m.JoinMembers(m.cfg.JoinMembers)
+		if err != nil && m.cfg.AbortIfJoinFails {
+			_ = m.memberlist.Shutdown()
+			return err
 		}
 
-		if reached == 0 && cfg.MaxJoinRetries > 0 {
-			level.Debug(util.Logger).Log("msg", "failed to join memberlist cluster, keep trying in the background", "node", cfg.NodeName, "err", err)
-			go mlkv.retryJoinWithBackoff(cfg.JoinMembers)
+		if reached == 0 && m.cfg.MaxJoinRetries > 0 {
+			level.Debug(util.Logger).Log("msg", "failed to join memberlist cluster, keep trying in the background", "node", mlCfg.Name, "err", err)
+			go m.retryJoinWithBackoff(m.cfg.JoinMembers)
 		} else {
 			level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		}
 	}
 
-	return mlkv, nil
+	return nil
 }
 
 // GetCodec returns codec for given ID or nil.
@@ -335,12 +384,14 @@ func (m *KV) GetCodec(codecID string) codec.Codec {
 }
 
 // GetListeningPort returns port used for listening for memberlist communication. Useful when BindPort is set to 0.
+// This call is only valid when KV service is in Running state.
 func (m *KV) GetListeningPort() int {
 	return int(m.memberlist.LocalNode().Port)
 }
 
 // JoinMembers joins the cluster with given members.
 // See https://godoc.org/github.com/hashicorp/memberlist#Memberlist.Join
+// This call is only valid when KV service is in Running state.
 func (m *KV) JoinMembers(members []string) (int, error) {
 	return m.memberlist.Join(members)
 }
@@ -373,7 +424,7 @@ func (m *KV) retryJoinWithBackoff(members []string) {
 
 // Stop tries to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
-func (m *KV) Stop() {
+func (m *KV) stopping(_ error) error {
 	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")
 
 	m.casBroadcastsEnabled.Store(false)
@@ -405,6 +456,7 @@ func (m *KV) Stop() {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error when shutting down memberlist client", "err", err)
 	}
+	return nil
 }
 
 // List returns all known keys under a given prefix.
@@ -737,7 +789,11 @@ func (m *KV) NodeMeta(limit int) []byte {
 // NotifyMsg is method from Memberlist Delegate interface
 // Called when single message is received, i.e. what our broadcastNewValue has sent.
 func (m *KV) NotifyMsg(msg []byte) {
-	m.initWG.Wait()
+	// This method can be called before KV instance is fully initialized.
+	if m.State() == services.Starting {
+		return
+	}
+
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
@@ -798,7 +854,11 @@ func (m *KV) queueBroadcast(key string, content []string, version uint, message 
 // GetBroadcasts is method from Memberlist Delegate interface
 // It returns all pending broadcasts (within the size limit)
 func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
-	m.initWG.Wait()
+	// This method can be called before KV instance is fully initialized.
+	if m.State() == services.Starting {
+		return nil
+	}
+
 	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
 
@@ -808,7 +868,11 @@ func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
 // Here we dump our entire state -- all keys and their values. There is no limit on message size here,
 // as Memberlist uses 'stream' operations for transferring this state.
 func (m *KV) LocalState(join bool) []byte {
-	m.initWG.Wait()
+	// This method can be called before KV instance is fully initialized.
+	if m.State() == services.Starting {
+		return nil
+	}
+
 	m.numberOfPulls.Inc()
 
 	m.storeMu.Lock()
@@ -859,7 +923,11 @@ func (m *KV) LocalState(join bool) []byte {
 //
 // Data is full state of remote KV store, as generated by `LocalState` method (run on another node).
 func (m *KV) MergeRemoteState(data []byte, join bool) {
-	m.initWG.Wait()
+	// This method can be called before KV instance is fully initialized.
+	if m.State() == services.Starting {
+		return
+	}
+
 	m.numberOfPushes.Inc()
 	m.totalSizeOfPushes.Add(float64(len(data)))
 

@@ -361,7 +361,7 @@ func (m *KV) starting(_ context.Context) error {
 
 	// Join the cluster, if configured.
 	if len(m.cfg.JoinMembers) > 0 {
-		reached, err := m.JoinMembers(m.cfg.JoinMembers)
+		reached, err := m.memberlist.Join(m.cfg.JoinMembers)
 		if err != nil && m.cfg.AbortIfJoinFails {
 			_ = m.memberlist.Shutdown()
 			return err

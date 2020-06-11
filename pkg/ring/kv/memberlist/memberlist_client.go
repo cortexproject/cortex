@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"math"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +82,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 type KVConfig struct {
 	// Memberlist options.
 	NodeName            string        `yaml:"node_name"`
+	RandomizeNodeName   bool          `yaml:"randomize_node_name"`
 	StreamTimeout       time.Duration `yaml:"stream_timeout"`
 	RetransmitMult      int           `yaml:"retransmit_factor"`
 	PushPullInterval    time.Duration `yaml:"pull_push_interval"`
@@ -113,7 +113,9 @@ type KVConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", getHostnameWithRandomSuffix(), "Name of the node in memberlist cluster. Defaults to hostname with random suffix.")
+	// "Defaults to hostname" -- memberlist sets it to hostname by default.
+	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", "", "Name of the node in memberlist cluster. Defaults to hostname.") // memberlist.DefaultLANConfig will put hostname here.
+	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
 	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 0, "The timeout for establishing a connection with a remote node, and for read/write operations. Uses memberlist LAN defaults if 0.")
 	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", 0, "Multiplication factor used when sending out messages (factor * log(N+1)).")
 	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. Memberlist store is EXPERIMENTAL.")
@@ -129,14 +131,14 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
 
-func getHostnameWithRandomSuffix() string {
-	hostname, _ := os.Hostname()
+func generateRandomSuffix() string {
 	suffix := make([]byte, 4)
 	_, err := rand.Read(suffix)
-	if err == nil {
-		hostname = fmt.Sprintf("%s-%2x", hostname, suffix)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to generate random suffix", "err", err)
+		return "error"
 	}
-	return hostname
+	return fmt.Sprintf("%2x", suffix)
 }
 
 // KV implements Key-Value store on top of memberlist library. KV store has API similar to kv.Client,
@@ -248,8 +250,13 @@ func NewKV(cfg KVConfig) (*KV, error) {
 	if cfg.DeadNodeReclaimTime > 0 {
 		mlCfg.DeadNodeReclaimTime = cfg.DeadNodeReclaimTime
 	}
-	mlCfg.Name = cfg.NodeName
-	level.Info(util.Logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
+	if cfg.NodeName != "" {
+		mlCfg.Name = cfg.NodeName
+	}
+	if cfg.RandomizeNodeName {
+		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
+		level.Info(util.Logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
+	}
 
 	mlCfg.LogOutput = newMemberlistLoggerAdapter(util.Logger, false)
 	mlCfg.Transport = tr

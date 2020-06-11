@@ -384,15 +384,18 @@ func (m *KV) GetCodec(codecID string) codec.Codec {
 }
 
 // GetListeningPort returns port used for listening for memberlist communication. Useful when BindPort is set to 0.
-// This call is only valid when KV service is in Running state.
+// This call is only valid after KV service has been started.
 func (m *KV) GetListeningPort() int {
 	return int(m.memberlist.LocalNode().Port)
 }
 
 // JoinMembers joins the cluster with given members.
 // See https://godoc.org/github.com/hashicorp/memberlist#Memberlist.Join
-// This call is only valid when KV service is in Running state.
+// This call is only valid after KV service has been started and is still running.
 func (m *KV) JoinMembers(members []string) (int, error) {
+	if m.State() != services.Running {
+		return 0, fmt.Errorf("service not Running")
+	}
 	return m.memberlist.Join(members)
 }
 

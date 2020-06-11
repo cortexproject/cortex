@@ -16,7 +16,7 @@ import (
 )
 
 var testRoutes = []Route{
-	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: nil},
+	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: nil},
 }
 
 func Test_NewProxy(t *testing.T) {

@@ -59,13 +59,13 @@ func main() {
 func cortexReadRoutes() []querytee.Route {
 	samplesComparator := querytee.NewSamplesComparator()
 	return []querytee.Route{
-		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: samplesComparator},
-		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: "GET", ResponseComparator: samplesComparator},
-		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: "GET", ResponseComparator: nil},
-		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: "GET", ResponseComparator: nil},
-		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: "GET", ResponseComparator: nil},
-		{Path: "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: "GET", ResponseComparator: nil},
-		{Path: "/api/v1/rules", RouteName: "api_v1_rules", Methods: "GET", ResponseComparator: nil},
-		{Path: "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
+		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
+		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: "/api/v1/rules", RouteName: "api_v1_rules", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: []string{"GET"}, ResponseComparator: nil},
 	}
 }

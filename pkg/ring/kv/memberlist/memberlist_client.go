@@ -422,7 +422,7 @@ func (m *KV) retryJoinWithBackoff(members []string) {
 	}
 }
 
-// Stop tries to leave memberlist cluster and then shutdown memberlist client.
+// While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
 func (m *KV) stopping(_ error) error {
 	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")

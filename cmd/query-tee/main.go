@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"os"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,26 +10,21 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/tools/querytee"
 )
 
 type Config struct {
-	ServerServicePort  int
-	ServerMetricsPort  int
-	BackendEndpoints   string
-	PreferredBackend   string
-	BackendReadTimeout time.Duration
-	LogLevel           logging.Level
+	ServerMetricsPort int
+	LogLevel          logging.Level
+	ProxyConfig       querytee.ProxyConfig
 }
 
 func main() {
 	// Parse CLI flags.
 	cfg := Config{}
-	flag.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
-	flag.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
-	flag.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client.")
-	flag.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
+	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
 	util.InitLogger(&server.Config{
@@ -41,14 +35,14 @@ func main() {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
 
-	i := NewInstrumentationServer(cfg.ServerMetricsPort, registry)
+	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
 	if err := i.Start(); err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
 	}
 
 	// Run the proxy.
-	proxy, err := NewProxy(cfg, util.Logger, registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, cortexReadRoutes(), registry)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
@@ -60,4 +54,18 @@ func main() {
 	}
 
 	proxy.Await()
+}
+
+func cortexReadRoutes() []querytee.Route {
+	samplesComparator := querytee.NewSamplesComparator()
+	return []querytee.Route{
+		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: "GET", ResponseComparator: samplesComparator},
+		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: "GET", ResponseComparator: samplesComparator},
+		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/rules", RouteName: "api_v1_rules", Methods: "GET", ResponseComparator: nil},
+		{Path: "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: "GET", ResponseComparator: nil},
+	}
 }

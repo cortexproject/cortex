@@ -32,11 +32,14 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 	for i := 0; i < numGets; i++ {
 		clients, err := s.GetClientsFor(nil)
 		require.NoError(t, err)
+		require.Len(t, clients, 1)
 
-		addrs := getStoreGatewayClientAddrs(clients)
-		require.Len(t, addrs, 1)
+		var clientAddr string
+		for c := range clients {
+			clientAddr = c.RemoteAddress()
+		}
 
-		clientsCount[addrs[0]] = clientsCount[addrs[0]] + 1
+		clientsCount[clientAddr] = clientsCount[clientAddr] + 1
 	}
 
 	assert.Len(t, clientsCount, len(serviceAddrs))

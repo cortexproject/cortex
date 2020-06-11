@@ -319,7 +319,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
   Pick one of the encoding formats for timeseries data, which have different performance characteristics.
   `Bigchunk` uses the Prometheus V2 code, and expands in memory to arbitrary length.
   `Varbit`, `Delta` and `DoubleDelta` use Prometheus V1 code, and are fixed at 1K per chunk.
-  Defaults to `DoubleDelta`, but we recommend `Bigchunk`.
+  Defaults to `Bigchunk` starting version 0.7.0.
 
 - `-store.bigchunk-size-cap-bytes`
 

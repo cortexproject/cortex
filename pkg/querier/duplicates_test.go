@@ -109,7 +109,7 @@ func runPromQLAndGetJSONResult(t *testing.T, query string, ts client.TimeSeries,
 }
 
 type testQueryable struct {
-	ts *timeSeriesSeriesSet
+	ts storage.SeriesSet
 }
 
 func (t *testQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
@@ -117,7 +117,7 @@ func (t *testQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.
 }
 
 type testQuerier struct {
-	ts *timeSeriesSeriesSet
+	ts storage.SeriesSet
 }
 
 func (m testQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

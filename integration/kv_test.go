@@ -4,10 +4,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -28,6 +31,8 @@ func TestKV_List_Delete(t *testing.T) {
 
 	require.NoError(t, s.StartAndWaitReady(etcdSvc, consulSvc))
 
+	reg := prometheus.NewRegistry()
+
 	etcdKv, err := kv.NewClient(kv.Config{
 		Store:  "etcd",
 		Prefix: "keys/",
@@ -38,7 +43,7 @@ func TestKV_List_Delete(t *testing.T) {
 				MaxRetries:  5,
 			},
 		},
-	}, stringCodec{})
+	}, stringCodec{}, reg)
 	require.NoError(t, err)
 
 	consulKv, err := kv.NewClient(kv.Config{
@@ -52,7 +57,7 @@ func TestKV_List_Delete(t *testing.T) {
 				WatchKeyRateLimit: 1,
 			},
 		},
-	}, stringCodec{})
+	}, stringCodec{}, reg)
 	require.NoError(t, err)
 
 	kvs := []struct {
@@ -97,6 +102,34 @@ func TestKV_List_Delete(t *testing.T) {
 			require.NoError(t, err, "unexpected error")
 			require.Nil(t, v, "object was not deleted")
 		})
+	}
+
+	// Ensure the proper histogram metrics are reported
+	metrics, err := reg.Gather()
+	require.NoError(t, err)
+
+	require.Len(t, metrics, 1)
+	require.Equal(t, "cortex_kv_request_duration_seconds", metrics[0].GetName())
+	require.Equal(t, dto.MetricType_HISTOGRAM, metrics[0].GetType())
+	require.Len(t, metrics[0].GetMetric(), 8)
+
+	getMetricOperation := func(labels []*dto.LabelPair) (string, error) {
+		for _, l := range labels {
+			if l.GetName() == "operation" {
+				return l.GetValue(), nil
+			}
+		}
+		return "", errors.New("no operation")
+	}
+
+	for _, metric := range metrics[0].GetMetric() {
+		op, err := getMetricOperation(metric.Label)
+		require.NoErrorf(t, err, "No operation label found in metric %v", metric.String())
+		if op == "CAS" {
+			require.Equal(t, uint64(4), metric.GetHistogram().GetSampleCount())
+		} else {
+			require.Equal(t, uint64(1), metric.GetHistogram().GetSampleCount())
+		}
 	}
 }
 

@@ -1710,6 +1710,10 @@ cassandra:
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 5s]
 
+  # Interval to retry connecting to cassandra nodes marked as DOWN.
+  # CLI flag: -cassandra.reconnent-interval
+  [reconnect_interval: <duration> | default = 1s]
+
   # Number of retries to perform on a request. (Default is 0: no retries)
   # CLI flag: -cassandra.max-retries
   [max_retries: <int> | default = 0]
@@ -1725,6 +1729,22 @@ cassandra:
   # Limit number of concurrent queries to Cassandra. (Default is 0: no limit)
   # CLI flag: -cassandra.query-concurrency
   [query_concurrency: <int> | default = 0]
+
+  # Number of TCP connections per host.
+  # CLI flag: -cassandra.num-connections
+  [num_connections: <int> | default = 2]
+
+  # Convict hosts of being down on failure.
+  # CLI flag: -cassandra.convict-hosts-on-failure
+  [convict_hosts_on_failure: <boolean> | default = true]
+
+  # Table options used to create index or chunk tables. This value is used as
+  # plain text in the table `WITH` like this, "CREATE TABLE
+  # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
+  # see https://cortexmetrics.io/docs/production/cassandra. (Default = "": use
+  # default table options of your Cassandra)
+  # CLI flag: -cassandra.table-options
+  [table_options: <string> | default = ""]
 
 boltdb:
   # Location of BoltDB index files.

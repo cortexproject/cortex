@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -22,6 +23,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -40,6 +42,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 		block1          = ulid.MustNew(1, nil)
 		block2          = ulid.MustNew(2, nil)
 		block3          = ulid.MustNew(3, nil)
+		block4          = ulid.MustNew(4, nil)
 		metricNameLabel = labels.Label{Name: labels.MetricName, Value: metricName}
 		series1Label    = labels.Label{Name: "series", Value: "1"}
 		series2Label    = labels.Label{Name: "series", Value: "2"}
@@ -58,7 +61,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 	tests := map[string]struct {
 		finderResult   []*BlockMeta
 		finderErr      error
-		storeSetResult []BlocksStoreClient
+		storeSetResult map[BlocksStoreClient][]ulid.ULID
 		storeSetErr    error
 		expectedSeries []seriesResult
 		expectedErr    string
@@ -84,12 +87,12 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
 					mockHintsResponse(block1, block2),
-				}},
+				}}: {block1, block2},
 			},
 			expectedSeries: []seriesResult{
 				{
@@ -106,13 +109,13 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, minT, 3),
 					mockHintsResponse(block1, block2),
-				}},
+				}}: {block1, block2},
 			},
 			expectedSeries: []seriesResult{
 				{
@@ -129,20 +132,20 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				},
 			},
 		},
-		"multiple store-gateway instances holds the required blocks without overlapping blocks (single returned series)": {
+		"multiple store-gateway instances holds the required blocks without overlapping series (single returned series)": {
 			finderResult: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT, 1),
 					mockHintsResponse(block1),
-				}},
+				}}: {block1},
 				&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
 					mockHintsResponse(block2),
-				}},
+				}}: {block2},
 			},
 			expectedSeries: []seriesResult{
 				{
@@ -154,21 +157,21 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				},
 			},
 		},
-		"multiple store-gateway instances holds the required blocks with overlapping blocks (single returned series)": {
+		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
 					mockHintsResponse(block1),
-				}},
+				}}: {block1},
 				&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
-					mockHintsResponse(block1, block2),
-				}},
+					mockHintsResponse(block2),
+				}}: {block2},
 			},
 			expectedSeries: []seriesResult{
 				{
@@ -180,27 +183,27 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				},
 			},
 		},
-		"multiple store-gateway instances holds the required blocks with overlapping blocks (multiple returned series)": {
+		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, minT, 1),
 					mockHintsResponse(block1),
-				}},
+				}}: {block1},
 				&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
-					mockHintsResponse(block1),
-				}},
+					mockHintsResponse(block2),
+				}}: {block2},
 				&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, minT+1, 3),
-					mockHintsResponse(block2),
-				}},
+					mockHintsResponse(block3),
+				}}: {block3},
 			},
 			expectedSeries: []seriesResult{
 				{
@@ -223,12 +226,12 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
 					mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
 					mockHintsResponse(block1),
-				}},
+				}}: {block1},
 			},
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
@@ -237,18 +240,19 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
+				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
 			},
-			storeSetResult: []BlocksStoreClient{
+			storeSetResult: map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
-					mockHintsResponse(block2),
-				}},
+					mockHintsResponse(block1),
+				}}: {block1},
 				&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
 					mockSeriesResponse(labels.Labels{metricNameLabel}, minT+1, 2),
 					mockHintsResponse(block2),
-				}},
+				}}: {block2},
 			},
-			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block1.String(), block3.String()),
+			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
 		},
 	}
 
@@ -393,14 +397,134 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 	}
 }
 
+func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	series1 := []storepb.Label{{Name: "__name__", Value: "metric_1"}}
+	series2 := []storepb.Label{{Name: "__name__", Value: "metric_2"}}
+
+	series1Samples := []promql.Point{
+		{T: 1589759955000, V: 1},
+		{T: 1589759970000, V: 1},
+		{T: 1589759985000, V: 1},
+		{T: 1589760000000, V: 1},
+		{T: 1589760015000, V: 1},
+		{T: 1589760030000, V: 1},
+	}
+
+	series2Samples := []promql.Point{
+		{T: 1589759955000, V: 2},
+		{T: 1589759970000, V: 2},
+		{T: 1589759985000, V: 2},
+		{T: 1589760000000, V: 2},
+		{T: 1589760015000, V: 2},
+		{T: 1589760030000, V: 2},
+	}
+
+	// Mock the finder to simulate we need to query two blocks.
+	finder := &blocksFinderMock{
+		Service: services.NewIdleService(nil, nil),
+	}
+	finder.On("GetBlocks", "user-1", mock.Anything, mock.Anything).Return([]*BlockMeta{
+		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
+		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+	}, map[ulid.ULID]*metadata.DeletionMark(nil), error(nil))
+
+	// Mock the store to simulate each block is queried from a different store-gateway.
+	gateway1 := &storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedResponses: []*storepb.SeriesResponse{
+		{
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series1,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series1Samples[:3]...), // First half.
+					},
+				},
+			},
+		}, {
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series2,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series2Samples[:3]...),
+					},
+				},
+			},
+		},
+		mockHintsResponse(block1),
+	}}
+
+	gateway2 := &storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedResponses: []*storepb.SeriesResponse{
+		{
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series1,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series1Samples[3:]...), // Second half.
+					},
+				},
+			},
+		}, {
+			Result: &storepb.SeriesResponse_Series{
+				Series: &storepb.Series{
+					Labels: series2,
+					Chunks: []storepb.AggrChunk{
+						createAggrChunkWithSamples(series2Samples[3:]...),
+					},
+				},
+			},
+		},
+		mockHintsResponse(block2),
+	}}
+
+	stores := &blocksStoreSetMock{
+		Service: services.NewIdleService(nil, nil),
+		mockedResult: map[BlocksStoreClient][]ulid.ULID{
+			gateway1: {block1},
+			gateway2: {block2},
+		},
+	}
+
+	// Instance the querier that will be executed to run the query.
+	logger := log.NewNopLogger()
+	queryable, err := NewBlocksStoreQueryable(stores, finder, NewBlocksConsistencyChecker(0, 0, logger, nil), 0, logger, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), queryable))
+	defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:     logger,
+		Timeout:    10 * time.Second,
+		MaxSamples: 1e6,
+	})
+
+	// Run a query.
+	q, err := engine.NewRangeQuery(queryable, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+	res := q.Exec(ctx)
+	require.NoError(t, err)
+	require.NoError(t, res.Err)
+
+	matrix, err := res.Matrix()
+	require.NoError(t, err)
+	require.Len(t, matrix, 2)
+
+	assert.Equal(t, storepb.LabelsToPromLabels(series1), matrix[0].Metric)
+	assert.Equal(t, storepb.LabelsToPromLabels(series2), matrix[1].Metric)
+	assert.Equal(t, series1Samples, matrix[0].Points)
+	assert.Equal(t, series2Samples, matrix[1].Points)
+}
+
 type blocksStoreSetMock struct {
 	services.Service
 
-	mockedResult []BlocksStoreClient
+	mockedResult map[BlocksStoreClient][]ulid.ULID
 	mockedErr    error
 }
 
-func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID) ([]BlocksStoreClient, error) {
+func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID) (map[BlocksStoreClient][]ulid.ULID, error) {
 	return m.mockedResult, m.mockedErr
 }
 

@@ -3391,7 +3391,7 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;p&gt;Pick one of the encoding formats for timeseries data, which have different performance characteristics.
 &lt;code&gt;Bigchunk&lt;/code&gt; uses the Prometheus V2 code, and expands in memory to arbitrary length.
 &lt;code&gt;Varbit&lt;/code&gt;, &lt;code&gt;Delta&lt;/code&gt; and &lt;code&gt;DoubleDelta&lt;/code&gt; use Prometheus V1 code, and are fixed at 1K per chunk.
-Defaults to &lt;code&gt;DoubleDelta&lt;/code&gt;, but we recommend &lt;code&gt;Bigchunk&lt;/code&gt;.&lt;/p&gt;
+Defaults to &lt;code&gt;Bigchunk&lt;/code&gt; starting version 0.7.0.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-store.bigchunk-size-cap-bytes&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;

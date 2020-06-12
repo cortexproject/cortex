@@ -145,7 +145,17 @@ func TestQueryResponse(t *testing.T) {
 	if !reflect.DeepEqual(have, want) {
 		t.Fatalf("Bad FromQueryResponse(ToQueryResponse) round trip")
 	}
+}
 
+func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
+	input := []LabelAdapter{
+		{Name: "hello", Value: "world"},
+		{Name: "some label", Value: "and its value"},
+		{Name: "long long long long long label name", Value: "perhaps even longer label value, but who's counting anyway?"}}
+
+	for i := 0; i < b.N; i++ {
+		FromLabelAdaptersToLabelsWithCopy(input)
+	}
 }
 
 // This test shows label sets with same fingerprints, and also shows how to easily create new collisions

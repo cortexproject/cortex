@@ -125,7 +125,7 @@ func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store,
 		chunkStore:               chunkStore,
 		objectClient:             storageClient,
 		metrics:                  newPurgerMetrics(registerer),
-		pullNewRequestsChan:      make(chan struct{}, 2),
+		pullNewRequestsChan:      make(chan struct{}, 1),
 		executePlansChan:         make(chan deleteRequestWithLogger, 50),
 		workerJobChan:            make(chan workerJob, 50),
 		inProcessRequestIDs:      map[string]string{},
@@ -154,14 +154,19 @@ func (dp *DataPurger) loop(ctx context.Context) error {
 	loadRequestsTicker := time.NewTicker(time.Hour)
 	defer loadRequestsTicker.Stop()
 
+	loadRequests := func() {
+		err := dp.pullDeleteRequestsToPlanDeletes()
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
+		}
+	}
+
 	for {
 		select {
 		case <-loadRequestsTicker.C:
+			loadRequests()
 		case <-dp.pullNewRequestsChan:
-			err := dp.pullDeleteRequestsToPlanDeletes()
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
-			}
+			loadRequests()
 		case <-ctx.Done():
 			return nil
 		}
@@ -208,8 +213,11 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 		defer dp.usersWithPendingRequestsMtx.Unlock()
 		if _, ok := dp.usersWithPendingRequests[job.userID]; ok {
 			delete(dp.usersWithPendingRequests, job.userID)
-			if len(dp.pullNewRequestsChan) == 0 {
-				dp.pullNewRequestsChan <- struct{}{}
+			select {
+			case dp.pullNewRequestsChan <- struct{}{}:
+				// sent
+			default:
+				// already sent
 			}
 		}
 	} else {

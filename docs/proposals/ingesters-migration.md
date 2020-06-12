@@ -6,7 +6,7 @@ slug: ingesters-migration
 ---
 
 - Author: @pstibrany
-- Reviewers: 
+- Reviewers:
 - Date: June 2020
 - Status: Proposed
 
@@ -37,7 +37,7 @@ Other alternatives considered for flushing chunks / handling WAL:
 
 After all ingesters are converted to blocks, we can set cut-off time for querying chunks storage on queriers.
 
-For rollback from blocks to chunks, we need to be able to flush data from ingesters to the blocks storage, and then switch ingesters back to chunks. Ingesters are currently not able to flush blocks to storage, but adding flush-on-shutdown option, support for `/shutdown` endpoint and support in flusher component similar to chunks is doable, and should be part of this work. 
+For rollback from blocks to chunks, we need to be able to flush data from ingesters to the blocks storage, and then switch ingesters back to chunks. Ingesters are currently not able to flush blocks to storage, but adding flush-on-shutdown option, support for `/shutdown` endpoint and support in flusher component similar to chunks is doable, and should be part of this work.
 
 With this ability, rollback would follow the same process, just in reverse: 1) redeploy with flush flag enabled, 2) redeploy with config change from blocks to chunks.
 
@@ -57,4 +57,4 @@ Querier needs to support both. Switching between them via config option seems fi
 
 - Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.
 - Querier: Add support for querying both chunk store and blocks at the same time
-- Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time. 
+- Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.

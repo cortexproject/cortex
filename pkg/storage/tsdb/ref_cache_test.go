@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -96,30 +97,48 @@ func TestRefCache_Purge(t *testing.T) {
 	}
 }
 
-var series1M = prepareSeries(1e6)
+var goroutines = []int{50, 100, 500}
 
-func BenchmarkRefCacheConcurrency_1m_50(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 50)
-}
+func BenchmarkRefCacheConcurrency_single_label(b *testing.B) {
+	const seriesCount = 1e5
 
-func BenchmarkRefCacheConcurrency_1m_250(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 100)
-}
+	series := make([]labels.Labels, seriesCount)
 
-func BenchmarkRefCacheConcurrency_1m_1000(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 500)
-}
-
-func prepareSeries(numSeries int) []labels.Labels {
-	series := make([]labels.Labels, numSeries)
-
-	for s := 0; s < numSeries; s++ {
+	for s := 0; s < len(series); s++ {
 		series[s] = labels.Labels{
 			{Name: "a", Value: strconv.Itoa(s)},
 		}
 	}
 
-	return series
+	for _, num := range goroutines {
+		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
+			benchmarkRefCacheConcurrency(b, series, num)
+		})
+	}
+}
+
+func BenchmarkRefCacheConcurrency_long_labels(b *testing.B) {
+	const seriesCount = 1e5
+	const labelsCount = 10
+	const namePrefix = "abcdefghij"
+	const valuePrefix = "pqrstuvzyx"
+
+	series := make([]labels.Labels, seriesCount)
+
+	for s := 0; s < len(series); s++ {
+		for c := 0; c < labelsCount; c++ {
+			series[s] = append(series[s], labels.Label{
+				Name:  namePrefix + "-" + strconv.Itoa(s) + "-" + strconv.Itoa(c),
+				Value: valuePrefix + "-" + strconv.Itoa(s) + "-" + strconv.Itoa(c),
+			})
+		}
+	}
+
+	for _, num := range goroutines {
+		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
+			benchmarkRefCacheConcurrency(b, series, num)
+		})
+	}
 }
 
 func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutines int) {

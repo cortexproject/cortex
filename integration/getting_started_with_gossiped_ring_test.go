@@ -28,6 +28,7 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 		// decrease timeouts to make test faster. should still be fine with two instances only
 		"-ingester.join-after":     "0s", // join quickly
 		"-ingester.observe-period": "5s", // to avoid conflicts in tokens
+		"-log.level":               "debug",
 	}
 
 	// This cortex will fail to join the cluster configured in yaml file. That's fine.

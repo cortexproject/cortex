@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -65,29 +64,17 @@ type API struct {
 	authMiddleware middleware.Func
 	server         *server.Server
 	logger         log.Logger
-
-	querierRequestDuration *prometheus.HistogramVec
 }
 
-func New(cfg Config, s *server.Server, logger log.Logger, reg prometheus.Registerer) (*API, error) {
+func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
 	// Ensure the encoded path is used. Required for the rules API
 	s.HTTP.UseEncodedPath()
-
-	// Prometheus histograms for requests.
-	querierRequestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
-		Buckets:   instrument.DefBuckets,
-	}, []string{"method", "route", "status_code", "ws"})
-	reg.MustRegister(querierRequestDuration)
 
 	api := &API{
 		cfg:                    cfg,
 		authMiddleware:         cfg.HTTPAuthMiddleware,
 		server:                 s,
 		logger:                 logger,
-		querierRequestDuration: querierRequestDuration,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -264,7 +251,14 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 // RegisterQuerier registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the QueryFrontend.
-func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor, registerRoutesExternally bool, tombstonesLoader *purger.TombstonesLoader) http.Handler {
+func (a *API) RegisterQuerier(
+	queryable storage.Queryable,
+	engine *promql.Engine,
+	distributor *distributor.Distributor,
+	registerRoutesExternally bool,
+	tombstonesLoader *purger.TombstonesLoader,
+	querierRequestDuration *prometheus.HistogramVec,
+) http.Handler {
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -303,7 +297,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
 	// running Cortex as a single binary.
 	inst := middleware.Instrument{
-		Duration:     a.querierRequestDuration,
+		Duration:     querierRequestDuration,
 		RouteMatcher: router,
 	}
 

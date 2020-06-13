@@ -71,10 +71,10 @@ func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
 	s.HTTP.UseEncodedPath()
 
 	api := &API{
-		cfg:                    cfg,
-		authMiddleware:         cfg.HTTPAuthMiddleware,
-		server:                 s,
-		logger:                 logger,
+		cfg:            cfg,
+		authMiddleware: cfg.HTTPAuthMiddleware,
+		server:         s,
+		logger:         logger,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.

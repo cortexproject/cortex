@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -118,20 +119,25 @@ func BenchmarkRefCacheConcurrency_single_label(b *testing.B) {
 }
 
 func BenchmarkRefCacheConcurrency_long_labels(b *testing.B) {
-	const seriesCount = 1e5
+	const seriesCount = 1e4
 	const labelsCount = 10
-	const namePrefix = "abcdefghij"
-	const valuePrefix = "pqrstuvzyx"
+	const labelNameLength = 100
+	const labelValueLength = 1000
+
+	r := rand.New(rand.NewSource(0))
 
 	series := make([]labels.Labels, seriesCount)
 
 	for s := 0; s < len(series); s++ {
-		for c := 0; c < labelsCount; c++ {
-			series[s] = append(series[s], labels.Label{
-				Name:  namePrefix + "-" + strconv.Itoa(s) + "-" + strconv.Itoa(c),
-				Value: valuePrefix + "-" + strconv.Itoa(s) + "-" + strconv.Itoa(c),
-			})
+		lbls := make([]labels.Label, labelsCount)
+		for l := 0; l < len(lbls); l++ {
+			lbls[l] = labels.Label{
+				Name:  generateStr(r, labelNameLength),
+				Value: generateStr(r, labelValueLength),
+			}
 		}
+
+		series[s] = lbls
 	}
 
 	for _, num := range goroutines {
@@ -139,6 +145,16 @@ func BenchmarkRefCacheConcurrency_long_labels(b *testing.B) {
 			benchmarkRefCacheConcurrency(b, series, num)
 		})
 	}
+}
+
+var alphabet = "abcdefghijklmnopqrstuvxyz"
+
+func generateStr(r *rand.Rand, l int) string {
+	buf := make([]byte, l)
+	for i := 0; i < l; i++ {
+		buf[i] = alphabet[r.Intn(len(alphabet))]
+	}
+	return string(buf)
 }
 
 func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutines int) {

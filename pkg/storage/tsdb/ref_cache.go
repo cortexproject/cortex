@@ -44,6 +44,9 @@ type refCacheEntry struct {
 	touchedAt int64 // Unix nano time.
 }
 
+// Opaque data structure returned by Ref. Can be passed to SetRef with the same labels, to avoid duplicate computations.
+type RefCacheHint model.Fingerprint
+
 // NewRefCache makes a new RefCache.
 func NewRefCache() *RefCache {
 	c := &RefCache{}
@@ -57,18 +60,33 @@ func NewRefCache() *RefCache {
 }
 
 // Ref returns the cached series reference, and guarantees the input labels set
-// is NOT retained.
-func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
+// is NOT retained. It also returns hint that can be passed to SetRefWithHint for the same
+// series to avoid repeated computation of fingerprint.
+func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool, RefCacheHint) {
 	fp := client.Fingerprint(series)
 	stripeID := util.HashFP(fp) % numRefCacheStripes
 
-	return c.stripes[stripeID].ref(now, series, fp)
+	ref, ok := c.stripes[stripeID].ref(now, series, fp)
+	return ref, ok, RefCacheHint(fp)
 }
 
 // SetRef sets/updates the cached series reference. The input labels set IS retained.
 func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
-	fp := client.Fingerprint(series)
-	stripeID := util.HashFP(fp) % numRefCacheStripes
+	c.SetRefWithHint(now, series, ref, 0)
+}
+
+// SetRefWithHint sets or updates the cached series reference. Hint is value returned by Ref,
+// and can only be reused for the same series.
+func (c *RefCache) SetRefWithHint(now time.Time, series labels.Labels, ref uint64, hint RefCacheHint) {
+	var fp model.Fingerprint
+	var stripeID uint32
+
+	if hint != 0 {
+		fp = model.Fingerprint(hint)
+	} else {
+		fp = client.Fingerprint(series)
+	}
+	stripeID = util.HashFP(fp) % numRefCacheStripes
 
 	c.stripes[stripeID].setRef(now, series, fp, ref)
 }

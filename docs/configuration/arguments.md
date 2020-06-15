@@ -182,18 +182,24 @@ prefix these flags with `distributor.ha-tracker.`
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
 
-#### memberlist (EXPERIMENTAL)
+#### memberlist
 
-Flags for configuring KV store based on memberlist library. This feature is experimental, please don't use it yet.
+Flags for configuring KV store based on memberlist library.
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
+- `memberlist.randomize-node-name`
+   This flag adds extra random suffix to the node name used by memberlist. Defaults to true. Using random suffix helps to prevent issues when running multiple memberlist nodes on the same machine, or when node names are reused (eg. in stateful sets).
 - `memberlist.retransmit-factor`
    Multiplication factor used when sending out messages (factor * log(N+1)). If not set, default value is used.
 - `memberlist.join`
    Other cluster members to join. Can be specified multiple times.
+- `memberlist.min-join-backoff`, `memberlist.max-join-backoff`, `memberlist.max-join-retries`
+   These flags control backoff settings when joining the cluster.
 - `memberlist.abort-if-join-fails`
    If this node fails to join memberlist cluster, abort.
+- `memberlist.rejoin-interval`
+   How often to try to rejoin the memberlist cluster. Defaults to 0, no rejoining. Occasional rejoin may be useful in some configurations, and is otherwise harmless.
 - `memberlist.left-ingesters-timeout`
    How long to keep LEFT ingesters in the ring. Note: this is only used for gossiping, LEFT ingesters are otherwise invisible.
 - `memberlist.leave-timeout`

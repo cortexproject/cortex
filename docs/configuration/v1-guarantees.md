@@ -38,7 +38,6 @@ Currently experimental features are:
 - Cassandra storage engine.
 - Azure blob storage.
 - Zone awareness based replication.
-- Gossip based ring.
 - User subrings.
 - Ruler API (to PUT rules).
 - Memcached client DNS-based service discovery.

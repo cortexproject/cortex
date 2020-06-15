@@ -175,7 +175,8 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		io.Copy(w, resp.Body)
 	}
 
-	// If LogQueriesLongerThan is set to <0 we log every query
+	// If LogQueriesLongerThan is set to <0 we log every query, if it is set to 0 query logging
+	// is disabled
 	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		logMessage := []interface{}{
 			"msg", "slow query detected",
@@ -185,21 +186,15 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 			"time_taken", queryResponseTime.String(),
 		}
 
-		// Extract the ID from the header of the request
-		id, _, err := user.ExtractOrgIDFromHTTPRequest(r)
-		if err != nil {
-			logMessage = append(logMessage, "tenant_id", id)
-		}
-
 		// Ensure the form has been parsed so all the parameters are present
 		err = r.ParseForm()
 		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("unable to parse form for request")
+			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "error", err)
 		}
 
 		// Attempt to iterate through the Form to log any filled in values
 		for k, v := range r.Form {
-			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
+			logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 		}
 
 		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)

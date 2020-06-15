@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -64,6 +65,8 @@ type Frontend struct {
 	mtx    sync.Mutex
 	cond   *sync.Cond
 	queues *queueIterator
+
+	connectedClients int32
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -284,6 +287,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	atomic.AddInt32(&f.connectedClients, 1)
+	defer atomic.AddInt32(&f.connectedClients, -1)
+
 	// If the downstream request(from querier -> frontend) is cancelled,
 	// we need to ping the condition variable to unblock getNextRequest.
 	// Ideally we'd have ctx aware condition variables...
@@ -425,4 +431,33 @@ FindQueue:
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
 	goto FindQueue
+}
+
+// ReadinessHandler is a HandlerFunc that is designed to indicate if this frontend is ready to
+//  receive requests.  It will return a positive status code (200) if there are any attached queriers.
+func (f *Frontend) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if f.readyForRequests() {
+		http.Error(w, "ready", http.StatusOK)
+		return
+	}
+
+	http.Error(w, "not ready", http.StatusServiceUnavailable)
+}
+
+func (f *Frontend) readyForRequests() bool {
+	// if the downstream url is configured the query frontend is not aware of the state
+	//  of the queriers and is therefore always ready
+	if f.cfg.DownstreamURL != "" {
+		return true
+	}
+
+	// if we have more than one querier connected we will consider ourselves ready
+	connectedClients := atomic.LoadInt32(&f.connectedClients)
+	if connectedClients > 0 {
+		return true
+	}
+
+	level.Info(f.log).Log("msg", "query-frontend is not ready", "connectedClients", connectedClients)
+
+	return false
 }

@@ -59,8 +59,6 @@ ingester:
       replication_factor: 1
 
 memberlist:
-  # defaults to hostname
-  node_name: "Ingester 1"
   bind_port: 7946
   join_members:
     - localhost:7947

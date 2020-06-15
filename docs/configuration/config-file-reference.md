@@ -2267,6 +2267,10 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.nodename
 [node_name: <string> | default = ""]
 
+# Add random suffix to the node name.
+# CLI flag: -memberlist.randomize-node-name
+[randomize_node_name: <boolean> | default = true]
+
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations. Uses memberlist LAN defaults if 0.
 # CLI flag: -memberlist.stream-timeout

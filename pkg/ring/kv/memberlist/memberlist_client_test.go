@@ -914,3 +914,12 @@ func TestMultipleCodecs(t *testing.T) {
 	require.NotNil(t, val)
 	require.Equal(t, 5, val.(distributedCounter)["test"])
 }
+
+func TestGenerateRandomSuffix(t *testing.T) {
+	h1 := generateRandomSuffix()
+	h2 := generateRandomSuffix()
+	h3 := generateRandomSuffix()
+
+	require.NotEqual(t, h1, h2)
+	require.NotEqual(t, h2, h3)
+}

@@ -18,28 +18,28 @@ func TestRefCache_GetAndSetReferences(t *testing.T) {
 	ls2 := []labels.Label{{Name: "a", Value: "2"}}
 
 	c := NewRefCache()
-	_, ok, _ := c.Ref(now, ls1)
+	_, ok := c.Ref(now, ls1)
 	assert.Equal(t, false, ok)
 
-	_, ok, _ = c.Ref(now, ls2)
+	_, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls1, 1)
-	ref, ok, _ := c.Ref(now, ls1)
+	ref, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	_, ok, _ = c.Ref(now, ls2)
+	_, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls2, 2)
-	ref, ok, _ = c.Ref(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 
 	// Overwrite a value with a new one
 	c.SetRef(now, ls2, 3)
-	ref, ok, _ = c.Ref(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(3), ref)
 }
@@ -54,11 +54,11 @@ func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
 	c.SetRef(now, ls1, 1)
 	c.SetRef(now, ls2, 2)
 
-	ref, ok, _ := c.Ref(now, ls1)
+	ref, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
 
-	ref, ok, _ = c.Ref(now, ls2)
+	ref, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
 }
@@ -86,13 +86,13 @@ func TestRefCache_Purge(t *testing.T) {
 
 		// Check retained and purged entries
 		for i := 0; i <= ttl && i < len(series); i++ {
-			ref, ok, _ := c.Ref(now, series[i])
+			ref, ok := c.Ref(now, series[i])
 			assert.Equal(t, true, ok)
 			assert.Equal(t, uint64(i), ref)
 		}
 
 		for i := ttl + 1; i < len(series); i++ {
-			_, ok, _ := c.Ref(now, series[i])
+			_, ok := c.Ref(now, series[i])
 			assert.Equal(t, false, ok)
 		}
 	}
@@ -168,9 +168,9 @@ func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutin
 			now := time.Now()
 
 			for s := 0; s < len(series); s += step {
-				_, ok, hint := c.Ref(now, series[s])
+				_, ok := c.Ref(now, series[s])
 				if !ok {
-					c.SetRefWithHint(now, series[s], uint64(s), hint)
+					c.SetRef(now, series[s], uint64(s))
 				}
 			}
 		}

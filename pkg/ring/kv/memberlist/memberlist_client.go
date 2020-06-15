@@ -16,7 +16,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -192,6 +191,9 @@ func generateRandomSuffix() string {
 
 // KV implements Key-Value store on top of memberlist library. KV store has API similar to kv.Client,
 // except methods also need explicit codec for each operation.
+// KV is a Service. It needs to be started first, and is only usable once it enters Running state.
+// If joining of the cluster if configured, it is done in Running state, and if join fails and Abort flag is set, service
+// fails.
 type KV struct {
 	services.Service
 
@@ -201,9 +203,6 @@ type KV struct {
 	initWG     sync.WaitGroup
 	memberlist *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
-
-	// Disabled on Stop()
-	casBroadcastsEnabled *atomic.Bool
 
 	// KV Store.
 	storeMu sync.Mutex
@@ -275,14 +274,13 @@ func NewKV(cfg KVConfig) *KV {
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
 	mlkv := &KV{
-		cfg:                  cfg,
-		store:                make(map[string]valueDesc),
-		codecs:               make(map[string]codec.Codec),
-		watchers:             make(map[string][]chan string),
-		prefixWatchers:       make(map[string][]chan string),
-		shutdown:             make(chan struct{}),
-		maxCasRetries:        maxCasRetries,
-		casBroadcastsEnabled: atomic.NewBool(true),
+		cfg:            cfg,
+		store:          make(map[string]valueDesc),
+		codecs:         make(map[string]codec.Codec),
+		watchers:       make(map[string][]chan string),
+		prefixWatchers: make(map[string][]chan string),
+		shutdown:       make(chan struct{}),
+		maxCasRetries:  maxCasRetries,
 	}
 
 	mlkv.createAndRegisterMetrics()
@@ -342,7 +340,7 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	return mlCfg, nil
 }
 
-func (m *KV) starting(ctx context.Context) error {
+func (m *KV) starting(_ context.Context) error {
 	util.WarnExperimentalUse("Gossip memberlist ring")
 
 	mlCfg, err := m.buildMemberlistConfig()
@@ -456,8 +454,6 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
 func (m *KV) stopping(_ error) error {
 	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")
-
-	m.casBroadcastsEnabled.Store(false)
 
 	// Wait until broadcast queue is empty, but don't wait for too long.
 	// Also don't wait if there is just one node left.
@@ -720,7 +716,7 @@ outer:
 			m.casSuccesses.Inc()
 			m.notifyWatchers(key)
 
-			if m.casBroadcastsEnabled.Load() {
+			if m.State() == services.Running {
 				m.broadcastNewValue(key, change, newver, codec)
 			} else {
 				level.Warn(util.Logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)

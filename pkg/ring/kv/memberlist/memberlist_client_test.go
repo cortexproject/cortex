@@ -9,15 +9,19 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"os"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const ACTIVE = 1
@@ -760,7 +764,7 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 func getFreePorts(count int) ([]int, error) {
 	var ports []int
 	for i := 0; i < count; i++ {
-		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
@@ -979,4 +983,54 @@ func TestGenerateRandomSuffix(t *testing.T) {
 
 	require.NotEqual(t, h1, h2)
 	require.NotEqual(t, h2, h3)
+}
+
+func TestRejoin(t *testing.T) {
+	util.Logger = log.NewLogfmtLogger(os.Stdout)
+
+	ports, err := getFreePorts(2)
+	require.NoError(t, err)
+
+	cfg1 := KVConfig{
+		TCPTransport: TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  ports[0],
+		},
+
+		RandomizeNodeName: true,
+		Codecs:            []codec.Codec{dataCodec{}},
+		AbortIfJoinFails:  false,
+	}
+
+	cfg2 := cfg1
+	cfg2.TCPTransport.BindPort = ports[1]
+	cfg2.JoinMembers = []string{fmt.Sprintf("localhost:%d", ports[0])}
+	cfg2.RejoinInterval = 1 * time.Second
+
+	mkv1 := NewKV(cfg1)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
+
+	mkv2 := NewKV(cfg2)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
+
+	membersFunc := func() interface{} {
+		return mkv2.memberlist.NumMembers()
+	}
+
+	test.Poll(t, 5*time.Second, 2, membersFunc)
+
+	// Shutdown first KV
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), mkv1))
+
+	// Second KV should see single member now.
+	test.Poll(t, 5*time.Second, 1, membersFunc)
+
+	// Let's start first KV again. It is not configured to join the cluster, but KV2 is rejoining.
+	mkv1 = NewKV(cfg1)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
+
+	test.Poll(t, 5*time.Second, 2, membersFunc)
 }

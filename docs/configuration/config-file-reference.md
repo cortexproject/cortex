@@ -2303,8 +2303,7 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
-# Other cluster members to join. Can be specified multiple times. Memberlist
-# store is EXPERIMENTAL.
+# Other cluster members to join. Can be specified multiple times.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 

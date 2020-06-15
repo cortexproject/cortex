@@ -2324,6 +2324,11 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = true]
 
+# If not 0, how often to rejoin the cluster. Occasional rejoin can be useful in
+# case of cluster split, and is harmless otherwise.
+# CLI flag: -memberlist.rejoin-interval
+[rejoin_interval: <duration> | default = 0s]
+
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]

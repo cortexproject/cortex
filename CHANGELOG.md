@@ -184,6 +184,7 @@ Please make sure to review renamed metrics, and update your dashboards and alert
 * [ENHANCEMENT] Redis Cache: Added `idle_timeout`, `wait_on_pool_exhaustion` and `max_conn_lifetime` options to redis cache configuration. #2550
 * [ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters. #2560
 * [ENHANCEMENT] Use newer AWS API for paginated queries - removes 'Deprecated' message from logfiles. #2452
+* [ENHANCEMENT] Experimental memberlist: Add retry with backoff on memberlist join other members. #2705
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. Fixes #2411. #2372
 * [BUGFIX] Experimental TSDB: Fixed chunk data corruption when querying back series using the experimental blocks storage. #2400

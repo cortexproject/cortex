@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"sort"
 	"sync"
 	"testing"
@@ -609,6 +610,112 @@ func TestMultipleClients(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestJoinMembersWithRetryBackoff(t *testing.T) {
+	c := dataCodec{}
+
+	const members = 3
+	const key = "ring"
+
+	var clients []*Client
+
+	stop := make(chan struct{})
+	start := make(chan struct{})
+
+	ports, err := getFreePorts(members)
+	require.NoError(t, err)
+
+	for i, port := range ports {
+		id := fmt.Sprintf("Member-%d", i)
+		cfg := KVConfig{
+			NodeName: id,
+
+			GossipInterval:   100 * time.Millisecond,
+			GossipNodes:      3,
+			PushPullInterval: 5 * time.Second,
+
+			MinJoinBackoff: 100 * time.Millisecond,
+			MaxJoinBackoff: 1 * time.Minute,
+			MaxJoinRetries: 10,
+
+			TCPTransport: TCPTransportConfig{
+				BindAddrs: []string{"localhost"},
+				BindPort:  port,
+			},
+
+			Codecs: []codec.Codec{c},
+		}
+
+		if i == 0 {
+			// Add members to first KV config to join immediately on initialization.
+			// This will enforce backoff as each next members listener is not open yet.
+			cfg.JoinMembers = []string{fmt.Sprintf("localhost:%d", ports[1])}
+		} else {
+			// Add delay to each next member to force backoff
+			time.Sleep(1 * time.Second)
+		}
+
+		mkv, err := NewKV(cfg)
+		require.NoError(t, err)
+
+		kv, err := NewClient(mkv, c)
+		require.NoError(t, err)
+
+		clients = append(clients, kv)
+
+		if i == 0 {
+			go runClient(t, kv, id, key, i, start, stop)
+		} else {
+			go runClient(t, kv, id, key, ports[i-1], start, stop)
+		}
+	}
+
+	t.Log("Waiting all members to join memberlist cluster")
+	close(start)
+	time.Sleep(2 * time.Second)
+
+	t.Log("Observing ring ...")
+
+	startTime := time.Now()
+	firstKv := clients[0]
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	observedMembers := 0
+	firstKv.WatchKey(ctx, key, func(in interface{}) bool {
+		r := in.(*data)
+		observedMembers = len(r.Members)
+
+		now := time.Now()
+		t.Log("Update", now.Sub(startTime).String(), ": Ring has", len(r.Members), "members, and", len(r.getAllTokens()),
+			"tokens")
+		return true // yes, keep watching
+	})
+	cancel() // make linter happy
+
+	// Let clients exchange messages for a while
+	close(stop)
+
+	if observedMembers < members {
+		t.Errorf("expected to see %d but saw %d", members, observedMembers)
+	}
+}
+
+func getFreePorts(count int) ([]int, error) {
+	var ports []int
+	for i := 0; i < count; i++ {
+		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+		if err != nil {
+			return nil, err
+		}
+
+		l, err := net.ListenTCP("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		defer l.Close()
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
+	}
+	return ports, nil
 }
 
 func getTimestamps(members map[string]member) (min int64, max int64, avg int64) {

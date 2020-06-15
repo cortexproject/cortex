@@ -1,6 +1,8 @@
 package tsdb
 
 import (
+	"fmt"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -96,30 +98,63 @@ func TestRefCache_Purge(t *testing.T) {
 	}
 }
 
-var series1M = prepareSeries(1e6)
+var goroutines = []int{50, 100, 500}
 
-func BenchmarkRefCacheConcurrency_1m_50(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 50)
-}
+func BenchmarkRefCacheConcurrency_single_label(b *testing.B) {
+	const seriesCount = 1e5
 
-func BenchmarkRefCacheConcurrency_1m_250(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 100)
-}
+	series := make([]labels.Labels, seriesCount)
 
-func BenchmarkRefCacheConcurrency_1m_1000(b *testing.B) {
-	benchmarkRefCacheConcurrency(b, series1M, 500)
-}
-
-func prepareSeries(numSeries int) []labels.Labels {
-	series := make([]labels.Labels, numSeries)
-
-	for s := 0; s < numSeries; s++ {
+	for s := 0; s < len(series); s++ {
 		series[s] = labels.Labels{
 			{Name: "a", Value: strconv.Itoa(s)},
 		}
 	}
 
-	return series
+	for _, num := range goroutines {
+		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
+			benchmarkRefCacheConcurrency(b, series, num)
+		})
+	}
+}
+
+func BenchmarkRefCacheConcurrency_long_labels(b *testing.B) {
+	const seriesCount = 1e4
+	const labelsCount = 10
+	const labelNameLength = 100
+	const labelValueLength = 1000
+
+	r := rand.New(rand.NewSource(0))
+
+	series := make([]labels.Labels, seriesCount)
+
+	for s := 0; s < len(series); s++ {
+		lbls := make([]labels.Label, labelsCount)
+		for l := 0; l < len(lbls); l++ {
+			lbls[l] = labels.Label{
+				Name:  generateStr(r, labelNameLength),
+				Value: generateStr(r, labelValueLength),
+			}
+		}
+
+		series[s] = lbls
+	}
+
+	for _, num := range goroutines {
+		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
+			benchmarkRefCacheConcurrency(b, series, num)
+		})
+	}
+}
+
+var alphabet = "abcdefghijklmnopqrstuvxyz"
+
+func generateStr(r *rand.Rand, l int) string {
+	buf := make([]byte, l)
+	for i := 0; i < l; i++ {
+		buf[i] = alphabet[r.Intn(len(alphabet))]
+	}
+	return string(buf)
 }
 
 func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutines int) {

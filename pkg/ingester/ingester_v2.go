@@ -353,7 +353,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
-		cachedRef, cachedRefExists, hint := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(ts.Labels))
+		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(ts.Labels))
 
 		for _, s := range ts.Samples {
 			var err error
@@ -379,7 +379,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
-					db.refCache.SetRefWithHint(startAppend, copiedLabels, ref, hint)
+					db.refCache.SetRef(startAppend, copiedLabels, ref)
 					cachedRef = ref
 					cachedRefExists = true
 

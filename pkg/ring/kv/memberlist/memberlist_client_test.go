@@ -657,18 +657,25 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 			time.Sleep(1 * time.Second)
 		}
 
-		mkv, err := NewKV(cfg)
-		require.NoError(t, err)
+		mkv := NewKV(cfg) // Not started yet.
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)
 
 		clients = append(clients, kv)
 
+		startKVAndRunClient := func(kv *Client, id string, port int) {
+			err = services.StartAndAwaitRunning(context.Background(), mkv)
+			if err != nil {
+				t.Errorf("failed to start KV: %v", err)
+			}
+			runClient(t, kv, id, key, port, start, stop)
+		}
+
 		if i == 0 {
-			go runClient(t, kv, id, key, i, start, stop)
+			go startKVAndRunClient(kv, id, 0)
 		} else {
-			go runClient(t, kv, id, key, ports[i-1], start, stop)
+			go startKVAndRunClient(kv, id, ports[i-1])
 		}
 	}
 

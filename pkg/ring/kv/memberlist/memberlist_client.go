@@ -339,7 +339,7 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	return mlCfg, nil
 }
 
-func (m *KV) starting(_ context.Context) error {
+func (m *KV) starting(ctx context.Context) error {
 	util.WarnExperimentalUse("Gossip memberlist ring")
 
 	mlCfg, err := m.buildMemberlistConfig()
@@ -361,17 +361,14 @@ func (m *KV) starting(_ context.Context) error {
 
 	// Join the cluster, if configured.
 	if len(m.cfg.JoinMembers) > 0 {
-		reached, err := m.memberlist.Join(m.cfg.JoinMembers)
-		if err != nil && m.cfg.AbortIfJoinFails {
-			_ = m.memberlist.Shutdown()
-			return err
-		}
+		err = m.joinMembersOnStartup(ctx, m.cfg.JoinMembers)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
 
-		if reached == 0 && m.cfg.MaxJoinRetries > 0 {
-			level.Debug(util.Logger).Log("msg", "failed to join memberlist cluster, keep trying in the background", "node", mlCfg.Name, "err", err)
-			go m.retryJoinWithBackoff(m.cfg.JoinMembers)
-		} else {
-			level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
+			if m.cfg.AbortIfJoinFails {
+				_ = m.memberlist.Shutdown()
+				return errors.New("failed to join memberlist cluster on startup")
+			}
 		}
 	}
 
@@ -399,30 +396,43 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 	return m.memberlist.Join(members)
 }
 
-func (m *KV) retryJoinWithBackoff(members []string) {
+func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
+	reached, err := m.memberlist.Join(m.cfg.JoinMembers)
+	if err == nil {
+		level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
+		return nil
+	}
+
+	if m.cfg.MaxJoinRetries <= 0 {
+		return err
+	}
+
+	level.Debug(util.Logger).Log("msg", "attempt to join memberlist cluster failed", "retries", 0, "err", err)
+	lastErr := err
+
 	cfg := util.BackoffConfig{
 		MinBackoff: m.cfg.MinJoinBackoff,
 		MaxBackoff: m.cfg.MaxJoinBackoff,
 		MaxRetries: m.cfg.MaxJoinRetries,
 	}
 
-	backoff := util.NewBackoff(context.Background(), cfg)
+	backoff := util.NewBackoff(ctx, cfg)
 
 	for backoff.Ongoing() {
+		backoff.Wait()
+
 		reached, err := m.memberlist.Join(members)
-		if reached == 0 {
-			level.Debug(util.Logger).Log("msg", "retry to join memberlist cluster", "node", m.cfg.NodeName, "attempts", backoff.NumRetries(), "err", err)
-			backoff.Wait()
+		if err != nil {
+			lastErr = err
+			level.Debug(util.Logger).Log("msg", "attempt to join memberlist cluster failed", "retries", backoff.NumRetries(), "err", err)
 			continue
 		}
 
-		level.Debug(util.Logger).Log("msg", "joined memberlist cluster", "node", m.cfg.NodeName, "reached", reached)
+		level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		break
 	}
 
-	if backoff.Err() != nil {
-		level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "node", m.cfg.NodeName, "err", backoff.Err())
-	}
+	return lastErr
 }
 
 // While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.

@@ -291,7 +291,7 @@ func NewKV(cfg KVConfig) *KV {
 		mlkv.codecs[c.CodecID()] = c
 	}
 
-	mlkv.Service = services.NewIdleService(mlkv.starting, mlkv.stopping)
+	mlkv.Service = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping)
 	return mlkv
 }
 
@@ -371,19 +371,24 @@ func (m *KV) starting(ctx context.Context) error {
 	}
 	m.initWG.Done()
 
-	// Join the cluster, if configured.
+	return nil
+}
+
+func (m *KV) running(ctx context.Context) error {
+	// Join the cluster, if configured. We want this to happen in Running state, because started memberlist
+	// is good enough for usage from Client (which checks for Running state), even before it connects to the cluster.
 	if len(m.cfg.JoinMembers) > 0 {
-		err = m.joinMembersOnStartup(ctx, m.cfg.JoinMembers)
+		err := m.joinMembersOnStartup(ctx, m.cfg.JoinMembers)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
 
 			if m.cfg.AbortIfJoinFails {
-				_ = m.memberlist.Shutdown()
 				return errors.New("failed to join memberlist cluster on startup")
 			}
 		}
 	}
 
+	<-ctx.Done()
 	return nil
 }
 

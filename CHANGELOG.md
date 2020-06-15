@@ -123,6 +123,7 @@
 * [BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. #2639
 * [BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. #2674
 * [BUGFIX] Fixed `wrong number of arguments for 'mget' command` Redis error when a query has no chunks to lookup from storage. #2700
+* [BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes.
 
 ## 1.1.0 / 2020-05-21
 

@@ -28,7 +28,7 @@ var sampleResult = promauto.NewCounterVec(
 		Name:      "sample_result_total",
 		Help:      "Number of samples that succeed / fail.",
 	},
-	[]string{"result"},
+	[]string{"test_name", "result"},
 )
 
 type simpleTestCase struct {
@@ -133,22 +133,20 @@ func (tc *simpleTestCase) Test(ctx context.Context, client v1.API, selectors str
 		return false, err
 	}
 
-	return verifySamples(ctx, tc, pairs, duration, tc.cfg), nil
+	return verifySamples(spanlogger.FromContext(ctx), tc, pairs, duration, tc.cfg), nil
 }
 
 func (tc *simpleTestCase) MinQueryTime() time.Time {
 	return calculateMinQueryTime(tc.cfg.durationQuerySince, tc.cfg.timeQueryStart)
 }
 
-func verifySamples(ctx context.Context, tc Case, pairs []model.SamplePair, duration time.Duration, cfg CommonTestConfig) bool {
-	log := spanlogger.FromContext(ctx)
-
+func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair, duration time.Duration, cfg CommonTestConfig) bool {
 	for _, pair := range pairs {
 		correct := timeEpsilonCorrect(tc.ExpectedValueAt, pair, cfg.testTimeEpsilon) || valueEpsilonCorrect(tc.ExpectedValueAt, pair, cfg.testEpsilon)
 		if correct {
-			sampleResult.WithLabelValues(success).Inc()
+			sampleResult.WithLabelValues(tc.Name(), success).Inc()
 		} else {
-			sampleResult.WithLabelValues(fail).Inc()
+			sampleResult.WithLabelValues(tc.Name(), fail).Inc()
 			level.Error(log).Log("msg", "wrong value", "at", pair.Timestamp, "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
 			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
 			return false

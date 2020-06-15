@@ -170,7 +170,7 @@ func (d *DeleteSeriesTest) Test(ctx context.Context, client v1.API, selectors st
 			}
 		}
 
-		passed := verifySamples(ctx, d, pairs[verifyPairsFrom:verifyPairsTo], nonDeletedInterval.end.Sub(nonDeletedInterval.start), d.commonTestConfig)
+		passed := verifySamples(spanlogger.FromContext(ctx), d, pairs[verifyPairsFrom:verifyPairsTo], nonDeletedInterval.end.Sub(nonDeletedInterval.start), d.commonTestConfig)
 		if !passed {
 			verifyingPairs := pairs[verifyPairsFrom:verifyPairsTo]
 			level.Error(log).Log("msg", "failed to verify samples batch", "query start", start.Unix(), "query duration", duration,

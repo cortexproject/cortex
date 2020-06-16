@@ -419,13 +419,18 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
-	if !c.cfg.DisableChunksDeduplication {
-		// If this chunk is in cache it must already be in the database so we don't need to write it again
-		found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
-		if len(found) > 0 {
-			dedupedChunksTotal.Inc()
-			return nil
-		}
+
+	// If this chunk is in cache it must already be in the database so we don't need to write it again
+	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	if len(found) > 0 {
+		dedupedChunksTotal.Inc()
+	}
+
+	// If chunk is in the cache and DisableIndexDeduplication is false, we do not have to do anything.
+	// If chunk is in the cache and DisableIndexDeduplication is true, we have to write index and not chunk.
+	// Otherwise write both index and chunk.
+	if len(found) > 0 && !c.cfg.DisableIndexDeduplication {
+		return nil
 	}
 
 	chunks := []Chunk{chunk}
@@ -440,16 +445,23 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 			return err
 		}
 	} else {
-		err := c.storage.PutChunks(ctx, chunks)
-		if err != nil {
-			return err
+		// chunk not found, write it.
+		if len(found) == 0 {
+			err := c.storage.PutChunks(ctx, chunks)
+			if err != nil {
+				return err
+			}
 		}
 		if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
 			return err
 		}
 	}
-	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
-		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+
+	// we already have the chunk in the cache so don't write it.
+	if len(found) == 0 {
+		if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+		}
 	}
 
 	bufs := make([][]byte, len(keysToCache))

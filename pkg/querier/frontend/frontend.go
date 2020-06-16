@@ -436,28 +436,30 @@ FindQueue:
 // ReadinessHandler is a HandlerFunc that is designed to indicate if this frontend is ready to
 //  receive requests.  It will return a positive status code (200) if there are any attached queriers.
 func (f *Frontend) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if f.readyForRequests() {
-		http.Error(w, "ready", http.StatusOK)
-		return
+	status := http.StatusServiceUnavailable
+	ready, msg := f.readyForRequests()
+
+	if ready {
+		status = http.StatusOK
 	}
 
-	http.Error(w, "not ready", http.StatusServiceUnavailable)
+	http.Error(w, msg, status)
 }
 
-func (f *Frontend) readyForRequests() bool {
+func (f *Frontend) readyForRequests() (bool, string) {
 	// if the downstream url is configured the query frontend is not aware of the state
 	//  of the queriers and is therefore always ready
 	if f.cfg.DownstreamURL != "" {
-		return true
+		return true, "ready: downstream url set"
 	}
 
 	// if we have more than one querier connected we will consider ourselves ready
 	connectedClients := atomic.LoadInt32(&f.connectedClients)
 	if connectedClients > 0 {
-		return true
+		return true, fmt.Sprintf("ready: connected clients %d", connectedClients)
 	}
 
-	level.Info(f.log).Log("msg", "query-frontend is not ready", "connectedClients", connectedClients)
-
-	return false
+	msg := fmt.Sprintf("not ready: connected clients %d", connectedClients)
+	level.Warn(f.log).Log("msg", msg)
+	return false, msg
 }

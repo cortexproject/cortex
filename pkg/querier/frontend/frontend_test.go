@@ -75,11 +75,6 @@ func TestFrontendReady(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
-
-		body, err := ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, "ready\n", string(body))
 	}
 	testFrontend(t, handler, test, false)
 	testFrontend(t, handler, test, true)
@@ -97,11 +92,6 @@ func TestFrontendNotReady(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 503, resp.StatusCode)
-
-		body, err := ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, "not ready\n", string(body))
 	}
 	testFrontendRunWorker(t, handler, test, false, false)
 	testFrontendRunWorker(t, handler, test, true, false)
@@ -213,11 +203,12 @@ func TestFrontendReadyForRequests(t *testing.T) {
 		name             string
 		downstreamURL    string
 		connectedClients int32
+		msg              string
 		readyForRequests bool
 	}{
-		{"downstream url is always ready", "super url", 0, true},
-		{"connected clients are ready", "", 3, true},
-		{"no url, no clients is not ready", "", 0, false},
+		{"downstream url is always ready", "super url", 0, "ready: downstream url set", true},
+		{"connected clients are ready", "", 3, "ready: connected clients 3", true},
+		{"no url, no clients is not ready", "", 0, "not ready: connected clients 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
@@ -227,7 +218,9 @@ func TestFrontendReadyForRequests(t *testing.T) {
 					DownstreamURL: tt.downstreamURL,
 				},
 			}
-			require.Equal(t, tt.readyForRequests, f.readyForRequests())
+			ready, msg := f.readyForRequests()
+			require.Equal(t, tt.readyForRequests, ready)
+			require.Equal(t, tt.msg, msg)
 		})
 	}
 }

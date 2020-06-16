@@ -38,7 +38,7 @@ func TestDistributorQuerier(t *testing.T) {
 			},
 		},
 	}
-	queryable := newDistributorQueryable(d, false, nil)
+	queryable := newDistributorQueryable(d, false, nil, 0)
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
@@ -87,7 +87,7 @@ func TestIngesterStreaming(t *testing.T) {
 		},
 	}
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks)
+	queryable := newDistributorQueryable(d, true, mergeChunks, 0)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 

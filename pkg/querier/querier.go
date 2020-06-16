@@ -61,6 +61,8 @@ type Config struct {
 	// Blocks storage only.
 	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
 	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+
+	AlternateStoreEngine string `yaml:"alternate_store_engine"`
 }
 
 var (
@@ -127,12 +129,20 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
+func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	var queryable storage.Queryable
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc)
-	queryable = NewQueryable(distributorQueryable, storeQueryable, iteratorFunc, cfg, tombstonesLoader)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
+
+	ns := make([]QueryableWithFilter, len(stores))
+	for ix, s := range stores {
+		ns[ix] = storeQueryable{
+			QueryableWithFilter: s,
+			QueryStoreAfter:     cfg.QueryStoreAfter,
+		}
+	}
+
+	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, tombstonesLoader)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -174,8 +184,17 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 	return nil
 }
 
+// QueryableWithFilter extends Queryable interface with `UseQueryable` filtering function.
+type QueryableWithFilter interface {
+	storage.Queryable
+
+	// UseQueryable returns true if this queryable should be used to satisfy the query.
+	// Query min and max time are in milliseconds since epoch.
+	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
+}
+
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
@@ -205,14 +224,16 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 
 		q.metadataQuerier = dqr
 
-		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeToMillis(now.Add(-cfg.QueryIngestersWithin)) {
+		if distributor.UseQueryable(now, mint, maxt) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
-		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= util.TimeToMillis(now.Add(-cfg.QueryStoreAfter)) {
-			cqr, err := store.Querier(ctx, mint, maxt)
+		for _, s := range stores {
+			if !s.UseQueryable(now, mint, maxt) {
+				continue
+			}
+
+			cqr, err := s.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}
@@ -404,4 +425,21 @@ func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
 		return nil
 	}
 	return pss.set.Warnings()
+}
+
+type storeQueryable struct {
+	QueryableWithFilter
+	QueryStoreAfter time.Duration
+}
+
+func (s storeQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return s.QueryableWithFilter.Querier(ctx, mint, maxt)
+}
+
+func (s storeQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
+	// Include this store only if mint is within QueryStoreAfter w.r.t current time.
+	if s.QueryStoreAfter != 0 && queryMinT > util.TimeToMillis(now.Add(-s.QueryStoreAfter)) {
+		return false
+	}
+	return s.QueryableWithFilter.UseQueryable(now, queryMinT, queryMaxT)
 }

@@ -39,11 +39,17 @@ Other alternatives considered for flushing chunks / handling WAL:
 
 After all ingesters are converted to blocks, we can set cut-off time for querying chunks storage on queriers.
 
-For rollback from blocks to chunks, we need to be able to flush data from ingesters to the blocks storage, and then switch ingesters back to chunks. Ingesters are currently not able to flush blocks to storage, but adding flush-on-shutdown option, support for `/shutdown` endpoint and support in flusher component similar to chunks is doable, and should be part of this work.
+For rollback from blocks to chunks, we need to be able to flush data from ingesters to the blocks storage, and then switch ingesters back to chunks.
+Ingesters are currently not able to flush blocks to storage, but adding flush-on-shutdown option, support for `/shutdown` endpoint and support in flusher component similar to chunks is doable, and should be part of this work.
 
 With this ability, rollback would follow the same process, just in reverse: 1) redeploy with flush flag enabled, 2) redeploy with config change from blocks to chunks.
+Note that this isn't a *full* rollback to chunks-only solution, as generated blocks still need to be queried after the rollback, otherwise samples pushed to blocks would be missing.
+This means running store-gateways and queriers that can query both chunks and blocks store.
 
-Alternative plan could be to use a separate Cortex cluster configured to use blocks, and redirect incoming traffic to both chunks and blocks cluster. When one is confident about the blocks cluster running correctly, old chunks cluster can be shutdown. In this plan, there is an overlap where both clusters are ingesting same data. Blocks cluster needs to be configured to be able to query chunks storage as well, with cut-off time based on when clusters were configured (at latest, to minimize amount of duplicated samples that need to be processed during queries.)
+Alternative plan could be to use a separate Cortex cluster configured to use blocks, and redirect incoming traffic to both chunks and blocks cluster.
+When one is confident about the blocks cluster running correctly, old chunks cluster can be shutdown.
+In this plan, there is an overlap where both clusters are ingesting same data.
+Blocks cluster needs to be configured to be able to query chunks storage as well, with cut-off time based on when clusters were configured (at latest, to minimize amount of duplicated samples that need to be processed during queries.)
 
 ## Querying
 
@@ -54,7 +60,7 @@ For querying chunks storage, we have two options:
 - Always query the chunks store – useful during ingesters switch, or after rollback from blocks to chunks.
 - Query chunk store only for queries that ask for data after specific cut-off time. This is useful after all ingesters have switched, and we know the timestamp since ingesters are only writing blocks.
 
-Querier needs to support both. Switching between them via config option seems fine. (We could use runtime-config for on-the-fly switch without restarts)
+Querier needs to support both modes of running. While we could use runtime-config for on-the-fly switch without restarts, queriers restart quickly and so switching via configuration or command line option seems enough.
 
 ## Work to do
 

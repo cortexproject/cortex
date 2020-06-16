@@ -5,7 +5,7 @@ defaults: &defaults
   docker:
     # IMPORTANT: whenever you change the build-image version tag, remember to replace it
     #            across the entire file (there are multiple references).
-    - image: quay.io/cortexproject/build-image:update-build-image-a826c0784
+    - image: quay.io/cortexproject/build-image:update-build-image-5cc39200e
   working_directory: /go/src/github.com/cortexproject/cortex
 
 filters: &filters
@@ -91,7 +91,7 @@ jobs:
 
   test:
     docker:
-      - image: quay.io/cortexproject/build-image:update-build-image-a826c0784
+      - image: quay.io/cortexproject/build-image:update-build-image-5cc39200e
       - image: cassandra:3.11
         environment:
           JVM_OPTS: "-Xms1024M -Xmx1024M"
@@ -115,7 +115,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-build-image-a826c0784 configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-build-image-5cc39200e configs-integration-test
 
   integration:
     machine:
@@ -250,4 +250,3 @@ jobs:
           if [ -n "$QUAY_PASSWORD" ]; then
             docker login -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
           fi
-          IMAGE_TAG=$CIRCLE_TAG ./push-images $NOQUAY

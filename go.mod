@@ -53,12 +53,13 @@ require (
 	github.com/thanos-io/thanos v0.12.3-0.20200603113103-6d3e730e154d
 	github.com/uber/jaeger-client-go v2.23.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
-	go.etcd.io/bbolt v1.3.4
+	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.6.0
 	go.uber.org/zap v1.14.1 // indirect
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
+	golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1 // indirect
 	golang.org/x/time v0.0.0-20200416051211-89c76fbcd5d1
 	google.golang.org/api v0.26.0
 	google.golang.org/grpc v1.29.1

@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -47,7 +51,9 @@ func setupTestDeleteStore(t *testing.T) *DeleteStore {
 	return deleteStore
 }
 
-func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
+func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger, *prometheus.Registry) {
+	registry := prometheus.NewRegistry()
+
 	deleteStore := setupTestDeleteStore(t)
 
 	chunkStore, err := testutils.SetupTestChunkStore()
@@ -59,10 +65,10 @@ func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.Object
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
-	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, nil)
+	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, registry)
 	require.NoError(t, err)
 
-	return deleteStore, chunkStore, storageClient, dataPurger
+	return deleteStore, chunkStore, storageClient, dataPurger, registry
 }
 
 func buildChunks(from, through model.Time, batchSize int) ([]chunk.Chunk, error) {
@@ -170,7 +176,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 	for _, tc := range purgePlanTestCases {
 		for batchSize := 1; batchSize <= 5; batchSize++ {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
-				deleteStore, chunkStore, storageClient, dataPurger := setupStoresAndPurger(t)
+				deleteStore, chunkStore, storageClient, dataPurger, _ := setupStoresAndPurger(t)
 				defer func() {
 					dataPurger.StopAsync()
 					chunkStore.Stop()
@@ -237,6 +243,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				}
 
 				require.Equal(t, tc.numChunksToDelete*batchSize, len(chunkIDs))
+				require.Equal(t, float64(tc.numChunksToDelete*batchSize), testutil.ToFloat64(dataPurger.metrics.deleteRequestsChunksSelectedTotal))
 			})
 		}
 	}
@@ -251,7 +258,7 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 	for _, tc := range purgePlanTestCases {
 		for batchSize := 1; batchSize <= 5; batchSize++ {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
-				deleteStore, chunkStore, _, dataPurger := setupStoresAndPurger(t)
+				deleteStore, chunkStore, _, dataPurger, _ := setupStoresAndPurger(t)
 				defer func() {
 					dataPurger.StopAsync()
 					chunkStore.Stop()
@@ -312,7 +319,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deleteStore, chunkStore, storageClient, dataPurger := setupStoresAndPurger(t)
+	deleteStore, chunkStore, storageClient, dataPurger, _ := setupStoresAndPurger(t)
 	defer func() {
 		chunkStore.Stop()
 	}()
@@ -342,11 +349,14 @@ func TestDataPurger_Restarts(t *testing.T) {
 	// create a new purger to check whether it picks up in process delete requests
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, nil)
+	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
 	// load in process delete requests by calling Run
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), newPurger))
+
+	// there must be 1 pending delete request
+	require.Equal(t, float64(1), testutil.ToFloat64(newPurger.metrics.pendingDeleteRequestsCount))
 
 	defer newPurger.StopAsync()
 
@@ -377,6 +387,87 @@ func TestDataPurger_Restarts(t *testing.T) {
 	deleteRequests, err = deleteStore.GetAllDeleteRequestsForUser(context.Background(), userID)
 	require.NoError(t, err)
 	require.Equal(t, StatusProcessed, deleteRequests[0].Status)
+
+	require.Equal(t, float64(1), testutil.ToFloat64(newPurger.metrics.deleteRequestsProcessedTotal))
+	require.PanicsWithError(t, "collected 0 metrics instead of exactly 1", func() {
+		testutil.ToFloat64(newPurger.metrics.deleteRequestsProcessingFailures)
+	})
+}
+
+func TestPurger_Metrics(t *testing.T) {
+	deleteStore, chunkStore, _, purger, registry := setupStoresAndPurger(t)
+	defer func() {
+		purger.StopAsync()
+		chunkStore.Stop()
+	}()
+
+	// start loop to load requests
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
+
+	// no delete requests for processing so age and pending request is 0 while we have successfully attempted loading request once.
+	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(
+		`
+			# HELP cortex_purger_load_pending_requests_attempts_total Number of attempts that were made to load pending requests with status
+			# TYPE cortex_purger_load_pending_requests_attempts_total counter
+			cortex_purger_load_pending_requests_attempts_total{status="success"} 1
+			# HELP cortex_purger_oldest_pending_delete_request_age_seconds Age of oldest pending delete request in seconds
+			# TYPE cortex_purger_oldest_pending_delete_request_age_seconds gauge
+			cortex_purger_oldest_pending_delete_request_age_seconds 0
+			# HELP cortex_purger_pending_delete_requests_count Count of requests which are in process or are ready to be processed
+			# TYPE cortex_purger_pending_delete_requests_count gauge
+			cortex_purger_pending_delete_requests_count 0
+		`),
+		"cortex_purger_load_pending_requests_attempts_total",
+		"cortex_purger_oldest_pending_delete_request_age_seconds",
+		"cortex_purger_pending_delete_requests_count",
+	))
+
+	// add delete request whose createdAt is now
+	err := deleteStore.AddDeleteRequest(context.Background(), userID, model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// add delete request whose createdAt is 2 days back
+	err = deleteStore.addDeleteRequest(context.Background(), userID, model.Now().Add(-2*24*time.Hour), model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// add delete request whose createdAt is 3 days back
+	err = deleteStore.addDeleteRequest(context.Background(), userID, model.Now().Add(-3*24*time.Hour), model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(8*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// load new delete requests for processing
+	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())
+
+	// there must be 2 pending delete requests, oldest being 3 days old
+	require.InDelta(t, float64(3*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
+	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+
+	// wait until purger_delete_requests_processed_total starts to show up.
+	for {
+		count, err := testutil.GatherAndCount(registry, "cortex_purger_delete_requests_processed_total")
+		require.NoError(t, err)
+		if count != 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// wait until both the pending delete requests are processed.
+	for {
+		if testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal) == 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// load new delete requests for processing which should update the metrics
+	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())
+
+	// there must be 0 pending delete requests so the age for oldest pending must be 0
+	require.InDelta(t, float64(0), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
+	require.Equal(t, float64(0), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {

@@ -254,7 +254,7 @@ In this document we reviewed the [reasons the frontend exists](#query-frontend-r
    </td>
    <td>Query Frontend HTTP Health Checks
    </td>
-   <td>Proposed
+   <td><a href="https://github.com/cortexproject/cortex/pull/2733">Pull Request</a>
    </td>
   </tr>
   <tr>

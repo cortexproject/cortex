@@ -344,10 +344,10 @@ func (a *API) RegisterQuerier(
 	}))
 }
 
-// RegisterQueryAPI registers the Prometheus routes supported by the
+// registerQueryAPI registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the Querier.
-func (a *API) RegisterQueryAPI(handler http.Handler) {
+func (a *API) registerQueryAPI(handler http.Handler) {
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", handler, true, "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", handler, true, "GET", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", handler, true, "GET", "POST")
@@ -371,7 +371,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 // with the Querier.
 func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	frontend.RegisterFrontendServer(a.server.GRPC, f)
-	a.RegisterQueryAPI(f.Handler())
+	a.registerQueryAPI(f.Handler())
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

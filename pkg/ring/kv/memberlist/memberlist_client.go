@@ -372,6 +372,8 @@ func (m *KV) starting(_ context.Context) error {
 	return nil
 }
 
+var errFailedToJoinCluster = errors.New("failed to join memberlist cluster on startup")
+
 func (m *KV) running(ctx context.Context) error {
 	// Join the cluster, if configured. We want this to happen in Running state, because started memberlist
 	// is good enough for usage from Client (which checks for Running state), even before it connects to the cluster.
@@ -381,7 +383,7 @@ func (m *KV) running(ctx context.Context) error {
 			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
 
 			if m.cfg.AbortIfJoinFails {
-				return errors.New("failed to join memberlist cluster on startup")
+				return errFailedToJoinCluster
 			}
 		}
 	}

@@ -9,17 +9,14 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"os"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -617,7 +614,6 @@ func TestMultipleClients(t *testing.T) {
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
 	c := dataCodec{}
 
 	const members = 3
@@ -724,6 +720,41 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 	if observedMembers < members {
 		t.Errorf("expected to see %d but saw %d", members, observedMembers)
 	}
+}
+
+func TestMemberlistFailsToJoin(t *testing.T) {
+	c := dataCodec{}
+
+	ports, err := getFreePorts(1)
+	require.NoError(t, err)
+
+	cfg := KVConfig{
+		MinJoinBackoff:   100 * time.Millisecond,
+		MaxJoinBackoff:   100 * time.Millisecond,
+		MaxJoinRetries:   2,
+		AbortIfJoinFails: true,
+
+		TCPTransport: TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0,
+		},
+
+		JoinMembers: []string{fmt.Sprintf("127.0.0.1:%d", ports[0])},
+
+		Codecs: []codec.Codec{c},
+	}
+
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Service should fail soon after starting, since it cannot join the cluster.
+	_ = mkv.AwaitTerminated(ctxTimeout)
+
+	// We verify service state here.
+	require.Equal(t, mkv.FailureCase(), errFailedToJoinCluster)
 }
 
 func getFreePorts(count int) ([]int, error) {

@@ -444,7 +444,7 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 		}
 
 		level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
-		break
+		return nil
 	}
 
 	return lastErr

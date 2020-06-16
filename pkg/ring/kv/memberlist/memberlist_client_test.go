@@ -9,14 +9,17 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"os"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -614,6 +617,7 @@ func TestMultipleClients(t *testing.T) {
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
+	util.Logger = log.NewLogfmtLogger(os.Stdout)
 	c := dataCodec{}
 
 	const members = 3
@@ -627,6 +631,18 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 	ports, err := getFreePorts(members)
 	require.NoError(t, err)
 
+	watcher := services.NewFailureWatcher()
+	go func() {
+		for {
+			select {
+			case err := <-watcher.Chan():
+				t.Errorf("service reported error: %v", err)
+			case <-stop:
+				return
+			}
+		}
+	}()
+
 	for i, port := range ports {
 		id := fmt.Sprintf("Member-%d", i)
 		cfg := KVConfig{
@@ -636,9 +652,10 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 			GossipNodes:      3,
 			PushPullInterval: 5 * time.Second,
 
-			MinJoinBackoff: 100 * time.Millisecond,
-			MaxJoinBackoff: 1 * time.Minute,
-			MaxJoinRetries: 10,
+			MinJoinBackoff:   100 * time.Millisecond,
+			MaxJoinBackoff:   1 * time.Minute,
+			MaxJoinRetries:   10,
+			AbortIfJoinFails: true,
 
 			TCPTransport: TCPTransportConfig{
 				BindAddrs: []string{"localhost"},
@@ -658,6 +675,7 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 		}
 
 		mkv := NewKV(cfg) // Not started yet.
+		watcher.WatchService(mkv)
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)

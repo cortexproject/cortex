@@ -59,6 +59,5 @@ func (kvs *KVInitService) stopping(_ error) error {
 		return nil
 	}
 
-	kvs.kv.StopAsync()
-	return kvs.kv.AwaitTerminated(context.Background())
+	return services.StopAndAwaitTerminated(context.Background(), kvs.kv)
 }

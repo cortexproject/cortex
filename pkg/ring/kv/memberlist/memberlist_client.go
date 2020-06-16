@@ -393,6 +393,8 @@ func (m *KV) running(ctx context.Context) error {
 	var tickerChan <-chan time.Time = nil
 	if m.cfg.RejoinInterval > 0 {
 		t := time.NewTicker(m.cfg.RejoinInterval)
+		defer t.Stop()
+
 		tickerChan = t.C
 	}
 

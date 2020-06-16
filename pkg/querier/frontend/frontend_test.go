@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -58,6 +59,52 @@ func TestFrontend(t *testing.T) {
 	}
 	testFrontend(t, handler, test, false)
 	testFrontend(t, handler, test, true)
+}
+
+func TestFrontendReady(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte("Hello World"))
+		require.NoError(t, err)
+	})
+	test := func(addr string) {
+		time.Sleep(100 * time.Millisecond)
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/query-frontend/ready", addr), nil)
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, "ready\n", string(body))
+	}
+	testFrontend(t, handler, test, false)
+	testFrontend(t, handler, test, true)
+}
+
+func TestFrontendNotReady(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte("Hello World"))
+		require.NoError(t, err)
+	})
+	test := func(addr string) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/query-frontend/ready", addr), nil)
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 503, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, "not ready\n", string(body))
+	}
+	testFrontendRunWorker(t, handler, test, false, false)
+	testFrontendRunWorker(t, handler, test, true, false)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -186,6 +233,10 @@ func TestFrontendReadyForRequests(t *testing.T) {
 }
 
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
+	testFrontendRunWorker(t, handler, test, matchMaxConcurrency, true)
+}
+
+func testFrontendRunWorker(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool, runWorker bool) {
 	logger := log.NewNopLogger()
 
 	var (
@@ -217,22 +268,31 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string), ma
 
 	RegisterFrontendServer(grpcServer, frontend)
 
+	r := mux.NewRouter()
+	r.HandleFunc("/query-frontend/ready", frontend.ReadinessHandler)
+	r.PathPrefix("/").Handler(middleware.Merge(
+		middleware.AuthenticateUser,
+		middleware.Tracer{},
+	).Wrap(frontend.Handler()))
+
 	httpServer := http.Server{
-		Handler: middleware.Merge(
-			middleware.AuthenticateUser,
-			middleware.Tracer{},
-		).Wrap(frontend.Handler()),
+		Handler: r,
 	}
 	defer httpServer.Shutdown(context.Background()) //nolint:errcheck
 
 	go httpServer.Serve(httpListen) //nolint:errcheck
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
-	worker, err := NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
+	var worker services.Service
+	if runWorker {
+		worker, err = NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
+	}
 
 	test(httpListen.Addr().String())
 
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
+	if runWorker {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
+	}
 }

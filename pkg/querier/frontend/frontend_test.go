@@ -161,6 +161,30 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
+func TestFrontendReadyForRequests(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		downstreamURL    string
+		connectedClients int32
+		readyForRequests bool
+	}{
+		{"downstream url is always ready", "super url", 0, true},
+		{"connected clients are ready", "", 3, true},
+		{"no url, no clients is not ready", "", 0, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &Frontend{
+				connectedClients: tt.connectedClients,
+				log:              log.NewNopLogger(),
+				cfg: Config{
+					DownstreamURL: tt.downstreamURL,
+				},
+			}
+			require.Equal(t, tt.readyForRequests, f.readyForRequests())
+		})
+	}
+}
+
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
 	logger := log.NewNopLogger()
 

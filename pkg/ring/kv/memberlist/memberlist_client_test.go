@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const ACTIVE = 1
@@ -209,9 +210,9 @@ func TestBasicGetAndCas(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv.Stop()
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -265,9 +266,9 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 		Codecs:       []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv.Stop()
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -409,10 +410,10 @@ func TestMultipleCAS(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv, err := NewKV(cfg)
-	require.NoError(t, err)
+	mkv := NewKV(cfg)
 	mkv.maxCasRetries = 20
-	defer mkv.Stop()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
 	kv, err := NewClient(mkv, c)
 	require.NoError(t, err)
@@ -516,8 +517,8 @@ func TestMultipleClients(t *testing.T) {
 			Codecs: []codec.Codec{c},
 		}
 
-		mkv, err := NewKV(cfg)
-		require.NoError(t, err)
+		mkv := NewKV(cfg)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)
@@ -626,6 +627,18 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 	ports, err := getFreePorts(members)
 	require.NoError(t, err)
 
+	watcher := services.NewFailureWatcher()
+	go func() {
+		for {
+			select {
+			case err := <-watcher.Chan():
+				t.Errorf("service reported error: %v", err)
+			case <-stop:
+				return
+			}
+		}
+	}()
+
 	for i, port := range ports {
 		id := fmt.Sprintf("Member-%d", i)
 		cfg := KVConfig{
@@ -635,9 +648,10 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 			GossipNodes:      3,
 			PushPullInterval: 5 * time.Second,
 
-			MinJoinBackoff: 100 * time.Millisecond,
-			MaxJoinBackoff: 1 * time.Minute,
-			MaxJoinRetries: 10,
+			MinJoinBackoff:   100 * time.Millisecond,
+			MaxJoinBackoff:   1 * time.Minute,
+			MaxJoinRetries:   10,
+			AbortIfJoinFails: true,
 
 			TCPTransport: TCPTransportConfig{
 				BindAddrs: []string{"localhost"},
@@ -656,18 +670,26 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 			time.Sleep(1 * time.Second)
 		}
 
-		mkv, err := NewKV(cfg)
-		require.NoError(t, err)
+		mkv := NewKV(cfg) // Not started yet.
+		watcher.WatchService(mkv)
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)
 
 		clients = append(clients, kv)
 
+		startKVAndRunClient := func(kv *Client, id string, port int) {
+			err = services.StartAndAwaitRunning(context.Background(), mkv)
+			if err != nil {
+				t.Errorf("failed to start KV: %v", err)
+			}
+			runClient(t, kv, id, key, port, start, stop)
+		}
+
 		if i == 0 {
-			go runClient(t, kv, id, key, i, start, stop)
+			go startKVAndRunClient(kv, id, 0)
 		} else {
-			go runClient(t, kv, id, key, ports[i-1], start, stop)
+			go startKVAndRunClient(kv, id, ports[i-1])
 		}
 	}
 
@@ -698,6 +720,41 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 	if observedMembers < members {
 		t.Errorf("expected to see %d but saw %d", members, observedMembers)
 	}
+}
+
+func TestMemberlistFailsToJoin(t *testing.T) {
+	c := dataCodec{}
+
+	ports, err := getFreePorts(1)
+	require.NoError(t, err)
+
+	cfg := KVConfig{
+		MinJoinBackoff:   100 * time.Millisecond,
+		MaxJoinBackoff:   100 * time.Millisecond,
+		MaxJoinRetries:   2,
+		AbortIfJoinFails: true,
+
+		TCPTransport: TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0,
+		},
+
+		JoinMembers: []string{fmt.Sprintf("127.0.0.1:%d", ports[0])},
+
+		Codecs: []codec.Codec{c},
+	}
+
+	mkv := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Service should fail soon after starting, since it cannot join the cluster.
+	_ = mkv.AwaitTerminated(ctxTimeout)
+
+	// We verify service state here.
+	require.Equal(t, mkv.FailureCase(), errFailedToJoinCluster)
 }
 
 func getFreePorts(count int) ([]int, error) {
@@ -740,7 +797,7 @@ func getTimestamps(members map[string]member) (min int64, max int64, avg int64) 
 
 func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConnect int, start <-chan struct{}, stop <-chan struct{}) {
 	// stop gossipping about the ring(s)
-	defer kv.kv.Stop()
+	defer services.StopAndAwaitTerminated(context.Background(), kv.kv) //nolint:errcheck
 
 	for {
 		select {
@@ -849,9 +906,9 @@ func TestMultipleCodecs(t *testing.T) {
 		},
 	}
 
-	mkv1, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv1.Stop()
+	mkv1 := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 
 	kv1, err := NewClient(mkv1, dataCodec{})
 	require.NoError(t, err)
@@ -892,9 +949,9 @@ func TestMultipleCodecs(t *testing.T) {
 	require.NoError(t, err)
 
 	// We will read values from second KV, which will join the first one
-	mkv2, err := NewKV(cfg)
-	require.NoError(t, err)
-	defer mkv2.Stop()
+	mkv2 := NewKV(cfg)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
 
 	// Join second KV to first one. That will also trigger state transfer.
 	_, err = mkv2.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", mkv1.GetListeningPort())})

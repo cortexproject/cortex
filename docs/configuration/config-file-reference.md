@@ -322,7 +322,7 @@ ha_tracker:
 
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, multi, memberlist (experimental).
+    # inmemory, memberlist, multi.
     # CLI flag: -distributor.ha-tracker.store
     [store: <string> | default = "consul"]
 
@@ -375,7 +375,7 @@ ha_tracker:
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, multi, memberlist (experimental).
+    # inmemory, memberlist, multi.
     # CLI flag: -distributor.ring.store
     [store: <string> | default = "consul"]
 
@@ -450,7 +450,7 @@ lifecycler:
   ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, multi, memberlist (experimental).
+      # inmemory, memberlist, multi.
       # CLI flag: -ring.store
       [store: <string> | default = "consul"]
 
@@ -990,7 +990,7 @@ storage:
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, multi, memberlist (experimental).
+    # inmemory, memberlist, multi.
     # CLI flag: -ruler.ring.store
     [store: <string> | default = "consul"]
 
@@ -2303,8 +2303,7 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
-# Other cluster members to join. Can be specified multiple times. Memberlist
-# store is EXPERIMENTAL.
+# Other cluster members to join. Can be specified multiple times.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
@@ -3171,7 +3170,7 @@ The `compactor_config` configures the compactor for the experimental blocks stor
 sharding_ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, multi, memberlist (experimental).
+    # inmemory, memberlist, multi.
     # CLI flag: -compactor.ring.store
     [store: <string> | default = "consul"]
 
@@ -3232,7 +3231,7 @@ sharding_ring:
   # in microservices mode.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, multi, memberlist (experimental).
+    # inmemory, memberlist, multi.
     # CLI flag: -experimental.store-gateway.sharding-ring.store
     [store: <string> | default = "consul"]
 

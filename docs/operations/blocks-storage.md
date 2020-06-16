@@ -534,7 +534,7 @@ store_gateway:
     # running in microservices mode.
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, multi, memberlist (experimental).
+      # inmemory, memberlist, multi.
       # CLI flag: -experimental.store-gateway.sharding-ring.store
       [store: <string> | default = "consul"]
 
@@ -654,7 +654,7 @@ compactor:
   sharding_ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, multi, memberlist (experimental).
+      # inmemory, memberlist, multi.
       # CLI flag: -compactor.ring.store
       [store: <string> | default = "consul"]
 

@@ -17,14 +17,16 @@ This short document describes the first step in full migration of the Cortex clu
 ## Ingesters
 
 When switching ingesters from chunks to blocks, we need to consider the following:
+
 - Ingesting of new data, and querying should work during the switch.
 - Ingesters are rolled out with new configuration over time. There is overlap: ingesters of both kinds (chunks, blocks) are running at the same time.
-- Ingesters using WAL (all environments in GL) don’t flush in-memory chunks to storage on shutdown.
+- Ingesters using WAL don’t flush in-memory chunks to storage on shutdown.
 - Rollout should be as automated as possible.
 
 How do we handle ingesters with WAL? There are several possibilities, but the simplest option seems to be adding a new flag to ingesters to flush chunks on shutdown. This is trivial change to ingester, and allows us to do automated migration by:
-1) enabling this flag on each ingester (first rollout).
-2) turn off chunks, enable TSDB (second rollout). During the second rollout, as the ingester shuts down, it will flush all chunks in memory, and when it restarts, it will start using TSDB.
+
+1. Enabling this flag on each ingester (first rollout).
+2. Turn off chunks, enable TSDB (second rollout). During the second rollout, as the ingester shuts down, it will flush all chunks in memory, and when it restarts, it will start using TSDB.
 
 Benefit of this approach is that it is trivial to add the flag, and then rollout in both steps can be fully automated.
 
@@ -48,6 +50,7 @@ Alternative plan could be to use a separate Cortex cluster configured to use blo
 To be able to query both blocks and chunks, querier needs to be extended with this ability, and merge results from both. Queriers can always query blocks – each querier knows about existing blocks and their timeranges, so it can quickly determine whether there are any blocks with relevant data. Always querying blocks is also useful when there is some background process converting chunks to blocks. As new blocks appear on the store, they get queried even if they are old.
 
 For querying chunks storage, we have two options:
+
 - Always query the chunks store – useful during ingesters switch, or after rollback from blocks to chunks.
 - Query chunk store only for queries that ask for data after specific cut-off time. This is useful after all ingesters have switched, and we know the timestamp since ingesters are only writing blocks.
 
@@ -56,5 +59,5 @@ Querier needs to support both. Switching between them via config option seems fi
 ## Work to do
 
 - Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.
-- Querier: Add support for querying both chunk store and blocks at the same time
+- Querier: Add support for querying both chunk store and blocks at the same time and test the support for querying both chunks and blocks from ingesters works correctly
 - Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.

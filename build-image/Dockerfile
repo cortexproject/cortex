@@ -1,18 +1,19 @@
-FROM golang:1.13.3-stretch
+FROM golang:1.14.4-stretch
 RUN apt-get update && apt-get install -y curl python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN curl -sL https://deb.nodesource.com/setup_6.x | sh -
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install -g postcss-cli autoprefixer
-ENV HUGO_VERSION=v0.59.1
+ENV HUGO_VERSION=v0.72.0
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \
 	rm -rf hugo/ && rm -rf /go/pkg /go/src
-RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt_v1.3.0_linux_amd64 && \
-	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
+ENV SHFMT_VERSION=3.1.0
+RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64 && \
+	echo "cb91ea08a075a2f96b5230f09b4e211b7c108b1c97603caceb48d117d2ac5508  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
-RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.21.0
+RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.27.0
 RUN GO111MODULE=on go get -tags netgo \
 		github.com/client9/misspell/cmd/misspell@v0.3.4 \
 		github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
@@ -20,7 +21,7 @@ RUN GO111MODULE=on go get -tags netgo \
 		github.com/gogo/protobuf/gogoproto@v1.3.0 && \
 	rm -rf /go/pkg /go/src
 
-ENV KUBEVAL_VERSION=0.14.0
+ENV KUBEVAL_VERSION=0.15.0
 RUN curl -Ls https://github.com/instrumenta/kubeval/releases/download/${KUBEVAL_VERSION}/kubeval-linux-amd64.tar.gz -o /tmp/kubeval-linux-amd64.tar.gz && \
 	tar -xf /tmp/kubeval-linux-amd64.tar.gz -C /tmp && \
 	cp /tmp/kubeval /usr/local/bin && \
@@ -32,7 +33,7 @@ ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]
 
 # Install faillint used to lint go imports in CI.
-ENV FAILLINT_VERSION=1.2.0
+ENV FAILLINT_VERSION=1.5.0
 RUN GO111MODULE=on go get github.com/fatih/faillint@v${FAILLINT_VERSION} && \
     rm -rf /go/pkg /go/src
 

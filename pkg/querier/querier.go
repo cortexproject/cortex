@@ -62,7 +62,8 @@ type Config struct {
 	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
 	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
 
-	AlternateStoreEngine string `yaml:"alternate_store_engine"`
+	SecondStoreEngine        string       `yaml:"second_store_engine"`
+	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`
 }
 
 var (
@@ -91,6 +92,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	// TODO: Remove this flag in v1.4.0.
 	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations. Please use -querier.lookback-delta instead.")
+	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
+	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp.")
 }
 
 // Validate the config
@@ -191,6 +194,18 @@ type QueryableWithFilter interface {
 	// UseQueryable returns true if this queryable should be used to satisfy the query.
 	// Query min and max time are in milliseconds since epoch.
 	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
+}
+
+type alwaysTrueFilterQueryable struct {
+	storage.Queryable
+}
+
+func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _, _ int64) bool {
+	return true
+}
+
+func UseAlwaysQueryable(q storage.Queryable) QueryableWithFilter {
+	return alwaysTrueFilterQueryable{Queryable: q}
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -432,14 +447,35 @@ type storeQueryable struct {
 	QueryStoreAfter time.Duration
 }
 
-func (s storeQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return s.QueryableWithFilter.Querier(ctx, mint, maxt)
-}
-
 func (s storeQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
 	// Include this store only if mint is within QueryStoreAfter w.r.t current time.
 	if s.QueryStoreAfter != 0 && queryMinT > util.TimeToMillis(now.Add(-s.QueryStoreAfter)) {
 		return false
 	}
 	return s.QueryableWithFilter.UseQueryable(now, queryMinT, queryMaxT)
+}
+
+type useBeforeTimestampQueryable struct {
+	storage.Queryable
+	ts int64 // Timestamp in milliseconds
+}
+
+func (u useBeforeTimestampQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
+	if u.ts == 0 {
+		return true
+	}
+	return queryMinT <= u.ts
+}
+
+// Returns QueryableWithFilter, that is used only if query starts before given timestamp.
+// If timestamp is zero (time.IsZero), queryable is always used.
+func UseBeforeTimestampQueryable(queryable storage.Queryable, ts time.Time) QueryableWithFilter {
+	t := int64(0)
+	if !ts.IsZero() {
+		t = util.TimeToMillis(ts)
+	}
+	return useBeforeTimestampQueryable{
+		Queryable: queryable,
+		ts:        t,
+	}
 }

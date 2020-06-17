@@ -38,7 +38,7 @@
 &lt;p>Whenever the pool of compactors increase or decrease (ie. following up a scale up/down), tenants are resharded across the available compactor instances without any manual intervention. Compactors coordinate via the Cortex &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a>.&lt;/p>
 &lt;h4 id="compactor-http-endpoints">Compactor HTTP endpoints&lt;/h4>
 &lt;ul>
-&lt;li>&lt;code>GET /compactor/ring&lt;/code>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;code>GET /compactor/ring&lt;/code>&lt;br />
 Displays the status of the compactors ring, including the tokens owned by each compactor and an option to remove (forget) instances from the ring.&lt;/li>
 &lt;/ul>
 &lt;h2 id="index-cache">Index cache&lt;/h2>
@@ -664,9 +664,9 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;p>In order to build blocks sharding and replication, the &lt;code>store-gateway&lt;/code> instances form a &lt;a href="/docs/architecture/#the-hash-ring">ring&lt;/a>. Each gateway instance uses a custom &lt;a href="https://github.com/thanos-io/thanos/blob/master/pkg/block/fetcher.go#L108">&lt;code>MetaFetcherFilter&lt;/code>&lt;/a> to filter blocks loaded on the instance itself, keeping only blocks whose &lt;code>hash(block-id)&lt;/code> is within the tokens range assigned to the gateway instance within the ring.&lt;/p>
 &lt;p>Within a gateway, the blocks synchronization is triggered in two cases:&lt;/p>
 &lt;ol>
-&lt;li>&lt;strong>Periodically&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>Periodically&lt;/strong>&lt;br />
 to discover new blocks uploaded by ingesters or compactor, and delete old blocks removed due to retention or by the compactor&lt;/li>
-&lt;li>&lt;strong>On-demand&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>On-demand&lt;/strong>&lt;br/>
 when the ring topology changes (the tokens ranges assigned to the gateway instance have changed)&lt;/li>
 &lt;/ol>
 &lt;p>It&amp;rsquo;s important to outline that the sync takes time (typically will have to re-scan the bucket and download new blocks index headers) and Cortex needs to guarantee query results consistency at any given time (&lt;em>see below&lt;/em>).&lt;/p>
@@ -4330,11 +4330,11 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;h3 id="dilutes-tenant-fairness">Dilutes Tenant Fairness&lt;/h3>
 &lt;h4 id="challenge-4">Challenge&lt;/h4>
 &lt;p>Given &lt;code>f&lt;/code> query frontends, &lt;code>n&lt;/code> tenants and an average of &lt;code>q&lt;/code> queries in the frontend per tenant. The following assumes that queries are perfectly distributed across query frontends. The number of tenants per instance would be:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=m = floor(n * \frac{min(q,f)}{f})">
 &lt;p>The chance that a query by a tenant with &lt;code>Q&lt;/code> queries in the frontend is serviced next is:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=min(Q,f)* \frac{1}{min(q * n %2b Q,f)}*\frac{1}{m %2b 1}">
 &lt;p>Note that fewer query frontends caps the impact of the number of active queries per tenant. If there is only one query frontend then the equation reduces to:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=\frac{1}{n}">
 &lt;p>and every tenant has an equal chance of being serviced regardless of the number of queued queries.&lt;/p>
 &lt;p>Adding more query frontends favors high volume tenants by giving them more slots to be picked up by the next available querier. Fewer query frontends allows for an even playing field regardless of the number of active queries.&lt;/p>
 &lt;p>For clarity, it should be noted that tenant fairness is only impacted if queries are being queued in the frontend. Under normal operations this is currently not occurring although this may change with increased sharding.&lt;/p>
@@ -4366,7 +4366,56 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;p>Having a singleton queue is attractive because it is simple to reason about and gives us a single place to make fair cross tenant queueing decisions. It does, however, create a single point of failure and add another network hop to the query path.&lt;/p>
 &lt;h2 id="conclusion">Conclusion&lt;/h2>
 &lt;p>In this document we reviewed the [reasons the frontend exists](#query frontend-role), &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
-&lt;!-- raw HTML omitted --></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
+&lt;table>
+&lt;tr>
+&lt;td>&lt;strong>Challenge&lt;/strong>
+&lt;/td>
+&lt;td>&lt;strong>Proposal&lt;/strong>
+&lt;/td>
+&lt;td>&lt;strong>Status&lt;/strong>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dynamic Querier Concurrency
+&lt;/td>
+&lt;td>Add Max Total Concurrency in Querier
+&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2456">Pull Request&lt;/a>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Overwhelming PromQL Concurrency
+&lt;/td>
+&lt;td>Queriers Coordinate Concurrency with Frontends
+&lt;/td>
+&lt;td>Proposed
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Increased Time to Failure
+&lt;/td>
+&lt;td>Operational/Configuration Issue. No Changes Proposed.
+&lt;/td>
+&lt;td>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Querier Discovery Lag
+&lt;/td>
+&lt;td>Query Frontend HTTP Health Checks
+&lt;/td>
+&lt;td>Proposed
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dilutes Tenant Fairness
+&lt;/td>
+&lt;td>Round Robin with additional alternatives proposed
+&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/issues/2431">Issue&lt;/a>
+&lt;/td>
+&lt;/tr>
+&lt;/table></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
 &lt;ul>
 &lt;li>Author: @gotjosh&lt;/li>
 &lt;li>Reviewers: @gouthamve, @pracucci&lt;/li>
@@ -4409,7 +4458,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;li>&lt;a href="https://github.com/prometheus/prometheus/issues/6395">Prometheus Propagate metadata via Remote Write Design Issue&lt;/a>&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
 &lt;p>Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the &lt;a href="#ingester">ingesters&lt;/a>) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex&amp;rsquo;s architecture.&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;p align="center">&lt;img src="/images/architecture.png" alt="Cortex Architecture">&lt;/p>
 &lt;h2 id="the-role-of-prometheus">The role of Prometheus&lt;/h2>
 &lt;p>Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus&amp;rsquo; &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations">remote write API&lt;/a>). That remote write API emits batched &lt;a href="https://google.github.io/snappy/">Snappy&lt;/a>-compressed &lt;a href="https://developers.google.com/protocol-buffers/">Protocol Buffer&lt;/a> messages inside the body of an HTTP &lt;code>PUT&lt;/code> request.&lt;/p>
 &lt;p>Cortex requires that each HTTP request bear a header specifying a tenant ID for the request. Request authentication and authorization are handled by an external reverse proxy.&lt;/p>
@@ -5164,11 +5213,11 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;h3 id="supported-discovery-modes">Supported discovery modes&lt;/h3>
 &lt;p>The DNS service discovery, inspired from Thanos DNS SD, supports different discovery modes. A discovery mode is selected adding a specific prefix to the address. The supported prefixes are:&lt;/p>
 &lt;ul>
-&lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as an A/AAAA query. For example: &lt;code>dns+memcached.local:11211&lt;/code>&lt;/li>
-&lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
-&lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Design patterns and Code conventions</title><link>/docs/contributing/design-patterns-and-code-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/design-patterns-and-code-conventions/</guid><description>
 &lt;p>Cortex adopts some design patterns and code conventions that we ask you to follow when contributing to the project. These conventions have been adopted based on the experience gained over the time and aim to enforce good coding practices and keep a consistent UX (ie. config).&lt;/p>
@@ -6341,9 +6390,9 @@ The HTTP request should contain the header &lt;code>X-Prometheus-Remote-Write-Ve
 &lt;pre>&lt;code>go test -v -tags=requires_docker ./integration -run &amp;quot;^TestChunksStorageAllIndexBackends$&amp;quot;
 &lt;/code>&lt;/pre>&lt;h3 id="supported-environment-variables">Supported environment variables&lt;/h3>
 &lt;ul>
-&lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;br />
 Docker image used to run Cortex in integration tests (defaults to &lt;code>quay.io/cortexproject/cortex:latest&lt;/code>)&lt;/li>
-&lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;br />
 The absolute path of the Cortex repository local checkout (defaults to &lt;code>$GOPATH/src/github.com/cortexproject/cortex&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;h3 id="the-requires_docker-tag">The &lt;code>requires_docker&lt;/code> tag&lt;/h3>
@@ -7847,7 +7896,7 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li>[CHANGE] Use relative links from /ring page to make it work when used behind reverse proxy. &lt;a href="https://github.com/cortexproject/cortex/pull/1896">#1896&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Deprecated &lt;code>-distributor.limiter-reload-period&lt;/code> flag. &lt;a href="https://github.com/cortexproject/cortex/pull/1766">#1766&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. &lt;code>-ingester.normalise-tokens&lt;/code> is now deprecated, and ignored. If you want to switch back to using denormalised tokens, you need to downgrade to Cortex 0.4.0. Previous versions don&amp;rsquo;t handle claiming tokens from normalised ingesters correctly. &lt;a href="https://github.com/cortexproject/cortex/pull/1809">#1809&lt;/a>&lt;/li>
-&lt;li>[CHANGE] Overrides mechanism has been renamed to &amp;ldquo;runtime config&amp;rdquo;, and is now separate from limits. Runtime config is simply a file that is reloaded by Cortex every couple of seconds. Limits and now also multi KV use this mechanism.&lt;!-- raw HTML omitted -->New arguments were introduced: &lt;code>-runtime-config.file&lt;/code> (defaults to empty) and &lt;code>-runtime-config.reload-period&lt;/code> (defaults to 10 seconds), which replace previously used &lt;code>-limits.per-user-override-config&lt;/code> and &lt;code>-limits.per-user-override-period&lt;/code> options. Old options are still used if &lt;code>-runtime-config.file&lt;/code> is not specified. This change is also reflected in YAML configuration, where old &lt;code>limits.per_tenant_override_config&lt;/code> and &lt;code>limits.per_tenant_override_period&lt;/code> fields are replaced with &lt;code>runtime_config.file&lt;/code> and &lt;code>runtime_config.period&lt;/code> respectively. &lt;a href="https://github.com/cortexproject/cortex/pull/1749">#1749&lt;/a>&lt;/li>
+&lt;li>[CHANGE] Overrides mechanism has been renamed to &amp;ldquo;runtime config&amp;rdquo;, and is now separate from limits. Runtime config is simply a file that is reloaded by Cortex every couple of seconds. Limits and now also multi KV use this mechanism.&lt;br />New arguments were introduced: &lt;code>-runtime-config.file&lt;/code> (defaults to empty) and &lt;code>-runtime-config.reload-period&lt;/code> (defaults to 10 seconds), which replace previously used &lt;code>-limits.per-user-override-config&lt;/code> and &lt;code>-limits.per-user-override-period&lt;/code> options. Old options are still used if &lt;code>-runtime-config.file&lt;/code> is not specified. This change is also reflected in YAML configuration, where old &lt;code>limits.per_tenant_override_config&lt;/code> and &lt;code>limits.per_tenant_override_period&lt;/code> fields are replaced with &lt;code>runtime_config.file&lt;/code> and &lt;code>runtime_config.period&lt;/code> respectively. &lt;a href="https://github.com/cortexproject/cortex/pull/1749">#1749&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Cortex now rejects data with duplicate labels. Previously, such data was accepted, with duplicate labels removed with only one value left. &lt;a href="https://github.com/cortexproject/cortex/pull/1964">#1964&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Changed the default value for &lt;code>-distributor.ha-tracker.prefix&lt;/code> from &lt;code>collectors/&lt;/code> to &lt;code>ha-tracker/&lt;/code> in order to not clash with other keys (ie. ring) stored in the same key-value store. &lt;a href="https://github.com/cortexproject/cortex/pull/1940">#1940&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Experimental: Write-Ahead-Log added in ingesters for more data reliability against ingester crashes. &lt;a href="https://github.com/cortexproject/cortex/pull/1103">#1103&lt;/a>

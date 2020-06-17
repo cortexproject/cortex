@@ -79,9 +79,9 @@ make web-serve
 &lt;pre>&lt;code>go test -v -tags=requires_docker ./integration -run &amp;quot;^TestChunksStorageAllIndexBackends$&amp;quot;
 &lt;/code>&lt;/pre>&lt;h3 id="supported-environment-variables">Supported environment variables&lt;/h3>
 &lt;ul>
-&lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;br />
 Docker image used to run Cortex in integration tests (defaults to &lt;code>quay.io/cortexproject/cortex:latest&lt;/code>)&lt;/li>
-&lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;br />
 The absolute path of the Cortex repository local checkout (defaults to &lt;code>$GOPATH/src/github.com/cortexproject/cortex&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;h3 id="the-requires_docker-tag">The &lt;code>requires_docker&lt;/code> tag&lt;/h3>

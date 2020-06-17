@@ -18,9 +18,9 @@
 &lt;p>In order to build blocks sharding and replication, the &lt;code>store-gateway&lt;/code> instances form a &lt;a href="/docs/architecture/#the-hash-ring">ring&lt;/a>. Each gateway instance uses a custom &lt;a href="https://github.com/thanos-io/thanos/blob/master/pkg/block/fetcher.go#L108">&lt;code>MetaFetcherFilter&lt;/code>&lt;/a> to filter blocks loaded on the instance itself, keeping only blocks whose &lt;code>hash(block-id)&lt;/code> is within the tokens range assigned to the gateway instance within the ring.&lt;/p>
 &lt;p>Within a gateway, the blocks synchronization is triggered in two cases:&lt;/p>
 &lt;ol>
-&lt;li>&lt;strong>Periodically&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>Periodically&lt;/strong>&lt;br />
 to discover new blocks uploaded by ingesters or compactor, and delete old blocks removed due to retention or by the compactor&lt;/li>
-&lt;li>&lt;strong>On-demand&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>On-demand&lt;/strong>&lt;br/>
 when the ring topology changes (the tokens ranges assigned to the gateway instance have changed)&lt;/li>
 &lt;/ol>
 &lt;p>It&amp;rsquo;s important to outline that the sync takes time (typically will have to re-scan the bucket and download new blocks index headers) and Cortex needs to guarantee query results consistency at any given time (&lt;em>see below&lt;/em>).&lt;/p>
@@ -348,11 +348,11 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;h3 id="dilutes-tenant-fairness">Dilutes Tenant Fairness&lt;/h3>
 &lt;h4 id="challenge-4">Challenge&lt;/h4>
 &lt;p>Given &lt;code>f&lt;/code> query frontends, &lt;code>n&lt;/code> tenants and an average of &lt;code>q&lt;/code> queries in the frontend per tenant. The following assumes that queries are perfectly distributed across query frontends. The number of tenants per instance would be:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=m = floor(n * \frac{min(q,f)}{f})">
 &lt;p>The chance that a query by a tenant with &lt;code>Q&lt;/code> queries in the frontend is serviced next is:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=min(Q,f)* \frac{1}{min(q * n %2b Q,f)}*\frac{1}{m %2b 1}">
 &lt;p>Note that fewer query frontends caps the impact of the number of active queries per tenant. If there is only one query frontend then the equation reduces to:&lt;/p>
-&lt;!-- raw HTML omitted -->
+&lt;img src="https://render.githubusercontent.com/render/math?math=\frac{1}{n}">
 &lt;p>and every tenant has an equal chance of being serviced regardless of the number of queued queries.&lt;/p>
 &lt;p>Adding more query frontends favors high volume tenants by giving them more slots to be picked up by the next available querier. Fewer query frontends allows for an even playing field regardless of the number of active queries.&lt;/p>
 &lt;p>For clarity, it should be noted that tenant fairness is only impacted if queries are being queued in the frontend. Under normal operations this is currently not occurring although this may change with increased sharding.&lt;/p>
@@ -384,7 +384,56 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;p>Having a singleton queue is attractive because it is simple to reason about and gives us a single place to make fair cross tenant queueing decisions. It does, however, create a single point of failure and add another network hop to the query path.&lt;/p>
 &lt;h2 id="conclusion">Conclusion&lt;/h2>
 &lt;p>In this document we reviewed the [reasons the frontend exists](#query frontend-role), &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
-&lt;!-- raw HTML omitted --></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
+&lt;table>
+&lt;tr>
+&lt;td>&lt;strong>Challenge&lt;/strong>
+&lt;/td>
+&lt;td>&lt;strong>Proposal&lt;/strong>
+&lt;/td>
+&lt;td>&lt;strong>Status&lt;/strong>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dynamic Querier Concurrency
+&lt;/td>
+&lt;td>Add Max Total Concurrency in Querier
+&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2456">Pull Request&lt;/a>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Overwhelming PromQL Concurrency
+&lt;/td>
+&lt;td>Queriers Coordinate Concurrency with Frontends
+&lt;/td>
+&lt;td>Proposed
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Increased Time to Failure
+&lt;/td>
+&lt;td>Operational/Configuration Issue. No Changes Proposed.
+&lt;/td>
+&lt;td>
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Querier Discovery Lag
+&lt;/td>
+&lt;td>Query Frontend HTTP Health Checks
+&lt;/td>
+&lt;td>Proposed
+&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dilutes Tenant Fairness
+&lt;/td>
+&lt;td>Round Robin with additional alternatives proposed
+&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/issues/2431">Issue&lt;/a>
+&lt;/td>
+&lt;/tr>
+&lt;/table></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
 &lt;ul>
 &lt;li>Author: @gotjosh&lt;/li>
 &lt;li>Reviewers: @gouthamve, @pracucci&lt;/li>

@@ -3605,11 +3605,11 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;h3 id="supported-discovery-modes">Supported discovery modes&lt;/h3>
 &lt;p>The DNS service discovery, inspired from Thanos DNS SD, supports different discovery modes. A discovery mode is selected adding a specific prefix to the address. The supported prefixes are:&lt;/p>
 &lt;ul>
-&lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as an A/AAAA query. For example: &lt;code>dns+memcached.local:11211&lt;/code>&lt;/li>
-&lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
-&lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;!-- raw HTML omitted -->
+&lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
 &lt;p>You can use the Cortex query frontend with any Prometheus-API compatible

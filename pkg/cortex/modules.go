@@ -198,14 +198,14 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 func (t *Cortex) initStoreQueryable() (services.Service, error) {
 	var servs []services.Service
-	q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
-	}
 
-	t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
-	if s, ok := q.(services.Service); ok {
-		servs = append(servs, s)
+	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer); err != nil {
+		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
+	} else {
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
+		if s, ok := q.(services.Service); ok {
+			servs = append(servs, s)
+		}
 	}
 
 	if t.Cfg.Querier.SecondStoreEngine != "" {
@@ -216,7 +216,7 @@ func (t *Cortex) initStoreQueryable() (services.Service, error) {
 
 		t.StoreQueryables = append(t.StoreQueryables, querier.UseBeforeTimestampQueryable(sq, time.Time(t.Cfg.Querier.UseSecondStoreBeforeTime)))
 
-		if s, ok := q.(services.Service); ok {
+		if s, ok := sq.(services.Service); ok {
 			servs = append(servs, s)
 		}
 	}
@@ -240,6 +240,9 @@ func buildService(servs []services.Service) (services.Service, error) {
 func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, reg prometheus.Registerer) (prom_storage.Queryable, error) {
 	switch engine {
 	case storage.StorageEngineChunks:
+		if chunkStore == nil {
+			return nil, fmt.Errorf("chunk store not initialized")
+		}
 		return querier.NewChunkStoreQueryable(cfg.Querier, chunkStore), nil
 
 	case storage.StorageEngineTSDB:
@@ -293,8 +296,8 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 	return t.Flusher, nil
 }
 
-func (t *Cortex) initStore() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB {
+func (t *Cortex) initChunkStore() (serv services.Service, err error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineChunks && t.Cfg.Querier.SecondStoreEngine != storage.StorageEngineChunks {
 		return nil, nil
 	}
 	err = t.Cfg.Schema.Load()
@@ -554,7 +557,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Store, t.initChunkStore)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)

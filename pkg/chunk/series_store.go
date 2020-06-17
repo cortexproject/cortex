@@ -419,17 +419,19 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
 	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
 	if len(found) > 0 {
+		writeChunk = false
 		dedupedChunksTotal.Inc()
 	}
 
-	// If chunk is in the cache and DisableIndexDeduplication is false, we do not have to do anything.
-	// If chunk is in the cache and DisableIndexDeduplication is true, we have to write index and not chunk.
+	// If we dont have to write the chunk and DisableIndexDeduplication is false, we do not have to do anything.
+	// If we dont have to write the chunk and DisableIndexDeduplication is true, we have to write index and not chunk.
 	// Otherwise write both index and chunk.
-	if len(found) > 0 && !c.cfg.DisableIndexDeduplication {
+	if !writeChunk && !c.cfg.DisableIndexDeduplication {
 		return nil
 	}
 
@@ -441,12 +443,16 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	}
 
 	if oic, ok := c.storage.(ObjectAndIndexClient); ok {
-		if err = oic.PutChunkAndIndex(ctx, chunk, writeReqs); err != nil {
+		chunks := chunks
+		if !writeChunk {
+			chunks = []Chunk{}
+		}
+		if err = oic.PutChunksAndIndex(ctx, chunks, writeReqs); err != nil {
 			return err
 		}
 	} else {
 		// chunk not found, write it.
-		if len(found) == 0 {
+		if writeChunk {
 			err := c.storage.PutChunks(ctx, chunks)
 			if err != nil {
 				return err
@@ -457,8 +463,8 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 		}
 	}
 
-	// we already have the chunk in the cache so don't write it.
-	if len(found) == 0 {
+	// we already have the chunk in the cache so don't write it back to the cache.
+	if writeChunk {
 		if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
 			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 		}

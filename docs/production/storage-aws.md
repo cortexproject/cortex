@@ -89,3 +89,34 @@ Several things to note here:
 -  If you want to add AWS tags to the created DynamoDB tables you
    can do it by adding a `tags` map to your schema definition. See
    [`schema configuration`](../configuration/schema-config-reference.md)
+
+## Running DynamoD in local
+
+For development, DynamoDb can be used locally. For this it's docker image can be used which is available on [`docker hub`](https://hub.docker.com/r/amazon/dynamodb-local/).
+
+Make sure the schema config is set to:
+
+```
+schema:
+  configs:
+  - from: <yyyy-mm-dd>
+    store: aws-dynamo
+    object_store: aws-dynamo
+    schema: v10
+    index:
+      prefix: index_
+      period: 1w
+    chunks:
+      prefix: chunks_
+      period: 1w
+```
+Above schema is also supported for version 9.
+
+The storage config should be set to:
+
+```
+storage:
+  aws:
+    dynamodb:
+      dynamodb_url: <dynamodb url> #Example: dynamodb://u:p@127.0.0.1:8000
+```

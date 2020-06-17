@@ -250,3 +250,4 @@ jobs:
           if [ -n "$QUAY_PASSWORD" ]; then
             docker login -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
           fi
+          IMAGE_TAG=$CIRCLE_TAG ./push-images $NOQUAY

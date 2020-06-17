@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y curl python-requests python-yaml file j
 RUN curl -sL https://deb.nodesource.com/setup_13.x | sh -
 RUN apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install -g postcss-cli autoprefixer
-ENV HUGO_VERSION=v0.69.0
+ENV HUGO_VERSION=v0.72.0
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \
 	rm -rf hugo/ && rm -rf /go/pkg /go/src
@@ -13,7 +13,7 @@ RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v${SHFMT_VER
 	echo "cb91ea08a075a2f96b5230f09b4e211b7c108b1c97603caceb48d117d2ac5508  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
-RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.24.0
+RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.27.0
 RUN GO111MODULE=on go get -tags netgo \
 		github.com/client9/misspell/cmd/misspell@v0.3.4 \
 		github.com/golang/protobuf/protoc-gen-go@v1.3.1 \

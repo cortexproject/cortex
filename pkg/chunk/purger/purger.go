@@ -119,7 +119,7 @@ type DataPurger struct {
 
 	// we would only allow processing of singe delete request at a time since delete requests touching same chunks could change the chunk IDs of partially deleted chunks
 	// and break the purge plan for other requests
-	inProcessRequestIDs    map[string]DeleteRequest
+	inProcessRequests      map[string]DeleteRequest
 	inProcessRequestIDsMtx sync.RWMutex
 
 	// We do not want to limit pulling new delete requests to a fixed interval which otherwise would limit number of delete requests we process per user.
@@ -148,7 +148,7 @@ func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store,
 		pullNewRequestsChan:      make(chan struct{}, 1),
 		executePlansChan:         make(chan deleteRequestWithLogger, 50),
 		workerJobChan:            make(chan workerJob, 50),
-		inProcessRequestIDs:      map[string]DeleteRequest{},
+		inProcessRequests:        map[string]DeleteRequest{},
 		usersWithPendingRequests: map[string]struct{}{},
 		pendingPlansCount:        map[string]int{},
 	}
@@ -231,7 +231,7 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 		dp.pendingPlansCountMtx.Unlock()
 
 		dp.inProcessRequestIDsMtx.Lock()
-		delete(dp.inProcessRequestIDs, job.userID)
+		delete(dp.inProcessRequests, job.userID)
 		dp.inProcessRequestIDsMtx.Unlock()
 
 		// request loading of more delete request if
@@ -367,7 +367,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		err := dp.buildDeletePlan(req)
 		if err != nil {
 			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
@@ -388,7 +388,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		dp.executePlansChan <- req
 	}
 
@@ -404,7 +404,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 	}
 
 	dp.inProcessRequestIDsMtx.RLock()
-	pendingDeleteRequestsCount := len(dp.inProcessRequestIDs)
+	pendingDeleteRequestsCount := len(dp.inProcessRequests)
 	dp.inProcessRequestIDsMtx.RUnlock()
 
 	now := model.Now()
@@ -430,7 +430,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		dp.inProcessRequestIDsMtx.RLock()
-		inprocessDeleteRequest, ok := dp.inProcessRequestIDs[deleteRequest.UserID]
+		inprocessDeleteRequest, ok := dp.inProcessRequests[deleteRequest.UserID]
 		dp.inProcessRequestIDsMtx.RUnlock()
 
 		if ok {
@@ -450,7 +450,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		dp.inProcessRequestIDsMtx.Lock()
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		dp.inProcessRequestIDsMtx.Unlock()
 
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
@@ -461,7 +461,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		if err != nil {
 			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
 
-			// We do not want to remove this delete request from inProcessRequestIDs to make sure
+			// We do not want to remove this delete request from inProcessRequests to make sure
 			// we do not move multiple deleting requests in deletion process.
 			// None of the other delete requests from the user would be considered for processing until then.
 			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
@@ -594,7 +594,7 @@ func (dp *DataPurger) getOldestInProcessRequest() *DeleteRequest {
 	defer dp.inProcessRequestIDsMtx.RUnlock()
 
 	var oldestRequest *DeleteRequest
-	for _, request := range dp.inProcessRequestIDs {
+	for _, request := range dp.inProcessRequests {
 		if oldestRequest == nil || request.CreatedAt.Before(oldestRequest.CreatedAt) {
 			oldestRequest = &request
 		}

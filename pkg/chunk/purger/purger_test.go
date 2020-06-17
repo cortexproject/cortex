@@ -367,7 +367,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 	for ctx.Err() == nil {
 		newPurger.inProcessRequestIDsMtx.RLock()
 
-		if len(newPurger.inProcessRequestIDs) == 0 {
+		if len(newPurger.inProcessRequests) == 0 {
 			newPurger.inProcessRequestIDsMtx.RUnlock()
 			break
 		}

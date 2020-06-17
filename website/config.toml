@@ -112,3 +112,6 @@ yes = 'Glad to hear it! Please <a href="https://github.com/USERNAME/REPOSITORY/i
 no = 'Sorry to hear that. Please <a href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we can improve</a>.'
 
 [params.links]
+
+[markup.goldmark.renderer]
+unsafe = true

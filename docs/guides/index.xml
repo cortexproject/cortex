@@ -1,56 +1,53 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
-&lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
-&lt;p&gt;One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p&gt;
-&lt;h2 id=&#34;config&#34;&gt;Config&lt;/h2&gt;
-&lt;p&gt;In order to enable sharding in the ruler the following flag needs to be set:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; -ruler.enable-sharding=true
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p&gt;
-&lt;p&gt;Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p&gt;</description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
-&lt;p&gt;In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p&gt;
-&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
-&lt;p&gt;Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes within the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code&gt;ingester.availability-zone&lt;/code&gt; flag or using the yaml configuration:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;ingester&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;lifecycler&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;availability_zone&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;zone-3&amp;#34;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;h2 id=&#34;zone-replication-considerations&#34;&gt;Zone Replication Considerations&lt;/h2&gt;
-&lt;p&gt;Enabling availability zone awareness helps mitigate risks regarding data loss within a single zone, some items need consideration by an operator if they are thinking of enabling this feature.&lt;/p&gt;
-&lt;h3 id=&#34;minimum-number-of-zones&#34;&gt;Minimum number of Zones&lt;/h3&gt;
-&lt;p&gt;For cortex to function correctly, there must be at least the same number of availability zones as there is replica count. So by default, a cortex cluster should be spread over 3 zones as the default replica count is 3. It is safe to have more zones than the replica count, but it cannot be less. Having fewer availability zones than replica count causes a replica write to be missed, and in some cases, the write fails if the availability zone count is too low.&lt;/p&gt;
-&lt;h3 id=&#34;cost&#34;&gt;Cost&lt;/h3&gt;
-&lt;p&gt;Depending on the existing cortex infrastructure being used, this may cause an increase in running costs as most cloud providers charge for cross availability zone traffic. The most significant change would be for a cortex cluster currently running in a singular zone.&lt;/p&gt;</description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/kubernetes/</guid><description>
-&lt;p&gt;Because Cortex is designed to run multiple instances of each component
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
+&lt;h2 id="config">Config&lt;/h2>
+&lt;p>In order to enable sharding in the ruler the following flag needs to be set:&lt;/p>
+&lt;pre>&lt;code> -ruler.enable-sharding=true
+&lt;/code>&lt;/pre>&lt;p>In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p>
+&lt;pre>&lt;code> -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
+&lt;/code>&lt;/pre>&lt;p>The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p>
+&lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+&lt;p>In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;p>Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes within the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code>ingester.availability-zone&lt;/code> flag or using the yaml configuration:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">ingester&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">lifecycler&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">availability_zone&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;zone-3&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="zone-replication-considerations">Zone Replication Considerations&lt;/h2>
+&lt;p>Enabling availability zone awareness helps mitigate risks regarding data loss within a single zone, some items need consideration by an operator if they are thinking of enabling this feature.&lt;/p>
+&lt;h3 id="minimum-number-of-zones">Minimum number of Zones&lt;/h3>
+&lt;p>For cortex to function correctly, there must be at least the same number of availability zones as there is replica count. So by default, a cortex cluster should be spread over 3 zones as the default replica count is 3. It is safe to have more zones than the replica count, but it cannot be less. Having fewer availability zones than replica count causes a replica write to be missed, and in some cases, the write fails if the availability zone count is too low.&lt;/p>
+&lt;h3 id="cost">Cost&lt;/h3>
+&lt;p>Depending on the existing cortex infrastructure being used, this may cause an increase in running costs as most cloud providers charge for cross availability zone traffic. The most significant change would be for a cortex cluster currently running in a singular zone.&lt;/p></description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/kubernetes/</guid><description>
+&lt;p>Because Cortex is designed to run multiple instances of each component
 (ingester, querier, etc.), you probably want to automate the placement
 and shepherding of these instances. Most users choose Kubernetes to do
-this, but this is not mandatory.&lt;/p&gt;
-&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
-&lt;h3 id=&#34;resource-requests&#34;&gt;Resource requests&lt;/h3&gt;
-&lt;p&gt;If using Kubernetes, each container should specify resource requests
-so that the scheduler can place them on a node with sufficient capacity.&lt;/p&gt;
-&lt;p&gt;For example an ingester might request:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; resources:
+this, but this is not mandatory.&lt;/p>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;h3 id="resource-requests">Resource requests&lt;/h3>
+&lt;p>If using Kubernetes, each container should specify resource requests
+so that the scheduler can place them on a node with sufficient capacity.&lt;/p>
+&lt;p>For example an ingester might request:&lt;/p>
+&lt;pre>&lt;code> resources:
 requests:
 cpu: 4
 memory: 10Gi
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;The specific values here should be adjusted based on your own
+&lt;/code>&lt;/pre>&lt;p>The specific values here should be adjusted based on your own
 experiences running Cortex - they are very dependent on rate of data
-arriving and other factors such as series churn.&lt;/p&gt;
-&lt;h3 id=&#34;take-extra-care-with-ingesters&#34;&gt;Take extra care with ingesters&lt;/h3&gt;
-&lt;p&gt;Ingesters hold hours of timeseries data in memory; you can configure
+arriving and other factors such as series churn.&lt;/p>
+&lt;h3 id="take-extra-care-with-ingesters">Take extra care with ingesters&lt;/h3>
+&lt;p>Ingesters hold hours of timeseries data in memory; you can configure
 Cortex to replicate the data but you should take steps to avoid losing
-all replicas at once:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Don&amp;rsquo;t run multiple ingesters on the same node.&lt;/li&gt;
-&lt;li&gt;Don&amp;rsquo;t run ingesters on preemptible/spot nodes.&lt;/li&gt;
-&lt;li&gt;Spread out ingesters across racks / availability zones / whatever
-applies in your datacenters.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;You can ask Kubernetes to avoid running on the same node like this:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; affinity:
+all replicas at once:&lt;/p>
+&lt;ul>
+&lt;li>Don&amp;rsquo;t run multiple ingesters on the same node.&lt;/li>
+&lt;li>Don&amp;rsquo;t run ingesters on preemptible/spot nodes.&lt;/li>
+&lt;li>Spread out ingesters across racks / availability zones / whatever
+applies in your datacenters.&lt;/li>
+&lt;/ul>
+&lt;p>You can ask Kubernetes to avoid running on the same node like this:&lt;/p>
+&lt;pre>&lt;code> affinity:
 podAntiAffinity:
 preferredDuringSchedulingIgnoredDuringExecution:
 - weight: 100
@@ -62,136 +59,137 @@ operator: In
 values:
 - ingester
 topologyKey: &amp;quot;kubernetes.io/hostname&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Give plenty of time for an ingester to hand over or flush data to
-store when shutting down; for Kubernetes this looks like:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; terminationGracePeriodSeconds: 2400
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Ask Kubernetes to limit rolling updates to one ingester at a time, and
-signal the old one to stop before the new one is ready:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; strategy:
+&lt;/code>&lt;/pre>&lt;p>Give plenty of time for an ingester to hand over or flush data to
+store when shutting down; for Kubernetes this looks like:&lt;/p>
+&lt;pre>&lt;code> terminationGracePeriodSeconds: 2400
+&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time, and
+signal the old one to stop before the new one is ready:&lt;/p>
+&lt;pre>&lt;code> strategy:
 rollingUpdate:
 maxSurge: 0
 maxUnavailable: 1
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;Ingesters provide an HTTP hook to signal readiness when all is well;
+&lt;/code>&lt;/pre>&lt;p>Ingesters provide an HTTP hook to signal readiness when all is well;
 this is valuable because it stops a rolling update at the first
-problem:&lt;/p&gt;
-&lt;pre&gt;&lt;code&gt; readinessProbe:
+problem:&lt;/p>
+&lt;pre>&lt;code> readinessProbe:
 httpGet:
 path: /ready
 port: 80
-&lt;/code&gt;&lt;/pre&gt;
-&lt;p&gt;We do not recommend configuring a liveness probe on ingesters -
-killing them is a last resort and should not be left to a machine.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
-&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
+&lt;/code>&lt;/pre>&lt;p>We do not recommend configuring a liveness probe on ingesters -
+killing them is a last resort and should not be left to a machine.&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
-Cortex in production.&lt;/p&gt;
-&lt;h2 id=&#34;dependencies&#34;&gt;Dependencies&lt;/h2&gt;
-&lt;p&gt;In order to send traces you will need to set up a Jaeger deployment. A
+Cortex in production.&lt;/p>
+&lt;h2 id="dependencies">Dependencies&lt;/h2>
+&lt;p>In order to send traces you will need to set up a Jaeger deployment. A
 deployment includes either the jaeger all-in-one binary, or else a distributed
-system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34;&gt;Jaeger
-Kubernetes&lt;/a&gt; is an excellent
-resource.&lt;/p&gt;
-&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
-&lt;p&gt;In order to configure Cortex to send traces you must do two things:
-1. Set the &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; environment variable in all components to point
-to your Jaeger agent. This defaults to &lt;code&gt;localhost&lt;/code&gt;.
-1. Enable sampling in the appropriate components:
-* The Ingester and Ruler self-initiate traces and should have sampling
-explicitly enabled.
-* Sampling for the Distributor and Query Frontend can be enabled in Cortex
-or in an upstream service such as your frontdoor.&lt;/p&gt;
-&lt;p&gt;To enable sampling in Cortex components you can specify either
-&lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; for remote sampling, or
-&lt;code&gt;JAEGER_SAMPLER_TYPE&lt;/code&gt; and &lt;code&gt;JAEGER_SAMPLER_PARAM&lt;/code&gt; to manually set sampling
-configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34;&gt;Jaeger Client Go
-documentation&lt;/a&gt;
-for the full list of environment variables you can configure.&lt;/p&gt;
-&lt;p&gt;Note that you must specify one of &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; or
-&lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
-&lt;p&gt;The &lt;a href=&#34;/docs/architecture/#ingester&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
+system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href="https://github.com/jaegertracing/jaeger-kubernetes">Jaeger
+Kubernetes&lt;/a> is an excellent
+resource.&lt;/p>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;p>In order to configure Cortex to send traces you must do two things:&lt;/p>
+&lt;ol>
+&lt;li>Set the &lt;code>JAEGER_AGENT_HOST&lt;/code> environment variable in all components to point
+to your Jaeger agent. This defaults to &lt;code>localhost&lt;/code>.&lt;/li>
+&lt;li>Enable sampling in the appropriate components:
+&lt;ul>
+&lt;li>The Ingester and Ruler self-initiate traces and should have sampling
+explicitly enabled.&lt;/li>
+&lt;li>Sampling for the Distributor and Query Frontend can be enabled in Cortex
+or in an upstream service such as your frontdoor.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;p>To enable sampling in Cortex components you can specify either
+&lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> for remote sampling, or
+&lt;code>JAEGER_SAMPLER_TYPE&lt;/code> and &lt;code>JAEGER_SAMPLER_PARAM&lt;/code> to manually set sampling
+configuration. See the &lt;a href="https://github.com/jaegertracing/jaeger-client-go#environment-variables">Jaeger Client Go
+documentation&lt;/a>
+for the full list of environment variables you can configure.&lt;/p>
+&lt;p>Note that you must specify one of &lt;code>JAEGER_AGENT_HOST&lt;/code> or
+&lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> in each component for Jaeger to be enabled,
+even if you plan to use the default values.&lt;/p></description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
+&lt;p>The &lt;a href="/docs/architecture/#ingester">ingester&lt;/a> holds several hours of sample
 data in memory. When we want to shut down an ingester, either for
 software version update or to drain a node for maintenance, this data
-must not be discarded.&lt;/p&gt;
-&lt;p&gt;Each ingester goes through different states in its lifecycle. When
-working normally, the state is &lt;code&gt;ACTIVE&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;On start-up, an ingester first goes into state &lt;code&gt;PENDING&lt;/code&gt;. After a
-&lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
-itself to the ring and goes into state ACTIVE.&lt;/p&gt;
-&lt;p&gt;A running ingester is notified to shut down by Unix signal
-&lt;code&gt;SIGINT&lt;/code&gt;. On receipt of this signal it goes into state &lt;code&gt;LEAVING&lt;/code&gt; and
-looks for an ingester in state &lt;code&gt;PENDING&lt;/code&gt;. If it finds one, that
-ingester goes into state &lt;code&gt;JOINING&lt;/code&gt; and the leaver transfers all its
+must not be discarded.&lt;/p>
+&lt;p>Each ingester goes through different states in its lifecycle. When
+working normally, the state is &lt;code>ACTIVE&lt;/code>.&lt;/p>
+&lt;p>On start-up, an ingester first goes into state &lt;code>PENDING&lt;/code>. After a
+&lt;a href="/docs/configuration/arguments/#ingester">short time&lt;/a>, if nothing happens, it adds
+itself to the ring and goes into state ACTIVE.&lt;/p>
+&lt;p>A running ingester is notified to shut down by Unix signal
+&lt;code>SIGINT&lt;/code>. On receipt of this signal it goes into state &lt;code>LEAVING&lt;/code> and
+looks for an ingester in state &lt;code>PENDING&lt;/code>. If it finds one, that
+ingester goes into state &lt;code>JOINING&lt;/code> and the leaver transfers all its
 in-memory data over to the joiner. On successful transfer the leaver
 removes itself from the ring and exits and the joiner changes to
-&lt;code&gt;ACTIVE&lt;/code&gt;, taking over ownership of the leaver&amp;rsquo;s
-&lt;a href=&#34;/docs/architecture/#hashing&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
-&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
+&lt;code>ACTIVE&lt;/code>, taking over ownership of the leaver&amp;rsquo;s
+&lt;a href="/docs/architecture/#hashing">ring tokens&lt;/a>.&lt;/p>
+&lt;p>If a leaving ingester does not find a pending ingester after &lt;a href="/docs/configuration/arguments/#ingester">several attempts&lt;/a>, it will flush all of its chunks to
 the backing database, then remove itself from the ring and exit. This
-may take tens of minutes to complete.&lt;/p&gt;
-&lt;p&gt;During hand-over, neither the leaving nor joining ingesters will
+may take tens of minutes to complete.&lt;/p>
+&lt;p>During hand-over, neither the leaving nor joining ingesters will
 accept new samples. Distributors are aware of this, and &amp;ldquo;spill&amp;rdquo; the
 samples to the next ingester in the ring. This creates a set of extra
 &amp;ldquo;spilled&amp;rdquo; chunks which will idle out and flush after hand-over is
-complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
-&lt;p&gt;The following metrics can be used to observe this process:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;cortex_member_ring_tokens_owned&lt;/code&gt; - how many tokens each ingester thinks it owns&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_ring_tokens_owned&lt;/code&gt; - how many tokens each ingester is seen to own by other components&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_ring_member_ownership_percent&lt;/code&gt; same as &lt;code&gt;cortex_ring_tokens_owned&lt;/code&gt; but expressed as a percentage&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_ring_members&lt;/code&gt; - how many ingesters can be seen in each state, by other components&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_ingester_sent_chunks&lt;/code&gt; - number of chunks sent by leaving ingester&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;You can see the current state of the ring via http browser request to
-&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>
-&lt;p&gt;You will want to estimate how many nodes are required, how many of
+complete. The sudden increase in flush queue can be alarming!&lt;/p>
+&lt;p>The following metrics can be used to observe this process:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex_member_ring_tokens_owned&lt;/code> - how many tokens each ingester thinks it owns&lt;/li>
+&lt;li>&lt;code>cortex_ring_tokens_owned&lt;/code> - how many tokens each ingester is seen to own by other components&lt;/li>
+&lt;li>&lt;code>cortex_ring_member_ownership_percent&lt;/code> same as &lt;code>cortex_ring_tokens_owned&lt;/code> but expressed as a percentage&lt;/li>
+&lt;li>&lt;code>cortex_ring_members&lt;/code> - how many ingesters can be seen in each state, by other components&lt;/li>
+&lt;li>&lt;code>cortex_ingester_sent_chunks&lt;/code> - number of chunks sent by leaving ingester&lt;/li>
+&lt;li>&lt;code>cortex_ingester_received_chunks&lt;/code> - number of chunks received by joining ingester&lt;/li>
+&lt;/ul>
+&lt;p>You can see the current state of the ring via http browser request to
+&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>
+&lt;p>You will want to estimate how many nodes are required, how many of
 each component to run, and how much storage space will be required.
 In practice, these will vary greatly depending on the metrics being
-sent to Cortex.&lt;/p&gt;
-&lt;p&gt;Some key parameters are:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;The number of active series. If you have Prometheus already you
-can query &lt;code&gt;prometheus_tsdb_head_series&lt;/code&gt; to see this number.&lt;/li&gt;
-&lt;li&gt;Sampling rate, e.g. a new sample for each series every minute
-(the default Prometheus &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/&#34;&gt;scrape_interval&lt;/a&gt;).
+sent to Cortex.&lt;/p>
+&lt;p>Some key parameters are:&lt;/p>
+&lt;ol>
+&lt;li>The number of active series. If you have Prometheus already you
+can query &lt;code>prometheus_tsdb_head_series&lt;/code> to see this number.&lt;/li>
+&lt;li>Sampling rate, e.g. a new sample for each series every minute
+(the default Prometheus &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/">scrape_interval&lt;/a>).
 Multiply this by the number of active series to get the
-total rate at which samples will arrive at Cortex.&lt;/li&gt;
-&lt;li&gt;The rate at which series are added and removed. This can be very
+total rate at which samples will arrive at Cortex.&lt;/li>
+&lt;li>The rate at which series are added and removed. This can be very
 high if you monitor objects that come and go - for example if you run
 thousands of batch jobs lasting a minute or so and capture metrics
-with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34;&gt;Read how to analyse this on
-Prometheus&lt;/a&gt;.&lt;/li&gt;
-&lt;li&gt;How compressible the time-series data are. If a metric stays at
+with a unique ID for each one. &lt;a href="https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality">Read how to analyse this on
+Prometheus&lt;/a>.&lt;/li>
+&lt;li>How compressible the time-series data are. If a metric stays at
 the same value constantly, then Cortex can compress it very well, so
 12 hours of data sampled every 15 seconds would be around 2KB. On
 the other hand if the value jumps around a lot it might take 10KB.
-There are not currently any tools available to analyse this.&lt;/li&gt;
-&lt;li&gt;How long you want to retain data for, e.g. 1 month or 2 years.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Other parameters which can become important if you have particularly
-high values:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;Number of different series under one metric name.&lt;/li&gt;
-&lt;li&gt;Number of labels per series.&lt;/li&gt;
-&lt;li&gt;Rate and complexity of queries.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Now, some rules of thumb:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;Each million series in an ingester takes 15GB of RAM. Total number
+There are not currently any tools available to analyse this.&lt;/li>
+&lt;li>How long you want to retain data for, e.g. 1 month or 2 years.&lt;/li>
+&lt;/ol>
+&lt;p>Other parameters which can become important if you have particularly
+high values:&lt;/p>
+&lt;ol start="6">
+&lt;li>Number of different series under one metric name.&lt;/li>
+&lt;li>Number of labels per series.&lt;/li>
+&lt;li>Rate and complexity of queries.&lt;/li>
+&lt;/ol>
+&lt;p>Now, some rules of thumb:&lt;/p>
+&lt;ol>
+&lt;li>Each million series in an ingester takes 15GB of RAM. Total number
 of series in ingesters is number of active series times the
 replication factor. This is with the default of 12-hour chunks - RAM
-required will reduce if you set &lt;code&gt;-ingester.max-chunk-age&lt;/code&gt; lower
-(trading off more back-end database IO)&lt;/li&gt;
-&lt;li&gt;Each million series (including churn) consumes 15GB of chunk
+required will reduce if you set &lt;code>-ingester.max-chunk-age&lt;/code> lower
+(trading off more back-end database IO)&lt;/li>
+&lt;li>Each million series (including churn) consumes 15GB of chunk
 storage and 4GB of index, per day (so multiply by the retention
-period).&lt;/li&gt;
-&lt;li&gt;Each 100,000 samples/sec arriving takes 1 CPU in distributors.
-Distributors don&amp;rsquo;t need much RAM.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;If you turn on compression between distributors and ingesters (for
+period).&lt;/li>
+&lt;li>Each 100,000 samples/sec arriving takes 1 CPU in distributors.
+Distributors don&amp;rsquo;t need much RAM.&lt;/li>
+&lt;/ol>
+&lt;p>If you turn on compression between distributors and ingesters (for
 example to save on inter-zone bandwidth charges at AWS/GCP) they will use
 significantly more CPU (approx 100% more for distributor and 50% more
-for ingester).&lt;/p&gt;</description></item></channel></rss>
+for ingester).&lt;/p></description></item></channel></rss>

@@ -6,8 +6,10 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -162,9 +164,17 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
+	// Prometheus histograms for requests to the querier.
+	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_request_duration_seconds",
+		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
+		Buckets:   instrument.DefBuckets,
+	}, []string{"method", "route", "status_code", "ws"})
+
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := t.Cfg.Target != All
-	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader)
+	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here

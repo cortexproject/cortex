@@ -30,7 +30,7 @@ var (
 	serviceMetricsPrefixes = map[ServiceType][]string{
 		Distributor:   {},
 		Ingester:      {"!cortex_ingester_client", "cortex_ingester"}, // The metrics prefix cortex_ingester_client may be used by other components so we ignore it.
-		Querier:       {},
+		Querier:       {"cortex_querier"},
 		QueryFrontend: {"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  {},
 		AlertManager:  {"cortex_alertmanager"},

@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -360,22 +361,12 @@ func TestDataPurger_Restarts(t *testing.T) {
 
 	defer newPurger.StopAsync()
 
-	// lets wait till purger finishes execution of in process delete requests
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-	defer cancel()
-
-	for ctx.Err() == nil {
+	test.Poll(t, time.Minute, 0, func() interface{} {
 		newPurger.inProcessRequestIDsMtx.RLock()
+		defer newPurger.inProcessRequestIDsMtx.RUnlock()
 
-		if len(newPurger.inProcessRequests) == 0 {
-			newPurger.inProcessRequestIDsMtx.RUnlock()
-			break
-		}
-
-		newPurger.inProcessRequestIDsMtx.RUnlock()
-		time.Sleep(time.Second / 2)
-	}
-	require.NoError(t, ctx.Err())
+		return len(newPurger.inProcessRequests)
+	})
 
 	// check whether data got deleted from the store since delete request has been processed
 	chunks, err = chunkStore.Get(context.Background(), userID, 0, model.Time(0).Add(10*24*time.Hour), fooMetricNameMatcher...)
@@ -445,22 +436,16 @@ func TestPurger_Metrics(t *testing.T) {
 	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
 
 	// wait until purger_delete_requests_processed_total starts to show up.
-	for {
+	test.Poll(t, 2*time.Second, 1, func() interface{} {
 		count, err := testutil.GatherAndCount(registry, "cortex_purger_delete_requests_processed_total")
 		require.NoError(t, err)
-		if count != 0 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return count
+	})
 
 	// wait until both the pending delete requests are processed.
-	for {
-		if testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal) == 2 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	test.Poll(t, 2*time.Second, float64(2), func() interface{} {
+		return testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal)
+	})
 
 	// load new delete requests for processing which should update the metrics
 	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())

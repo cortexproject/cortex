@@ -54,6 +54,10 @@ func TestTimeYAML(t *testing.T) {
 
 func TestTimeFormats(t *testing.T) {
 	ts := &Time{}
+	require.NoError(t, ts.Set("0"))
+	require.True(t, time.Time(*ts).IsZero())
+	require.Equal(t, "0", ts.String())
+
 	require.NoError(t, ts.Set("2020-10-05"))
 	require.Equal(t, mustParseTime(t, "2006-01-02", "2020-10-05").Format(time.RFC3339), ts.String())
 

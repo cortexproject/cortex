@@ -10,11 +10,20 @@ type Time time.Time
 
 // String implements flag.Value
 func (t Time) String() string {
+	if time.Time(t).IsZero() {
+		return "0"
+	}
+
 	return time.Time(t).Format(time.RFC3339)
 }
 
 // Set implements flag.Value
 func (t *Time) Set(s string) error {
+	if s == "0" {
+		*t = Time(time.Time{})
+		return nil
+	}
+
 	p, err := time.Parse("2006-01-02", s)
 	if err == nil {
 		*t = Time(p)

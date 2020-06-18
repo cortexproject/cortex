@@ -210,6 +210,10 @@ func (t *Cortex) initStoreQueryable() (services.Service, error) {
 	}
 
 	if t.Cfg.Querier.SecondStoreEngine != "" {
+		if t.Cfg.Querier.SecondStoreEngine == t.Cfg.Storage.Engine {
+			return nil, fmt.Errorf("second store engine used by querier '%s' must be different than primary engine '%s'", t.Cfg.Querier.SecondStoreEngine, t.Cfg.Storage.Engine)
+		}
+
 		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)

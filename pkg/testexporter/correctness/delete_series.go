@@ -173,10 +173,15 @@ func (d *DeleteSeriesTest) Test(ctx context.Context, client v1.API, selectors st
 		passed := verifySamples(spanlogger.FromContext(ctx), d, pairs[verifyPairsFrom:verifyPairsTo], nonDeletedInterval.end.Sub(nonDeletedInterval.start), d.commonTestConfig)
 		if !passed {
 			verifyingPairs := pairs[verifyPairsFrom:verifyPairsTo]
-			level.Error(log).Log("msg", "failed to verify samples batch", "query start", start.Unix(), "query duration", duration,
-				"batch length", len(verifyingPairs),
-				"batch duration", nonDeletedInterval.end.Sub(nonDeletedInterval.start), "batch-start", verifyingPairs[0].Timestamp.Unix(),
-				"batch-end", verifyingPairs[len(verifyingPairs)-1].Timestamp.Unix())
+			if len(verifyingPairs) == 0 {
+				level.Error(log).Log("msg", fmt.Sprintf("expected samples from %d to %d but got 0 samples", nonDeletedInterval.start.Unix(),
+					nonDeletedInterval.end.Unix()), "query start", start.Unix(), "query duration", duration)
+			} else {
+				level.Error(log).Log("msg", "failed to verify samples batch", "query start", start.Unix(), "query duration", duration,
+					"batch length", len(verifyingPairs),
+					"batch duration", nonDeletedInterval.end.Sub(nonDeletedInterval.start), "batch-start", verifyingPairs[0].Timestamp.Unix(),
+					"batch-end", verifyingPairs[len(verifyingPairs)-1].Timestamp.Unix())
+			}
 			return false, nil
 		}
 

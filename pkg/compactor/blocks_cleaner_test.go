@@ -80,10 +80,10 @@ func TestBlocksCleaner(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, exists)
 
-	// Should not delete a partial block with deletion mark who hasn't reached the deletion threshold yet.
+	// Should delete a partial block with deletion mark who hasn't reached the deletion threshold yet.
 	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block4.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
-	assert.True(t, exists)
+	assert.False(t, exists)
 
 	// Should delete a partial block with deletion mark who has reached the deletion threshold.
 	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block5.String(), metadata.DeletionMarkFilename))
@@ -98,6 +98,6 @@ func TestBlocksCleaner(t *testing.T) {
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
-	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(3), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 }

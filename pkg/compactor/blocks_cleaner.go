@@ -15,7 +15,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
-	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -188,34 +187,31 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 }
 
 func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *cortex_tsdb.UserBucketClient, userLogger log.Logger) {
-	// Build a map with the partial blocks (since they're partial they don't have the meta.json file).
-	partialBlocks := map[ulid.ULID]*metadata.Meta{}
-	for blockID, _ := range partials {
-		partialBlocks[blockID] = nil
-	}
+	for blockID, blockErr := range partials {
+		// We can safely delete only blocks which are partial because the meta.json is missing.
+		if blockErr != block.ErrorSyncMetaNotFound {
+			continue
+		}
 
-	// Look for partial blocks with the deletion mark.
-	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay)
-	ignoreMetric := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"reason"})
+		// We can safely delete only partial blocks with a deletion mark.
+		_, err := metadata.ReadDeletionMark(ctx, userBucket, userLogger, blockID.String())
+		if err == metadata.ErrorDeletionMarkNotFound {
+			continue
+		}
+		if err != nil {
+			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "err", err)
+			continue
+		}
 
-	if err := ignoreDeletionMarkFilter.Filter(ctx, partialBlocks, ignoreMetric); err != nil {
-		level.Warn(userLogger).Log("msg", "error filtering blocks marked for deletion", "err", err)
-		return
-	}
+		// Hard-delete partial blocks having a deletion mark, even if the deletion threshold has not
+		// been reached yet.
+		if err := block.Delete(ctx, userLogger, userBucket, blockID); err != nil {
+			c.blocksFailedTotal.Inc()
+			level.Warn(userLogger).Log("msg", "error deleting partial block marked for deletion", "block", blockID, "err", err)
+			continue
+		}
 
-	// Hard-delete partial blocks having a deletion mark whose deletion delay has expired.
-	cleaner := compact.NewBlocksCleaner(
-		userLogger,
-		userBucket,
-		ignoreDeletionMarkFilter,
-		c.cfg.DeletionDelay,
-		c.blocksCleanedTotal,
-		c.blocksFailedTotal)
-
-	level.Info(userLogger).Log("msg", "deleting partial blocks marked for deletion")
-	if err := cleaner.DeleteMarkedBlocks(ctx); err != nil {
-		level.Warn(userLogger).Log("msg", "error deleting partial blocks marked for deletion", "err", err)
-	} else {
-		level.Info(userLogger).Log("msg", "deleted partial blocks marked for deletion")
+		c.blocksCleanedTotal.Inc()
+		level.Info(userLogger).Log("msg", "deleted partial block marked for deletion", "block", blockID)
 	}
 }

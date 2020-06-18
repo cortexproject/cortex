@@ -667,6 +667,17 @@ store_gateway_client:
   # TLS CA path for the client
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+# Second store engine to use for querying. Empty = disabled.
+# CLI flag: -querier.second-store-engine
+[second_store_engine: <string> | default = ""]
+
+# If specified, second store is only used for queries before this timestamp. 0
+# to disable. Available formats: 2006-01-02 (midnight, local timezone),
+# 2006-01-02T15:04 (local timezone), 2006-01-02T15:04:05Z07:00 (UTC or specified
+# timezone)
+# CLI flag: -querier.use-second-store-before-time
+[use_second_store_before_time: <time> | default = 0]
 ```
 
 ### `query_frontend_config`

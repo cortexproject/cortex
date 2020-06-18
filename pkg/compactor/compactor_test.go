@@ -803,7 +803,7 @@ func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTim
 	markPath := filepath.Join(blockPath, metadata.DeletionMarkFilename)
 
 	// Ensure the block directory exists.
-	os.MkdirAll(blockPath, os.ModePerm)
+	require.NoError(t, os.MkdirAll(blockPath, os.ModePerm))
 
 	require.NoError(t, ioutil.WriteFile(markPath, []byte(content), os.ModePerm))
 }

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 
@@ -135,6 +137,11 @@ func TestQuerier(t *testing.T) {
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
+	const chunks = 24
+
+	// Generate TSDB head with the same samples as makeMockChunkStore.
+	db := mockTSDB(t, model.Time(0), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
+
 	for _, query := range queries {
 		for _, encoding := range encodings {
 			for _, streaming := range []bool{false, true} {
@@ -143,16 +150,65 @@ func TestQuerier(t *testing.T) {
 						cfg.IngesterStreaming = streaming
 						cfg.Iterators = iterators
 
-						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
+						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
+						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+						queryable, _ := New(cfg, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
 						testQuery(t, queryable, through, query)
 					})
 				}
 			}
 		}
 	}
+}
+
+func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) storage.Queryable {
+	dir, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+
+	opts := tsdb.DefaultOptions()
+	opts.WALSegmentSize = -1 // Disable
+	opts.NoLockfile = true
+
+	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
+	head, err := tsdb.NewHead(nil, nil, nil, tsdb.ExponentialBlockRanges(opts.MinBlockDuration, 10, 3)[0], dir, chunkenc.NewPool(), opts.StripeSize, opts.SeriesLifecycleCallback)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = head.Close()
+	})
+
+	app := head.Appender()
+
+	l := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+	}
+
+	cnt := 0
+	chunkStartTs := mint
+	ts := chunkStartTs
+	for i := 0; i < samples; i++ {
+		_, err := app.Add(l, int64(ts), float64(ts))
+		require.NoError(t, err)
+		cnt++
+
+		ts = ts.Add(step)
+
+		if cnt%samplesPerChunk == 0 {
+			// Simulate next chunk, restart timestamp.
+			chunkStartTs = chunkStartTs.Add(chunkOffset)
+			ts = chunkStartTs
+		}
+	}
+
+	require.NoError(t, app.Commit())
+	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return tsdb.NewBlockQuerier(head, mint, maxt)
+	})
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {

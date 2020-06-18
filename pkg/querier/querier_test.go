@@ -525,5 +525,55 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			})
 		}
 	}
+}
 
+func TestUseAlwaysQueryable(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	qwf := UseAlwaysQueryable(m)
+
+	require.True(t, qwf.UseQueryable(time.Now(), 0, 0))
+	require.False(t, m.useQueryableCalled)
+}
+
+func TestUseBeforeTimestamp(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	now := time.Now()
+	qwf := UseBeforeTimestampQueryable(m, now.Add(-1*time.Hour))
+
+	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.True(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled) // UseBeforeTimestampQueryable wraps Queryable, and not QueryableWithFilter.
+}
+
+func TestStoreQueryable(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	now := time.Now()
+	sq := storeQueryable{m, time.Hour}
+
+	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.True(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
+}
+
+type mockQueryableWithFilter struct {
+	useQueryableCalled bool
+}
+
+func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storage.Querier, error) {
+	return nil, nil
+}
+
+func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
+	m.useQueryableCalled = true
+	return true
 }

@@ -191,21 +191,9 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 type QueryableWithFilter interface {
 	storage.Queryable
 
-	// UseQueryable returns true if this queryable should be used to satisfy the query.
+	// UseQueryable returns true if this queryable should be used to satisfy the query for given time range.
 	// Query min and max time are in milliseconds since epoch.
 	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
-}
-
-type alwaysTrueFilterQueryable struct {
-	storage.Queryable
-}
-
-func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _, _ int64) bool {
-	return true
-}
-
-func UseAlwaysQueryable(q storage.Queryable) QueryableWithFilter {
-	return alwaysTrueFilterQueryable{Queryable: q}
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -455,16 +443,29 @@ func (s storeQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) 
 	return s.QueryableWithFilter.UseQueryable(now, queryMinT, queryMaxT)
 }
 
+type alwaysTrueFilterQueryable struct {
+	storage.Queryable
+}
+
+func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _, _ int64) bool {
+	return true
+}
+
+// Wraps storage.Queryable into QueryableWithFilter, with no query filtering.
+func UseAlwaysQueryable(q storage.Queryable) QueryableWithFilter {
+	return alwaysTrueFilterQueryable{Queryable: q}
+}
+
 type useBeforeTimestampQueryable struct {
 	storage.Queryable
 	ts int64 // Timestamp in milliseconds
 }
 
-func (u useBeforeTimestampQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
+func (u useBeforeTimestampQueryable) UseQueryable(_ time.Time, queryMinT, _ int64) bool {
 	if u.ts == 0 {
 		return true
 	}
-	return queryMinT <= u.ts
+	return queryMinT < u.ts
 }
 
 // Returns QueryableWithFilter, that is used only if query starts before given timestamp.

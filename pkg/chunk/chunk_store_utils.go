@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"

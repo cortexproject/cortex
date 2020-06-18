@@ -10,7 +10,6 @@ PARALLEL=
 RACE="-race -covermode=atomic"
 TIMEOUT=5m
 VERBOSE=
-export GOFLAGS="-mod=readonly"
 
 usage() {
     echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get] [-timeout 1m]"
@@ -105,6 +104,7 @@ run_test() {
     local dir=$1
     if [ -z "$NO_GO_GET" ]; then
         go get -t -tags "${TAGS[@]}" "$dir"
+        go mod vendor # re-vendor everything
     fi
 
     local GO_TEST_ARGS_RUN=("${GO_TEST_ARGS[@]}")
@@ -148,6 +148,8 @@ fi
 
 if [ -n "$SLOW" ] && [ -z "$COVERDIR" ]; then
     go get github.com/weaveworks/tools/cover
+    go mod vendor # re-vendor everything
+
     cover "$coverdir"/* >profile.cov
     rm -rf "$coverdir"
     go tool cover -html=profile.cov -o=coverage.html

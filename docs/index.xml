@@ -6885,6 +6885,13 @@ replica: replica2
 &lt;li>[ENHANCEMENT] Experimental TSDB: Applied a jitter to the period bucket scans in order to better distribute bucket operations over the time and increase the probability of hitting the shared cache (if configured). &lt;a href="https://github.com/cortexproject/cortex/pull/2693">#2693&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental TSDB: Series limit per user and per metric now work in TSDB blocks. &lt;a href="https://github.com/cortexproject/cortex/pull/2676">#2676&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental Memberlist: Added ability to periodically rejoin the memberlist cluster. &lt;a href="https://github.com/cortexproject/cortex/pull/2724">#2724&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Delete Series: Added the following metrics for monitoring processing of delete requests: &lt;a href="https://github.com/cortexproject/cortex/pull/2445">#2445&lt;/a>
+&lt;ul>
+&lt;li>&lt;code>cortex_purger_load_pending_requests_attempts_total&lt;/code>: Number of attempts that were made to load pending requests with status.&lt;/li>
+&lt;li>&lt;code>cortex_purger_oldest_pending_delete_request_age_seconds&lt;/code>: Age of oldest pending delete request in seconds.&lt;/li>
+&lt;li>&lt;code>cortex_purger_pending_delete_requests_count&lt;/code>: Count of requests which are in process or are ready to be processed.&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href="https://github.com/cortexproject/cortex/pull/2506">#2506&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixes &lt;a href="https://github.com/cortexproject/cortex/pull/2411">#2411&lt;/a>, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code>-server.path-prefix&lt;/code> is set. &lt;a href="https://github.com/cortexproject/cortex/pull/2372">#2372&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2400">#2400&lt;/a>&lt;/li>

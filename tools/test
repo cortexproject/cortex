@@ -10,6 +10,7 @@ PARALLEL=
 RACE="-race -covermode=atomic"
 TIMEOUT=5m
 VERBOSE=
+export GOFLAGS="-mod=readonly"
 
 usage() {
     echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get] [-timeout 1m]"

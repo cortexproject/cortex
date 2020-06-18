@@ -21,18 +21,18 @@ Now we do the same leader election process T2.
 
 ### Client Side
 
-So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, ideally `cluster` and `replica` (note the default is `__replica__`). For example:
+So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are `cluster` and `__replica__`. For example:
 
 ```
 cluster: prom-team1
-replica: replica1 (or pod-name)
+__replica__: replica1 (or pod-name)
 ```
 
 and
 
 ```
 cluster: prom-team1
-replica: replica2
+__replica__: replica2
 ```
 
 Note: These are external labels and have nothing to do with remote_write config.

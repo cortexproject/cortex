@@ -6,7 +6,7 @@ prometheus:
   global:
     scrape_interval: 5s
     external_labels:
-      origin: grafana-agent
+      scraped_by: grafana-agent
   configs:
     - name: local
       host_filter: false

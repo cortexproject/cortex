@@ -180,7 +180,9 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	// Partial blocks with a deletion mark can be cleaned up. This is a best effort, so we don't return
 	// error if the cleanup of partial blocks fail.
 	if len(partials) > 0 {
+		level.Info(userLogger).Log("msg", "started cleaning of partial blocks marked for deletion")
 		c.cleanUserPartialBlocks(ctx, partials, userBucket, userLogger)
+		level.Info(userLogger).Log("msg", "cleaning of partial blocks marked for deletion done")
 	}
 
 	return nil
@@ -199,7 +201,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 			continue
 		}
 		if err != nil {
-			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "err", err)
+			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "block", blockID, "err", err)
 			continue
 		}
 

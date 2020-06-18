@@ -47,7 +47,7 @@ After all ingesters are converted to blocks, we can set cut-off time for queryin
 For rollback from blocks to chunks, we need to be able to flush data from ingesters to the blocks storage, and then switch ingesters back to chunks.
 Ingesters are currently not able to flush blocks to storage, but adding flush-on-shutdown option, support for `/shutdown` endpoint and support in flusher component similar to chunks is doable, and should be part of this work.
 
-With this ability, rollback would follow the same process, just in reverse: 1) redeploy with flush flag enabled, 2a) redeploy with config change from blocks to chunks (when using WAL) or 2b) scale down statefulset with blocks-ingesters, and start deployment with chunk-ingesters again. 
+With this ability, rollback would follow the same process, just in reverse: 1) redeploy with flush flag enabled, 2a) redeploy with config change from blocks to chunks (when using WAL) or 2b) scale down statefulset with blocks-ingesters, and start deployment with chunk-ingesters again.
 Note that this isn't a *full* rollback to chunks-only solution, as generated blocks still need to be queried after the rollback, otherwise samples pushed to blocks would be missing.
 This means running store-gateways and queriers that can query both chunks and blocks store.
 

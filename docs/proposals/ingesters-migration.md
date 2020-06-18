@@ -33,6 +33,10 @@ In this scenario, we will reconfigure existing statefulset of ingesters to use b
 
 Notice that querier can ask only ingesters for most recent data and not consult the store, but during the rollout (and some time after), ingesters that are already using blocks will **not** have the most recent chunks in memory. To make sure queries work correctly, `-querier.query-store-after` needs to be set to 0, in order for queriers to not rely on ingesters only for most recent data. After couple of hours after rollout, this value can be increased again, depending on how much data ingesters keep. (`-experimental.tsdb.retention-period` for blocks, `-ingester.retain-period` for chunks)
 
+When not using WAL, ingesters using chunks cannot transfer those chunks to new ingesters that start with blocks support, so old ingesters need to be configured to disable transfers, and to flush chunks on shutdown instead.
+As ingesters without WAL are typically deployed using Kubernetes deployment, while blocks ingesters need to use statefulset, and there is no chunks transfer happening, it is possible to configure and start blocks-ingesters, and then stop old deployment.
+Once all chunks ingesters are stopped, querier "cut-off" time for querying chunks store can be set. 
+
 Other alternatives considered for flushing chunks / handling WAL:
 
 * Replay chunks-WAL into TSDB head on restart. In this scenario, chunks-ingester shuts down, and block ingester starts. It can detect existing chunks WAL, and replay it into TSDB head (and then delete old WAL). Issue here is that current chunks-WAL is quite specific to ingester code, and would require some refactoring to make this happen. Deployment is trivial: just reconfigure ingesters to start using blocks, and replay chunks WAL if found. Required change seems like a couple of days of coding work, but it is essentially only used once (for each cluster). Doesn't seem like good time investment.

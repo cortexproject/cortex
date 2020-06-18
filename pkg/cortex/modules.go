@@ -199,6 +199,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 func (t *Cortex) initStoreQueryable() (services.Service, error) {
 	var servs []services.Service
 
+	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
 	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
 	} else {

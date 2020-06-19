@@ -49,6 +49,7 @@ func main() {
 		eventSampleRate      int
 		ballastBytes         int
 		mutexProfileFraction int
+		listModules          bool
 	)
 
 	configFile, expandENV := parseConfigFileParameter(os.Args[1:])
@@ -74,6 +75,7 @@ func main() {
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
+	flag.BoolVar(&listModules, "modules", false, "List available values to use as target.")
 
 	usage := flag.CommandLine.Usage
 	flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
@@ -129,6 +131,13 @@ func main() {
 
 	t, err := cortex.New(cfg)
 	util.CheckFatal("initializing cortex", err)
+
+	if listModules {
+		for _, m := range t.ModuleManager.PublicModuleNames() {
+			fmt.Fprintln(flag.CommandLine.Output(), m)
+		}
+		os.Exit(2)
+	}
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 

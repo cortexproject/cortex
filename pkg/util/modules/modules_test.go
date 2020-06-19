@@ -50,7 +50,7 @@ func TestDependencies(t *testing.T) {
 
 func TestRegisterModuleWithOptions(t *testing.T) {
 	option := ModuleOption{
-		public: true,
+		Public: true,
 	}
 	sut := NewManager()
 	sut.RegisterModuleWithOption("module1", mockInitFunc, option)
@@ -63,7 +63,7 @@ func TestRegisterModuleWithOptions(t *testing.T) {
 
 func TestRegisterModuleSetsDefaultOption(t *testing.T) {
 	option := ModuleOption{
-		public: true,
+		Public: true,
 	}
 	sut := NewManager()
 	sut.RegisterModule("module1", mockInitFunc)
@@ -75,10 +75,10 @@ func TestRegisterModuleSetsDefaultOption(t *testing.T) {
 
 func TestGetAllPublicModulesNames(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{public: true})
-	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{public: true})
-	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{public: true})
-	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{public: false})
+	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{Public: false})
 	sut.RegisterModule("private2", mockInitFunc)
 
 	pm := sut.PublicModuleNames()
@@ -91,9 +91,9 @@ func TestGetAllPublicModulesNames(t *testing.T) {
 
 func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{public: true})
-	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{public: true})
-	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{public: true})
+	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{Public: true})
 
 	assert.NoError(t, sut.AddDependency("public1", "public2", "public3"))
 
@@ -108,10 +108,10 @@ func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 
 func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{public: false})
-	sut.RegisterModuleWithOption("private2", mockInitFunc, ModuleOption{public: false})
-	sut.RegisterModuleWithOption("private3", mockInitFunc, ModuleOption{public: false})
-	sut.RegisterModuleWithOption("private4", mockInitFunc, ModuleOption{public: false})
+	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{Public: false})
+	sut.RegisterModuleWithOption("private2", mockInitFunc, ModuleOption{Public: false})
+	sut.RegisterModuleWithOption("private3", mockInitFunc, ModuleOption{Public: false})
+	sut.RegisterModuleWithOption("private4", mockInitFunc, ModuleOption{Public: false})
 
 	pm := sut.PublicModuleNames()
 

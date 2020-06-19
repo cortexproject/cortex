@@ -511,7 +511,7 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 
 func (t *Cortex) setupModuleManager() error {
 	mm := modules.NewManager()
-
+	publicModule := modules.ModuleOption{Public: true}
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
 	mm.RegisterModule(Server, t.initServer)
@@ -520,23 +520,23 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
-	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
-	mm.RegisterModule(Ingester, t.initIngester)
-	mm.RegisterModule(Flusher, t.initFlusher)
-	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryable)
-	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
-	mm.RegisterModule(TableManager, t.initTableManager)
-	mm.RegisterModule(Ruler, t.initRuler)
-	mm.RegisterModule(Configs, t.initConfig)
-	mm.RegisterModule(AlertManager, t.initAlertManager)
-	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
-	mm.RegisterModule(DataPurger, t.initDataPurger)
-	mm.RegisterModule(All, nil)
-	mm.RegisterModule(StoreGateway, t.initStoreGateway)
+	mm.RegisterModuleWithOption(DataPurger, t.initDataPurger, publicModule)
+	mm.RegisterModuleWithOption(StoreGateway, t.initStoreGateway, publicModule)
+	mm.RegisterModuleWithOption(Compactor, t.initCompactor, publicModule)
+	mm.RegisterModuleWithOption(Flusher, t.initFlusher, publicModule)
+	mm.RegisterModuleWithOption(QueryFrontend, t.initQueryFrontend, publicModule)
+	mm.RegisterModuleWithOption(TableManager, t.initTableManager, publicModule)
+	mm.RegisterModuleWithOption(Ruler, t.initRuler, publicModule)
+	mm.RegisterModuleWithOption(Configs, t.initConfig, publicModule)
+	mm.RegisterModuleWithOption(AlertManager, t.initAlertManager, publicModule)
+	mm.RegisterModuleWithOption(Querier, t.initQuerier, publicModule)
+	mm.RegisterModuleWithOption(Ingester, t.initIngester, publicModule)
+	mm.RegisterModuleWithOption(Distributor, t.initDistributor, publicModule)
+	mm.RegisterModuleWithOption(All, nil, publicModule)
 
 	// Add dependencies
 	deps := map[string][]string{

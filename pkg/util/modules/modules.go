@@ -28,7 +28,7 @@ type Manager struct {
 // ModuleOption contains options of a module.
 // public option indicates if a module can be use as top level module (i.e. pass in as command line argument).
 type ModuleOption struct {
-	public bool
+	Public bool
 }
 
 // NewManager creates a new Manager
@@ -110,7 +110,7 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 func (m *Manager) PublicModuleNames() []string {
 	var result []string
 	for key, val := range m.modules {
-		if val.option.public {
+		if val.option.Public {
 			result = append(result, key)
 		}
 	}

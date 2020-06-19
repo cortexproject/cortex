@@ -1,4 +1,6 @@
 FROM golang:1.14.4-stretch
+ARG goproxyValue
+ENV GOPROXY=${goproxyValue}
 RUN apt-get update && apt-get install -y curl python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -

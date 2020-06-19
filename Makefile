@@ -3,6 +3,7 @@
 
 # Version number
 VERSION=$(shell cat "./VERSION" 2> /dev/null)
+GOPROXY_VALUE=$(shell go env GOPROXY)
 
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
@@ -23,7 +24,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	@echo
-	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
+	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
 

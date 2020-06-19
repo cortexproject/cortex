@@ -41,9 +41,11 @@ spec:
         imagePullPolicy: IfNotPresent
         args:
         - -target=ingester
-        - -ingester.join-after=30s
+        - -ingester.join-after=0s
+        - -ingester.min-ready-duration=0s
         - -consul.hostname=consul.default.svc.cluster.local:8500
-        - -s3.url=s3://abc:123@s3.default.svc.cluster.local:4569
+        - -s3.url=s3://cortex:supersecret@s3.default.svc.cluster.local:9000/cortex
+        - -s3.force-path-style=true
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000
         - -schema-config-file=/etc/cortex/schema.yaml
         - -store.chunks-cache.memcached.hostname=memcached.default.svc.cluster.local

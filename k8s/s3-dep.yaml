@@ -18,17 +18,16 @@ spec:
       containers:
       - name: minio
         image: minio/minio
-        args:
-        - server
-        - /storage
+        # Create the "cortex" bucket before starting minio server.
+        command: [ "sh", "-c", "mkdir /storage/cortex && minio server /storage"]
         env:
         - name: MINIO_ACCESS_KEY
-          value: "abc"
+          value: "cortex"
         - name: MINIO_SECRET_KEY
-          value: "123"
+          value: "supersecret"
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 4569
+        - containerPort: 9000
         volumeMounts:
         - name: storage
           mountPath: "/storage"

@@ -257,7 +257,6 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_bucket{le="0"} 1
 				cortex_querier_storegateway_refetches_per_query_bucket{le="1"} 1
 				cortex_querier_storegateway_refetches_per_query_bucket{le="2"} 1
-				cortex_querier_storegateway_refetches_per_query_bucket{le="3"} 1
 				cortex_querier_storegateway_refetches_per_query_bucket{le="+Inf"} 1
 				cortex_querier_storegateway_refetches_per_query_sum 0
 				cortex_querier_storegateway_refetches_per_query_count 1
@@ -378,7 +377,6 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_bucket{le="0"} 0
 				cortex_querier_storegateway_refetches_per_query_bucket{le="1"} 0
 				cortex_querier_storegateway_refetches_per_query_bucket{le="2"} 1
-				cortex_querier_storegateway_refetches_per_query_bucket{le="3"} 1
 				cortex_querier_storegateway_refetches_per_query_bucket{le="+Inf"} 1
 				cortex_querier_storegateway_refetches_per_query_sum 2
 				cortex_querier_storegateway_refetches_per_query_count 1

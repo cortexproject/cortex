@@ -25,10 +25,10 @@ spec:
         - name: MINIO_ACCESS_KEY
           value: "abc"
         - name: MINIO_SECRET_KEY
-          value: "123"
+          value: "12345678"
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 4569
+        - containerPort: 9000
         volumeMounts:
         - name: storage
           mountPath: "/storage"

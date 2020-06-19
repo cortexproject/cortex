@@ -108,7 +108,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 		seriesCt := 0
 		for i := 0; i < tc.shards; i++ {
 
-			set, _, err := q.Select(false, nil, &labels.Matcher{
+			set := q.Select(false, nil, &labels.Matcher{
 				Type: labels.MatchEqual,
 				Name: astmapper.ShardLabel,
 				Value: astmapper.ShardAnnotation{
@@ -117,7 +117,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 				}.String(),
 			})
 
-			require.Nil(t, err)
+			require.Nil(t, set.Err())
 
 			for set.Next() {
 				seriesCt++

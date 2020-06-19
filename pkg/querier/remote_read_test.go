@@ -87,11 +87,11 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if sp == nil {
 		panic(fmt.Errorf("select params must be set"))
 	}
-	return series.MatrixToSeriesSet(m.matrix), nil, nil
+	return series.MatrixToSeriesSet(m.matrix)
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

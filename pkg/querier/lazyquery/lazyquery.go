@@ -48,22 +48,17 @@ func (l LazyQuerier) createSeriesSet(selectSorted bool, params *storage.SelectHi
 	// waiting for the result yet (or anymore).
 	future := make(chan storage.SeriesSet, 1)
 	go func() {
-		set, _, err := l.next.Select(selectSorted, params, matchers...)
-		if err != nil {
-			future <- errSeriesSet{err}
-		} else {
-			future <- set
-		}
+		future <- l.next.Select(selectSorted, params, matchers...)
 	}()
 	return future
 }
 
 // Select implements Storage.Querier
-func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	future := l.createSeriesSet(selectSorted, params, matchers)
 	return &lazySeriesSet{
 		future: future,
-	}, nil, nil
+	}
 }
 
 // LabelValues implements Storage.Querier
@@ -112,6 +107,10 @@ func (e errSeriesSet) Err() error {
 	return e.err
 }
 
+func (errSeriesSet) Warnings() storage.Warnings {
+	return nil
+}
+
 type lazySeriesSet struct {
 	next   storage.SeriesSet
 	future chan storage.SeriesSet
@@ -125,6 +124,7 @@ func (s *lazySeriesSet) Next() bool {
 	return s.next.Next()
 }
 
+// At implements storage.SeriesSet.
 func (s lazySeriesSet) At() storage.Series {
 	if s.next == nil {
 		s.next = <-s.future
@@ -132,9 +132,15 @@ func (s lazySeriesSet) At() storage.Series {
 	return s.next.At()
 }
 
+// Err implements storage.SeriesSet.
 func (s lazySeriesSet) Err() error {
 	if s.next == nil {
 		s.next = <-s.future
 	}
 	return s.next.Err()
+}
+
+// Warnings implements storage.SeriesSet.
+func (s lazySeriesSet) Warnings() storage.Warnings {
+	return nil
 }

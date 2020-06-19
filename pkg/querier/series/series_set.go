@@ -44,19 +44,24 @@ func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	}
 }
 
-// Next iterates through a series set and impls storage.SeriesSet
+// Next iterates through a series set and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Next() bool {
 	c.cur++
 	return c.cur < len(c.series)
 }
 
-// At returns the current series and impls storage.SeriesSet
+// At returns the current series and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) At() storage.Series {
 	return c.series[c.cur]
 }
 
-// Err impls storage.SeriesSet
+// Err implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Err() error {
+	return nil
+}
+
+// Warnings implements storage.SeriesSet.
+func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
@@ -74,12 +79,12 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
-// Labels impls storage.Series
+// Labels implements storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
 
-// Iterator impls storage.Series
+// Iterator implements storage.Series
 func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
@@ -224,6 +229,10 @@ func (d DeletedSeriesSet) Err() error {
 	return d.seriesSet.Err()
 }
 
+func (d DeletedSeriesSet) Warnings() storage.Warnings {
+	return nil
+}
+
 type DeletedSeries struct {
 	series           storage.Series
 	deletedIntervals []model.Interval
@@ -349,9 +358,10 @@ func (emptySeriesIterator) Err() error {
 
 type emptySeriesSet struct{}
 
-func (emptySeriesSet) Next() bool         { return false }
-func (emptySeriesSet) At() storage.Series { return nil }
-func (emptySeriesSet) Err() error         { return nil }
+func (emptySeriesSet) Next() bool                 { return false }
+func (emptySeriesSet) At() storage.Series         { return nil }
+func (emptySeriesSet) Err() error                 { return nil }
+func (emptySeriesSet) Warnings() storage.Warnings { return nil }
 
 // NewEmptySeriesSet returns a new series set that contains no series.
 func NewEmptySeriesSet() storage.SeriesSet {

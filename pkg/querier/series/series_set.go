@@ -367,3 +367,56 @@ func (emptySeriesSet) Warnings() storage.Warnings { return nil }
 func NewEmptySeriesSet() storage.SeriesSet {
 	return emptySeriesSet{}
 }
+
+func NewErrSeriesSet(err error) storage.SeriesSet {
+	return errSeriesSet{err}
+}
+
+// errSeriesSet implements storage.SeriesSet, just returning an error.
+type errSeriesSet struct {
+	err error
+}
+
+func (errSeriesSet) Next() bool {
+	return false
+}
+
+func (errSeriesSet) At() storage.Series {
+	return nil
+}
+
+func (e errSeriesSet) Err() error {
+	return e.err
+}
+
+func (errSeriesSet) Warnings() storage.Warnings {
+	return nil
+}
+
+type seriesSetWithWarnings struct {
+	wrapped  storage.SeriesSet
+	warnings storage.Warnings
+}
+
+func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
+	return seriesSetWithWarnings{
+		wrapped:  wrapped,
+		warnings: warnings,
+	}
+}
+
+func (s seriesSetWithWarnings) Next() bool {
+	return s.wrapped.Next()
+}
+
+func (s seriesSetWithWarnings) At() storage.Series {
+	return s.wrapped.At()
+}
+
+func (s seriesSetWithWarnings) Err() error {
+	return s.wrapped.Err()
+}
+
+func (s seriesSetWithWarnings) Warnings() storage.Warnings {
+	return append(s.wrapped.Warnings(), s.warnings...)
+}

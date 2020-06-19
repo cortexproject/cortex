@@ -86,31 +86,6 @@ func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model
 	return store.Get(ctx, userID, from, through, matchers...)
 }
 
-func NewErrSeriesSet(err error) storage.SeriesSet {
-	return errSeriesSet{err}
-}
-
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool {
-	return false
-}
-
-func (errSeriesSet) At() storage.Series {
-	return nil
-}
-
-func (e errSeriesSet) Err() error {
-	return e.err
-}
-
-func (errSeriesSet) Warnings() storage.Warnings {
-	return nil
-}
-
 type lazySeriesSet struct {
 	next   storage.SeriesSet
 	future chan storage.SeriesSet

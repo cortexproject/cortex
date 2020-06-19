@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 const (
@@ -45,7 +46,7 @@ type ShardedQuerier struct {
 
 // Select returns a set of series that matches the given label matchers.
 // The bool passed is ignored because the series is always sorted.
-func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {
@@ -62,18 +63,18 @@ func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*lab
 		if embeddedQuery != "" {
 			return q.handleEmbeddedQuery(embeddedQuery)
 		}
-		return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
+		return series.NewErrSeriesSet(errors.Errorf(missingEmbeddedQueryMsg))
 
 	}
 
-	return nil, nil, errors.Errorf(nonEmbeddedErrMsg)
+	return series.NewErrSeriesSet(errors.Errorf(nonEmbeddedErrMsg))
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
-func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
-		return nil, nil, err
+		return series.NewErrSeriesSet(err)
 	}
 
 	ctx, cancel := context.WithCancel(q.Ctx)
@@ -105,13 +106,13 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 	for i := 0; i < len(queries); i++ {
 		select {
 		case err := <-errCh:
-			return nil, nil, err
+			return series.NewErrSeriesSet(err)
 		case streams := <-samplesCh:
 			samples = append(samples, streams...)
 		}
 	}
 
-	return NewSeriesSet(samples), nil, err
+	return NewSeriesSet(samples)
 }
 
 func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader) {

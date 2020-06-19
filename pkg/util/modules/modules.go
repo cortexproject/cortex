@@ -15,12 +15,20 @@ type module struct {
 
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
+
+	option ModuleOption
 }
 
 // Manager is a component that initialises modules of the application
 // in the right order of dependencies.
 type Manager struct {
 	modules map[string]*module
+}
+
+// ModuleOption contains options of a module.
+// public option indicates if a module can be use as top level module (i.e. pass in as command line argument).
+type ModuleOption struct {
+	public bool
 }
 
 // NewManager creates a new Manager
@@ -34,8 +42,16 @@ func NewManager() *Manager {
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
+	m.RegisterModuleWithOption(name, initFn, defaultModuleOption())
+}
+
+// RegisterModule registers a new module with name, init function, and option
+// name must be unique to avoid overwriting modules
+// if initFn is nil, the module will not initialise
+func (m *Manager) RegisterModuleWithOption(name string, initFn func() (services.Service, error), option ModuleOption) {
 	m.modules[name] = &module{
 		initFn: initFn,
+		option: option,
 	}
 }
 
@@ -87,6 +103,19 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 	}
 
 	return servicesMap, nil
+}
+
+// PublicModuleNames gets list of module names that are
+// public module.
+func (m *Manager) PublicModuleNames() []string {
+	var result []string
+	for key, val := range m.modules {
+		if val.option.public {
+			result = append(result, key)
+		}
+	}
+
+	return result
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
@@ -149,4 +178,8 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 	}
 
 	return result
+}
+
+func defaultModuleOption() ModuleOption {
+	return ModuleOption{false}
 }

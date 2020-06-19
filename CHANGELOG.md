@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-
+* [BUGFIX] Minio dependency in k8s manifests now configured correctly.
 * [CHANGE] Metric `cortex_kv_request_duration_seconds` now includes `name` label to denote which client is being used as well as the `backend` label to denote the KV backend implementation in use. #2648
 * [CHANGE] Experimental Ruler: Rule groups persisted to object storage using the experimental API have an updated object key encoding to better handle special characters. Rule groups previously-stored using object storage must be renamed to the new format. #2646
 * [CHANGE] Query Frontend now uses Round Robin to choose a tenant queue to service next. #2553

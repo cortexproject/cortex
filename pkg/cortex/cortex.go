@@ -76,6 +76,7 @@ type Config struct {
 	AuthEnabled bool   `yaml:"auth_enabled"`
 	PrintConfig bool   `yaml:"-"`
 	HTTPPrefix  string `yaml:"http_prefix"`
+	ListModules bool   `yaml:-` // No yaml for this, it only works with flags.
 
 	API              api.Config               `yaml:"api"`
 	Server           server.Config            `yaml:"server"`
@@ -110,7 +111,8 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
+	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Use \"-modules\" command line flag to get a list of available options.")
+	f.BoolVar(&c.ListModules, "modules", false, "List available values to be use as target. Cannot be used in YAML config.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")

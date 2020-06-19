@@ -49,8 +49,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Supported values are: all, distributor, ingester,
-# querier, query-frontend, table-manager, ruler, alertmanager, configs.
+# The Cortex service to run. Use "-modules" command line flag to get a list of
+# available options.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -61,6 +61,10 @@ Where default_value is the value to use if the environment variable is undefined
 # HTTP path prefix for Cortex API.
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
+
+# List available values for target.
+# CLI flag: -modules
+[listmodules: <boolean> | default = false]
 
 api:
   # HTTP URL path under which the Alertmanager ui and api will be served.

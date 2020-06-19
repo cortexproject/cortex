@@ -2,6 +2,7 @@ package modules
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -73,6 +74,11 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 	if _, ok := m.modules[target]; !ok {
 		return nil, fmt.Errorf("unrecognised module name: %s", target)
 	}
+
+	if !m.modules[target].option.Public {
+		return nil, fmt.Errorf("invalid target: %s; valid targets are: %s", target, strings.Join(m.PublicModuleNames(), ", "))
+	}
+
 	servicesMap := map[string]services.Service{}
 
 	// initialize all of our dependencies first

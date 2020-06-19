@@ -68,3 +68,16 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, serviceMap[Ring])
 	require.NotNil(t, serviceMap[Distributor])
 }
+
+func TestGivenBadTarget(t *testing.T) {
+	cfg := Config{
+		Target: Ring,
+	}
+
+	c, err := New(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	require.Error(t, c.Run())
+
+}

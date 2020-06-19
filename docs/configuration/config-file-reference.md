@@ -62,10 +62,6 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
-# List available values for target.
-# CLI flag: -modules
-[listmodules: <boolean> | default = false]
-
 api:
   # HTTP URL path under which the Alertmanager ui and api will be served.
   # CLI flag: -http.alertmanager-http-prefix

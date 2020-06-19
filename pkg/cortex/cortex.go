@@ -76,7 +76,7 @@ type Config struct {
 	AuthEnabled bool   `yaml:"auth_enabled"`
 	PrintConfig bool   `yaml:"-"`
 	HTTPPrefix  string `yaml:"http_prefix"`
-	ListModules bool   `yaml:-` // No yaml for this, it only works with flags.
+	ListModules bool   `yaml:"-"` // No yaml for this, it only works with flags.
 
 	API              api.Config               `yaml:"api"`
 	Server           server.Config            `yaml:"server"`

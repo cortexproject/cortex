@@ -385,5 +385,5 @@ Note that setting a new config will effectively "re-enable" the Rules and Alertm
 This special readiness handler is designed to indicate when the frontend component is ready to receive queries.  This differs depending on configuration but is usually the time it takes for a querier to discover the frontend and attach to it.
 
 ```
-GET /query-frontend/readiness
+GET /query-frontend/ready
 ```

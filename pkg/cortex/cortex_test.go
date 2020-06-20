@@ -69,15 +69,16 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, serviceMap[Distributor])
 }
 
-func TestGivenBadTarget(t *testing.T) {
+func TestGivenNonPublicTarget(t *testing.T) {
 	cfg := Config{
-		Target: Ring,
+		Target: API,
 	}
 
 	c, err := New(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, c)
 
-	require.Error(t, c.Run())
+	_, err2 := c.ModuleManager.InitModuleServices(API)
+	require.Error(t, err2)
 
 }

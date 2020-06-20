@@ -48,6 +48,14 @@ func TestDependencies(t *testing.T) {
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
 }
 
+func TestCannotInitNonPublicModule(t *testing.T) {
+	sut := NewManager()
+	sut.RegisterModuleWithOption("module1", mockInitFunc, ModuleOption{Public: false})
+
+	_, err := sut.InitModuleServices("module1")
+	assert.Error(t, err, "Expect error when init private module")
+}
+
 func TestRegisterModuleWithOptions(t *testing.T) {
 	option := ModuleOption{
 		Public: true,
@@ -75,11 +83,11 @@ func TestRegisterModuleSetsDefaultOption(t *testing.T) {
 
 func TestGetAllPublicModulesNames(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModule("public1", mockInitFunc)
 	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{Public: true})
 	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{Public: true})
 	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{Public: false})
-	sut.RegisterModule("private2", mockInitFunc)
+	sut.RegisterModuleWithOption("private2", mockInitFunc, ModuleOption{Public: false})
 
 	pm := sut.PublicModuleNames()
 
@@ -91,9 +99,9 @@ func TestGetAllPublicModulesNames(t *testing.T) {
 
 func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("public1", mockInitFunc, ModuleOption{Public: true})
-	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{Public: true})
-	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{Public: true})
+	sut.RegisterModule("public1", mockInitFunc)
+	sut.RegisterModule("public2", mockInitFunc)
+	sut.RegisterModule("public3", mockInitFunc)
 
 	assert.NoError(t, sut.AddDependency("public1", "public2", "public3"))
 

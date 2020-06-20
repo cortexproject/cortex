@@ -39,7 +39,7 @@ func NewManager() *Manager {
 	}
 }
 
-// RegisterModule registers a new module with name and init function
+// RegisterModule registers a new module with name and init function. By default a module is public.
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
@@ -187,5 +187,5 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 }
 
 func defaultModuleOption() ModuleOption {
-	return ModuleOption{false}
+	return ModuleOption{true} // default  to public module to keep backward compatibility
 }

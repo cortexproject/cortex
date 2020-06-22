@@ -228,5 +228,9 @@ dist:
 	mkdir -p ./dist
 	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
 	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
+	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-linux-amd64   ./cmd/query-tee
+	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-darwin-amd64  ./cmd/query-tee
 	shasum -a 256 ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
 	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
+	shasum -a 256 ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
+	shasum -a 256 ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256

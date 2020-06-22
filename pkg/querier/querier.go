@@ -93,7 +93,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// TODO: Remove this flag in v1.4.0.
 	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations. Please use -querier.lookback-delta instead.")
 	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
-	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. 0 to disable. Available formats: 2006-01-02 (midnight, local timezone), 2006-01-02T15:04 (local timezone), 2006-01-02T15:04:05Z07:00 (UTC or specified timezone)")
+	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. Default value 0 means secondary store is always queried.")
 }
 
 // Validate the config

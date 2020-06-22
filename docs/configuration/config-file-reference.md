@@ -3296,4 +3296,10 @@ The `purger_config` configures the purger which takes care of delete requests
 # Name of the object store to use for storing delete plans
 # CLI flag: -purger.object-store-type
 [object_store_type: <string> | default = ""]
+
+# Allow cancellation of delete request until duration after they are created.
+# Data would be deleted only after delete requests have been older than this
+# duration. Ideally this should be set to at least 24h.
+# CLI flag: -purger.allow-delete-request-cancellation-until
+[allow_delete_request_cancellation_until: <duration> | default = 24h]
 ```

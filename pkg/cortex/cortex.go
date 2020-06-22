@@ -77,27 +77,27 @@ type Config struct {
 	PrintConfig bool   `yaml:"-"`
 	HTTPPrefix  string `yaml:"http_prefix"`
 
-	API              api.Config               `yaml:"api"`
-	Server           server.Config            `yaml:"server"`
-	Distributor      distributor.Config       `yaml:"distributor"`
-	Querier          querier.Config           `yaml:"querier"`
-	IngesterClient   client.Config            `yaml:"ingester_client"`
-	Ingester         ingester.Config          `yaml:"ingester"`
-	Flusher          flusher.Config           `yaml:"flusher"`
-	Storage          storage.Config           `yaml:"storage"`
-	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store"`
-	Schema           chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig     validation.Limits        `yaml:"limits"`
-	Prealloc         client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
-	Worker           frontend.WorkerConfig    `yaml:"frontend_worker"`
-	Frontend         frontend.Config          `yaml:"frontend"`
-	QueryRange       queryrange.Config        `yaml:"query_range"`
-	TableManager     chunk.TableManagerConfig `yaml:"table_manager"`
-	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB             tsdb.Config              `yaml:"tsdb"`
-	Compactor        compactor.Config         `yaml:"compactor"`
-	StoreGateway     storegateway.Config      `yaml:"store_gateway"`
-	DataPurgerConfig purger.Config            `yaml:"purger"`
+	API            api.Config               `yaml:"api"`
+	Server         server.Config            `yaml:"server"`
+	Distributor    distributor.Config       `yaml:"distributor"`
+	Querier        querier.Config           `yaml:"querier"`
+	IngesterClient client.Config            `yaml:"ingester_client"`
+	Ingester       ingester.Config          `yaml:"ingester"`
+	Flusher        flusher.Config           `yaml:"flusher"`
+	Storage        storage.Config           `yaml:"storage"`
+	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store"`
+	Schema         chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig   validation.Limits        `yaml:"limits"`
+	Prealloc       client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
+	Worker         frontend.WorkerConfig    `yaml:"frontend_worker"`
+	Frontend       frontend.Config          `yaml:"frontend"`
+	QueryRange     queryrange.Config        `yaml:"query_range"`
+	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
+	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	TSDB           tsdb.Config              `yaml:"tsdb"`
+	Compactor      compactor.Config         `yaml:"compactor"`
+	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
+	PurgerConfig   purger.Config            `yaml:"purger"`
 
 	Ruler         ruler.Config                               `yaml:"ruler"`
 	Configs       configs.Config                             `yaml:"configs"`
@@ -135,7 +135,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TSDB.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
-	c.DataPurgerConfig.RegisterFlags(f)
+	c.PurgerConfig.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
@@ -207,7 +207,7 @@ type Cortex struct {
 	TableManager     *chunk.TableManager
 	Cache            cache.Cache
 	RuntimeConfig    *runtimeconfig.Manager
-	DataPurger       *purger.DataPurger
+	Purger           *purger.Purger
 	TombstonesLoader *purger.TombstonesLoader
 
 	Ruler        *ruler.Ruler

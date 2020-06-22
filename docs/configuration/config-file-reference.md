@@ -22,6 +22,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<string>`: a regular string
 * `<url>`: an URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
+* `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)
 
 ### Use environment variables in the configuration
 
@@ -672,10 +673,8 @@ store_gateway_client:
 # CLI flag: -querier.second-store-engine
 [second_store_engine: <string> | default = ""]
 
-# If specified, second store is only used for queries before this timestamp. 0
-# to disable. Available formats: 2006-01-02 (midnight, local timezone),
-# 2006-01-02T15:04 (local timezone), 2006-01-02T15:04:05Z07:00 (UTC or specified
-# timezone)
+# If specified, second store is only used for queries before this timestamp.
+# Default value 0 means secondary store is always queried.
 # CLI flag: -querier.use-second-store-before-time
 [use_second_store_before_time: <time> | default = 0]
 ```

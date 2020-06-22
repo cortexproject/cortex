@@ -51,11 +51,6 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 					End:   int64(to),
 				}
 				seriesSet := querier.Select(false, params, matchers...)
-				if seriesSet.Err() != nil {
-					errors <- seriesSet.Err()
-					return
-				}
-
 				resp.Results[i], err = seriesSetToQueryResponse(seriesSet)
 				errors <- err
 			}(i, qr)

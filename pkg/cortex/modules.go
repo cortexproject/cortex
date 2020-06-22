@@ -504,7 +504,7 @@ func (t *Cortex) initPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.API.RegisterPurger(t.DeletesStore, t.Cfg.PurgerConfig.AllowDeleteRequestCancellationUntil)
+	t.API.RegisterPurger(t.DeletesStore, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
 
 	return t.Purger, nil
 }

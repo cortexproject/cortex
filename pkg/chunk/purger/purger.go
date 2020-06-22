@@ -84,10 +84,10 @@ type deleteRequestWithLogger struct {
 
 // Config holds config for Purger
 type Config struct {
-	Enable                              bool          `yaml:"enable"`
-	NumWorkers                          int           `yaml:"num_workers"`
-	ObjectStoreType                     string        `yaml:"object_store_type"`
-	AllowDeleteRequestCancellationUntil time.Duration `yaml:"allow_delete_request_cancellation_until"`
+	Enable                    bool          `yaml:"enable"`
+	NumWorkers                int           `yaml:"num_workers"`
+	ObjectStoreType           string        `yaml:"object_store_type"`
+	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
 }
 
 // RegisterFlags registers CLI flags for Config
@@ -95,7 +95,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enable, "purger.enable", false, "Enable purger to allow deletion of series. Be aware that Delete series feature is still experimental")
 	f.IntVar(&cfg.NumWorkers, "purger.num-workers", 2, "Number of workers executing delete plans in parallel")
 	f.StringVar(&cfg.ObjectStoreType, "purger.object-store-type", "", "Name of the object store to use for storing delete plans")
-	f.DurationVar(&cfg.AllowDeleteRequestCancellationUntil, "purger.allow-delete-request-cancellation-until", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "purger.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 }
 
 type workerJob struct {
@@ -421,7 +421,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 
 	for _, deleteRequest := range deleteRequests {
 		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
-		if deleteRequest.CreatedAt.Add(p.cfg.AllowDeleteRequestCancellationUntil).Add(time.Minute).After(model.Now()) {
+		if deleteRequest.CreatedAt.Add(p.cfg.DeleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 

@@ -35,17 +35,17 @@ func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandl
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteStore                         *DeleteStore
-	metrics                             *deleteRequestHandlerMetrics
-	allowDeleteRequestCancellationUntil time.Duration
+	deleteStore               *DeleteStore
+	metrics                   *deleteRequestHandlerMetrics
+	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore, allowDeleteRequestCancellationUntil time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore *DeleteStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteStore:                         deleteStore,
-		allowDeleteRequestCancellationUntil: allowDeleteRequestCancellationUntil,
-		metrics:                             newDeleteRequestHandlerMetrics(registerer),
+		deleteStore:               deleteStore,
+		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -166,8 +166,8 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	if deleteRequest.CreatedAt.Add(dm.allowDeleteRequestCancellationUntil).Before(model.Now()) {
-		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.allowDeleteRequestCancellationUntil.String()), http.StatusBadRequest)
+	if deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now()) {
+		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 

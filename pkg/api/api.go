@@ -181,8 +181,8 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 // RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
 // match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
 // component/
-func (a *API) RegisterPurger(store *purger.DeleteStore, allowDeleteRequestCancellationUntil time.Duration) {
-	deleteRequestHandler := purger.NewDeleteRequestHandler(store, allowDeleteRequestCancellationUntil, prometheus.DefaultRegisterer)
+func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPeriod time.Duration) {
+	deleteRequestHandler := purger.NewDeleteRequestHandler(store, deleteRequestCancelPeriod, prometheus.DefaultRegisterer)
 
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")

@@ -53,6 +53,7 @@ type Config struct {
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
 	SplitQueriesByDay      bool          `yaml:"split_queries_by_day"`
 	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
+	MaxStepAlignment       int64         `yaml:"max_step_alignment"`
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
@@ -65,6 +66,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Deprecated: Split queries by day and execute in parallel.")
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
+	f.Int64Var(&cfg.MaxStepAlignment, "querier.max-step-alignment", 0, "Queries should not be aligned if step > max-step-alignment in seconds, 0 disables it.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
@@ -151,7 +153,7 @@ func NewTripperware(
 
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware(cfg.MaxStepAlignment))
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec, registerer))

@@ -713,6 +713,11 @@ The `queryrange_config` configures the query splitting and caching in the Cortex
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]
 
+# Queries should not be aligned if step > max-step-alignment in seconds, 0
+# disables it.
+# CLI flag: -querier.max-step-alignment
+[max_step_alignment: <int> | default = 0]
+
 results_cache:
   cache:
     # Enable in-memory cache.

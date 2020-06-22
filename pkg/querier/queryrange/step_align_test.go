@@ -37,6 +37,30 @@ func TestStepAlign(t *testing.T) {
 				Step:  10,
 			},
 		},
+		{
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   1000,
+				Step:  100,
+			},
+			expected: &PrometheusRequest{
+				Start: 0,
+				End:   1000,
+				Step:  100,
+			},
+		},
+		{
+			input: &PrometheusRequest{
+				Start: 2,
+				End:   1002,
+				Step:  100,
+			},
+			expected: &PrometheusRequest{
+				Start: 2,
+				End:   1002,
+				Step:  100,
+			},
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var result *PrometheusRequest
@@ -45,6 +69,7 @@ func TestStepAlign(t *testing.T) {
 					result = req.(*PrometheusRequest)
 					return nil, nil
 				}),
+				maxStepAlignment: 99,
 			}
 			_, err := s.Do(context.Background(), tc.input)
 			require.NoError(t, err)

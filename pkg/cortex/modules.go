@@ -196,7 +196,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	return worker, nil
 }
 
-func (t *Cortex) initStoreQueryable() (services.Service, error) {
+func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
@@ -226,20 +226,18 @@ func (t *Cortex) initStoreQueryable() (services.Service, error) {
 		}
 	}
 
-	return buildService(servs)
-}
-
-func buildService(servs []services.Service) (services.Service, error) {
-	if len(servs) == 0 {
+	// Return service, if any.
+	switch len(servs) {
+	case 0:
 		return nil, nil
-	}
-	if len(servs) == 1 {
+	case 1:
 		return servs[0], nil
+	default:
+		// No need to support this case yet, since chunk store is not a service.
+		// When we get there, we will need a wrapper service, that starts all subservices, and will also monitor them for failures.
+		// Not difficult, but also not necessary right now.
+		return nil, fmt.Errorf("too many services")
 	}
-	// No need to support this case yet, since chunk store is not a service.
-	// When we get there, we will need a wrapper service, that starts all subservices, and will also monitor them for failures.
-	// Not difficult, but also not necessary right now.
-	return nil, fmt.Errorf("too many services")
 }
 
 func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, reg prometheus.Registerer) (prom_storage.Queryable, error) {
@@ -567,7 +565,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(StoreQueryable, t.initStoreQueryable)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryables)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Ruler, t.initRuler)

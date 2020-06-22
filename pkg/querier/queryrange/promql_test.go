@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -602,7 +601,7 @@ func (m *testMatrix) Warnings() storage.Warnings { return nil }
 func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
-		return series.NewErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 
 	if s != nil {

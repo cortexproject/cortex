@@ -42,7 +42,7 @@ type chunkStoreQuerier struct {
 func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return seriesset.NewErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 	chunks, err := q.store.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
@@ -50,14 +50,14 @@ func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...
 		case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
 			// Recognized by Prometheus API, vendor/github.com/prometheus/prometheus/promql/engine.go:91.
 			// Don't translate those, just in case we use them internally.
-			return seriesset.NewErrSeriesSet(err)
+			return storage.ErrSeriesSet(err)
 		case chunk.QueryError:
 			// This will be returned with status code 422 by Prometheus API.
 			// vendor/github.com/prometheus/prometheus/web/api/v1/api.go:1393
-			return seriesset.NewErrSeriesSet(err)
+			return storage.ErrSeriesSet(err)
 		default:
 			// All other errors will be returned as 500.
-			return seriesset.NewErrSeriesSet(promql.ErrStorage{Err: err})
+			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 		}
 	}
 

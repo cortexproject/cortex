@@ -23,8 +23,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
-
-	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 func TestQueryConcurrency(t *testing.T) {
@@ -132,7 +130,7 @@ type errQuerier struct {
 }
 
 func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) storage.SeriesSet {
-	return series.NewErrSeriesSet(q.err)
+	return storage.ErrSeriesSet(q.err)
 }
 func (q *errQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, q.err

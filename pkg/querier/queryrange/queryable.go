@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 const (
@@ -63,18 +62,18 @@ func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*lab
 		if embeddedQuery != "" {
 			return q.handleEmbeddedQuery(embeddedQuery)
 		}
-		return series.NewErrSeriesSet(errors.Errorf(missingEmbeddedQueryMsg))
+		return storage.ErrSeriesSet(errors.Errorf(missingEmbeddedQueryMsg))
 
 	}
 
-	return series.NewErrSeriesSet(errors.Errorf(nonEmbeddedErrMsg))
+	return storage.ErrSeriesSet(errors.Errorf(nonEmbeddedErrMsg))
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
 func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
-		return series.NewErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 
 	ctx, cancel := context.WithCancel(q.Ctx)
@@ -106,7 +105,7 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	for i := 0; i < len(queries); i++ {
 		select {
 		case err := <-errCh:
-			return series.NewErrSeriesSet(err)
+			return storage.ErrSeriesSet(err)
 		case streams := <-samplesCh:
 			samples = append(samples, streams...)
 		}

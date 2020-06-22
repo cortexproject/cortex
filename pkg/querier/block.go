@@ -106,7 +106,7 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	level.Debug(log).Log("series", len(resSeries), "warnings", len(resWarnings))

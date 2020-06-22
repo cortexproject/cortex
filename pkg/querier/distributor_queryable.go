@@ -61,7 +61,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	if sp == nil {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
-			return series.NewErrSeriesSet(err)
+			return storage.ErrSeriesSet(err)
 		}
 		return series.MetricsToSeriesSet(ms)
 	}
@@ -74,7 +74,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 
 	matrix, err := q.distributor.Query(ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
@@ -84,14 +84,14 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	mint, maxt := sp.Start, sp.End
 
 	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(results.Timeseries) != 0 {
@@ -110,7 +110,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
 		if err != nil {
-			return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 		}
 
 		series := &chunkSeries{

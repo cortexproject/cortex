@@ -356,43 +356,6 @@ func (emptySeriesIterator) Err() error {
 	return nil
 }
 
-type emptySeriesSet struct{}
-
-func (emptySeriesSet) Next() bool                 { return false }
-func (emptySeriesSet) At() storage.Series         { return nil }
-func (emptySeriesSet) Err() error                 { return nil }
-func (emptySeriesSet) Warnings() storage.Warnings { return nil }
-
-// NewEmptySeriesSet returns a new series set that contains no series.
-func NewEmptySeriesSet() storage.SeriesSet {
-	return emptySeriesSet{}
-}
-
-func NewErrSeriesSet(err error) storage.SeriesSet {
-	return errSeriesSet{err}
-}
-
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool {
-	return false
-}
-
-func (errSeriesSet) At() storage.Series {
-	return nil
-}
-
-func (e errSeriesSet) Err() error {
-	return e.err
-}
-
-func (errSeriesSet) Warnings() storage.Warnings {
-	return nil
-}
-
 type seriesSetWithWarnings struct {
 	wrapped  storage.SeriesSet
 	warnings storage.Warnings

@@ -89,7 +89,7 @@ func (q *MockShardedQueryable) Select(_ bool, _ *storage.SelectHints, matchers .
 
 	shard, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
-		return series.NewErrSeriesSet(err)
+		return storage.ErrSeriesSet(err)
 	}
 
 	var (

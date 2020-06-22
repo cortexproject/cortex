@@ -258,12 +258,12 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, model.Time(sp.Start), model.Time(sp.End))
 	if err != nil {
-		return series.NewErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(q.queriers) == 1 {
@@ -289,7 +289,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		case set := <-sets:
 			result = append(result, set)
 		case <-ctx.Done():
-			return series.NewErrSeriesSet(ctx.Err())
+			return storage.ErrSeriesSet(ctx.Err())
 		}
 	}
 
@@ -330,7 +330,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 			// If there is error, we have to report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, series.NewErrSeriesSet(err))
+				otherSets = append(otherSets, storage.ErrSeriesSet(err))
 			}
 			continue
 		}

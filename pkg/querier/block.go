@@ -99,7 +99,7 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 	// Returned series are sorted.
 	// No processing of responses is done here. Dealing with multiple responses
 	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
-	resSeries, resWarnings, err := b.userStores.Series(ctx, b.userID, &storepb.SeriesRequest{
+	series, warnings, err := b.userStores.Series(ctx, b.userID, &storepb.SeriesRequest{
 		MinTime:                 mint,
 		MaxTime:                 maxt,
 		Matchers:                converted,
@@ -109,11 +109,11 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
-	level.Debug(log).Log("series", len(resSeries), "warnings", len(resWarnings))
+	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
 
 	return &blockQuerierSeriesSet{
-		series:   resSeries,
-		warnings: resWarnings,
+		series:   series,
+		warnings: warnings,
 	}
 }
 

@@ -500,6 +500,9 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	return ids, nil
 }
 
+// Using this function avoids logging of nil matcher, which works, but indirectly via panic and recover.
+// That confuses attached debugger, which wants to breakpoint on each panic.
+// Using simple check is also faster.
 func formatMatcher(matcher *labels.Matcher) string {
 	if matcher == nil {
 		return "nil"

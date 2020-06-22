@@ -411,7 +411,7 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 			set := q.Select(true, nil, matchers...)
 			if testData.expectedErr != "" {
 				assert.EqualError(t, set.Err(), testData.expectedErr)
-				assert.Nil(t, set)
+				assert.False(t, set.Next())
 				assert.Nil(t, set.Warnings())
 				return
 			}

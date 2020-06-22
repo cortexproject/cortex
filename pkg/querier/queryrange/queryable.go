@@ -95,8 +95,8 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 				errCh <- err
 				return
 			}
-			samplesCh <- streams
 			q.setResponseHeaders(resp.(*PrometheusResponse).Headers)
+			samplesCh <- streams
 		}(query)
 	}
 

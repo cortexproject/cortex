@@ -43,19 +43,15 @@ func NewLazyQuerier(next storage.Querier) storage.Querier {
 	return LazyQuerier{next}
 }
 
-func (l LazyQuerier) createSeriesSet(selectSorted bool, params *storage.SelectHints, matchers []*labels.Matcher) chan storage.SeriesSet {
+// Select implements Storage.Querier
+func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	// make sure there is space in the buffer, to unblock the goroutine and let it die even if nobody is
 	// waiting for the result yet (or anymore).
 	future := make(chan storage.SeriesSet, 1)
 	go func() {
 		future <- l.next.Select(selectSorted, params, matchers...)
 	}()
-	return future
-}
 
-// Select implements Storage.Querier
-func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	future := l.createSeriesSet(selectSorted, params, matchers)
 	return &lazySeriesSet{
 		future: future,
 	}

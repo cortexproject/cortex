@@ -140,6 +140,7 @@
 * [BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. #2674
 * [BUGFIX] Fixed `wrong number of arguments for 'mget' command` Redis error when a query has no chunks to lookup from storage. #2700
 * [BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes.
+* [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 
 ## 1.1.0 / 2020-05-21
 

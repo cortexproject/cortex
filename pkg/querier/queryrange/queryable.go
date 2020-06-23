@@ -30,8 +30,11 @@ func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 	return q.sharededQuerier, nil
 }
 
-func (q *ShardedQueryable) getResponseHeaders() map[string][]string {
-	return q.sharededQuerier.ResponseHeaders
+func (q *ShardedQueryable) getResponseHeaders() []*PrometheusResponseHeader {
+	q.sharededQuerier.ResponseHeadersMtx.Lock()
+	defer q.sharededQuerier.ResponseHeadersMtx.Unlock()
+
+	return headersMapToPrometheusResponseHeaders(q.sharededQuerier.ResponseHeaders)
 }
 
 // ShardedQuerier is a an implementor of the Querier interface.
@@ -95,8 +98,8 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 				errCh <- err
 				return
 			}
-			samplesCh <- streams
 			q.setResponseHeaders(resp.(*PrometheusResponse).Headers)
+			samplesCh <- streams
 		}(query)
 	}
 
@@ -140,4 +143,12 @@ func (q *ShardedQuerier) LabelNames() ([]string, storage.Warnings, error) {
 // Close releases the resources of the Querier.
 func (q *ShardedQuerier) Close() error {
 	return nil
+}
+
+func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
+	for h, v := range headersMap {
+		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
+	}
+
+	return
 }

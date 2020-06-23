@@ -68,7 +68,7 @@ func NewClient(
 
 	if alertmanagerAddress != "" {
 		alertmanagerAPIClient, err := promapi.NewClient(promapi.Config{
-			Address:      "http://" + alertmanagerAddress + "/api/prom",
+			Address:      "http://" + alertmanagerAddress,
 			RoundTripper: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
 		})
 		if err != nil {
@@ -180,7 +180,7 @@ type ServerStatus struct {
 
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("/api/v1/status", nil)
+	u := c.alertmanagerClient.URL("api/prom/api/v1/status", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -304,7 +304,7 @@ type userConfig struct {
 
 // SetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, templates map[string]string) error {
-	u := c.alertmanagerClient.URL("/alerts", nil)
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
 
 	data, err := yaml.Marshal(&userConfig{
 		AlertmanagerConfig: amConfig,
@@ -338,7 +338,7 @@ func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, tem
 
 // DeleteAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
-	u := c.alertmanagerClient.URL("/alerts", nil)
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
 	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)

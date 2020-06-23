@@ -64,6 +64,7 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	return c.alertConfigs, nil
 }
 
+// GetAlertConfig finds and returns the AlertManager configuration of an user.
 func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
 	cfg, exists := c.alertConfigs[user]
 

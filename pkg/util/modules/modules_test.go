@@ -50,44 +50,66 @@ func TestDependencies(t *testing.T) {
 
 func TestCannotInitNonPublicModule(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModuleWithOption("module1", mockInitFunc, ModuleOption{Public: false})
+	privateMod := func(option *ModuleOption) {
+		option.Public = false
+	}
+	sut.RegisterModule("module1", mockInitFunc, privateMod)
 
 	_, err := sut.InitModuleServices("module1")
 	assert.Error(t, err, "Expect error when init private module")
 }
 
 func TestRegisterModuleWithOptions(t *testing.T) {
-	option := ModuleOption{
-		Public: true,
+	publicMod := func(option *ModuleOption) {
+		option.Public = true
 	}
 	sut := NewManager()
-	sut.RegisterModuleWithOption("module1", mockInitFunc, option)
+	sut.RegisterModule("module1", mockInitFunc, publicMod)
 
 	m := sut.modules["module1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.Equal(t, option, m.option, "option not assigned")
+	assert.Equal(t, true, m.option.Public, "option not assigned")
 }
 
 func TestRegisterModuleSetsDefaultOption(t *testing.T) {
-	option := ModuleOption{
-		Public: true,
-	}
 	sut := NewManager()
 	sut.RegisterModule("module1", mockInitFunc)
 
 	m := sut.modules["module1"]
 
-	assert.NotNil(t, option, m.option, "option not assigned")
+	assert.NotNil(t, true, m.option.Public, "option not assigned")
+}
+
+func TestFunctionalOptAtTheEndWins(t *testing.T) {
+	privateMod := func(option *ModuleOption) {
+		option.Public = false
+	}
+	publicMod := func(option *ModuleOption) {
+		option.Public = false
+	}
+	sut := NewManager()
+	sut.RegisterModule("mod1", mockInitFunc, privateMod, publicMod, privateMod)
+
+	m := sut.modules["mod1"]
+
+	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
+	assert.Equal(t, false, m.option.Public, "option not assigned")
 }
 
 func TestGetAllPublicModulesNames(t *testing.T) {
+	publicMod := func(option *ModuleOption) {
+		option.Public = true
+	}
+	privateMod := func(option *ModuleOption) {
+		option.Public = false
+	}
 	sut := NewManager()
 	sut.RegisterModule("public1", mockInitFunc)
-	sut.RegisterModuleWithOption("public2", mockInitFunc, ModuleOption{Public: true})
-	sut.RegisterModuleWithOption("public3", mockInitFunc, ModuleOption{Public: true})
-	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{Public: false})
-	sut.RegisterModuleWithOption("private2", mockInitFunc, ModuleOption{Public: false})
+	sut.RegisterModule("public2", mockInitFunc, publicMod)
+	sut.RegisterModule("public3", mockInitFunc, publicMod)
+	sut.RegisterModule("private1", mockInitFunc, privateMod)
+	sut.RegisterModule("private2", mockInitFunc, privateMod)
 
 	pm := sut.PublicModuleNames()
 
@@ -115,11 +137,14 @@ func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 }
 
 func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
+	privateMod := func(option *ModuleOption) {
+		option.Public = false
+	}
 	sut := NewManager()
-	sut.RegisterModuleWithOption("private1", mockInitFunc, ModuleOption{Public: false})
-	sut.RegisterModuleWithOption("private2", mockInitFunc, ModuleOption{Public: false})
-	sut.RegisterModuleWithOption("private3", mockInitFunc, ModuleOption{Public: false})
-	sut.RegisterModuleWithOption("private4", mockInitFunc, ModuleOption{Public: false})
+	sut.RegisterModule("private1", mockInitFunc, privateMod)
+	sut.RegisterModule("private2", mockInitFunc, privateMod)
+	sut.RegisterModule("private3", mockInitFunc, privateMod)
+	sut.RegisterModule("private4", mockInitFunc, privateMod)
 
 	pm := sut.PublicModuleNames()
 

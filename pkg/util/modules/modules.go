@@ -42,8 +42,15 @@ func NewManager() *Manager {
 // RegisterModule registers a new module with name and init function. By default a module is public.
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
-func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
-	m.RegisterModuleWithOption(name, initFn, defaultModuleOption())
+func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *ModuleOption)) {
+	m.modules[name] = &module{
+		initFn: initFn,
+		option: defaultModuleOption(),
+	}
+
+	for _, o := range options {
+		o(&(m.modules[name].option))
+	}
 }
 
 // RegisterModule registers a new module with name, init function, and option

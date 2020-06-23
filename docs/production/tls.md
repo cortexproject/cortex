@@ -107,5 +107,16 @@ For a GRPC client in the Querier:
     -querier.frontend-client.tls-ca-path=/path/to/root.crt
 ```
 
-TLS can be configured in a similar fashion for other GRPC clients like the
-ingester client.
+Similarly, for the GRPC Ingester Client:
+```
+    # Path to the TLS Cert for the GRPC Client
+    -ingester.client.tls-cert-path=/path/to/client.crt
+
+    # Path to the TLS Key for the GRPC Client
+    -ingester.client.tls-key-path=/path/to/client.key
+
+    # Path to the TLS CA for the GRPC Client
+    -ingester.client.tls-ca-path=/path/to/root.crt
+```
+
+TLS can be configured in a similar fashion for other HTTP/GRPC clients in Cortex.

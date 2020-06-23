@@ -68,7 +68,7 @@ For querying chunks storage, we have two options:
 Querier needs to support both modes of querying chunks store.
 Which one of these two modes is used depends on single timestamp flag passed to the querier.
 If timestamp is configured, chunks store is only used for queries that ask for data older than timestamp.
-If timestamp is not configured, chunks store is always querierd.
+If timestamp is not configured, chunks store is always queried.
 
 For blocks, we don't need to use the timestamp flag. Queriers can always query blocks – each querier knows about existing blocks and their timeranges, so it can quickly determine whether there are any blocks with relevant data.
 Always querying blocks is also useful when there is some background process converting chunks to blocks.

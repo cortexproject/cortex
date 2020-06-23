@@ -6921,6 +6921,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. &lt;a href="https://github.com/cortexproject/cortex/pull/2674">#2674&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed &lt;code>wrong number of arguments for 'mget' command&lt;/code> Redis error when a query has no chunks to lookup from storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2700">#2700&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes.&lt;/li>
+&lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="110--2020-05-21">1.1.0 / 2020-05-21&lt;/h2>
 &lt;p>This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!&lt;/p>

@@ -511,19 +511,21 @@ func (t *Cortex) initDataPurger() (services.Service, error) {
 
 func (t *Cortex) setupModuleManager() error {
 	mm := modules.NewManager()
-	privateModule := modules.ModuleOption{Public: false}
+	privateModule := func(option *modules.ModuleOption) {
+		option.Public = false
+	}
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
-	mm.RegisterModuleWithOption(Server, t.initServer, privateModule)
-	mm.RegisterModuleWithOption(API, t.initAPI, privateModule)
-	mm.RegisterModuleWithOption(RuntimeConfig, t.initRuntimeConfig, privateModule)
-	mm.RegisterModuleWithOption(MemberlistKV, t.initMemberlistKV, privateModule)
-	mm.RegisterModuleWithOption(Ring, t.initRing, privateModule)
-	mm.RegisterModuleWithOption(Overrides, t.initOverrides, privateModule)
-	mm.RegisterModuleWithOption(Store, t.initStore, privateModule)
-	mm.RegisterModuleWithOption(DeleteRequestsStore, t.initDeleteRequestsStore, privateModule)
-	mm.RegisterModuleWithOption(StoreQueryable, t.initStoreQueryable, privateModule)
-	mm.RegisterModuleWithOption(StoreGateway, t.initStoreGateway, privateModule)
+	mm.RegisterModule(Server, t.initServer, privateModule)
+	mm.RegisterModule(API, t.initAPI, privateModule)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, privateModule)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, privateModule)
+	mm.RegisterModule(Ring, t.initRing, privateModule)
+	mm.RegisterModule(Overrides, t.initOverrides, privateModule)
+	mm.RegisterModule(Store, t.initStore, privateModule)
+	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, privateModule)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryable, privateModule)
+	mm.RegisterModule(StoreGateway, t.initStoreGateway, privateModule)
 	mm.RegisterModule(DataPurger, t.initDataPurger)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(Compactor, t.initCompactor)

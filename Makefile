@@ -3,6 +3,7 @@
 
 # Version number
 VERSION=$(shell cat "./VERSION" 2> /dev/null)
+GOPROXY_VALUE=$(shell go env GOPROXY)
 
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
@@ -23,7 +24,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	@echo
-	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
+	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
 
@@ -227,5 +228,9 @@ dist:
 	mkdir -p ./dist
 	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
 	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
+	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-linux-amd64   ./cmd/query-tee
+	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-darwin-amd64  ./cmd/query-tee
 	shasum -a 256 ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
 	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
+	shasum -a 256 ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
+	shasum -a 256 ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256

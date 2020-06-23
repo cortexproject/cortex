@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 
 	"github.com/prometheus/common/model"
@@ -226,9 +228,10 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				_, err = r.Matrix()
 
 				if c.hitIngester {
-					// If the ingester was hit, the distributor always returns errDistributorError.
+					// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
+					// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
 					require.Error(t, err)
-					require.Equal(t, errDistributorError.Error(), err.Error())
+					require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
 				} else {
 					// If the ingester was hit, there would have been an error from errDistributor.
 					require.NoError(t, err)
@@ -507,9 +510,10 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				_, err = r.Matrix()
 
 				if c.hitIngester {
-					// If the ingester was hit, the distributor always returns errDistributorError.
+					// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
+					// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
 					require.Error(t, err)
-					require.Equal(t, errDistributorError.Error(), err.Error())
+					require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
 				} else {
 					// If the ingester was hit, there would have been an error from errDistributor.
 					require.NoError(t, err)

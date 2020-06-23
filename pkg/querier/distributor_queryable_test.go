@@ -42,8 +42,8 @@ func TestDistributorQuerier(t *testing.T) {
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, _, err := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, err)
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
 	series := seriesSet.At()
@@ -91,8 +91,8 @@ func TestIngesterStreaming(t *testing.T) {
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, _, err := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, err)
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
 	series := seriesSet.At()

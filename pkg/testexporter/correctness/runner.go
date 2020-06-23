@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -13,12 +12,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -30,50 +28,28 @@ const (
 )
 
 var (
-	testcaseResult = prometheus.NewCounterVec(
+	testcaseResult = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Subsystem: subsystem,
 			Name:      "test_case_result_total",
-			Help:      "Number of test cases that succeed / fail.",
+			Help:      "Number of test cases by test name, that succeed / fail.",
 		},
-		[]string{"result"},
+		[]string{"name", "result"},
 	)
-	sampleResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: subsystem,
-			Name:      "sample_result_total",
-			Help:      "Number of samples that succeed / fail.",
-		},
-		[]string{"result"},
-	)
-	prometheusRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Subsystem: subsystem,
-		Name:      "prometheus_request_duration_seconds",
-		Help:      "Time spent doing Prometheus requests.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"})
+	startTime = time.Now()
 )
-
-func init() {
-	prometheus.MustRegister(testcaseResult)
-	prometheus.MustRegister(sampleResult)
-	prometheus.MustRegister(prometheusRequestDuration)
-}
 
 // RunnerConfig is config, for the runner.
 type RunnerConfig struct {
-	testRate           float64
-	testQueryMinSize   time.Duration
-	testQueryMaxSize   time.Duration
-	testTimeEpsilon    time.Duration
-	testEpsilon        float64
-	prometheusAddr     string
-	userID             string
-	timeQueryStart     TimeValue
-	durationQuerySince time.Duration
-	extraSelectors     string
-	ScrapeInterval     time.Duration
-	samplesEpsilon     float64
+	testRate               float64
+	testQueryMinSize       time.Duration
+	testQueryMaxSize       time.Duration
+	PrometheusAddr         string
+	UserID                 string
+	ExtraSelectors         string
+	EnableDeleteSeriesTest bool
+	CommonTestConfig       CommonTestConfig
+	DeleteSeriesTestConfig DeleteSeriesTestConfig
 }
 
 // RegisterFlags does what it says.
@@ -81,31 +57,15 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.testRate, "test-rate", 1, "Query QPS")
 	f.DurationVar(&cfg.testQueryMinSize, "test-query-min-size", 5*time.Minute, "The min query size to Prometheus.")
 	f.DurationVar(&cfg.testQueryMaxSize, "test-query-max-size", 60*time.Minute, "The max query size to Prometheus.")
-	f.DurationVar(&cfg.testTimeEpsilon, "test-time-epsilion", 1*time.Second, "Amount samples are allowed to be off by")
-	f.Float64Var(&cfg.testEpsilon, "test-epsilion", 0.01, "Amount samples are allowed to be off by this %%")
-	f.StringVar(&cfg.prometheusAddr, "prometheus-address", "", "Address of Prometheus instance to query.")
-	f.StringVar(&cfg.userID, "user-id", "", "UserID to send to Cortex.")
 
-	// By default, we only query for values from when this process started
-	f.Var(&cfg.timeQueryStart, "test-query-start", "Minimum start date for queries")
-	f.DurationVar(&cfg.durationQuerySince, "test-query-since", 0, "Duration in the past to test.  Overrides -test-query-start")
+	f.StringVar(&cfg.PrometheusAddr, "prometheus-address", "", "Address of Prometheus instance to query.")
+	f.StringVar(&cfg.UserID, "user-id", "", "UserID to send to Cortex.")
 
-	f.StringVar(&cfg.extraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
-	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")
-	f.Float64Var(&cfg.samplesEpsilon, "test-samples-epsilon", 0.1, "Amount that the number of samples are allowed to be off by")
-}
+	f.StringVar(&cfg.ExtraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
+	f.BoolVar(&cfg.EnableDeleteSeriesTest, "enable-delete-series-test", false, "Enable tests for checking deletion of series.")
 
-func (cfg *RunnerConfig) minQueryTime() time.Time {
-	start := time.Now()
-
-	if cfg.timeQueryStart.set {
-		start = cfg.timeQueryStart.Time
-	}
-	if cfg.durationQuerySince != 0 {
-		start = time.Now().Add(-cfg.durationQuerySince)
-	}
-
-	return start
+	cfg.CommonTestConfig.RegisterFlags(f)
+	cfg.DeleteSeriesTestConfig.RegisterFlags(f)
 }
 
 // Runner runs a bunch of test cases, periodically checking their value.
@@ -121,15 +81,17 @@ type Runner struct {
 // NewRunner makes a new Runner.
 func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	apiCfg := api.Config{
-		Address: cfg.prometheusAddr,
+		Address: cfg.PrometheusAddr,
 	}
-	if cfg.userID != "" {
+	if cfg.UserID != "" {
 		apiCfg.RoundTripper = &nethttp.Transport{
 			RoundTripper: promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
+				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.UserID), req)
 				return api.DefaultRoundTripper.RoundTrip(req)
 			}),
 		}
+	} else {
+		apiCfg.RoundTripper = &nethttp.Transport{}
 	}
 
 	client, err := api.NewClient(apiCfg)
@@ -164,6 +126,10 @@ func (t tracingClient) Do(ctx context.Context, req *http.Request) (*http.Respons
 func (r *Runner) Stop() {
 	close(r.quit)
 	r.wg.Wait()
+
+	for _, tc := range r.cases {
+		tc.Stop()
+	}
 }
 
 // Add a new TestCase.
@@ -219,7 +185,7 @@ func (r *Runner) runRandomTest() {
 		trace = fmt.Sprintf("%s", span.Context())
 	}
 
-	minQueryTime := r.cfg.minQueryTime()
+	minQueryTime := tc.MinQueryTime()
 	level.Info(log).Log("name", tc.Name(), "trace", trace, "minTime", minQueryTime)
 	defer log.Finish()
 
@@ -235,55 +201,19 @@ func (r *Runner) runRandomTest() {
 	if duration < r.cfg.testQueryMinSize {
 		return
 	}
+
+	// round off duration to minutes because we anyways have a window in minutes while doing queries.
+	duration = (duration / time.Minute) * time.Minute
 	level.Info(log).Log("start", start, "duration", duration)
 
-	pairs, err := tc.Query(ctx, r.client, r.cfg.extraSelectors, start, duration)
+	passed, err := tc.Test(ctx, r.client, r.cfg.ExtraSelectors, start, duration)
 	if err != nil {
-		level.Info(log).Log("err", err)
-		return
+		level.Error(log).Log("err", err)
 	}
 
-	failures := false
-	for _, pair := range pairs {
-		correct := r.timeEpsilonCorrect(tc.ExpectedValueAt, pair) || r.valueEpsilonCorrect(tc.ExpectedValueAt, pair)
-		if correct {
-			sampleResult.WithLabelValues(success).Inc()
-		} else {
-			failures = true
-			sampleResult.WithLabelValues(fail).Inc()
-			level.Error(log).Log("msg", "wrong value", "at", pair.Timestamp, "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
-			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
-		}
-	}
-
-	expectedNumSamples := int(tc.Quantized(duration) / r.cfg.ScrapeInterval)
-	if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), r.cfg.samplesEpsilon) {
-		level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-		log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
-		failures = true
-	}
-
-	if failures {
-		testcaseResult.WithLabelValues(fail).Inc()
+	if passed {
+		testcaseResult.WithLabelValues(tc.Name(), success).Inc()
 	} else {
-		testcaseResult.WithLabelValues(success).Inc()
+		testcaseResult.WithLabelValues(tc.Name(), fail).Inc()
 	}
-}
-
-func (r *Runner) timeEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair) bool {
-	minExpected := f(pair.Timestamp.Time().Add(-r.cfg.testTimeEpsilon))
-	maxExpected := f(pair.Timestamp.Time().Add(r.cfg.testTimeEpsilon))
-	if minExpected > maxExpected {
-		minExpected, maxExpected = maxExpected, minExpected
-	}
-	return minExpected < float64(pair.Value) && float64(pair.Value) < maxExpected
-}
-
-func (r *Runner) valueEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair) bool {
-	return epsilonCorrect(float64(pair.Value), f(pair.Timestamp.Time()), r.cfg.testEpsilon)
-}
-
-func epsilonCorrect(actual, expected, epsilon float64) bool {
-	delta := math.Abs((actual - expected) / expected)
-	return delta < epsilon
 }

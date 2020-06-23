@@ -9,28 +9,25 @@ import (
 
 func TestMinQueryTime(t *testing.T) {
 	tests := []struct {
-		cfg      RunnerConfig
-		expected time.Time
+		durationQuerySince time.Duration
+		timeQueryStart     TimeValue
+		expected           time.Time
 	}{
 		{
-			cfg:      RunnerConfig{},
 			expected: time.Now(),
 		},
 		{
-			cfg: RunnerConfig{
-				timeQueryStart: NewTimeValue(time.Unix(1234567890, 0)),
-			},
-			expected: time.Unix(1234567890, 0),
+			timeQueryStart: NewTimeValue(time.Unix(1234567890, 0)),
+			expected:       time.Unix(1234567890, 0),
 		},
 		{
-			cfg: RunnerConfig{
-				durationQuerySince: 10 * time.Hour,
-			},
-			expected: time.Now().Add(-10 * time.Hour),
+			durationQuerySince: 10 * time.Hour,
+			expected:           time.Now().Add(-10 * time.Hour),
 		},
 	}
 
 	for _, tt := range tests {
-		assert.WithinDuration(t, tt.expected, tt.cfg.minQueryTime(), 5*time.Millisecond)
+		//require.Equal(t, tt.expected, tc.MinQueryTime())
+		assert.WithinDuration(t, tt.expected, calculateMinQueryTime(tt.durationQuerySince, tt.timeQueryStart), 5*time.Millisecond)
 	}
 }

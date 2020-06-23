@@ -1,7 +1,7 @@
 global:
   scrape_interval: 5s
   external_labels:
-    origin: prometheus
+    scraped_by: prometheus
 
 scrape_configs:
   - job_name: tsdb-blocks-storage-s3/distributor

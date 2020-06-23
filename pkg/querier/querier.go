@@ -59,9 +59,8 @@ type Config struct {
 	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
-	StoreGatewayAddresses  string                       `yaml:"store_gateway_addresses"`
-	StoreGatewayClient     tls.ClientConfig             `yaml:"store_gateway_client"`
-	BlocksConsistencyCheck BlocksConsistencyCheckConfig `yaml:"blocks_consistency_check" doc:"description=Configures the consistency check done by the querier on queried blocks when running the experimental blocks storage."`
+	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
+	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
 }
 
 var (
@@ -75,7 +74,6 @@ const (
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
-	cfg.BlocksConsistencyCheck.RegisterFlagsWithPrefix("experimental.querier.blocks-consistency-check", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
@@ -242,7 +240,7 @@ type querier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "querier.Select")
 	defer log.Span.Finish()
 
@@ -260,49 +258,38 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, model.Time(sp.Start), model.Time(sp.End))
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(q.queriers) == 1 {
-		seriesSet, warning, err := q.queriers[0].Select(true, sp, matchers...)
-		if err != nil {
-			return nil, warning, err
-		}
+		seriesSet := q.queriers[0].Select(true, sp, matchers...)
 
 		if tombstones.Len() != 0 {
 			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 		}
 
-		return seriesSet, warning, nil
+		return seriesSet
 	}
 
 	sets := make(chan storage.SeriesSet, len(q.queriers))
-	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, _, err := querier.Select(true, sp, matchers...)
-			if err != nil {
-				errs <- err
-			} else {
-				sets <- set
-			}
+			sets <- querier.Select(true, sp, matchers...)
 		}(querier)
 	}
 
 	var result []storage.SeriesSet
 	for range q.queriers {
 		select {
-		case err := <-errs:
-			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return storage.ErrSeriesSet(ctx.Err())
 		}
 	}
 
@@ -314,7 +301,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	if tombstones.Len() != 0 {
 		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 	}
-	return seriesSet, nil, nil
+	return seriesSet
 }
 
 // LabelsValue implements storage.Querier.
@@ -340,10 +327,10 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	for _, set := range sets {
 		if !set.Next() {
 			// nothing in this set. If it has no error, we can ignore it completely.
-			// If there is error, we better report it.
+			// If there is error, we have to report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
+				otherSets = append(otherSets, storage.ErrSeriesSet(err))
 			}
 			continue
 		}
@@ -410,4 +397,11 @@ func (pss *seriesSetWithFirstSeries) Err() error {
 		return nil
 	}
 	return pss.set.Err()
+}
+
+func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
+	if pss.firstSeries != nil {
+		return nil
+	}
+	return pss.set.Warnings()
 }

@@ -799,9 +799,13 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 
 func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTime time.Time) {
 	content := mockDeletionMarkJSON(blockID.String(), deletionTime)
-	path := filepath.Join(dir, blockID.String(), metadata.DeletionMarkFilename)
+	blockPath := filepath.Join(dir, blockID.String())
+	markPath := filepath.Join(blockPath, metadata.DeletionMarkFilename)
 
-	require.NoError(t, ioutil.WriteFile(path, []byte(content), os.ModePerm))
+	// Ensure the block directory exists.
+	require.NoError(t, os.MkdirAll(blockPath, os.ModePerm))
+
+	require.NoError(t, ioutil.WriteFile(markPath, []byte(content), os.ModePerm))
 }
 
 func findCompactorByUserID(compactors []*Compactor, logs []*bytes.Buffer, userID string) (*Compactor, *bytes.Buffer, error) {

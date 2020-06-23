@@ -667,14 +667,6 @@ store_gateway_client:
   # TLS CA path for the client
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
-
-# Configures the consistency check done by the querier on queried blocks when
-# running the experimental blocks storage.
-blocks_consistency_check:
-  # Whether the querier should run a consistency check to ensure all expected
-  # blocks have been queried.
-  # CLI flag: -experimental.querier.blocks-consistency-check.enabled
-  [enabled: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -3304,4 +3296,10 @@ The `purger_config` configures the purger which takes care of delete requests
 # Name of the object store to use for storing delete plans
 # CLI flag: -purger.object-store-type
 [object_store_type: <string> | default = ""]
+
+# Allow cancellation of delete request until duration after they are created.
+# Data would be deleted only after delete requests have been older than this
+# duration. Ideally this should be set to at least 24h.
+# CLI flag: -purger.delete-request-cancel-period
+[delete_request_cancel_period: <duration> | default = 24h]
 ```

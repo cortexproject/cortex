@@ -60,7 +60,7 @@ const (
 	Compactor           string = "compactor"
 	StoreGateway        string = "store-gateway"
 	MemberlistKV        string = "memberlist-kv"
-	DataPurger          string = "data-purger"
+	Purger              string = "data-purger"
 	All                 string = "all"
 )
 
@@ -281,7 +281,7 @@ func (t *Cortex) initStore() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
-	if !t.Cfg.DataPurgerConfig.Enable {
+	if !t.Cfg.PurgerConfig.Enable {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
 		t.TombstonesLoader = purger.NewTombstonesLoader(nil, nil)
 
@@ -394,7 +394,7 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	util.CheckFatal("initializing bucket client", err)
 
 	var extraTables []chunk.ExtraTables
-	if t.Cfg.DataPurgerConfig.Enable {
+	if t.Cfg.PurgerConfig.Enable {
 		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage)
 		if err != nil {
 			return nil, err
@@ -489,24 +489,24 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	return t.MemberlistKV, nil
 }
 
-func (t *Cortex) initDataPurger() (services.Service, error) {
-	if !t.Cfg.DataPurgerConfig.Enable {
+func (t *Cortex) initPurger() (services.Service, error) {
+	if !t.Cfg.PurgerConfig.Enable {
 		return nil, nil
 	}
 
-	storageClient, err := storage.NewObjectClient(t.Cfg.DataPurgerConfig.ObjectStoreType, t.Cfg.Storage)
+	storageClient, err := storage.NewObjectClient(t.Cfg.PurgerConfig.ObjectStoreType, t.Cfg.Storage)
 	if err != nil {
 		return nil, err
 	}
 
-	t.DataPurger, err = purger.NewDataPurger(t.Cfg.DataPurgerConfig, t.DeletesStore, t.Store, storageClient, prometheus.DefaultRegisterer)
+	t.Purger, err = purger.NewPurger(t.Cfg.PurgerConfig, t.DeletesStore, t.Store, storageClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
-	t.API.RegisterPurger(t.DeletesStore)
+	t.API.RegisterPurger(t.DeletesStore, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
 
-	return t.DataPurger, nil
+	return t.Purger, nil
 }
 
 func (t *Cortex) setupModuleManager() error {
@@ -534,7 +534,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
-	mm.RegisterModule(DataPurger, t.initDataPurger)
+	mm.RegisterModule(Purger, t.initPurger)
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 
@@ -556,8 +556,8 @@ func (t *Cortex) setupModuleManager() error {
 		AlertManager:   {API},
 		Compactor:      {API},
 		StoreGateway:   {API},
-		DataPurger:     {Store, DeleteRequestsStore, API},
-		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, DataPurger, StoreGateway},
+		Purger:         {Store, DeleteRequestsStore, API},
+		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

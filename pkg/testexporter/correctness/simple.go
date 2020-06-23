@@ -2,12 +2,16 @@ package correctness
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	otlog "github.com/opentracing/opentracing-go/log"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -18,14 +22,45 @@ const (
 	subsystem = "test_exporter"
 )
 
+var sampleResult = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: subsystem,
+		Name:      "sample_result_total",
+		Help:      "Number of samples that succeed / fail.",
+	},
+	[]string{"test_name", "result"},
+)
+
 type simpleTestCase struct {
 	prometheus.GaugeFunc
 	name            string
 	expectedValueAt func(time.Time) float64
+	cfg             CommonTestConfig
+}
+
+type CommonTestConfig struct {
+	testTimeEpsilon    time.Duration
+	testEpsilon        float64
+	ScrapeInterval     time.Duration
+	samplesEpsilon     float64
+	timeQueryStart     TimeValue
+	durationQuerySince time.Duration
+}
+
+func (cfg *CommonTestConfig) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.testTimeEpsilon, "test-time-epsilion", 1*time.Second, "Amount samples are allowed to be off by")
+	f.Float64Var(&cfg.testEpsilon, "test-epsilion", 0.01, "Amount samples are allowed to be off by this %%")
+	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")
+	f.Float64Var(&cfg.samplesEpsilon, "test-samples-epsilon", 0.1, "Amount that the number of samples are allowed to be off by")
+
+	// By default, we only query for values from when this process started
+	cfg.timeQueryStart = NewTimeValue(time.Now())
+	f.Var(&cfg.timeQueryStart, "test-query-start", "Minimum start date for queries")
+	f.DurationVar(&cfg.durationQuerySince, "test-query-since", 0, "Duration in the past to test.  Overrides -test-query-start")
 }
 
 // NewSimpleTestCase makes a new simpleTestCase
-func NewSimpleTestCase(name string, f func(time.Time) float64) Case {
+func NewSimpleTestCase(name string, f func(time.Time) float64, cfg CommonTestConfig) Case {
 	return &simpleTestCase{
 		GaugeFunc: prometheus.NewGaugeFunc(
 			prometheus.GaugeOpts{
@@ -40,7 +75,11 @@ func NewSimpleTestCase(name string, f func(time.Time) float64) Case {
 		),
 		name:            name,
 		expectedValueAt: f,
+		cfg:             cfg,
 	}
+}
+
+func (tc *simpleTestCase) Stop() {
 }
 
 func (tc *simpleTestCase) Name() string {
@@ -86,6 +125,78 @@ func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors st
 	return result, nil
 }
 
-func (tc *simpleTestCase) Quantized(duration time.Duration) time.Duration {
-	return duration.Truncate(time.Minute)
+func (tc *simpleTestCase) Test(ctx context.Context, client v1.API, selectors string, start time.Time, duration time.Duration) (bool, error) {
+	log := spanlogger.FromContext(ctx)
+	pairs, err := tc.Query(ctx, client, selectors, start, duration)
+	if err != nil {
+		level.Info(log).Log("err", err)
+		return false, err
+	}
+
+	return verifySamples(spanlogger.FromContext(ctx), tc, pairs, duration, tc.cfg), nil
+}
+
+func (tc *simpleTestCase) MinQueryTime() time.Time {
+	return calculateMinQueryTime(tc.cfg.durationQuerySince, tc.cfg.timeQueryStart)
+}
+
+func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair, duration time.Duration, cfg CommonTestConfig) bool {
+	for _, pair := range pairs {
+		correct := timeEpsilonCorrect(tc.ExpectedValueAt, pair, cfg.testTimeEpsilon) || valueEpsilonCorrect(tc.ExpectedValueAt, pair, cfg.testEpsilon)
+		if correct {
+			sampleResult.WithLabelValues(tc.Name(), success).Inc()
+		} else {
+			sampleResult.WithLabelValues(tc.Name(), fail).Inc()
+			level.Error(log).Log("msg", "wrong value", "at", pair.Timestamp, "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
+			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
+			return false
+		}
+	}
+
+	// when verifying a deleted series we get samples for very short interval. As small as 1 or 2 missing/extra samples can cause test to fail.
+	if duration > 5*time.Minute {
+		expectedNumSamples := int(duration / cfg.ScrapeInterval)
+		if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), cfg.samplesEpsilon) {
+			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
+			log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
+			return false
+		}
+	} else {
+		expectedNumSamples := int(duration / cfg.ScrapeInterval)
+		if math.Abs(float64(expectedNumSamples-len(pairs))) > 2 {
+			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
+			log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
+			return false
+		}
+	}
+
+	return true
+}
+
+func timeEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair, testTimeEpsilon time.Duration) bool {
+	minExpected := f(pair.Timestamp.Time().Add(-testTimeEpsilon))
+	maxExpected := f(pair.Timestamp.Time().Add(testTimeEpsilon))
+	if minExpected > maxExpected {
+		minExpected, maxExpected = maxExpected, minExpected
+	}
+	return minExpected < float64(pair.Value) && float64(pair.Value) < maxExpected
+}
+
+func valueEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair, testEpsilon float64) bool {
+	return epsilonCorrect(float64(pair.Value), f(pair.Timestamp.Time()), testEpsilon)
+}
+
+func epsilonCorrect(actual, expected, epsilon float64) bool {
+	delta := math.Abs((actual - expected) / expected)
+	return delta < epsilon
+}
+
+func calculateMinQueryTime(durationQuerySince time.Duration, timeQueryStart TimeValue) time.Time {
+	minQueryTime := startTime
+	if durationQuerySince != 0 {
+		minQueryTime = time.Now().Add(-durationQuerySince)
+	} else if timeQueryStart.set {
+		minQueryTime = timeQueryStart.Time
+	}
+	return minQueryTime
 }

@@ -112,7 +112,7 @@ type testQueryable struct {
 	ts storage.SeriesSet
 }
 
-func (t *testQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (t *testQueryable) Querier(_ context.Context, _, _ int64) (storage.Querier, error) {
 	return testQuerier{ts: t.ts}, nil
 }
 
@@ -120,8 +120,8 @@ type testQuerier struct {
 	ts storage.SeriesSet
 }
 
-func (m testQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return m.ts, nil, nil
+func (m testQuerier) Select(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
+	return m.ts
 }
 
 func (m testQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

@@ -6603,8 +6603,14 @@ through the following config parameters:&lt;/p>
 -querier.frontend-client.tls-key-path=/path/to/client.key
 # Path to the TLS CA for the GRPC Client
 -querier.frontend-client.tls-ca-path=/path/to/root.crt
-&lt;/code>&lt;/pre>&lt;p>TLS can be configured in a similar fashion for other GRPC clients like the
-ingester client.&lt;/p></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>Similarly, for the GRPC Ingester Client:&lt;/p>
+&lt;pre>&lt;code> # Path to the TLS Cert for the GRPC Client
+-ingester.client.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the GRPC Client
+-ingester.client.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the GRPC Client
+-ingester.client.tls-ca-path=/path/to/root.crt
+&lt;/code>&lt;/pre>&lt;p>TLS can be configured in a similar fashion for other HTTP/GRPC clients in Cortex.&lt;/p></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p>Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p>

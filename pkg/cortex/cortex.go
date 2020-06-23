@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -293,6 +294,12 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	if !t.ModuleManager.IsPublicModule(t.Cfg.Target) {
+		level.Warn(util.Logger).Log(
+			"msg", fmt.Sprintf("'%v' is not a public module, is this intended?", t.Cfg.Target),
+			"public-modules", strings.Join(t.ModuleManager.PublicModuleNames(), ", "))
+	}
+
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
 	if err != nil {
 		return err

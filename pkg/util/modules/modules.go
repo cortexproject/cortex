@@ -2,7 +2,7 @@ package modules
 
 import (
 	"fmt"
-	"strings"
+	"sort"
 
 	"github.com/pkg/errors"
 
@@ -50,7 +50,7 @@ func (m *Manager) RegisterModule(name string, initFn func() (services.Service, e
 	}
 
 	for _, o := range options {
-		o(&(m.modules[name].option))
+		o(&m.modules[name].option)
 	}
 }
 
@@ -71,10 +71,6 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {
 	if _, ok := m.modules[target]; !ok {
 		return nil, fmt.Errorf("unrecognised module name: %s", target)
-	}
-
-	if !m.modules[target].option.Public {
-		return nil, fmt.Errorf("invalid target: %s; valid targets are: %s", target, strings.Join(m.PublicModuleNames(), ", "))
 	}
 
 	servicesMap := map[string]services.Service{}
@@ -119,7 +115,21 @@ func (m *Manager) PublicModuleNames() []string {
 		}
 	}
 
+	sort.Strings(result)
+
 	return result
+}
+
+// IsPublicModule check if given module is public or not. Returns true
+// if and only if the given module is registered and is public.
+func (m *Manager) IsPublicModule(mod string) bool {
+	val, ok := m.modules[mod]
+
+	if ok {
+		return val.option.Public
+	}
+
+	return false
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
@@ -185,5 +195,5 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 }
 
 func defaultModuleOption() ModuleOption {
-	return ModuleOption{true} // default  to public module to keep backward compatibility
+	return ModuleOption{true} // default to public module to keep backward compatibility
 }

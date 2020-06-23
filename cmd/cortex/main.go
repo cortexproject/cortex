@@ -132,7 +132,7 @@ func main() {
 
 	if t.Cfg.ListModules {
 		for _, m := range t.ModuleManager.PublicModuleNames() {
-			fmt.Fprintln(flag.CommandLine.Output(), m)
+			fmt.Fprintln(os.Stdout, m)
 		}
 		os.Exit(2)
 	}

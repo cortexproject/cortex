@@ -48,17 +48,6 @@ func TestDependencies(t *testing.T) {
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
 }
 
-func TestCannotInitNonPublicModule(t *testing.T) {
-	sut := NewManager()
-	privateMod := func(option *ModuleOption) {
-		option.Public = false
-	}
-	sut.RegisterModule("module1", mockInitFunc, privateMod)
-
-	_, err := sut.InitModuleServices("module1")
-	assert.Error(t, err, "Expect error when init private module")
-}
-
 func TestRegisterModuleWithOptions(t *testing.T) {
 	publicMod := func(option *ModuleOption) {
 		option.Public = true
@@ -69,7 +58,7 @@ func TestRegisterModuleWithOptions(t *testing.T) {
 	m := sut.modules["module1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.Equal(t, true, m.option.Public, "option not assigned")
+	assert.True(t, m.option.Public, "module should be public")
 }
 
 func TestRegisterModuleSetsDefaultOption(t *testing.T) {
@@ -78,7 +67,7 @@ func TestRegisterModuleSetsDefaultOption(t *testing.T) {
 
 	m := sut.modules["module1"]
 
-	assert.NotNil(t, true, m.option.Public, "option not assigned")
+	assert.True(t, m.option.Public, "mould should be public")
 }
 
 func TestFunctionalOptAtTheEndWins(t *testing.T) {
@@ -94,7 +83,7 @@ func TestFunctionalOptAtTheEndWins(t *testing.T) {
 	m := sut.modules["mod1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.Equal(t, false, m.option.Public, "option not assigned")
+	assert.False(t, m.option.Public, "module should be public")
 }
 
 func TestGetAllPublicModulesNames(t *testing.T) {
@@ -149,4 +138,42 @@ func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
 	pm := sut.PublicModuleNames()
 
 	assert.Len(t, pm, 0, "wrong result slice size")
+}
+
+func TestPublicModuleNamesReturnsSortedList(t *testing.T) {
+	publicMod := func(option *ModuleOption) {
+		option.Public = true
+	}
+	sut := NewManager()
+	sut.RegisterModule("c", mockInitFunc, publicMod)
+	sut.RegisterModule("b", mockInitFunc, publicMod)
+	sut.RegisterModule("a", mockInitFunc, publicMod)
+
+	pm := sut.PublicModuleNames()
+
+	assert.Len(t, pm, 3, "wrong result slice size")
+	assert.Equal(t, []string{"a", "b", "c"}, pm, "module names list is not sorted in ascending order")
+}
+
+func TestIsPublicModule(t *testing.T) {
+	publicMod := func(option *ModuleOption) {
+		option.Public = true
+	}
+	privateMod := func(option *ModuleOption) {
+		option.Public = false
+	}
+	pubModName := "public"
+	privateModName := "private"
+	sut := NewManager()
+	sut.RegisterModule(pubModName, mockInitFunc, publicMod)
+	sut.RegisterModule(privateModName, mockInitFunc, privateMod)
+
+	var result = sut.IsPublicModule(pubModName)
+	assert.True(t, result, "module '%v' should be public", pubModName)
+
+	result = sut.IsPublicModule(privateModName)
+	assert.False(t, result, "module '%v' should be private", privateModName)
+
+	result = sut.IsPublicModule("ghost")
+	assert.False(t, result, "expects result be false when module does not exist")
 }

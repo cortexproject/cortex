@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -90,7 +91,11 @@ func TestQuerierRemoteRead(t *testing.T) {
 	require.NoError(t, err)
 	compressed := snappy.Encode(nil, data)
 
-	httpReq, err := http.NewRequest("POST", "http://"+querier.HTTPEndpoint()+"/prometheus/api/v1/read", bytes.NewReader(compressed))
+	// Call the remote read API endpoint with a timeout.
+	httpReqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(httpReqCtx, "POST", "http://"+querier.HTTPEndpoint()+"/prometheus/api/v1/read", bytes.NewReader(compressed))
 	require.NoError(t, err)
 	httpReq.Header.Set("X-Scope-OrgID", "user-1")
 	httpReq.Header.Add("Content-Encoding", "snappy")

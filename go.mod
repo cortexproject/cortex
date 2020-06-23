@@ -45,12 +45,12 @@ require (
 	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200609052543-1627d234da06
+	github.com/prometheus/prometheus v1.8.2-0.20200622142935-153f859b7499
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.5.1
-	github.com/thanos-io/thanos v0.12.3-0.20200603113103-6d3e730e154d
+	github.com/thanos-io/thanos v0.12.3-0.20200618165043-6c513e5f5c5f
 	github.com/uber/jaeger-client-go v2.23.1+incompatible
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50

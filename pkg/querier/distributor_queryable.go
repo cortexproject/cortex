@@ -52,7 +52,7 @@ type distributorQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
 	defer log.Span.Finish()
 
@@ -61,9 +61,9 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	if sp == nil {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
-			return nil, nil, err
+			return storage.ErrSeriesSet(err)
 		}
-		return series.MetricsToSeriesSet(ms), nil, nil
+		return series.MetricsToSeriesSet(ms)
 	}
 
 	mint, maxt := sp.Start, sp.End
@@ -74,28 +74,28 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 
 	matrix, err := q.distributor.Query(ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
-	return series.MatrixToSeriesSet(matrix), nil, nil
+	return series.MatrixToSeriesSet(matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	mint, maxt := sp.Start, sp.End
 
 	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(results.Timeseries) != 0 {
-		return newTimeSeriesSeriesSet(results.Timeseries), nil, nil
+		return newTimeSeriesSeriesSet(results.Timeseries)
 	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
@@ -110,7 +110,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
 		if err != nil {
-			return nil, nil, promql.ErrStorage{Err: err}
+			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 		}
 
 		series := &chunkSeries{
@@ -121,7 +121,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []
 		serieses = append(serieses, series)
 	}
 
-	return series.NewConcreteSeriesSet(serieses), nil, nil
+	return series.NewConcreteSeriesSet(serieses)
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

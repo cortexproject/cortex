@@ -605,12 +605,11 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 		// Ensure Cortex external labels have been removed.
 		assert.Equal(t, []storepb.Label{{Name: "series_id", Value: strconv.Itoa(seriesID)}}, actual.Labels)
 
-		// Ensure samples have been correctly queried (it's OK having duplicated samples
-		// at this stage, but should be correctly grouped together).
+		// Ensure samples have been correctly queried. The Thanos store also deduplicate samples
+		// in most cases, but it's not strictly required guaranteeing deduplication at this stage.
 		samples, err := readSamplesFromChunks(actual.Chunks)
 		require.NoError(t, err)
 		assert.Equal(t, []sample{
-			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
 			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
 		}, samples)
 	}

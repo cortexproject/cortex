@@ -240,7 +240,7 @@ type querier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "querier.Select")
 	defer log.Span.Finish()
 
@@ -258,49 +258,38 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, model.Time(sp.Start), model.Time(sp.End))
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(q.queriers) == 1 {
-		seriesSet, warning, err := q.queriers[0].Select(true, sp, matchers...)
-		if err != nil {
-			return nil, warning, err
-		}
+		seriesSet := q.queriers[0].Select(true, sp, matchers...)
 
 		if tombstones.Len() != 0 {
 			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 		}
 
-		return seriesSet, warning, nil
+		return seriesSet
 	}
 
 	sets := make(chan storage.SeriesSet, len(q.queriers))
-	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, _, err := querier.Select(true, sp, matchers...)
-			if err != nil {
-				errs <- err
-			} else {
-				sets <- set
-			}
+			sets <- querier.Select(true, sp, matchers...)
 		}(querier)
 	}
 
 	var result []storage.SeriesSet
 	for range q.queriers {
 		select {
-		case err := <-errs:
-			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return storage.ErrSeriesSet(ctx.Err())
 		}
 	}
 
@@ -312,7 +301,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	if tombstones.Len() != 0 {
 		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 	}
-	return seriesSet, nil, nil
+	return seriesSet
 }
 
 // LabelsValue implements storage.Querier.
@@ -338,10 +327,10 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	for _, set := range sets {
 		if !set.Next() {
 			// nothing in this set. If it has no error, we can ignore it completely.
-			// If there is error, we better report it.
+			// If there is error, we have to report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
+				otherSets = append(otherSets, storage.ErrSeriesSet(err))
 			}
 			continue
 		}
@@ -408,4 +397,11 @@ func (pss *seriesSetWithFirstSeries) Err() error {
 		return nil
 	}
 	return pss.set.Err()
+}
+
+func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
+	if pss.firstSeries != nil {
+		return nil
+	}
+	return pss.set.Warnings()
 }

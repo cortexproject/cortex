@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
@@ -127,7 +128,7 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 		return
 	}
 
-	am.store.DeleteAlertConfig(r.Context(), userID)
+	err = am.store.DeleteAlertConfig(r.Context(), userID)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

@@ -17,7 +17,8 @@ type module struct {
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
 
-	option ModuleOption
+	// is this module public
+	public bool
 }
 
 // Manager is a component that initialises modules of the application
@@ -26,10 +27,10 @@ type Manager struct {
 	modules map[string]*module
 }
 
-// ModuleOption contains options of a module.
-// public option indicates if a module can be use as top level module (i.e. pass in as command line argument).
-type ModuleOption struct {
-	Public bool
+// PrivateModule is a functional option that can be used
+// when registering a module.
+func PrivateModule(m *module) {
+	m.public = false
 }
 
 // NewManager creates a new Manager
@@ -43,14 +44,14 @@ func NewManager() *Manager {
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
 // if options is not given, then by default module is public
-func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *ModuleOption)) {
+func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *module)) {
 	m.modules[name] = &module{
 		initFn: initFn,
-		option: defaultModuleOption(),
+		public: true,
 	}
 
 	for _, o := range options {
-		o(&m.modules[name].option)
+		o(m.modules[name])
 	}
 }
 
@@ -110,7 +111,7 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 func (m *Manager) PublicModuleNames() []string {
 	var result []string
 	for key, val := range m.modules {
-		if val.option.Public {
+		if val.public {
 			result = append(result, key)
 		}
 	}
@@ -126,7 +127,7 @@ func (m *Manager) IsPublicModule(mod string) bool {
 	val, ok := m.modules[mod]
 
 	if ok {
-		return val.option.Public
+		return val.public
 	}
 
 	return false
@@ -192,8 +193,4 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 	}
 
 	return result
-}
-
-func defaultModuleOption() ModuleOption {
-	return ModuleOption{true} // default to public module to keep backward compatibility
 }

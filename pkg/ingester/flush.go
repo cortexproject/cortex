@@ -221,6 +221,9 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.Fingerprint, immediate bool) error {
+	i.metrics.flushSeriesInProgress.Inc()
+	defer i.metrics.flushSeriesInProgress.Dec()
+
 	if i.preFlushUserSeries != nil {
 		i.preFlushUserSeries()
 	}

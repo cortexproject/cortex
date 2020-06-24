@@ -118,8 +118,9 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 204, res.StatusCode)
 
-		// lets wait till ingester has no chunks in memory
-		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_memory_chunks"))
+		// Let's wait until all chunks are flushed.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_queue_length"))
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_series_in_progress"))
 
 		// lets verify that chunk store chunk metrics are updated.
 		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunks_total"))

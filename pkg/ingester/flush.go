@@ -144,7 +144,12 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 		return noFlush
 	}
 	if immediate {
-		return reasonImmediate
+		for _, cd := range series.chunkDescs {
+			if !cd.flushed {
+				return reasonImmediate
+			}
+		}
+		return noFlush // Everything is flushed.
 	}
 
 	// Flush if we have more than one chunk, and haven't already flushed the first chunk
@@ -237,8 +242,11 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		return nil
 	}
 
-	// shouldFlushSeries() has told us we have at least one chunk
-	chunks := series.chunkDescs
+	// shouldFlushSeries() has told us we have at least one chunk.
+	// Make a copy of chunks descriptors, to avoid possible issues related to removing (and niling) elements from chunkDesc.
+	// This can happen if first chunk is already flushed -- removeFlushedChunks may set such chunk to nil.
+	// Since elements in the slice are pointers, we can still safely update chunk descriptors after the copy.
+	chunks := append([]*desc(nil), series.chunkDescs...)
 	if immediate {
 		series.closeHead(reasonImmediate)
 	} else if chunkReason := i.shouldFlushChunk(series.head(), fp, series.isStale()); chunkReason != noFlush {
@@ -274,6 +282,11 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	userState.fpLocker.Unlock(fp)
 
+	// No need to flush these chunks again.
+	for len(chunks) > 0 && chunks[0].flushed {
+		chunks = chunks[1:]
+	}
+
 	if len(chunks) == 0 {
 		return nil
 	}
@@ -295,15 +308,11 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	}
 
 	userState.fpLocker.Lock(fp)
-	if immediate {
-		userState.removeSeries(fp, series.metric)
-		i.metrics.memoryChunks.Sub(float64(len(chunks)))
-	} else {
-		for i := 0; i < len(chunks); i++ {
-			// mark the chunks as flushed, so we can remove them after the retention period
-			series.chunkDescs[i].flushed = true
-			series.chunkDescs[i].LastUpdate = model.Now()
-		}
+	for i := 0; i < len(chunks); i++ {
+		// Mark the chunks as flushed, so we can remove them after the retention period.
+		// We can safely use chunks[i] here, because elements are pointers to chunk descriptors.
+		chunks[i].flushed = true
+		chunks[i].LastUpdate = model.Now()
 	}
 	userState.fpLocker.Unlock(fp)
 	return nil

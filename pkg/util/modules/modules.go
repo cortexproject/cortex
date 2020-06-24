@@ -27,8 +27,7 @@ type Manager struct {
 	modules map[string]*module
 }
 
-// PrivateModule is a functional option that can be used
-// when registering a module.
+// PrivateModule is an option for `RegisterModule` that marks module as private. Modules are public by default.
 func PrivateModule(m *module) {
 	m.public = false
 }

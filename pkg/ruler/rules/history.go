@@ -10,8 +10,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-type AlertHistory interface {
+// TenantAlertHistory is a tenant specific interface for restoring the for state of an alert after restarts/etc.
+type TenantAlertHistory interface {
 	RestoreForState(ts time.Time, alertRule *AlertingRule)
+	Stop()
 }
 
 // QuerierHistory embeds a Querier and determines last active at via the traditional Prometheus metric `ALERTS_FOR_STATE`
@@ -26,6 +28,8 @@ func NewMetricsHistory(q storage.Queryable, opts *ManagerOptions) *MetricsHistor
 		opts: opts,
 	}
 }
+
+func (m *MetricsHistory) Stop() {}
 
 func (m *MetricsHistory) RestoreForState(ts time.Time, alertRule *AlertingRule) {
 	maxtMS := int64(model.TimeFromUnixNano(ts.UnixNano()))

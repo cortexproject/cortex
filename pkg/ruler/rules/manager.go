@@ -708,7 +708,7 @@ type ManagerOptions struct {
 	NotifyFunc      NotifyFunc
 	Context         context.Context
 	Appendable      Appendable
-	AlertHistory    AlertHistory
+	AlertHistory    TenantAlertHistory
 	Logger          log.Logger
 	Registerer      prometheus.Registerer
 	OutageTolerance time.Duration
@@ -755,6 +755,8 @@ func (m *Manager) Stop() {
 	for _, eg := range m.groups {
 		eg.stop()
 	}
+
+	m.opts.AlertHistory.Stop()
 
 	level.Info(m.logger).Log("msg", "Rule manager stopped")
 }

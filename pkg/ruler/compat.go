@@ -15,11 +15,11 @@ import (
 
 // AppendableHistoryFunc allows creation of an Appendable and AlertHistory to be joined. The default implementation
 // does not take advantage of this option.
-type AppendableHistoryFunc = func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.AlertHistory)
+type AppendableHistoryFunc = func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory)
 
 // This is the default implementation which returns an unlinked Appendable/AlertHistory.
 func DefaultAppendableHistoryFunc(p Pusher, q storage.Queryable) AppendableHistoryFunc {
-	return func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.AlertHistory) {
+	return func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
 		return &appender{
 			pusher: p,
 			userID: userID,

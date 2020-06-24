@@ -88,9 +88,12 @@ type Config struct {
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
 
-	// Tolerance period after which alert `For` durations cannot be checked from storage
-	// and must instead be re-evaluated due to potentially missing too many evaluation intervals.
-	OutageTolerance time.Duration `yaml:"outage_tolerance"`
+	// Max time to tolerate outage for restoring "for" state of alert.
+	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
+	// Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.
+	ForGracePeriod time.Duration `yaml:"for_grace_period"`
+	// Minimum amount of time to wait before resending an alert to Alertmanager.
+	ResendDelay time.Duration `yaml:"resend_delay"`
 
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
@@ -136,7 +139,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
-	f.DurationVar(&cfg.OutageTolerance, "ruler.outage-tolerance", 0, "outage period after which previous alert state cannot be cannot be checked from metric storage and must be re-evaluated in full.")
+	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
+	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
+	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 }
 
 // Ruler evaluates rules.
@@ -537,6 +542,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		Logger:          logger,
 		Registerer:      reg,
 		OutageTolerance: r.cfg.OutageTolerance,
+		ForGracePeriod:  r.cfg.ForGracePeriod,
+		ResendDelay:     r.cfg.ResendDelay,
 	}
 	return promRules.NewManager(opts), nil
 }

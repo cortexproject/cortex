@@ -56,7 +56,7 @@ func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer
 		}),
 	}
 
-	if registerer != nil && len(cfg.LoadPath) > 0 {
+	if registerer != nil {
 		registerer.MustRegister(mgr.configLoadSuccess)
 	}
 

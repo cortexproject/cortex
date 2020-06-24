@@ -122,6 +122,10 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
+		if t.Cfg.LimitsConfig.PerTenantOverrideConfig == "" {
+			// no need to initialize module if load path is empty
+			return nil, nil
+		}
 		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
 		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
 	}

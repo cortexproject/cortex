@@ -47,6 +47,7 @@
 * [BUGFIX] Ingester: Flushing chunks via `/flush` endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by `/flush` handler. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via `/flush` handler are no longer discarded. #2778
 * [BUGFIX] Prometheus upgraded. #2849
   * Fixed unknown symbol error during head compaction
+* [BUGFIX] Fix panic when using cassandra as store for both index and delete requests. #2774
 
 ## 1.2.0 / 2020-07-01
 

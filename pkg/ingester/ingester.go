@@ -139,8 +139,9 @@ type Ingester struct {
 	// To be passed to the WAL.
 	registerer prometheus.Registerer
 
-	// Hook for injecting behaviour from tests.
+	// Hooks for injecting behaviour from tests.
 	preFlushUserSeries func()
+	preFlushChunks     func()
 
 	// Prometheus block storage
 	TSDBState TSDBState

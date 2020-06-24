@@ -327,6 +327,10 @@ func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprin
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fingerprint, metric labels.Labels, chunkDescs []*desc) error {
+	if i.preFlushChunks != nil {
+		i.preFlushChunks()
+	}
+
 	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
 		c := chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime)

@@ -291,7 +291,7 @@ type BoltWriteBatch struct {
 	Writes map[string]TableWrites
 }
 
-func (b *BoltWriteBatch) getOrCreateTableWritesBatch(tableName string) TableWrites {
+func (b *BoltWriteBatch) getOrCreateTableWrites(tableName string) TableWrites {
 	writes, ok := b.Writes[tableName]
 	if !ok {
 		writes = TableWrites{
@@ -305,14 +305,14 @@ func (b *BoltWriteBatch) getOrCreateTableWritesBatch(tableName string) TableWrit
 }
 
 func (b *BoltWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	writes := b.getOrCreateTableWritesBatch(tableName)
+	writes := b.getOrCreateTableWrites(tableName)
 
 	key := hashValue + separator + string(rangeValue)
 	writes.deletes[key] = struct{}{}
 }
 
 func (b *BoltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	writes := b.getOrCreateTableWritesBatch(tableName)
+	writes := b.getOrCreateTableWrites(tableName)
 
 	key := hashValue + separator + string(rangeValue)
 	writes.puts[key] = value

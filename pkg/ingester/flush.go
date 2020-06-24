@@ -26,7 +26,7 @@ const (
 func (i *Ingester) Flush() {
 	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
-	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
+	level.Info(util.Logger).Log("msg", "chunks queued for flushing")
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -34,6 +34,7 @@ func (i *Ingester) Flush() {
 	}
 
 	i.flushQueuesDone.Wait()
+	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
@@ -41,7 +42,7 @@ func (i *Ingester) Flush() {
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
 	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
-	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
+	level.Info(util.Logger).Log("msg", "chunks queued for flushing")
 	w.WriteHeader(http.StatusNoContent)
 }
 

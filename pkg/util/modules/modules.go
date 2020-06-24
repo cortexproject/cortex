@@ -39,7 +39,7 @@ func NewManager() *Manager {
 	}
 }
 
-// RegisterModule registers a new module with name, init function, and option functions.
+// RegisterModule registers a new module with name, init function, and options.
 // name must be unique to avoid overwriting modules
 // if initFn is nil, the module will not initialise
 // if options is not given, then by default module is public

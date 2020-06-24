@@ -156,7 +156,7 @@ type Config struct {
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
 	// when true the distributor does not validate labels at ingest time
-	SkipLabelValidation bool
+	SkipLabelValidation bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

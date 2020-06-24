@@ -243,7 +243,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	}
 
 	// shouldFlushSeries() has told us we have at least one chunk.
-	// Make a copy of chunks descriptors, to avoid possible issues related to removing (and niling) elements from chunkDesc.
+	// Make a copy of chunks descriptors slice, to avoid possible issues related to removing (and niling) elements from chunkDesc.
 	// This can happen if first chunk is already flushed -- removeFlushedChunks may set such chunk to nil.
 	// Since elements in the slice are pointers, we can still safely update chunk descriptors after the copy.
 	chunks := append([]*desc(nil), series.chunkDescs...)

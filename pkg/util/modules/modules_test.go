@@ -81,7 +81,6 @@ func TestGetAllPublicModulesNames(t *testing.T) {
 
 	pm := sut.PublicModuleNames()
 
-	assert.Len(t, pm, 3, "wrong result slice size")
 	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong element and/or not sorted")
 }
 
@@ -96,7 +95,6 @@ func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 	pm := sut.PublicModuleNames()
 
 	// make sure we don't include any module twice because there is a dependency
-	assert.Len(t, pm, 3, "wrong result slice size")
 	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong elements and/or not sorted")
 }
 

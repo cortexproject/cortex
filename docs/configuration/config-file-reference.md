@@ -447,6 +447,11 @@ walconfig:
   # CLI flag: -ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 30m]
 
+  # When WAL is enabled, should chunks be flushed to long-term storage on
+  # shutdown. Useful eg. for migration to blocks engine.
+  # CLI flag: -ingester.flush-on-shutdown-with-wal-enabled
+  [flush_on_shutdown_with_wal_enabled: <boolean> | default = false]
+
 lifecycler:
   ring:
     kvstore:

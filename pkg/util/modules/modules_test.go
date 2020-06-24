@@ -48,7 +48,7 @@ func TestDependencies(t *testing.T) {
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
 }
 
-func TestRegisterModuleWithOptions(t *testing.T) {
+func TestRegisterModuleDefaultsToPublic(t *testing.T) {
 	sut := NewManager()
 	sut.RegisterModule("module1", mockInitFunc)
 
@@ -56,15 +56,6 @@ func TestRegisterModuleWithOptions(t *testing.T) {
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
 	assert.True(t, m.public, "module should be public")
-}
-
-func TestRegisterModuleSetsDefaultOption(t *testing.T) {
-	sut := NewManager()
-	sut.RegisterModule("module1", mockInitFunc)
-
-	m := sut.modules["module1"]
-
-	assert.True(t, m.public, "mould should be public")
 }
 
 func TestFunctionalOptAtTheEndWins(t *testing.T) {
@@ -82,18 +73,16 @@ func TestFunctionalOptAtTheEndWins(t *testing.T) {
 
 func TestGetAllPublicModulesNames(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModule("public1", mockInitFunc)
-	sut.RegisterModule("public2", mockInitFunc)
 	sut.RegisterModule("public3", mockInitFunc)
+	sut.RegisterModule("public2", mockInitFunc)
+	sut.RegisterModule("public1", mockInitFunc)
 	sut.RegisterModule("private1", mockInitFunc, PrivateModule)
 	sut.RegisterModule("private2", mockInitFunc, PrivateModule)
 
 	pm := sut.PublicModuleNames()
 
 	assert.Len(t, pm, 3, "wrong result slice size")
-	assert.Contains(t, pm, "public1", "missing public module")
-	assert.Contains(t, pm, "public2", "missing public module")
-	assert.Contains(t, pm, "public3", "missing public module")
+	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong element and/or not sorted")
 }
 
 func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
@@ -108,9 +97,7 @@ func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
 
 	// make sure we don't include any module twice because there is a dependency
 	assert.Len(t, pm, 3, "wrong result slice size")
-	assert.Contains(t, pm, "public1", "missing public module")
-	assert.Contains(t, pm, "public2", "missing public module")
-	assert.Contains(t, pm, "public3", "missing public module")
+	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong elements and/or not sorted")
 }
 
 func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
@@ -123,18 +110,6 @@ func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
 	pm := sut.PublicModuleNames()
 
 	assert.Len(t, pm, 0, "wrong result slice size")
-}
-
-func TestPublicModuleNamesReturnsSortedList(t *testing.T) {
-	sut := NewManager()
-	sut.RegisterModule("c", mockInitFunc)
-	sut.RegisterModule("b", mockInitFunc)
-	sut.RegisterModule("a", mockInitFunc)
-
-	pm := sut.PublicModuleNames()
-
-	assert.Len(t, pm, 3, "wrong result slice size")
-	assert.Equal(t, []string{"a", "b", "c"}, pm, "module names list is not sorted in ascending order")
 }
 
 func TestIsPublicModule(t *testing.T) {

@@ -39,10 +39,9 @@ func NewManager() *Manager {
 	}
 }
 
-// RegisterModule registers a new module with name, init function, and options.
-// name must be unique to avoid overwriting modules
-// if initFn is nil, the module will not initialise
-// if options is not given, then by default module is public
+// RegisterModule registers a new module with name, init function, and options. Name must
+// be unique to avoid overwriting modules. If initFn is nil, the module will not initialise.
+// Modules are public by default.
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *module)) {
 	m.modules[name] = &module{
 		initFn: initFn,

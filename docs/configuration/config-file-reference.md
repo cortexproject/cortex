@@ -971,6 +971,11 @@ storage:
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
 
+# outage period after which previous alert state cannot be cannot be checked
+# from metric storage and must be re-evaluated in full.
+# CLI flag: -ruler.outage-tolerance
+[outage_tolerance: <duration> | default = 0s]
+
 # Distribute rule evaluation using ring backend
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]

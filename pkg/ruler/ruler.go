@@ -88,6 +88,10 @@ type Config struct {
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
 
+	// Tolerance period after which alert `For` durations cannot be checked from storage
+	// and must instead be re-evaluated due to potentially missing too many evaluation intervals.
+	OutageTolerance time.Duration `yaml:"outage_tolerance"`
+
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
 	SearchPendingFor time.Duration `yaml:"search_pending_for"`
@@ -132,6 +136,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
+	f.DurationVar(&cfg.OutageTolerance, "ruler.outage-tolerance", 0, "outage period after which previous alert state cannot be cannot be checked from metric storage and must be re-evaluated in full.")
 }
 
 // Ruler evaluates rules.
@@ -523,14 +528,15 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
-		Appendable:  tsdb,
-		TSDB:        tsdb,
-		QueryFunc:   engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
-		Context:     user.InjectOrgID(ctx, userID),
-		ExternalURL: r.alertURL,
-		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
-		Logger:      logger,
-		Registerer:  reg,
+		Appendable:      tsdb,
+		TSDB:            tsdb,
+		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
+		Context:         user.InjectOrgID(ctx, userID),
+		ExternalURL:     r.alertURL,
+		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),
+		Logger:          logger,
+		Registerer:      reg,
+		OutageTolerance: r.cfg.OutageTolerance,
 	}
 	return promRules.NewManager(opts), nil
 }

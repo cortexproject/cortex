@@ -65,8 +65,16 @@ type Metrics struct {
 	groupRules          *prometheus.GaugeVec
 }
 
+func (m *Metrics) EvalDuration(d time.Duration) {
+	m.evalDuration.Observe(d.Seconds())
+}
+
 func (m *Metrics) FailedEvaluate() {
 	m.evalFailures.Inc()
+}
+
+func (m *Metrics) IncrementEvaluations() {
+	m.evalTotal.Inc()
 }
 
 // NewGroupMetrics makes a new Metrics and registers them with the provided registerer,
@@ -524,12 +532,12 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				sp.Finish()
 
 				since := time.Since(t)
-				g.metrics.evalDuration.Observe(since.Seconds())
+				g.metrics.EvalDuration(since)
 				rule.SetEvaluationDuration(since)
 				rule.SetEvaluationTimestamp(t)
 			}(time.Now())
 
-			g.metrics.evalTotal.Inc()
+			g.metrics.IncrementEvaluations()
 
 			vector, err := rule.Eval(ctx, ts, g.opts.QueryFunc, g.opts.ExternalURL)
 			if err != nil {

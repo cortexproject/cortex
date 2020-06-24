@@ -24,12 +24,13 @@
   * `cortex_prometheus_notifications_queue_capacity`
   * `cortex_prometheus_notifications_alertmanagers_discovered`
 * [ENHANCEMENT] Added `-ingester.flush-on-shutdown-with-wal-enabled` option to enable chunks flushing even when WAL is enabled. #2780
+* [ENHANCEMENT] Ingester: Added new metric `cortex_ingester_flush_series_in_progress` that reports number of ongoing flush-series operations. Useful when calling `/flush` handler: if `cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress` is 0, all flushes are finished. #2778
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 * [BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. #2766
 * [BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. #2800
-* [BUGFIX] Ingester: Flushing chunks via /flush endpoint could previously lead to panic, if chunks were already being flushed. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via /flush handler are no longer discarded. #2778
+* [BUGFIX] Ingester: Flushing chunks via `/flush` endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by `/flush` handler. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via `/flush` handler are no longer discarded. #2778
 
 ## 1.2.0 / 2020-06-xx
 (in progress of release: current release candidate is https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0)

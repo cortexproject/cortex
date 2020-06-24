@@ -2,6 +2,14 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT Ruler: Added the following metrics: #2786
+  * `cortex_prometheus_notifications_latency_seconds`
+  * `cortex_prometheus_notifications_errors_total`
+  * `cortex_prometheus_notifications_sent_total`
+  * `cortex_prometheus_notifications_dropped_total`
+  * `cortex_prometheus_notifications_queue_length`
+  * `cortex_prometheus_notifications_queue_capacity`
+  * `cortex_prometheus_notifications_prometheus_notifications_alertmanagers_discovered`
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.for-resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783

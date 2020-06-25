@@ -2,14 +2,6 @@
 
 ## master / unreleased
 
-* [ENHANCEMENT Ruler: Added the following metrics: #2786
-  * `cortex_prometheus_notifications_latency_seconds`
-  * `cortex_prometheus_notifications_errors_total`
-  * `cortex_prometheus_notifications_sent_total`
-  * `cortex_prometheus_notifications_dropped_total`
-  * `cortex_prometheus_notifications_queue_length`
-  * `cortex_prometheus_notifications_queue_capacity`
-  * `cortex_prometheus_notifications_prometheus_notifications_alertmanagers_discovered`
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.for-resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
@@ -68,6 +60,14 @@
 * [FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client & Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. #2502
 * [FEATURE] The flag `-frontend.max-cache-freshness` is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from `results_cache.max_freshness` to `limits_config.max_cache_freshness`. The legacy YAML config parameter (`results_cache.max_freshness`) will continue to be supported till Cortex release `v1.4.0`. #2609
 * [FEATURE] Experimental gRPC Store: Added support to 3rd parties index and chunk stores using gRPC client/server plugin mechanism. #2220
+* [ENHANCEMENT] Ruler: Added the following metrics: #2786
+  * `cortex_prometheus_notifications_latency_seconds`
+  * `cortex_prometheus_notifications_errors_total`
+  * `cortex_prometheus_notifications_sent_total`
+  * `cortex_prometheus_notifications_dropped_total`
+  * `cortex_prometheus_notifications_queue_length`
+  * `cortex_prometheus_notifications_queue_capacity`
+  * `cortex_prometheus_notifications_alertmanagers_discovered`
 * [ENHANCEMENT] Propagate GOPROXY value when building `build-image`. This is to help the builders building the code in a Network where default Go proxy is not accessible (e.g. when behind some corporate VPN). #2741
 * [ENHANCEMENT] Querier: Added metric `cortex_querier_request_duration_seconds` for all requests to the querier. #2708
 * [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589 #2654

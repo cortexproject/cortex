@@ -55,12 +55,12 @@ func TestRegisterModuleDefaultsToPublic(t *testing.T) {
 	m := sut.modules["module1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.True(t, m.public, "module should be public")
+	assert.Equal(t, public, m.visibility, "module should be public")
 }
 
 func TestFunctionalOptAtTheEndWins(t *testing.T) {
 	publicMod := func(option *module) {
-		option.public = true
+		option.visibility = public
 	}
 	sut := NewManager()
 	sut.RegisterModule("mod1", mockInitFunc, PrivateModule, publicMod, PrivateModule)
@@ -68,7 +68,7 @@ func TestFunctionalOptAtTheEndWins(t *testing.T) {
 	m := sut.modules["mod1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.False(t, m.public, "module should be public")
+	assert.Equal(t, private, m.visibility, "module should be private")
 }
 
 func TestGetAllPublicModulesNames(t *testing.T) {

@@ -9,6 +9,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+type moduleVisibility int
+
+const (
+	// A public module is intended to be passed into `InitModuleServices`.
+	public moduleVisibility = iota
+
+	// A private module is not intended to be passed into `InitModuleServices`.
+	private
+)
+
 // module is the basic building block of the application
 type module struct {
 	// dependencies of this module
@@ -17,8 +27,8 @@ type module struct {
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
 
-	// is this module public
-	public bool
+	// visibility of this module
+	visibility moduleVisibility
 }
 
 // Manager is a component that initialises modules of the application
@@ -29,7 +39,7 @@ type Manager struct {
 
 // PrivateModule is an option for `RegisterModule` that marks module as private. Modules are public by default.
 func PrivateModule(m *module) {
-	m.public = false
+	m.visibility = private
 }
 
 // NewManager creates a new Manager
@@ -44,8 +54,8 @@ func NewManager() *Manager {
 // Modules are public by default.
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *module)) {
 	m.modules[name] = &module{
-		initFn: initFn,
-		public: true,
+		initFn:     initFn,
+		visibility: public,
 	}
 
 	for _, o := range options {
@@ -105,11 +115,11 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 }
 
 // PublicModuleNames gets list of module names that are
-// public module.
+// public module. Returned list is sorted in increasing order.
 func (m *Manager) PublicModuleNames() []string {
 	var result []string
 	for key, val := range m.modules {
-		if val.public {
+		if val.visibility == public {
 			result = append(result, key)
 		}
 	}
@@ -125,7 +135,7 @@ func (m *Manager) IsPublicModule(mod string) bool {
 	val, ok := m.modules[mod]
 
 	if ok {
-		return val.public
+		return val.visibility == public
 	}
 
 	return false

@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -29,17 +31,36 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streaming bool, iteratorFn chunkIteratorFunc) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &distributorQuerier{
-			distributor: distributor,
-			ctx:         ctx,
-			mint:        mint,
-			maxt:        maxt,
-			streaming:   streaming,
-			chunkIterFn: iteratorFn,
-		}, nil
-	})
+func newDistributorQueryable(distributor Distributor, streaming bool, iteratorFn chunkIteratorFunc, queryIngesterWithin time.Duration) QueryableWithFilter {
+	return distributorQueryable{
+		distributor:         distributor,
+		streaming:           streaming,
+		iteratorFn:          iteratorFn,
+		queryIngesterWithin: queryIngesterWithin,
+	}
+}
+
+type distributorQueryable struct {
+	distributor         Distributor
+	streaming           bool
+	iteratorFn          chunkIteratorFunc
+	queryIngesterWithin time.Duration
+}
+
+func (d distributorQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return &distributorQuerier{
+		distributor: d.distributor,
+		ctx:         ctx,
+		mint:        mint,
+		maxt:        maxt,
+		streaming:   d.streaming,
+		chunkIterFn: d.iteratorFn,
+	}, nil
+}
+
+func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bool {
+	// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
+	return d.queryIngesterWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-d.queryIngesterWithin))
 }
 
 type distributorQuerier struct {

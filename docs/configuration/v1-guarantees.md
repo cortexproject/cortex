@@ -45,3 +45,4 @@ Currently experimental features are:
 - In-memory (FIFO) and Redis cache.
 - Openstack Swift storage.
 - gRPC Store.
+- Querier support for querying chunks and blocks store at the same time.

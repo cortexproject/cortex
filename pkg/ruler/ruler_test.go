@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	promTU "github.com/prometheus/client_golang/prometheus/testutil"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -140,7 +140,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	wg.Wait()
 
 	// Ensure we have metrics in the notifier.
-	assert.NoError(t, promTU.GatherAndCompare(r.registry.(*prometheus.Registry), strings.NewReader(`
+	assert.NoError(t, prom_testutil.GatherAndCompare(r.registry.(*prometheus.Registry), strings.NewReader(`
 		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
 		# TYPE cortex_prometheus_notifications_dropped_total counter
 		cortex_prometheus_notifications_dropped_total{user="1"} 0

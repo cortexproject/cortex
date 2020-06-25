@@ -127,6 +127,11 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
 		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
 	}
+
+	if t.Cfg.RuntimeConfig.LoadPath == "" {
+		// no need to initialize module if load path is empty
+		return nil, nil
+	}
 	t.Cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
 	// make sure to set default limits before we start loading configuration into memory

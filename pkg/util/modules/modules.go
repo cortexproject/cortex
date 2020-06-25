@@ -9,16 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type moduleVisibility int
-
-const (
-	// A public module is intended to be passed into `InitModuleServices`.
-	public moduleVisibility = iota
-
-	// A private module is not intended to be passed into `InitModuleServices`.
-	private
-)
-
 // module is the basic building block of the application
 type module struct {
 	// dependencies of this module
@@ -27,8 +17,8 @@ type module struct {
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
 
-	// visibility of this module
-	visibility moduleVisibility
+	// is this module user visible (i.e intended to be passed to `InitModuleServices`)
+	userVisible bool
 }
 
 // Manager is a component that initialises modules of the application
@@ -37,9 +27,9 @@ type Manager struct {
 	modules map[string]*module
 }
 
-// PrivateModule is an option for `RegisterModule` that marks module as private. Modules are public by default.
-func PrivateModule(m *module) {
-	m.visibility = private
+// UserInvisibleModule is an option for `RegisterModule` that marks module not visible to user. Modules are user visible by default.
+func UserInvisibleModule(m *module) {
+	m.userVisible = false
 }
 
 // NewManager creates a new Manager
@@ -51,11 +41,11 @@ func NewManager() *Manager {
 
 // RegisterModule registers a new module with name, init function, and options. Name must
 // be unique to avoid overwriting modules. If initFn is nil, the module will not initialise.
-// Modules are public by default.
+// Modules are user visible by default.
 func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *module)) {
 	m.modules[name] = &module{
-		initFn:     initFn,
-		visibility: public,
+		initFn:      initFn,
+		userVisible: true,
 	}
 
 	for _, o := range options {
@@ -114,12 +104,12 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 	return servicesMap, nil
 }
 
-// PublicModuleNames gets list of module names that are
-// public module. Returned list is sorted in increasing order.
-func (m *Manager) PublicModuleNames() []string {
+// UserVisibleModuleNames gets list of module names that are
+// user visible. Returned list is sorted in increasing order.
+func (m *Manager) UserVisibleModuleNames() []string {
 	var result []string
 	for key, val := range m.modules {
-		if val.visibility == public {
+		if val.userVisible {
 			result = append(result, key)
 		}
 	}
@@ -129,13 +119,13 @@ func (m *Manager) PublicModuleNames() []string {
 	return result
 }
 
-// IsPublicModule check if given module is public or not. Returns true
+// IsUserVisibleModule check if given module is public or not. Returns true
 // if and only if the given module is registered and is public.
-func (m *Manager) IsPublicModule(mod string) bool {
+func (m *Manager) IsUserVisibleModule(mod string) bool {
 	val, ok := m.modules[mod]
 
 	if ok {
-		return val.visibility == public
+		return val.userVisible
 	}
 
 	return false

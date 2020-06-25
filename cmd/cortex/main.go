@@ -137,7 +137,7 @@ func main() {
 	util.CheckFatal("initializing cortex", err)
 
 	if t.Cfg.ListModules {
-		for _, m := range t.ModuleManager.PublicModuleNames() {
+		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
 			fmt.Fprintln(os.Stdout, m)
 		}
 

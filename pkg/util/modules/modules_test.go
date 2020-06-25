@@ -48,81 +48,81 @@ func TestDependencies(t *testing.T) {
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
 }
 
-func TestRegisterModuleDefaultsToPublic(t *testing.T) {
+func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {
 	sut := NewManager()
 	sut.RegisterModule("module1", mockInitFunc)
 
 	m := sut.modules["module1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.Equal(t, public, m.visibility, "module should be public")
+	assert.True(t, m.userVisible, "module should be user visible")
 }
 
 func TestFunctionalOptAtTheEndWins(t *testing.T) {
-	publicMod := func(option *module) {
-		option.visibility = public
+	userVisibleMod := func(option *module) {
+		option.userVisible = true
 	}
 	sut := NewManager()
-	sut.RegisterModule("mod1", mockInitFunc, PrivateModule, publicMod, PrivateModule)
+	sut.RegisterModule("mod1", mockInitFunc, UserInvisibleModule, userVisibleMod, UserInvisibleModule)
 
 	m := sut.modules["mod1"]
 
 	assert.NotNil(t, mockInitFunc, m.initFn, "initFn not assigned")
-	assert.Equal(t, private, m.visibility, "module should be private")
+	assert.False(t, m.userVisible, "module should be internal")
 }
 
-func TestGetAllPublicModulesNames(t *testing.T) {
+func TestGetAllUserVisibleModulesNames(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModule("public3", mockInitFunc)
-	sut.RegisterModule("public2", mockInitFunc)
-	sut.RegisterModule("public1", mockInitFunc)
-	sut.RegisterModule("private1", mockInitFunc, PrivateModule)
-	sut.RegisterModule("private2", mockInitFunc, PrivateModule)
+	sut.RegisterModule("userVisible3", mockInitFunc)
+	sut.RegisterModule("userVisible2", mockInitFunc)
+	sut.RegisterModule("userVisible1", mockInitFunc)
+	sut.RegisterModule("internal1", mockInitFunc, UserInvisibleModule)
+	sut.RegisterModule("internal2", mockInitFunc, UserInvisibleModule)
 
-	pm := sut.PublicModuleNames()
+	pm := sut.UserVisibleModuleNames()
 
-	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong element and/or not sorted")
+	assert.Equal(t, []string{"userVisible1", "userVisible2", "userVisible3"}, pm, "module list contains wrong element and/or not sorted")
 }
 
-func TestGetAllPublicModulesNamesHasNoDupWithDependency(t *testing.T) {
+func TestGetAllUserVisibleModulesNamesHasNoDupWithDependency(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModule("public1", mockInitFunc)
-	sut.RegisterModule("public2", mockInitFunc)
-	sut.RegisterModule("public3", mockInitFunc)
+	sut.RegisterModule("userVisible1", mockInitFunc)
+	sut.RegisterModule("userVisible2", mockInitFunc)
+	sut.RegisterModule("userVisible3", mockInitFunc)
 
-	assert.NoError(t, sut.AddDependency("public1", "public2", "public3"))
+	assert.NoError(t, sut.AddDependency("userVisible1", "userVisible2", "userVisible3"))
 
-	pm := sut.PublicModuleNames()
+	pm := sut.UserVisibleModuleNames()
 
 	// make sure we don't include any module twice because there is a dependency
-	assert.Equal(t, []string{"public1", "public2", "public3"}, pm, "module list contains wrong elements and/or not sorted")
+	assert.Equal(t, []string{"userVisible1", "userVisible2", "userVisible3"}, pm, "module list contains wrong elements and/or not sorted")
 }
 
-func TestGetEmptyListWhenThereIsNoPublicModule(t *testing.T) {
+func TestGetEmptyListWhenThereIsNoUserVisibleModule(t *testing.T) {
 	sut := NewManager()
-	sut.RegisterModule("private1", mockInitFunc, PrivateModule)
-	sut.RegisterModule("private2", mockInitFunc, PrivateModule)
-	sut.RegisterModule("private3", mockInitFunc, PrivateModule)
-	sut.RegisterModule("private4", mockInitFunc, PrivateModule)
+	sut.RegisterModule("internal1", mockInitFunc, UserInvisibleModule)
+	sut.RegisterModule("internal2", mockInitFunc, UserInvisibleModule)
+	sut.RegisterModule("internal3", mockInitFunc, UserInvisibleModule)
+	sut.RegisterModule("internal4", mockInitFunc, UserInvisibleModule)
 
-	pm := sut.PublicModuleNames()
+	pm := sut.UserVisibleModuleNames()
 
 	assert.Len(t, pm, 0, "wrong result slice size")
 }
 
-func TestIsPublicModule(t *testing.T) {
-	pubModName := "public"
-	privateModName := "private"
+func TestIsUserVisibleModule(t *testing.T) {
+	userVisibleModName := "userVisible"
+	internalModName := "internal"
 	sut := NewManager()
-	sut.RegisterModule(pubModName, mockInitFunc)
-	sut.RegisterModule(privateModName, mockInitFunc, PrivateModule)
+	sut.RegisterModule(userVisibleModName, mockInitFunc)
+	sut.RegisterModule(internalModName, mockInitFunc, UserInvisibleModule)
 
-	var result = sut.IsPublicModule(pubModName)
-	assert.True(t, result, "module '%v' should be public", pubModName)
+	var result = sut.IsUserVisibleModule(userVisibleModName)
+	assert.True(t, result, "module '%v' should be user visible", userVisibleModName)
 
-	result = sut.IsPublicModule(privateModName)
-	assert.False(t, result, "module '%v' should be private", privateModName)
+	result = sut.IsUserVisibleModule(internalModName)
+	assert.False(t, result, "module '%v' should be internal", internalModName)
 
-	result = sut.IsPublicModule("ghost")
+	result = sut.IsUserVisibleModule("ghost")
 	assert.False(t, result, "expects result be false when module does not exist")
 }

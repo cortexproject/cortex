@@ -294,10 +294,10 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	if !t.ModuleManager.IsPublicModule(t.Cfg.Target) {
+	if !t.ModuleManager.IsUserVisibleModule(t.Cfg.Target) {
 		level.Warn(util.Logger).Log(
-			"msg", fmt.Sprintf("'%v' is not a public module, is this intended?", t.Cfg.Target),
-			"public-modules", strings.Join(t.ModuleManager.PublicModuleNames(), ", "))
+			"msg", fmt.Sprintf("'%v' is not a user visible module, is this intended?", t.Cfg.Target),
+			"user-visible-modules", strings.Join(t.ModuleManager.UserVisibleModuleNames(), ", "))
 	}
 
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)

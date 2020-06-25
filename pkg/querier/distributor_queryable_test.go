@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -15,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 )
 
@@ -38,7 +40,7 @@ func TestDistributorQuerier(t *testing.T) {
 			},
 		},
 	}
-	queryable := newDistributorQueryable(d, false, nil)
+	queryable := newDistributorQueryable(d, false, nil, 0)
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
@@ -55,6 +57,22 @@ func TestDistributorQuerier(t *testing.T) {
 
 	require.False(t, seriesSet.Next())
 	require.NoError(t, seriesSet.Err())
+}
+
+func TestDistributorQueryableFilter(t *testing.T) {
+	d := &mockDistributor{}
+	dq := newDistributorQueryable(d, false, nil, 1*time.Hour)
+
+	now := time.Now()
+
+	queryMinT := util.TimeToMillis(now.Add(-5 * time.Minute))
+	queryMaxT := util.TimeToMillis(now)
+
+	require.True(t, dq.UseQueryable(now, queryMinT, queryMaxT))
+	require.True(t, dq.UseQueryable(now.Add(time.Hour), queryMinT, queryMaxT))
+
+	// Same query, hour+1ms later, is not sent to ingesters.
+	require.False(t, dq.UseQueryable(now.Add(time.Hour).Add(1*time.Millisecond), queryMinT, queryMaxT))
 }
 
 func TestIngesterStreaming(t *testing.T) {
@@ -87,7 +105,7 @@ func TestIngesterStreaming(t *testing.T) {
 		},
 	}
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks)
+	queryable := newDistributorQueryable(d, true, mergeChunks, 0)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 

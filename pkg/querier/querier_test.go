@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 
@@ -135,6 +137,11 @@ func TestQuerier(t *testing.T) {
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
+	const chunks = 24
+
+	// Generate TSDB head with the same samples as makeMockChunkStore.
+	db := mockTSDB(t, model.Time(0), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
+
 	for _, query := range queries {
 		for _, encoding := range encodings {
 			for _, streaming := range []bool{false, true} {
@@ -143,16 +150,65 @@ func TestQuerier(t *testing.T) {
 						cfg.IngesterStreaming = streaming
 						cfg.Iterators = iterators
 
-						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
+						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
+						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+						queryable, _ := New(cfg, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
 						testQuery(t, queryable, through, query)
 					})
 				}
 			}
 		}
 	}
+}
+
+func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) storage.Queryable {
+	dir, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+
+	opts := tsdb.DefaultOptions()
+	opts.WALSegmentSize = -1 // Disable
+	opts.NoLockfile = true
+
+	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
+	head, err := tsdb.NewHead(nil, nil, nil, tsdb.ExponentialBlockRanges(opts.MinBlockDuration, 10, 3)[0], dir, chunkenc.NewPool(), opts.StripeSize, opts.SeriesLifecycleCallback)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = head.Close()
+	})
+
+	app := head.Appender()
+
+	l := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+	}
+
+	cnt := 0
+	chunkStartTs := mint
+	ts := chunkStartTs
+	for i := 0; i < samples; i++ {
+		_, err := app.Add(l, int64(ts), float64(ts))
+		require.NoError(t, err)
+		cnt++
+
+		ts = ts.Add(step)
+
+		if cnt%samplesPerChunk == 0 {
+			// Simulate next chunk, restart timestamp.
+			chunkStartTs = chunkStartTs.Add(chunkOffset)
+			ts = chunkStartTs
+		}
+	}
+
+	require.NoError(t, app.Commit())
+	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return tsdb.NewBlockQuerier(head, mint, maxt)
+	})
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
@@ -219,7 +275,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
+				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -310,7 +366,7 @@ func TestNoFutureQueries(t *testing.T) {
 				chunkStore := &errChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, chunkStore, purger.NewTombstonesLoader(nil, nil), nil)
+				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(chunkStore)}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -501,7 +557,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, NewChunkStoreQueryable(cfg, chunkStore), purger.NewTombstonesLoader(nil, nil), nil)
+				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -525,5 +581,55 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			})
 		}
 	}
+}
 
+func TestUseAlwaysQueryable(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	qwf := UseAlwaysQueryable(m)
+
+	require.True(t, qwf.UseQueryable(time.Now(), 0, 0))
+	require.False(t, m.useQueryableCalled)
+}
+
+func TestUseBeforeTimestamp(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	now := time.Now()
+	qwf := UseBeforeTimestampQueryable(m, now.Add(-1*time.Hour))
+
+	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.True(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled) // UseBeforeTimestampQueryable wraps Queryable, and not QueryableWithFilter.
+}
+
+func TestStoreQueryable(t *testing.T) {
+	m := &mockQueryableWithFilter{}
+	now := time.Now()
+	sq := storeQueryable{m, time.Hour}
+
+	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, m.useQueryableCalled)
+
+	require.True(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
+}
+
+type mockQueryableWithFilter struct {
+	useQueryableCalled bool
+}
+
+func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storage.Querier, error) {
+	return nil, nil
+}
+
+func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
+	m.useQueryableCalled = true
+	return true
 }

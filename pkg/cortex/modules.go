@@ -3,11 +3,13 @@ package cortex
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/server"
@@ -162,7 +164,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
@@ -194,37 +196,74 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	return worker, nil
 }
 
-func (t *Cortex) initStoreQueryable() (services.Service, error) {
-	if t.Cfg.Storage.Engine == storage.StorageEngineChunks {
-		t.StoreQueryable = querier.NewChunkStoreQueryable(t.Cfg.Querier, t.Store)
-		return nil, nil
-	}
+func (t *Cortex) initStoreQueryables() (services.Service, error) {
+	var servs []services.Service
 
-	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB && !t.Cfg.TSDB.StoreGatewayEnabled {
-		storeQueryable, err := querier.NewBlockQueryable(t.Cfg.TSDB, t.Cfg.Server.LogLevel, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
+	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
+	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer); err != nil {
+		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
+	} else {
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
+		if s, ok := q.(services.Service); ok {
+			servs = append(servs, s)
 		}
-		t.StoreQueryable = storeQueryable
-		return storeQueryable, nil
 	}
 
-	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB && t.Cfg.TSDB.StoreGatewayEnabled {
+	if t.Cfg.Querier.SecondStoreEngine != "" {
+		if t.Cfg.Querier.SecondStoreEngine == t.Cfg.Storage.Engine {
+			return nil, fmt.Errorf("second store engine used by querier '%s' must be different than primary engine '%s'", t.Cfg.Querier.SecondStoreEngine, t.Cfg.Storage.Engine)
+		}
+
+		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)
+		}
+
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseBeforeTimestampQueryable(sq, time.Time(t.Cfg.Querier.UseSecondStoreBeforeTime)))
+
+		if s, ok := sq.(services.Service); ok {
+			servs = append(servs, s)
+		}
+	}
+
+	// Return service, if any.
+	switch len(servs) {
+	case 0:
+		return nil, nil
+	case 1:
+		return servs[0], nil
+	default:
+		// No need to support this case yet, since chunk store is not a service.
+		// When we get there, we will need a wrapper service, that starts all subservices, and will also monitor them for failures.
+		// Not difficult, but also not necessary right now.
+		return nil, fmt.Errorf("too many services")
+	}
+}
+
+func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+	switch engine {
+	case storage.StorageEngineChunks:
+		if chunkStore == nil {
+			return nil, fmt.Errorf("chunk store not initialized")
+		}
+		return querier.NewChunkStoreQueryable(cfg.Querier, chunkStore), nil
+
+	case storage.StorageEngineTSDB:
+		if !cfg.TSDB.StoreGatewayEnabled {
+			return querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, reg)
+		}
+
 		// When running in single binary, if the blocks sharding is disabled and no custom
 		// store-gateway address has been configured, we can set it to the running process.
-		if t.Cfg.Target == All && !t.Cfg.StoreGateway.ShardingEnabled && t.Cfg.Querier.StoreGatewayAddresses == "" {
-			t.Cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
+		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 		}
 
-		storeQueryable, err := querier.NewBlocksStoreQueryableFromConfig(t.Cfg.Querier, t.Cfg.StoreGateway, t.Cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-		t.StoreQueryable = storeQueryable
-		return storeQueryable, nil
+		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, util.Logger, reg)
+
+	default:
+		return nil, fmt.Errorf("unknown storage engine '%s'", engine)
 	}
-
-	return nil, fmt.Errorf("unknown storage engine '%s'", t.Cfg.Storage.Engine)
 }
 
 func (t *Cortex) initIngester() (serv services.Service, err error) {
@@ -260,8 +299,8 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 	return t.Flusher, nil
 }
 
-func (t *Cortex) initStore() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine == storage.StorageEngineTSDB {
+func (t *Cortex) initChunkStore() (serv services.Service, err error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineChunks && t.Cfg.Querier.SecondStoreEngine != storage.StorageEngineChunks {
 		return nil, nil
 	}
 	err = t.Cfg.Schema.Load()
@@ -411,7 +450,7 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryable, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -521,12 +560,12 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Store, t.initChunkStore)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(StoreQueryable, t.initStoreQueryable)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryables)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Ruler, t.initRuler)

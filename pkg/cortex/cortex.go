@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -218,9 +217,9 @@ type Cortex struct {
 	StoreGateway *storegateway.StoreGateway
 	MemberlistKV *memberlist.KVInitService
 
-	// Queryable that the querier should use to query the long
+	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	StoreQueryable prom_storage.Queryable
+	StoreQueryables []querier.QueryableWithFilter
 }
 
 // New makes a new Cortex.

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1298,6 +1300,132 @@ type shipperMock struct {
 func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	args := m.Called(ctx)
 	return args.Int(0), args.Error(1)
+}
+
+func TestIngester_flushing(t *testing.T) {
+	util.Logger = log.NewLogfmtLogger(os.Stdout)
+
+	for name, tc := range map[string]struct {
+		setupIngester func(cfg *Config)
+		action        func(t *testing.T, i *Ingester, m *shipperMock)
+	}{
+		"ingesterShutdown": {
+			setupIngester: func(cfg *Config) {
+				cfg.TSDBConfig.FlushBlocksOnShutdown = true
+			},
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				// Shutdown ingester. This triggers flushing of the block.
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+				verifyCompactedHead(t, i)
+
+				// Verify that block has been shipped.
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"shutdownHandler": {
+			setupIngester: func(cfg *Config) {
+				cfg.TSDBConfig.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.ShutdownHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+
+				verifyCompactedHead(t, i)
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"flushHandler": {
+			setupIngester: func(cfg *Config) {
+				cfg.TSDBConfig.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i)
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig()
+			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.TSDBConfig.ShipConcurrency = 1
+			cfg.TSDBConfig.ShipInterval = 1 * time.Minute // Long enough to not be reached during the test.
+
+			if tc.setupIngester != nil {
+				tc.setupIngester(&cfg)
+			}
+
+			// Create ingester
+			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+			require.NoError(t, err)
+			t.Cleanup(cleanup)
+
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			t.Cleanup(func() {
+				_ = services.StopAndAwaitTerminated(context.Background(), i)
+			})
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// mock user's shipper
+			m := mockUserShipper(t, i)
+			m.On("Sync", mock.Anything).Return(0, nil)
+
+			tc.action(t, i, m)
+		})
+	}
+}
+
+func verifyCompactedHead(t *testing.T, i *Ingester) {
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+	require.Equal(t, h.MinTime(), h.MaxTime())
+}
+
+func pushSingleSample(t *testing.T, i *Ingester) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	now := time.Now()
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, float64(util.TimeToMillis(now)), util.TimeToMillis(now))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}
+
+func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
+	m := &shipperMock{}
+	userDB, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	require.NotNil(t, userDB)
+
+	userDB.shipper = m
+	return m
 }
 
 func Test_Ingester_v2UserStats(t *testing.T) {

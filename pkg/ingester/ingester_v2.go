@@ -1059,6 +1059,12 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 
 		case <-i.TSDBState.shipTrigger:
 			i.shipBlocks(ctx)
+			// This complements log message from v2FlushHandler.
+			if e := ctx.Err(); e == nil {
+				level.Info(util.Logger).Log("msg", "finished shipping of TSDB blocks")
+			} else {
+				level.Info(util.Logger).Log("msg", "shipping of TSDB blocks finished prematurely", "err", e)
+			}
 
 		case <-ctx.Done():
 			return nil

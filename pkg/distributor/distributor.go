@@ -155,7 +155,8 @@ type Config struct {
 	// for testing
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
-	// when true the distributor does not validate labels at ingest time
+	// when true the distributor does not validate labels at ingest time, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
 	SkipLabelValidation bool `yaml:"-"`
 }
 

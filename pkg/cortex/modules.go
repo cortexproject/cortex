@@ -60,7 +60,7 @@ const (
 	Compactor           string = "compactor"
 	StoreGateway        string = "store-gateway"
 	MemberlistKV        string = "memberlist-kv"
-	Purger              string = "data-purger"
+	Purger              string = "purger"
 	All                 string = "all"
 )
 

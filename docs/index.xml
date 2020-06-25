@@ -6843,9 +6843,17 @@ __replica__: replica2
 &lt;p>To enable handling of samples, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
 &lt;ul>
+&lt;li>[CHANGE] Experimental Delete Series: Change target flag for purger from &lt;code>data-purger&lt;/code> to &lt;code>purger&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2777">#2777&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-outage-tolerance&lt;/code>, Max time to tolerate outage for restoring &amp;ldquo;for&amp;rdquo; state of alert. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-grace-period&lt;/code>, Minimum duration between alert and restored &amp;ldquo;for&amp;rdquo; state. This is maintained only for alerts with configured &amp;ldquo;for&amp;rdquo; time greater than grace period. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-resend-delay&lt;/code>, Minimum amount of time to wait before resending an alert to Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental: Querier can now optionally query secondary store. This is specified by using &lt;code>-querier.second-store-engine&lt;/code> option, with values &lt;code>chunks&lt;/code> or &lt;code>tsdb&lt;/code>. Standard configuration options for this store are used. Additionally, this querying can be configured to happen only for queries that need data older than &lt;code>-querier.use-second-store-before-time&lt;/code>. Default value of zero will always query secondary store. &lt;a href="https://github.com/cortexproject/cortex/pull/2747">#2747&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="120--2020-06-xx">1.2.0 / 2020-06-xx&lt;/h2>
+&lt;p>(in progress of release: current release candidate is &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0">https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0&lt;/a>)&lt;/p>
+&lt;ul>
 &lt;li>[CHANGE] Metric &lt;code>cortex_kv_request_duration_seconds&lt;/code> now includes &lt;code>name&lt;/code> label to denote which client is being used as well as the &lt;code>backend&lt;/code> label to denote the KV backend implementation in use. &lt;a href="https://github.com/cortexproject/cortex/pull/2648">#2648&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Ruler: Rule groups persisted to object storage using the experimental API have an updated object key encoding to better handle special characters. Rule groups previously-stored using object storage must be renamed to the new format. &lt;a href="https://github.com/cortexproject/cortex/pull/2646">#2646&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Query Frontend now uses Round Robin to choose a tenant queue to service next. &lt;a href="https://github.com/cortexproject/cortex/pull/2553">#2553&lt;/a>&lt;/li>
@@ -6903,12 +6911,13 @@ __replica__: replica2
 &lt;li>[CHANGE] Experimental Delete Series: Make delete request cancellation duration configurable. &lt;a href="https://github.com/cortexproject/cortex/pull/2760">#2760&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Removed &lt;code>-store.fullsize-chunks&lt;/code> option which was undocumented and unused (it broke ingester hand-overs). &lt;a href="https://github.com/cortexproject/cortex/pull/2656">#2656&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Query with no metric name that has previously resulted in HTTP status code 500 now returns status code 422 instead. &lt;a href="https://github.com/cortexproject/cortex/pull/2571">#2571&lt;/a>&lt;/li>
-&lt;li>[CHANGE] Experimental Delete Series: Change target flag for purger from &lt;code>data-purger&lt;/code> to &lt;code>purger&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2777">#2777&lt;/a>&lt;/li>
 &lt;li>[FEATURE] TLS config options added for GRPC clients in Querier (Query-frontend client &amp;amp; Ingester client), Ruler, Store Gateway, as well as HTTP client in Config store client. &lt;a href="https://github.com/cortexproject/cortex/pull/2502">#2502&lt;/a>&lt;/li>
 &lt;li>[FEATURE] The flag &lt;code>-frontend.max-cache-freshness&lt;/code> is now supported within the limits overrides, to specify per-tenant max cache freshness values. The corresponding YAML config parameter has been changed from &lt;code>results_cache.max_freshness&lt;/code> to &lt;code>limits_config.max_cache_freshness&lt;/code>. The legacy YAML config parameter (&lt;code>results_cache.max_freshness&lt;/code>) will continue to be supported till Cortex release &lt;code>v1.4.0&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2609">#2609&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Experimental gRPC Store: Added support to 3rd parties index and chunk stores using gRPC client/server plugin mechanism. &lt;a href="https://github.com/cortexproject/cortex/pull/2220">#2220&lt;/a>&lt;/li>
+&lt;li>[FEATURE] Add &lt;code>-cassandra.table-options&lt;/code> flag to customize table options of Cassandra when creating the index or chunk table. &lt;a href="https://github.com/cortexproject/cortex/pull/2575">#2575&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Propagate GOPROXY value when building &lt;code>build-image&lt;/code>. This is to help the builders building the code in a Network where default Go proxy is not accessible (e.g. when behind some corporate VPN). &lt;a href="https://github.com/cortexproject/cortex/pull/2741">#2741&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Querier: Added metric &lt;code>cortex_querier_request_duration_seconds&lt;/code> for all requests to the querier. &lt;a href="https://github.com/cortexproject/cortex/pull/2708">#2708&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Cortex is now built with Go 1.14. &lt;a href="https://github.com/cortexproject/cortex/pull/2480">#2480&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2749">#2749&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2753">#2753&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: &lt;a href="https://github.com/cortexproject/cortex/pull/2580">#2580&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2583">#2583&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2589">#2589&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2654">#2654&lt;/a>
 &lt;ul>
 &lt;li>&lt;code>cortex_ingester_tsdb_appender_add_duration_seconds&lt;/code>&lt;/li>
@@ -6949,9 +6958,8 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Query-tee: added support to &lt;code>/metadata&lt;/code>, &lt;code>/alerts&lt;/code>, and &lt;code>/rules&lt;/code> endpoints &lt;a href="https://github.com/cortexproject/cortex/pull/2600">#2600&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Query-tee: added support to query results comparison between two different backends. The comparison is disabled by default and can be enabled via &lt;code>-proxy.compare-responses=true&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2611">#2611&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Query-tee: improved the query-tee to not wait all backend responses before sending back the response to the client. The query-tee now sends back to the client first successful response, while honoring the &lt;code>-backend.preferred&lt;/code> option. &lt;a href="https://github.com/cortexproject/cortex/pull/2702">#2702&lt;/a>&lt;/li>
-&lt;li>[ENHANCEMENT] Thanos and Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2604">#2604&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2634">#2634&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2686">#2686&lt;/a>
+&lt;li>[ENHANCEMENT] Thanos and Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2602">#2602&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2604">#2604&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2634">#2634&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2659">#2659&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2686">#2686&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2756">#2756&lt;/a>
 &lt;ul>
-&lt;li>TSDB now supports isolation of append and queries.&lt;/li>
 &lt;li>TSDB now holds less WAL files after Head Truncation.&lt;/li>
 &lt;li>TSDB now does memory-mapping of Head chunks and reduces memory usage.&lt;/li>
 &lt;/ul>
@@ -6978,13 +6986,14 @@ __replica__: replica2
 &lt;li>&lt;code>/services&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>[ENHANCEMENT] Add &lt;code>-cassandra.num-connections&lt;/code> to allow increasing the number of TCP connections to each Cassandra server. &lt;a href="https://github.com/cortexproject/cortex/pull/2666">#2666&lt;/a>&lt;/li>
-&lt;li>[ENHANCEMENT] Use separate Cassandra clients and connections for reads and writes. &lt;a href="https://github.com/cortexproject/cortex/pull/2666">#2666&lt;/a>&lt;/li>
-&lt;li>[ENHANCEMENT] Add &lt;code>-cassandra.reconnect-interval&lt;/code> to allow specifying the reconnect interval to a Cassandra server that has been marked &lt;code>DOWN&lt;/code> by the gocql driver. Also change the default value of the reconnect interval from &lt;code>60s&lt;/code> to &lt;code>1s&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2687">#2687&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Cassandra backend: Add &lt;code>-cassandra.num-connections&lt;/code> to allow increasing the number of TCP connections to each Cassandra server. &lt;a href="https://github.com/cortexproject/cortex/pull/2666">#2666&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Cassandra backend: Use separate Cassandra clients and connections for reads and writes. &lt;a href="https://github.com/cortexproject/cortex/pull/2666">#2666&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Cassandra backend: Add &lt;code>-cassandra.reconnect-interval&lt;/code> to allow specifying the reconnect interval to a Cassandra server that has been marked &lt;code>DOWN&lt;/code> by the gocql driver. Also change the default value of the reconnect interval from &lt;code>60s&lt;/code> to &lt;code>1s&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2687">#2687&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Cassandra backend: Add option &lt;code>-cassandra.convict-hosts-on-failure=false&lt;/code> to not convict host of being down when a request fails. &lt;a href="https://github.com/cortexproject/cortex/pull/2684">#2684&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental TSDB: Applied a jitter to the period bucket scans in order to better distribute bucket operations over the time and increase the probability of hitting the shared cache (if configured). &lt;a href="https://github.com/cortexproject/cortex/pull/2693">#2693&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental TSDB: Series limit per user and per metric now work in TSDB blocks. &lt;a href="https://github.com/cortexproject/cortex/pull/2676">#2676&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental Memberlist: Added ability to periodically rejoin the memberlist cluster. &lt;a href="https://github.com/cortexproject/cortex/pull/2724">#2724&lt;/a>&lt;/li>
-&lt;li>[ENHANCEMENT] Experimental Delete Series: Added the following metrics for monitoring processing of delete requests: &lt;a href="https://github.com/cortexproject/cortex/pull/2445">#2445&lt;/a>
+&lt;li>[ENHANCEMENT] Experimental Delete Series: Added the following metrics for monitoring processing of delete requests: &lt;a href="https://github.com/cortexproject/cortex/pull/2730">#2730&lt;/a>
 &lt;ul>
 &lt;li>&lt;code>cortex_purger_load_pending_requests_attempts_total&lt;/code>: Number of attempts that were made to load pending requests with status.&lt;/li>
 &lt;li>&lt;code>cortex_purger_oldest_pending_delete_request_age_seconds&lt;/code>: Age of oldest pending delete request in seconds.&lt;/li>
@@ -6999,8 +7008,8 @@ __replica__: replica2
 &lt;li>&lt;code>cortex_querier_storegateway_refetches_per_query&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>[ENHANCEMENT] Cortex is now built with Go 1.14. &lt;a href="https://github.com/cortexproject/cortex/pull/2480">#2480&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2753">#2753&lt;/a>&lt;/li>
-&lt;li>[ENHANCEMENT] Experimental: Querier can now optionally query secondary store. This is specified by using &lt;code>-querier.second-store-engine&lt;/code> option, with values &lt;code>chunks&lt;/code> or &lt;code>tsdb&lt;/code>. Standard configuration options for this store are used. Additionally, this querying can be configured to happen only for queries that need data older than &lt;code>-querier.use-second-store-before-time&lt;/code>. Default value of zero will always query secondary store. &lt;a href="https://github.com/cortexproject/cortex/pull/2747">#2747&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Delete requests can now be canceled &lt;a href="https://github.com/cortexproject/cortex/pull/2555">#2555&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Table manager can now provision tables for delete store &lt;a href="https://github.com/cortexproject/cortex/pull/2546">#2546&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. &lt;a href="https://github.com/cortexproject/cortex/pull/2506">#2506&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixes &lt;a href="https://github.com/cortexproject/cortex/pull/2411">#2411&lt;/a>, Ensure requests are properly routed to the prometheus api embedded in the query if &lt;code>-server.path-prefix&lt;/code> is set. &lt;a href="https://github.com/cortexproject/cortex/pull/2372">#2372&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2400">#2400&lt;/a>&lt;/li>
@@ -7008,14 +7017,12 @@ __replica__: replica2
 &lt;li>[BUGFIX] Experimental TSDB: fixed memory leak in ingesters. &lt;a href="https://github.com/cortexproject/cortex/pull/2586">#2586&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] QueryFrontend: fixed a situation where HTTP error is ignored and an incorrect status code is set. &lt;a href="https://github.com/cortexproject/cortex/pull/2590">#2590&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Fix an ingester starting up in the JOINING state and staying there forever. &lt;a href="https://github.com/cortexproject/cortex/pull/2565">#2565&lt;/a>&lt;/li>
-&lt;li>[BUGFIX] QueryFrontend: fixed a panic (&lt;code>integer divide by zero&lt;/code>) in the query-frontend. The query-frontend now requires the &lt;code>-querier.default-evaluation-interval&lt;/code> config to be set to the same value of the querier. &lt;a href="https://github.com/cortexproject/cortex/pull/2603">#2603&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] QueryFrontend: fixed a panic (&lt;code>integer divide by zero&lt;/code>) in the query-frontend. The query-frontend now requires the &lt;code>-querier.default-evaluation-interval&lt;/code> config to be set to the same value of the querier. &lt;a href="https://github.com/cortexproject/cortex/pull/2614">#2614&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental TSDB: when the querier receives a &lt;code>/series&lt;/code> request with a time range older than the data stored in the ingester, it now ignores the requested time range and returns known series anyway instead of returning an empty response. This aligns the behaviour with the chunks storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2617">#2617&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. &lt;a href="https://github.com/cortexproject/cortex/pull/2639">#2639&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. &lt;a href="https://github.com/cortexproject/cortex/pull/2674">#2674&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed &lt;code>wrong number of arguments for 'mget' command&lt;/code> Redis error when a query has no chunks to lookup from storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2700">#2700&lt;/a>&lt;/li>
-&lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
-&lt;li>[BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes.&lt;/li>
-&lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes. &lt;a href="https://github.com/cortexproject/cortex/pull/2726">#2726&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="110--2020-05-21">1.1.0 / 2020-05-21&lt;/h2>
 &lt;p>This release brings the usual mix of bugfixes and improvements. The biggest change is that WAL support for chunks is now considered to be production-ready!&lt;/p>
@@ -7064,7 +7071,6 @@ __replica__: replica2
 &lt;li>[FEATURE] TLS config options added to the Server. &lt;a href="https://github.com/cortexproject/cortex/pull/2535">#2535&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Experimental: Added support for &lt;code>/api/v1/metadata&lt;/code> Prometheus-based endpoint. &lt;a href="https://github.com/cortexproject/cortex/pull/2549">#2549&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Add ability to limit concurrent queries to Cassandra with &lt;code>-cassandra.query-concurrency&lt;/code> flag. &lt;a href="https://github.com/cortexproject/cortex/pull/2562">#2562&lt;/a>&lt;/li>
-&lt;li>[FEATURE] Add &lt;code>-cassandra.table-options&lt;/code> flag to customize table options of Cassandra when creating the index or chunk table. &lt;a href="https://github.com/cortexproject/cortex/pull/2575">#2575&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Experimental TSDB: Introduced store-gateway service used by the experimental blocks storage to load and query blocks. The store-gateway optionally supports blocks sharding and replication via a dedicated hash ring, configurable via &lt;code>-experimental.store-gateway.sharding-enabled&lt;/code> and &lt;code>-experimental.store-gateway.sharding-ring.*&lt;/code> flags. The following metrics have been added: &lt;a href="https://github.com/cortexproject/cortex/pull/2433">#2433&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2458">#2458&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2469">#2469&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2523">#2523&lt;/a>
 &lt;ul>
 &lt;li>&lt;code>cortex_querier_storegateway_instances_hit_per_query&lt;/code>&lt;/li>

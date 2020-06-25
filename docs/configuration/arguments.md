@@ -475,6 +475,7 @@ Some clients in Cortex support service discovery via DNS to find addresses of ba
 
 - [Blocks storage's memcached index cache](../operations/blocks-storage.md#memcached-index-cache)
 - [All caching memcached servers](./config-file-reference.md#memcached-client-config)
+- [Memberlist KV store](./config-file-reference.md#memberlist-config)
 
 ### Supported discovery modes
 

@@ -134,6 +134,7 @@ type TSDBState struct {
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
+	shipTrigger chan struct{}
 
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
@@ -164,6 +165,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
 			tsdbMetrics: newTSDBMetrics(registerer),
+			shipTrigger: make(chan struct{}, 1),
 
 			compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_triggered_total",
@@ -207,7 +209,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.numSeriesInTSDB)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, cfg.TSDBConfig.FlushBlocksOnShutdown, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -1055,6 +1057,9 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 		case <-shipTicker.C:
 			i.shipBlocks(ctx)
 
+		case <-i.TSDBState.shipTrigger:
+			i.shipBlocks(ctx)
+
 		case <-ctx.Done():
 			return nil
 		}
@@ -1104,6 +1109,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	}
 }
 
+// Compacts all compactable blocks. If head is not compactable yet, nothing happens for given TSDB.
 func (i *Ingester) compactBlocks(ctx context.Context) {
 	// Don't compact TSDB blocks while JOINING or LEAVING, as there may be ongoing blocks transfers.
 	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING || ingesterState == ring.LEAVING {
@@ -1142,6 +1148,32 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 	})
 }
 
+// Forces TSDB Head compaction, even if it is not compactable yet.
+func (i *Ingester) forceCompactBlocks(ctx context.Context) {
+	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			return
+		}
+
+		h := userDB.Head()
+		min := h.MinTime()
+		max := h.MaxTime()
+
+		if min == max {
+			// No samples in the HEAD, no need to compact.
+			return
+		}
+
+		err := userDB.CompactHead(tsdb.NewRangeHead(h, min, max))
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "TSDB blocks force-compaction for user has failed", "user", userID, "err", err)
+		} else {
+			level.Debug(util.Logger).Log("msg", "TSDB blocks force-compaction completed successfully", "user", userID)
+		}
+	})
+}
+
 func (i *Ingester) runConcurrentUserWorkers(ctx context.Context, concurrency int, userFunc func(userID string)) {
 	wg := sync.WaitGroup{}
 	ch := make(chan string)
@@ -1172,4 +1204,42 @@ sendLoop:
 
 	// wait for ongoing workers to finish.
 	wg.Wait()
+}
+
+// This method is called as part of Lifecycler's shutdown, to flush all data.
+// Lifecycler shutdown happens as part of Ingester shutdown (see stoppingV2 method).
+// Samples are not received at this stage. Shipping service has already been stopped as well.
+func (i *Ingester) v2LifecyclerFlush() {
+	level.Info(util.Logger).Log("msg", "starting to flush and ship TSDB blocks")
+
+	ctx := context.Background()
+
+	i.forceCompactBlocks(ctx)
+	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		i.shipBlocks(ctx)
+	}
+
+	level.Info(util.Logger).Log("msg", "finished flushing and shipping TSDB blocks")
+}
+
+// Blocks version of Flush handler. It force-compacts blocks, and triggers shipping.
+func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
+	go func() {
+		level.Info(util.Logger).Log("msg", "starting to flush TSDB blocks")
+		i.forceCompactBlocks(context.Background())
+		level.Info(util.Logger).Log("msg", "finished flushing TSDB blocks")
+
+		if i.cfg.TSDBConfig.ShipInterval > 0 {
+			level.Info(util.Logger).Log("msg", "triggered shipping of TSDB blocks")
+
+			select {
+			case i.TSDBState.shipTrigger <- struct{}{}:
+				// notified
+			default:
+				// channel buffer full, already triggered.
+			}
+		}
+	}()
+
+	w.WriteHeader(http.StatusNoContent)
 }

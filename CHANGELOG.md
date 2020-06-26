@@ -11,6 +11,8 @@
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
 * [ENHANCEMENT] Experimental: Querier can now optionally query secondary store. This is specified by using `-querier.second-store-engine` option, with values `chunks` or `tsdb`. Standard configuration options for this store are used. Additionally, this querying can be configured to happen only for queries that need data older than `-querier.use-second-store-before-time`. Default value of zero will always query secondary store. #2747
+* [ENHANCEMENT] Query-tee: increased the `cortex_querytee_request_duration_seconds` metric buckets granularity. #2799
+* [ENHANCEMENT] Query-tee: fail to start if the configured `-backend.preferred` is unknown. #2799
 * [ENHANCEMENT] Ruler: Added the following metrics: #2786
   * `cortex_prometheus_notifications_latency_seconds`
   * `cortex_prometheus_notifications_errors_total`

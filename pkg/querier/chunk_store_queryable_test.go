@@ -184,7 +184,7 @@ func createPrometheusAPI(store chunkstore.ChunkStore) *route.Router {
 
 	api := v1.NewAPI(
 		engine,
-		queryable,
+		&sampleAndChunkQueryable{queryable},
 		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

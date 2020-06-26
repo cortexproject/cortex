@@ -239,7 +239,7 @@ func (d *DeleteSeriesTest) sendDeleteRequest() (err error) {
 		return
 	}
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 204 {
 		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 

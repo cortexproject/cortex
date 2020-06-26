@@ -452,6 +452,12 @@ tsdb:
   # CLI flag: -experimental.tsdb.store-gateway-enabled
   [store_gateway_enabled: <boolean> | default = false]
 
+  # If true, and transfer of blocks on shutdown fails or is disabled, incomplete
+  # blocks are flushed to storage instead. If false, incomplete blocks will be
+  # reused after restart, and uploaded when finished.
+  # CLI flag: -experimental.tsdb.flush-blocks-on-shutdown
+  [flush_blocks_on_shutdown: <boolean> | default = false]
+
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]

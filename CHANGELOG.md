@@ -7,6 +7,14 @@
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.for-resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
 * [ENHANCEMENT] Experimental: Querier can now optionally query secondary store. This is specified by using `-querier.second-store-engine` option, with values `chunks` or `tsdb`. Standard configuration options for this store are used. Additionally, this querying can be configured to happen only for queries that need data older than `-querier.use-second-store-before-time`. Default value of zero will always query secondary store. #2747
+* [ENHANCEMENT] Ruler: Added the following metrics: #2786
+  * `cortex_prometheus_notifications_latency_seconds`
+  * `cortex_prometheus_notifications_errors_total`
+  * `cortex_prometheus_notifications_sent_total`
+  * `cortex_prometheus_notifications_dropped_total`
+  * `cortex_prometheus_notifications_queue_length`
+  * `cortex_prometheus_notifications_queue_capacity`
+  * `cortex_prometheus_notifications_alertmanagers_discovered`
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

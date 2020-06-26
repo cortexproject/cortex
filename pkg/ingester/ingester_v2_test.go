@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1409,4 +1410,59 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 		},
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
+}
+
+func TestIngesterCompactIdleBlock(t *testing.T) {
+	util.Logger = log.NewLogfmtLogger(os.Stdout)
+
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 1
+	cfg.TSDBConfig.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
+	cfg.TSDBConfig.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSample(t, i, time.Now(), 0)
+
+	i.compactBlocks(context.Background())
+	verifyCompactedHead(t, i, false)
+
+	// wait one second
+	time.Sleep(cfg.TSDBConfig.HeadCompactionIdleTimeout)
+
+	i.compactBlocks(context.Background())
+	verifyCompactedHead(t, i, true)
+
+	// Pushing another sample still works.
+	pushSample(t, i, time.Now(), 0)
+	verifyCompactedHead(t, i, false)
+}
+
+func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+	require.Equal(t, expected, h.NumSeries() == 0)
+}
+
+func pushSample(t *testing.T, i *Ingester, ts time.Time, val float64) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, val, util.TimeToMillis(ts))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
 }

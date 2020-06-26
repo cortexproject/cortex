@@ -110,14 +110,14 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
 	u.lastUpdateMutex.Lock()
-	defer u.lastUpdateMutex.Lock()
+	defer u.lastUpdateMutex.Unlock()
 
 	return u.lastUpdate.Add(idle).Before(now)
 }
 
 func (u *userTSDB) setLastUpdate(t time.Time) {
 	u.lastUpdateMutex.Lock()
-	defer u.lastUpdateMutex.Lock()
+	defer u.lastUpdateMutex.Unlock()
 	u.lastUpdate = t
 }
 
@@ -1119,8 +1119,7 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 
 		// Don't do anything, if there is nothing to compact.
 		h := userDB.Head()
-		minT, maxT := h.MinTime(), h.MaxTime()
-		if minT == maxT {
+		if h.NumSeries() == 0 {
 			return
 		}
 
@@ -1129,7 +1128,7 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 		i.TSDBState.compactionsTriggered.Inc()
 		if i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout) {
 			level.Debug(util.Logger).Log("msg", "Forcing compaction due to TSDB being idle")
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, minT, maxT))
+			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
 		} else {
 			err = userDB.Compact()
 		}

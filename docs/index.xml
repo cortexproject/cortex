@@ -6871,6 +6871,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. &lt;a href="https://github.com/cortexproject/cortex/pull/2766">#2766&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-06-xx">1.2.0 / 2020-06-xx&lt;/h2>
 &lt;p>(in progress of release: current release candidate is &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0">https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0&lt;/a>)&lt;/p>

@@ -8,6 +8,7 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -162,6 +163,23 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 }
 
 func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from Bigtable
-	return chunk.ErrMethodNotImplemented
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return err
+	}
+
+	tableName, err := s.schemaCfg.ChunkTableFor(chunkRef.From)
+	if err != nil {
+		return err
+	}
+
+	mut := bigtable.NewMutation()
+	mut.DeleteCellsInColumn(columnFamily, column)
+
+	return s.client.Open(tableName).Apply(ctx, chunkID, mut)
 }

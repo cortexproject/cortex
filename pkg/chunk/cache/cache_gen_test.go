@@ -29,11 +29,13 @@ func TestCacheGenNumCacheKeysPrefix(t *testing.T) {
 			for i, key := range prefixedKeys {
 				require.Equal(t, tc.prefix+keys[i], key)
 			}
+			require.Len(t, prefixedKeys, len(keys))
 
 			unprefixedKeys := removeCacheGenNumFromKeys(ctx, prefixedKeys)
 			for i, key := range unprefixedKeys {
 				require.Equal(t, keys[i], key)
 			}
+			require.Len(t, unprefixedKeys, len(keys))
 		})
 	}
 }

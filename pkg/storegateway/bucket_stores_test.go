@@ -88,7 +88,21 @@ func TestBucketStores_InitialSync(t *testing.T) {
 			# HELP cortex_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
 			# TYPE cortex_bucket_store_block_load_failures_total counter
 			cortex_bucket_store_block_load_failures_total 0
-	`), "cortex_bucket_store_blocks_loaded", "cortex_bucket_store_block_loads_total", "cortex_bucket_store_block_load_failures_total"))
+
+			# HELP cortex_bucket_stores_gate_queries_concurrent_max Number of maximum concurrent queries allowed.
+			# TYPE cortex_bucket_stores_gate_queries_concurrent_max gauge
+			cortex_bucket_stores_gate_queries_concurrent_max 100
+
+			# HELP cortex_bucket_stores_gate_queries_in_flight Number of queries that are currently in flight.
+			# TYPE cortex_bucket_stores_gate_queries_in_flight gauge
+			cortex_bucket_stores_gate_queries_in_flight 0
+	`),
+		"cortex_bucket_store_blocks_loaded",
+		"cortex_bucket_store_block_loads_total",
+		"cortex_bucket_store_block_load_failures_total",
+		"cortex_bucket_stores_gate_queries_concurrent_max",
+		"cortex_bucket_stores_gate_queries_in_flight",
+	))
 
 	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
 }
@@ -145,7 +159,21 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 			# HELP cortex_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
 			# TYPE cortex_bucket_store_block_load_failures_total counter
 			cortex_bucket_store_block_load_failures_total 0
-	`), "cortex_bucket_store_blocks_loaded", "cortex_bucket_store_block_loads_total", "cortex_bucket_store_block_load_failures_total"))
+
+			# HELP cortex_bucket_stores_gate_queries_concurrent_max Number of maximum concurrent queries allowed.
+			# TYPE cortex_bucket_stores_gate_queries_concurrent_max gauge
+			cortex_bucket_stores_gate_queries_concurrent_max 100
+
+			# HELP cortex_bucket_stores_gate_queries_in_flight Number of queries that are currently in flight.
+			# TYPE cortex_bucket_stores_gate_queries_in_flight gauge
+			cortex_bucket_stores_gate_queries_in_flight 0
+	`),
+		"cortex_bucket_store_blocks_loaded",
+		"cortex_bucket_store_block_loads_total",
+		"cortex_bucket_store_block_load_failures_total",
+		"cortex_bucket_stores_gate_queries_concurrent_max",
+		"cortex_bucket_stores_gate_queries_in_flight",
+	))
 
 	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
 }

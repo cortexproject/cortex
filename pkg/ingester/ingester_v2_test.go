@@ -1407,7 +1407,7 @@ func verifyCompactedHead(t *testing.T, i *Ingester) {
 	require.NotNil(t, db)
 
 	h := db.Head()
-	require.Equal(t, h.MinTime(), h.MaxTime())
+	require.Zero(t, h.NumSeries())
 }
 
 func pushSingleSample(t *testing.T, i *Ingester) {

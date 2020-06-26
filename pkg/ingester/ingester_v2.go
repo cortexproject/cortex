@@ -1163,15 +1163,12 @@ func (i *Ingester) forceCompactBlocks(ctx context.Context) {
 		}
 
 		h := userDB.Head()
-		min := h.MinTime()
-		max := h.MaxTime()
-
-		if min == max {
+		if h.NumSeries() == 0 {
 			// No samples in the HEAD, no need to compact.
 			return
 		}
 
-		err := userDB.CompactHead(tsdb.NewRangeHead(h, min, max))
+		err := userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "TSDB blocks force-compaction for user has failed", "user", userID, "err", err)
 		} else {

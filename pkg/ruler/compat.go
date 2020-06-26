@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -71,6 +72,11 @@ func (t *tsdb) Appender() storage.Appender {
 // Querier returns a new Querier on the storage.
 func (t *tsdb) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 	return t.queryable.Querier(ctx, mint, maxt)
+}
+
+// ChunkQuerier returns an error as it is not implemented.
+func (t *tsdb) ChunkQuerier(ctx context.Context, mint int64, maxt int64) (storage.ChunkQuerier, error) {
+	return nil, errors.New("ChunkQuerier not implemented")
 }
 
 // StartTime returns the oldest timestamp stored in the storage.

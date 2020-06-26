@@ -408,16 +408,16 @@ func TestBlocksStoreQuerier_SelectSorted(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 			}
 
-			set, warnings, err := q.Select(true, nil, matchers...)
+			set := q.Select(true, nil, matchers...)
 			if testData.expectedErr != "" {
-				assert.EqualError(t, err, testData.expectedErr)
-				assert.Nil(t, set)
-				assert.Nil(t, warnings)
+				assert.EqualError(t, set.Err(), testData.expectedErr)
+				assert.False(t, set.Next())
+				assert.Nil(t, set.Warnings())
 				return
 			}
 
-			require.NoError(t, err)
-			assert.Len(t, warnings, 0)
+			require.NoError(t, set.Err())
+			assert.Len(t, set.Warnings(), 0)
 
 			// Read all returned series and their values.
 			var actualSeries []seriesResult
@@ -514,8 +514,8 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 				End:   testData.queryMaxT,
 			}
 
-			_, _, err := q.selectSorted(sp, nil)
-			require.NoError(t, err)
+			set := q.selectSorted(sp, nil)
+			require.NoError(t, set.Err())
 
 			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
 				assert.Len(t, finder.Calls, 0)

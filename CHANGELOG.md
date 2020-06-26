@@ -3,12 +3,24 @@
 ## master / unreleased
 
 * [CHANGE] Experimental Delete Series: Change target flag for purger from `data-purger` to `purger`. #2777
+* [CHANGE] Experimental TSDB: The max concurrent queries against the long-term storage, configured via `-experimental.tsdb.bucket-store.max-concurrent`, is now a limit shared across all tenants and not a per-tenant limit anymore. The default value has changed from `20` to `100` and the following new metrics have been added: #2797
+  * `cortex_bucket_stores_gate_queries_concurrent_max`
+  * `cortex_bucket_stores_gate_queries_in_flight`
+  * `cortex_bucket_stores_gate_duration_seconds`
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
-* [FEATURE] Introduced `ruler.for-resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
+* [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
 * [ENHANCEMENT] Experimental: Querier can now optionally query secondary store. This is specified by using `-querier.second-store-engine` option, with values `chunks` or `tsdb`. Standard configuration options for this store are used. Additionally, this querying can be configured to happen only for queries that need data older than `-querier.use-second-store-before-time`. Default value of zero will always query secondary store. #2747
 * [ENHANCEMENT] Query-tee: increased the `cortex_querytee_request_duration_seconds` metric buckets granularity. #2799
 * [ENHANCEMENT] Query-tee: fail to start if the configured `-backend.preferred` is unknown. #2799
+* [ENHANCEMENT] Ruler: Added the following metrics: #2786
+  * `cortex_prometheus_notifications_latency_seconds`
+  * `cortex_prometheus_notifications_errors_total`
+  * `cortex_prometheus_notifications_sent_total`
+  * `cortex_prometheus_notifications_dropped_total`
+  * `cortex_prometheus_notifications_queue_length`
+  * `cortex_prometheus_notifications_queue_capacity`
+  * `cortex_prometheus_notifications_alertmanagers_discovered`
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

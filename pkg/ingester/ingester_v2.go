@@ -52,6 +52,9 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	lastUpdateMutex sync.Mutex
+	lastUpdate      time.Time
+
 	// Thanos shipper used to ship blocks to the storage.
 	shipper Shipper
 
@@ -103,6 +106,19 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 	}
+}
+
+func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
+	u.lastUpdateMutex.Lock()
+	defer u.lastUpdateMutex.Lock()
+
+	return u.lastUpdate.Add(idle).Before(now)
+}
+
+func (u *userTSDB) setLastUpdate(t time.Time) {
+	u.lastUpdateMutex.Lock()
+	defer u.lastUpdateMutex.Lock()
+	u.lastUpdate = t
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -437,6 +453,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		return nil, wrapWithUser(err, userID)
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
+
+	db.setLastUpdate(time.Now())
 
 	// Increment metrics only if the samples have been successfully committed.
 	// If the code didn't reach this point, it means that we returned an error
@@ -1099,8 +1117,23 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 			return
 		}
 
+		// Don't do anything, if there is nothing to compact.
+		h := userDB.Head()
+		minT, maxT := h.MinTime(), h.MaxTime()
+		if minT == maxT {
+			return
+		}
+
+		var err error
+
 		i.TSDBState.compactionsTriggered.Inc()
-		err := userDB.Compact()
+		if i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout) {
+			level.Debug(util.Logger).Log("msg", "Forcing compaction due to TSDB being idle")
+			err = userDB.CompactHead(tsdb.NewRangeHead(h, minT, maxT))
+		} else {
+			err = userDB.Compact()
+		}
+
 		if err != nil {
 			i.TSDBState.compactionsFailed.Inc()
 			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)

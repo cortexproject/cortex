@@ -236,7 +236,6 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.chunkSizeBytes.Observe(30 * base)
 
 	m.queriesDropped.Add(31 * base)
-	m.queriesLimit.Add(32 * base)
 
 	m.seriesRefetches.Add(33 * base)
 
@@ -273,7 +272,6 @@ type mockedBucketStoreMetrics struct {
 	resultSeriesCount     prometheus.Summary
 	chunkSizeBytes        prometheus.Histogram
 	queriesDropped        prometheus.Counter
-	queriesLimit          prometheus.Gauge
 
 	cachedPostingsCompressions           *prometheus.CounterVec
 	cachedPostingsCompressionErrors      *prometheus.CounterVec
@@ -354,10 +352,6 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.queriesDropped = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the sample limit.",
-	})
-	m.queriesLimit = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "thanos_bucket_store_queries_concurrent_max",
-		Help: "Number of maximum concurrent queries.",
 	})
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",

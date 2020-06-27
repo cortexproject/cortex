@@ -53,7 +53,7 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
 
 0. Make sure you've a GPG key associated to your GitHub account (`git tag` will be signed with that GPG key)
    - You can add a GPG key to your GitHub account following [this procedure](https://help.github.com/articles/generating-a-gpg-key/)
-1. Update the version number in the `VERSION` file
+1. Update the version number in the `VERSION` file to say "X.Y-rc.0"
 2. Update `CHANGELOG.md`
    - Add a new section for the new release with all the changelog entries
    - Ensure changelog entries are in this order:
@@ -62,6 +62,9 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
      * `[ENHANCEMENT]`
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
+3. For a major or minor release, update the Cortex version in the following locations:
+   - Kubernetes manifests located at `k8s/`
+   - Documentation located at `docs/`
 
 Once your PR with release prepartion is approved, merge it to "release-X.Y" branch, and continue with publishing.
 
@@ -69,7 +72,7 @@ Once your PR with release prepartion is approved, merge it to "release-X.Y" bran
 
 To publish a release candidate:
 
-1. Ensure the `VERSION` number has the `-rc.X` suffix (`X` starting from `0`)
+1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
 2. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
 3. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 3. Create a pre-release in GitHub
@@ -80,10 +83,7 @@ To publish a release candidate:
 
 To publish a stable release:
 
-1. Ensure the `VERSION` number has **no** `-rc.X` suffix
-2. Update the Cortex version in the following locations:
-   - Kubernetes manifests located at `k8s/`
-   - Documentation located at `docs/`
+1. Ensure the `VERSION` file has **no** `-rc.X` suffix
 3. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
 4. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 5. Create a release in GitHub

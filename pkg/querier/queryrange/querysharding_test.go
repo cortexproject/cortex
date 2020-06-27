@@ -425,45 +425,81 @@ func TestQueryshardingCorrectness(t *testing.T) {
 
 func TestShardSplitting(t *testing.T) {
 
-	req := &PrometheusRequest{
-		Path:  "/query_range",
-		Start: util.TimeToMillis(start),
-		End:   util.TimeToMillis(end),
-		Step:  int64(step) / int64(time.Second),
-		Query: "sum(rate(bar1[1m]))",
-	}
-
-	shardingware := NewQueryShardMiddleware(
-		log.NewNopLogger(),
-		engine,
-		// ensure that all requests are shard compatbile
-		ShardingConfigs{
-			chunk.PeriodConfig{
-				Schema:    "v10",
-				RowShards: uint32(2),
-			},
+	for _, tc := range []struct {
+		desc        string
+		lookback    time.Duration
+		shouldShard bool
+	}{
+		{
+			desc:        "older than lookback",
+			lookback:    -1, // a negative lookback will ensure the entire query doesn't cross the sharding boundary & can safely be sharded.
+			shouldShard: true,
 		},
-		PrometheusCodec,
-		end.Sub(start)/2, // shard 1/2 of the req
-		nil,
-		nil,
-	)
+		{
+			desc:        "overlaps lookback",
+			lookback:    end.Sub(start) / 2, // intersect the request causing it to avoid sharding
+			shouldShard: false,
+		},
+		{
+			desc:        "newer than lookback",
+			lookback:    end.Sub(start) + 1,
+			shouldShard: false,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &PrometheusRequest{
+				Path:  "/query_range",
+				Start: util.TimeToMillis(start),
+				End:   util.TimeToMillis(end),
+				Step:  int64(step) / int64(time.Second),
+				Query: "sum(rate(bar1[1m]))",
+			}
 
-	downstream := &downstreamHandler{
-		engine:    engine,
-		queryable: shardAwareQueryable,
+			shardingware := NewQueryShardMiddleware(
+				log.NewNopLogger(),
+				engine,
+				// ensure that all requests are shard compatbile
+				ShardingConfigs{
+					chunk.PeriodConfig{
+						Schema:    "v10",
+						RowShards: uint32(2),
+					},
+				},
+				PrometheusCodec,
+				tc.lookback,
+				nil,
+				nil,
+			)
+
+			downstream := &downstreamHandler{
+				engine:    engine,
+				queryable: shardAwareQueryable,
+			}
+
+			handler := shardingware.Wrap(downstream).(*shardSplitter)
+			handler.now = func() time.Time { return end } // make the split cut the request in half (don't use time.Now)
+
+			var didShard bool
+
+			old := handler.shardingware
+			handler.shardingware = HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
+				didShard = true
+				return old.Do(ctx, req)
+			})
+
+			resp, err := handler.Do(context.Background(), req)
+			require.Nil(t, err)
+
+			require.Equal(t, tc.shouldShard, didShard)
+
+			unaltered, err := downstream.Do(context.Background(), req)
+			require.Nil(t, err)
+
+			approximatelyEquals(t, unaltered.(*PrometheusResponse), resp.(*PrometheusResponse))
+
+		})
 	}
 
-	handler := shardingware.Wrap(downstream).(*shardSplitter)
-	handler.now = func() time.Time { return end } // make the split cut the request in half (don't use time.Now)
-
-	resp, err := handler.Do(context.Background(), req)
-	require.Nil(t, err)
-
-	unaltered, err := downstream.Do(context.Background(), req)
-	require.Nil(t, err)
-
-	approximatelyEquals(t, unaltered.(*PrometheusResponse), resp.(*PrometheusResponse))
 }
 
 func BenchmarkQuerySharding(b *testing.B) {

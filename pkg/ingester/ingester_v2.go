@@ -134,7 +134,9 @@ type TSDBState struct {
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
-	shipTrigger chan struct{}
+
+	forceCompactTrigger chan chan<- struct{}
+	shipTrigger         chan chan<- struct{}
 
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
@@ -162,10 +164,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		usersMetadata: map[string]*userMetricsMetadata{},
 		wal:           &noopWAL{},
 		TSDBState: TSDBState{
-			dbs:         make(map[string]*userTSDB),
-			bucket:      bucketClient,
-			tsdbMetrics: newTSDBMetrics(registerer),
-			shipTrigger: make(chan struct{}, 1),
+			dbs:                 make(map[string]*userTSDB),
+			bucket:              bucketClient,
+			tsdbMetrics:         newTSDBMetrics(registerer),
+			forceCompactTrigger: make(chan chan<- struct{}),
+			shipTrigger:         make(chan chan<- struct{}),
 
 			compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "cortex_ingester_tsdb_compactions_triggered_total",
@@ -220,7 +223,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
-	i.Service = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
+	i.BasicService = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
 
@@ -1057,13 +1060,13 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 		case <-shipTicker.C:
 			i.shipBlocks(ctx)
 
-		case <-i.TSDBState.shipTrigger:
+		case ch := <-i.TSDBState.shipTrigger:
 			i.shipBlocks(ctx)
-			// This complements log message from v2FlushHandler.
-			if e := ctx.Err(); e == nil {
-				level.Info(util.Logger).Log("msg", "finished shipping of TSDB blocks")
-			} else {
-				level.Info(util.Logger).Log("msg", "shipping of TSDB blocks finished prematurely", "err", e)
+
+			// Notify back.
+			select {
+			case ch <- struct{}{}:
+			default: // Nobody is waiting for notification, don't block this loop.
 			}
 
 		case <-ctx.Done():
@@ -1107,7 +1110,16 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			i.compactBlocks(ctx)
+			i.compactBlocks(ctx, false)
+
+		case ch := <-i.TSDBState.forceCompactTrigger:
+			i.compactBlocks(ctx, true)
+
+			// Notify back.
+			select {
+			case ch <- struct{}{}:
+			default: // Nobody is waiting for notification, don't block this loop.
+			}
 
 		case <-ctx.Done():
 			return nil
@@ -1115,10 +1127,11 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	}
 }
 
-// Compacts all compactable blocks. If head is not compactable yet, nothing happens for given TSDB.
-func (i *Ingester) compactBlocks(ctx context.Context) {
-	// Don't compact TSDB blocks while JOINING or LEAVING, as there may be ongoing blocks transfers.
-	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING || ingesterState == ring.LEAVING {
+// Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
+func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
+	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
+	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
+	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING {
 		level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
 		return
 	}
@@ -1138,41 +1151,28 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 		var err error
 
 		i.TSDBState.compactionsTriggered.Inc()
-		if i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout) {
-			level.Debug(util.Logger).Log("msg", "Forcing compaction due to TSDB being idle")
+
+		reason := ""
+		switch {
+		case force:
+			reason = "forced"
 			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
-		} else {
+
+		case i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout):
+			reason = "idle"
+			level.Debug(util.Logger).Log("msg", "TSDB is idle, forcing compaction")
+			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+
+		default:
+			reason = "regular"
 			err = userDB.Compact()
 		}
 
 		if err != nil {
 			i.TSDBState.compactionsFailed.Inc()
-			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)
+			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
 		} else {
-			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID)
-		}
-	})
-}
-
-// Forces TSDB Head compaction, even if it is not compactable yet.
-func (i *Ingester) forceCompactBlocks(ctx context.Context) {
-	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
-		userDB := i.getTSDB(userID)
-		if userDB == nil {
-			return
-		}
-
-		h := userDB.Head()
-		if h.NumSeries() == 0 {
-			// No samples in the HEAD, no need to compact.
-			return
-		}
-
-		err := userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "TSDB blocks force-compaction for user has failed", "user", userID, "err", err)
-		} else {
-			level.Debug(util.Logger).Log("msg", "TSDB blocks force-compaction completed successfully", "user", userID)
+			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
 	})
 }
@@ -1217,7 +1217,7 @@ func (i *Ingester) v2LifecyclerFlush() {
 
 	ctx := context.Background()
 
-	i.forceCompactBlocks(ctx)
+	i.compactBlocks(ctx, true)
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
 		i.shipBlocks(ctx)
 	}
@@ -1228,20 +1228,54 @@ func (i *Ingester) v2LifecyclerFlush() {
 // Blocks version of Flush handler. It force-compacts blocks, and triggers shipping.
 func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	go func() {
-		level.Info(util.Logger).Log("msg", "starting to flush TSDB blocks")
-		i.forceCompactBlocks(context.Background())
-		level.Info(util.Logger).Log("msg", "finished flushing TSDB blocks")
+		ingCtx := i.BasicService.ServiceContext()
+		if ingCtx == nil || ingCtx.Err() != nil {
+			// Not started or already finished.
+			return
+		}
+
+		ch := make(chan struct{}, 1)
+
+		level.Info(util.Logger).Log("msg", "flushing TSDB blocks: triggering compaction")
+		select {
+		case i.TSDBState.forceCompactTrigger <- ch:
+			// Compacting now.
+		case <-ingCtx.Done():
+			level.Info(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			return
+		}
+
+		// Wait until notified about compaction being finished.
+		select {
+		case <-ch:
+			level.Info(util.Logger).Log("msg", "finished compacting TSDB blocks")
+		case <-ingCtx.Done():
+			level.Info(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			return
+		}
 
 		if i.cfg.TSDBConfig.ShipInterval > 0 {
-			level.Info(util.Logger).Log("msg", "triggered shipping of TSDB blocks")
+			level.Info(util.Logger).Log("msg", "flushing TSDB blocks: triggering shipping")
 
 			select {
-			case i.TSDBState.shipTrigger <- struct{}{}:
-				// notified
-			default:
-				// channel buffer full, already triggered.
+			case i.TSDBState.shipTrigger <- ch:
+				// shipping now
+			case <-ingCtx.Done():
+				level.Info(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				return
+			}
+
+			// Wait until shipping finished.
+			select {
+			case <-ch:
+				level.Info(util.Logger).Log("msg", "shipping of TSDB blocks finished")
+			case <-ingCtx.Done():
+				level.Info(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				return
 			}
 		}
+
+		level.Info(util.Logger).Log("msg", "flushing TSDB blocks: finished")
 	}()
 
 	w.WriteHeader(http.StatusNoContent)

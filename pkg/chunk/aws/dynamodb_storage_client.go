@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -590,12 +589,7 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
+func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err

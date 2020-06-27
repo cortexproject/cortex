@@ -15,7 +15,6 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -487,12 +486,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 	return input, err
 }
 
-func (s *ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
+func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err

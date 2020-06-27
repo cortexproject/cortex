@@ -8,7 +8,6 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -162,12 +161,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	return output, nil
 }
 
-func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
+func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err

@@ -565,21 +565,12 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-<<<<<<< HEAD
-	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
+	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(StoreQueryable, t.initStoreQueryable, modules.UserInvisibleModule)
-=======
-	mm.RegisterModule(Store, t.initChunkStore)
-	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
-	mm.RegisterModule(Ingester, t.initIngester)
-	mm.RegisterModule(Flusher, t.initFlusher)
-	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(StoreQueryable, t.initStoreQueryables)
->>>>>>> upstream/master
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Ruler, t.initRuler)

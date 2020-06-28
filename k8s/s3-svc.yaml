@@ -5,6 +5,6 @@ metadata:
   name: s3
 spec:
   ports:
-    - port: 4569
+    - port: 9000
   selector:
     name: s3

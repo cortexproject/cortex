@@ -596,17 +596,19 @@ func (m *testMatrix) At() storage.Series {
 
 func (m *testMatrix) Err() error { return nil }
 
-func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m *testMatrix) Warnings() storage.Warnings { return nil }
+
+func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 
 	if s != nil {
-		return splitByShard(s.Shard, s.Of, m), nil, nil
+		return splitByShard(s.Shard, s.Of, m)
 	}
 
-	return m.Copy(), nil, nil
+	return m.Copy()
 }
 
 func (m *testMatrix) LabelValues(name string) ([]string, storage.Warnings, error) {

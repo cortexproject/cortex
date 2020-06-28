@@ -279,15 +279,15 @@ type blocksStoreQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	set, warnings, err := q.selectSorted(sp, matchers...)
+func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	set := q.selectSorted(sp, matchers...)
 
 	// We need to wrap the error in order to have Prometheus returning a 5xx error.
-	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		err = promql.ErrStorage{Err: err}
+	if err := set.Err(); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		set = storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
-	return set, warnings, err
+	return set
 }
 
 func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
@@ -304,7 +304,7 @@ func (q *blocksStoreQuerier) Close() error {
 	return nil
 }
 
-func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.selectSorted")
 	defer spanLog.Span.Finish()
 
@@ -329,20 +329,20 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		if maxT < minT {
 			q.metrics.storesHit.Observe(0)
 			level.Debug(spanLog).Log("msg", "empty query time range after max time manipulation")
-			return series.NewEmptySeriesSet(), nil, nil
+			return storage.EmptySeriesSet()
 		}
 	}
 
 	// Find the list of blocks we need to query given the time range.
 	knownMetas, knownDeletionMarks, err := q.finder.GetBlocks(q.userID, minT, maxT)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 
 	if len(knownMetas) == 0 {
 		q.metrics.storesHit.Observe(0)
 		level.Debug(spanLog).Log("msg", "no blocks found")
-		return series.NewEmptySeriesSet(), nil, nil
+		return storage.EmptySeriesSet()
 	}
 
 	level.Debug(spanLog).Log("msg", "found blocks to query", "expected", BlockMetas(knownMetas).String())
@@ -371,7 +371,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 				break
 			}
 
-			return nil, nil, err
+			return storage.ErrSeriesSet(err)
 		}
 		level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients), "attempt", attempt)
 
@@ -379,7 +379,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		// are only meant to cover missing blocks.
 		seriesSets, queriedBlocks, warnings, err := q.fetchSeriesFromStores(spanCtx, clients, minT, maxT, convertedMatchers)
 		if err != nil {
-			return nil, nil, err
+			return storage.ErrSeriesSet(err)
 		}
 		level.Debug(spanLog).Log("msg", "received series from all store-gateways", "queried blocks", strings.Join(convertULIDsToString(queriedBlocks), " "))
 
@@ -402,7 +402,9 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 			q.metrics.storesHit.Observe(float64(len(touchedStores)))
 			q.metrics.refetches.Observe(float64(attempt - 1))
 
-			return storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge), resWarnings, nil
+			return series.NewSeriesSetWithWarnings(
+				storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge),
+				resWarnings)
 		}
 
 		level.Debug(spanLog).Log("msg", "consistency check failed", "attempt", attempt, "missing blocks", strings.Join(convertULIDsToString(missingBlocks), " "))
@@ -415,7 +417,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	err = fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
 	level.Warn(util.WithContext(spanCtx, spanLog)).Log("msg", "failed consistency check", "err", err)
 
-	return nil, nil, err
+	return storage.ErrSeriesSet(err)
 }
 
 func (q *blocksStoreQuerier) fetchSeriesFromStores(

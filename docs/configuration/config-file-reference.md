@@ -22,6 +22,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<string>`: a regular string
 * `<url>`: an URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
+* `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), and RFC 3339 formats: `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)
 
 ### Use environment variables in the configuration
 
@@ -667,6 +668,15 @@ store_gateway_client:
   # TLS CA path for the client
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+# Second store engine to use for querying. Empty = disabled.
+# CLI flag: -querier.second-store-engine
+[second_store_engine: <string> | default = ""]
+
+# If specified, second store is only used for queries before this timestamp.
+# Default value 0 means secondary store is always queried.
+# CLI flag: -querier.use-second-store-before-time
+[use_second_store_before_time: <time> | default = 0]
 ```
 
 ### `query_frontend_config`
@@ -975,6 +985,19 @@ storage:
 # HTTP timeout duration when sending notifications to the Alertmanager.
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
+
+# Max time to tolerate outage for restoring "for" state of alert.
+# CLI flag: -ruler.for-outage-tolerance
+[for_outage_tolerance: <duration> | default = 1h]
+
+# Minimum duration between alert and restored "for" state. This is maintained
+# only for alerts with configured "for" time greater than grace period.
+# CLI flag: -ruler.for-grace-period
+[for_grace_period: <duration> | default = 10m]
+
+# Minimum amount of time to wait before resending an alert to Alertmanager.
+# CLI flag: -ruler.resend-delay
+[resend_delay: <duration> | default = 1m]
 
 # Distribute rule evaluation using ring backend
 # CLI flag: -ruler.enable-sharding
@@ -2787,10 +2810,10 @@ bucket_store:
   # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
   [max_sample_count: <int> | default = 0]
 
-  # Max number of concurrent queries to execute against the long-term storage on
-  # a per-tenant basis.
+  # Max number of concurrent queries to execute against the long-term storage.
+  # The limit is shared across all tenants.
   # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
-  [max_concurrent: <int> | default = 20]
+  [max_concurrent: <int> | default = 100]
 
   # Maximum number of concurrent tenants synching blocks.
   # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency
@@ -3301,4 +3324,10 @@ The `purger_config` configures the purger which takes care of delete requests
 # Name of the object store to use for storing delete plans
 # CLI flag: -purger.object-store-type
 [object_store_type: <string> | default = ""]
+
+# Allow cancellation of delete request until duration after they are created.
+# Data would be deleted only after delete requests have been older than this
+# duration. Ideally this should be set to at least 24h.
+# CLI flag: -purger.delete-request-cancel-period
+[delete_request_cancel_period: <duration> | default = 24h]
 ```

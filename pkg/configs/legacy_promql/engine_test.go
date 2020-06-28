@@ -129,23 +129,14 @@ type errQuerier struct {
 	err error
 }
 
-func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return errSeriesSet{err: q.err}, nil, q.err
+func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) storage.SeriesSet {
+	return storage.ErrSeriesSet(q.err)
 }
 func (q *errQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, q.err
 }
 func (q *errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, q.err }
 func (q *errQuerier) Close() error                                    { return q.err }
-
-// errSeriesSet implements storage.SeriesSet which always returns error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool         { return false }
-func (errSeriesSet) At() storage.Series { return nil }
-func (e errSeriesSet) Err() error       { return e.err }
 
 func TestQueryError(t *testing.T) {
 	engine := NewEngine(nil, nil, 10, 10*time.Second)

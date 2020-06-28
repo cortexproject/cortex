@@ -25,9 +25,8 @@ func TestSelect(t *testing.T) {
 				nil,
 			),
 			fn: func(t *testing.T, q *ShardedQuerier) {
-				set, _, err := q.Select(false, nil)
-				require.Nil(t, set)
-				require.EqualError(t, err, nonEmbeddedErrMsg)
+				set := q.Select(false, nil)
+				require.EqualError(t, set.Err(), nonEmbeddedErrMsg)
 			},
 		},
 		{
@@ -55,13 +54,13 @@ func TestSelect(t *testing.T) {
 
 				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
 				require.Nil(t, err)
-				_, _, err = q.Select(
+				set := q.Select(
 					false,
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
 					exactMatch(astmapper.QueryLabel, encoded),
 				)
-				require.Nil(t, err)
+				require.Nil(t, set.Err())
 			},
 		},
 		{
@@ -75,14 +74,13 @@ func TestSelect(t *testing.T) {
 			fn: func(t *testing.T, q *ShardedQuerier) {
 				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
 				require.Nil(t, err)
-				set, _, err := q.Select(
+				set := q.Select(
 					false,
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
 					exactMatch(astmapper.QueryLabel, encoded),
 				)
-				require.Nil(t, set)
-				require.EqualError(t, err, "SomeErr")
+				require.EqualError(t, set.Err(), "SomeErr")
 			},
 		},
 		{
@@ -132,13 +130,13 @@ func TestSelect(t *testing.T) {
 			fn: func(t *testing.T, q *ShardedQuerier) {
 				encoded, err := astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})
 				require.Nil(t, err)
-				set, _, err := q.Select(
+				set := q.Select(
 					false,
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
 					exactMatch(astmapper.QueryLabel, encoded),
 				)
-				require.Nil(t, err)
+				require.Nil(t, set.Err())
 				require.Equal(
 					t,
 					NewSeriesSet([]SampleStream{
@@ -237,7 +235,7 @@ func TestSelectConcurrent(t *testing.T) {
 
 			encoded, err := astmapper.JSONCodec.Encode(c.queries)
 			require.Nil(t, err)
-			set, _, err := querier.Select(
+			set := querier.Select(
 				false,
 				nil,
 				exactMatch("__name__", astmapper.EmbeddedQueriesMetricName),
@@ -245,7 +243,7 @@ func TestSelectConcurrent(t *testing.T) {
 			)
 
 			if c.err != nil {
-				require.EqualError(t, err, c.err.Error())
+				require.EqualError(t, set.Err(), c.err.Error())
 				return
 			}
 
@@ -254,7 +252,6 @@ func TestSelectConcurrent(t *testing.T) {
 				ct++
 			}
 			require.Equal(t, len(c.queries), ct)
-
 		})
 	}
 }

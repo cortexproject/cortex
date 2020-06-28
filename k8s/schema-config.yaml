@@ -9,7 +9,7 @@ data:
       - from: "2020-01-01"
         schema: v9
         index:
-          period: 168h0m0s
+          period: 168h
           prefix: cortex_weekly_ 
         store: aws-dynamo 
         object_store: s3

@@ -66,7 +66,7 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "purger_oldest_pending_delete_request_age_seconds",
-		Help:      "Age of oldest pending delete request in seconds",
+		Help:      "Age of oldest pending delete request in seconds, since they are over their cancellation period",
 	})
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
@@ -473,7 +473,12 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 		p.executePlansChan <- req
 	}
 
-	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(now.Sub(oldestPendingRequestCreatedAt) / time.Second))
+	// track age of oldest delete request since they are over their cancellation period
+	oldestPendingRequestAge := time.Duration(0)
+	if !oldestPendingRequestCreatedAt.Equal(now) {
+		oldestPendingRequestAge = now.Sub(oldestPendingRequestCreatedAt.Add(p.cfg.DeleteRequestCancelPeriod))
+	}
+	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(oldestPendingRequestAge / time.Second))
 	p.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
 
 	return nil

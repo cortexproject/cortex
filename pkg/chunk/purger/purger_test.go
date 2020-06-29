@@ -410,8 +410,8 @@ func TestPurger_Metrics(t *testing.T) {
 	// load new delete requests for processing
 	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())
 
-	// there must be 2 pending delete requests, oldest being 3 days old
-	require.InDelta(t, float64(3*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
+	// there must be 2 pending delete requests, oldest being 2 days old since its cancellation time is over
+	require.InDelta(t, float64(2*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
 
 	// start loop to process requests

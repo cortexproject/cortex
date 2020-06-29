@@ -531,9 +531,12 @@ func TestStaleness(t *testing.T) {
 
 	// A time series that has two samples and then goes stale.
 	app := storage.Appender()
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 0, 1)
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, math.Float64frombits(value.StaleNaN))
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 0, 1)
+	testutil.Ok(t, err)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
+	testutil.Ok(t, err)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, math.Float64frombits(value.StaleNaN))
+	testutil.Ok(t, err)
 
 	err = app.Commit()
 	testutil.Ok(t, err)
@@ -642,7 +645,7 @@ func TestCopyState(t *testing.T) {
 	testutil.Equals(t, want, newGroup.seriesInPreviousEval)
 	testutil.Equals(t, oldGroup.rules[0], newGroup.rules[3])
 	testutil.Equals(t, oldGroup.evaluationDuration, newGroup.evaluationDuration)
-	testutil.Equals(t, []labels.Labels{labels.Labels{{Name: "l1", Value: "v3"}}}, newGroup.staleSeries)
+	testutil.Equals(t, []labels.Labels{{{Name: "l1", Value: "v3"}}}, newGroup.staleSeries)
 }
 
 func TestDeletedRuleMarkedStale(t *testing.T) {
@@ -810,7 +813,8 @@ func formatRules(r *rulefmt.RuleGroups) ruleGroupsTest {
 func reloadAndValidate(rgs *rulefmt.RuleGroups, t *testing.T, tmpFile *os.File, ruleManager *Manager, expected map[string]labels.Labels, ogs map[string]*Group) {
 	bs, err := yaml.Marshal(formatRules(rgs))
 	testutil.Ok(t, err)
-	tmpFile.Seek(0, 0)
+	_, err = tmpFile.Seek(0, 0)
+	testutil.Ok(t, err)
 	_, err = tmpFile.Write(bs)
 	testutil.Ok(t, err)
 	err = ruleManager.Update(10*time.Second, []string{tmpFile.Name()}, nil)
@@ -853,10 +857,14 @@ func TestNotify(t *testing.T) {
 	group := NewGroup("alert", "", time.Second, []Rule{rule}, true, opts)
 
 	app := storage.Appender()
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, 3)
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 5000, 3)
-	app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 6000, 0)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 1000, 2)
+	testutil.Ok(t, err)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 2000, 3)
+	testutil.Ok(t, err)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 5000, 3)
+	testutil.Ok(t, err)
+	_, err = app.Add(labels.FromStrings(model.MetricNameLabel, "a"), 6000, 0)
+	testutil.Ok(t, err)
 
 	err = app.Commit()
 	testutil.Ok(t, err)

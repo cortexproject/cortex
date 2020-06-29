@@ -20,9 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
-	promRules "github.com/prometheus/prometheus/rules"
-	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -148,12 +145,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Ruler struct {
 	services.Service
 
-	cfg         Config
-	engine      *promql.Engine
-	queryable   promStorage.Queryable
-	pusher      Pusher
-	alertURL    *url.URL
-	notifierCfg *config.Config
+	cfg               Config
+	appendableHistory AppendableHistoryFunc
+	alertURL          *url.URL
+	notifierCfg       *config.Config
+	queryFunc         DelayedQueryFunc
+	parseExpr         func(string) (fmt.Stringer, error)
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -162,7 +159,7 @@ type Ruler struct {
 	store          rules.RuleStore
 	mapper         *mapper
 	userManagerMtx sync.Mutex
-	userManagers   map[string]*promRules.Manager
+	userManagers   map[string]*rules.Manager
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -173,7 +170,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, appendableHist AppendableHistoryFunc, reg prometheus.Registerer, parseExpr func(string) (fmt.Stringer, error), logger log.Logger) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -185,18 +182,18 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	}
 
 	ruler := &Ruler{
-		cfg:          cfg,
-		engine:       engine,
-		queryable:    queryable,
-		alertURL:     cfg.ExternalURL.URL,
-		notifierCfg:  ncfg,
-		notifiers:    map[string]*rulerNotifier{},
-		store:        ruleStore,
-		pusher:       pusher,
-		mapper:       newMapper(cfg.RulePath, logger),
-		userManagers: map[string]*promRules.Manager{},
-		registry:     reg,
-		logger:       logger,
+		cfg:               cfg,
+		queryFunc:         queryFunc,
+		parseExpr:         parseExpr,
+		alertURL:          cfg.ExternalURL.URL,
+		notifierCfg:       ncfg,
+		notifiers:         map[string]*rulerNotifier{},
+		store:             ruleStore,
+		appendableHistory: appendableHist,
+		mapper:            newMapper(cfg.RulePath, logger),
+		userManagers:      map[string]*rules.Manager{},
+		registry:          reg,
+		logger:            logger,
 	}
 
 	if cfg.EnableSharding {
@@ -278,7 +275,7 @@ func (r *Ruler) stopping(_ error) error {
 	for user, manager := range r.userManagers {
 		level.Debug(r.logger).Log("msg", "shutting down user  manager", "user", user)
 		wg.Add(1)
-		go func(manager *promRules.Manager, user string) {
+		go func(manager *rules.Manager, user string) {
 			manager.Stop()
 			wg.Done()
 			level.Debug(r.logger).Log("msg", "user manager shut down", "user", user)
@@ -294,13 +291,13 @@ func (r *Ruler) stopping(_ error) error {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
+	return func(ctx context.Context, expr string, alerts ...*rules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == promRules.StatePending {
+			if alert.State == rules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{
@@ -519,12 +516,7 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
-func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
-	tsdb := &tsdb{
-		pusher:    r.pusher,
-		userID:    userID,
-		queryable: r.queryable,
-	}
+func (r *Ruler) newManager(ctx context.Context, userID string) (*rules.Manager, error) {
 
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
@@ -535,10 +527,9 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
-	opts := &promRules.ManagerOptions{
-		Appendable:      tsdb,
-		TSDB:            tsdb,
-		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
+	opts := &rules.ManagerOptions{
+		QueryFunc:       r.queryFunc(r.cfg.EvaluationDelay),
+		ParseExpr:       r.parseExpr,
 		Context:         user.InjectOrgID(ctx, userID),
 		ExternalURL:     r.alertURL,
 		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),
@@ -548,7 +539,10 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		ForGracePeriod:  r.cfg.ForGracePeriod,
 		ResendDelay:     r.cfg.ResendDelay,
 	}
-	return promRules.NewManager(opts), nil
+	app, hist := r.appendableHistory(userID, opts)
+	opts.Appendable = app
+	opts.AlertHistory = hist
+	return rules.NewManager(opts), nil
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
@@ -567,7 +561,7 @@ func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
-	var groups []*promRules.Group
+	var groups []*rules.Group
 	r.userManagerMtx.Lock()
 	if mngr, exists := r.userManagers[userID]; exists {
 		groups = mngr.RuleGroups()
@@ -604,7 +598,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
-			case *promRules.AlertingRule:
+			case *rules.AlertingRule:
 				rule.ActiveAlerts()
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
@@ -635,7 +629,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
-			case *promRules.RecordingRule:
+			case *rules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
 					Rule: &rules.RuleDesc{
 						Record: rule.Name(),

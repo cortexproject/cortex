@@ -18,6 +18,7 @@ package series
 
 import (
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -79,7 +80,33 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
-// Labels implements storage.Series
+// Add inserts a sample at the correct spot to maintain ordering. It discards the sample if a sample already
+// exists with the same timestamp. NB: is not efficient due to copies.
+func (c *ConcreteSeries) Add(sample model.SamplePair) {
+	if len(c.samples) == 0 {
+		c.samples = []model.SamplePair{sample}
+		return
+	}
+
+	i := sort.Search(len(c.samples), func(i int) bool {
+		return sample.Timestamp <= c.samples[i].Timestamp
+	})
+
+	if i == len(c.samples) {
+		c.samples = append(c.samples, sample)
+		return
+	}
+
+	if c.samples[i].Timestamp != sample.Timestamp {
+		vec := append([]model.SamplePair{}, c.samples[:i]...)
+		vec = append(vec, sample)
+		vec = append(vec, c.samples[i:]...)
+		c.samples = vec
+	}
+
+}
+
+// Labels impls storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
@@ -89,7 +116,28 @@ func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
-// concreteSeriesIterator implements chunkenc.Iterator.
+// TrimStart drops references to samples before start
+func (c *ConcreteSeries) TrimStart(start time.Time) {
+	ts := model.TimeFromUnixNano(start.UnixNano())
+	i := sort.Search(c.Len(), func(i int) bool {
+		return c.samples[i].Timestamp >= ts
+	})
+
+	if i == 0 {
+		return
+	}
+
+	// release the underlying allocations that are no longer needed
+	tmp := make([]model.SamplePair, len(c.samples[i:]))
+	copy(tmp, c.samples[i:])
+	c.samples = tmp
+}
+
+func (c *ConcreteSeries) Len() int {
+	return len(c.samples)
+}
+
+// concreteSeriesIterator implements storage.SeriesIterator.
 type concreteSeriesIterator struct {
 	cur    int
 	series *ConcreteSeries

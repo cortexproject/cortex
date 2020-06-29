@@ -447,6 +447,11 @@ walconfig:
   # CLI flag: -ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 30m]
 
+  # When WAL is enabled, should chunks be flushed to long-term storage on
+  # shutdown. Useful eg. for migration to blocks engine.
+  # CLI flag: -ingester.flush-on-shutdown-with-wal-enabled
+  [flush_on_shutdown_with_wal_enabled: <boolean> | default = false]
+
 lifecycler:
   ring:
     kvstore:
@@ -2805,10 +2810,10 @@ bucket_store:
   # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
   [max_sample_count: <int> | default = 0]
 
-  # Max number of concurrent queries to execute against the long-term storage on
-  # a per-tenant basis.
+  # Max number of concurrent queries to execute against the long-term storage.
+  # The limit is shared across all tenants.
   # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
-  [max_concurrent: <int> | default = 20]
+  [max_concurrent: <int> | default = 100]
 
   # Maximum number of concurrent tenants synching blocks.
   # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency

@@ -70,7 +70,6 @@ func (a *appender) Rollback() error {
 }
 
 // PromDelayedQueryFunc returns a DelayedQueryFunc bound to a promql engine.
-// and passing an altered timestamp.
 func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQueryFunc {
 	return func(delay time.Duration) rules.QueryFunc {
 		orig := rules.EngineQueryFunc(engine, q)

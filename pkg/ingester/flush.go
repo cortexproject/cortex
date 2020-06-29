@@ -278,7 +278,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		return nil
 	}
 
-	i.metrics.seriesFlushReasons.WithLabelValues(reason.String()).Inc()
+	i.metrics.flushedSeries.WithLabelValues(reason.String()).Inc()
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
 	ctx, cancel := context.WithTimeout(context.Background(), i.cfg.FlushOpTimeout)

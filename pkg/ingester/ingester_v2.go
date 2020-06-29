@@ -52,6 +52,7 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	// Used to detect idle TSDBs.
 	lastUpdateMutex sync.Mutex
 	lastUpdate      time.Time
 

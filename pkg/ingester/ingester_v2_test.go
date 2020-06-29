@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1413,8 +1412,6 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 }
 
 func TestIngesterCompactIdleBlock(t *testing.T) {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
-
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.TSDBConfig.ShipConcurrency = 1

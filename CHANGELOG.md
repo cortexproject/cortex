@@ -21,6 +21,7 @@
   * `cortex_prometheus_notifications_queue_length`
   * `cortex_prometheus_notifications_queue_capacity`
   * `cortex_prometheus_notifications_alertmanagers_discovered`
+* [ENHANCEMENT] Added `-ingester.flush-on-shutdown-with-wal-enabled` option to enable chunks flushing even when WAL is enabled. #2780
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

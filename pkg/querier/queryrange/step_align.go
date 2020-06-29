@@ -6,22 +6,22 @@ import (
 
 // StepAlignMiddleware aligns the start and end of request to the step to
 // improved the cacheability of the query results.
-func StepAlignMiddleware(maxStepAlignment int64) MiddlewareFunc {
+func StepAlignMiddleware(maxStepAlignmentMs int64) MiddlewareFunc {
 	return func(next Handler) Handler {
 		return stepAlign{
-			next:             next,
-			maxStepAlignment: maxStepAlignment,
+			next:               next,
+			maxStepAlignmentMs: maxStepAlignmentMs,
 		}
 	}
 }
 
 type stepAlign struct {
-	next             Handler
-	maxStepAlignment int64
+	next               Handler
+	maxStepAlignmentMs int64
 }
 
 func (s stepAlign) Do(ctx context.Context, r Request) (Response, error) {
-	if s.maxStepAlignment > 0 && r.GetStep() > s.maxStepAlignment {
+	if s.maxStepAlignmentMs > 0 && r.GetStep() > s.maxStepAlignmentMs {
 		return s.next.Do(ctx, r)
 	}
 	start := (r.GetStart() / r.GetStep()) * r.GetStep()

@@ -69,7 +69,7 @@ func TestStepAlign(t *testing.T) {
 					result = req.(*PrometheusRequest)
 					return nil, nil
 				}),
-				maxStepAlignment: 99,
+				maxStepAlignmentMs: 99,
 			}
 			_, err := s.Do(context.Background(), tc.input)
 			require.NoError(t, err)

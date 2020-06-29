@@ -895,6 +895,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
+	userDB.lastUpdate = time.Now() // After WAL replay.
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading

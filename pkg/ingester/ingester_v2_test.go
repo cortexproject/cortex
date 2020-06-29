@@ -1418,8 +1418,10 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	cfg.TSDBConfig.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
 	cfg.TSDBConfig.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
 
+	r := prometheus.NewRegistry()
+
 	// Create ingester
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, r)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 
@@ -1437,16 +1439,44 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 
 	i.compactBlocks(context.Background())
 	verifyCompactedHead(t, i, false)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
 
-	// wait one second
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// wait one second -- TSDB is now idle.
 	time.Sleep(cfg.TSDBConfig.HeadCompactionIdleTimeout)
 
 	i.compactBlocks(context.Background())
 	verifyCompactedHead(t, i, true)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
 
 	// Pushing another sample still works.
 	pushSample(t, i, time.Now(), 0)
 	verifyCompactedHead(t, i, false)
+
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 2
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {

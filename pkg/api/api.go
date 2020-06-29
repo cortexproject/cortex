@@ -373,9 +373,6 @@ func (a *API) registerQueryAPI(handler http.Handler) {
 func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	frontend.RegisterFrontendServer(a.server.GRPC, f)
 	a.registerQueryAPI(f.Handler())
-
-	// Readiness
-	a.RegisterRoute("/query-frontend/ready", http.HandlerFunc(f.ReadinessHandler), false, "GET")
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

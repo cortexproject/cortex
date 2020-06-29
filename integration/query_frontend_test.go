@@ -139,7 +139,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Greater(0), "cortex_dns_lookups_total"))
 
 	// Confirm that the query-frontend is not ready b/c the querier is no connected
-	resp, err := http.Get("http://" + queryFrontend.HTTPEndpoint() + "/query-frontend/ready")
+	resp, err := http.Get("http://" + queryFrontend.HTTPEndpoint() + "/ready")
 	require.NoError(t, err)
 	require.Equal(t, 503, resp.StatusCode)
 
@@ -215,7 +215,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
 
 	// Confirm that the query-frontend is ready b/c the querier is connected
-	resp, err = http.Get("http://" + queryFrontend.HTTPEndpoint() + "/query-frontend/ready")
+	resp, err = http.Get("http://" + queryFrontend.HTTPEndpoint() + "/ready")
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }

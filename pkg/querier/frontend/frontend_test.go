@@ -69,7 +69,7 @@ func TestFrontendReady(t *testing.T) {
 	test := func(addr string) {
 		time.Sleep(100 * time.Millisecond)
 
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/query-frontend/ready", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/ready", addr), nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
@@ -86,7 +86,7 @@ func TestFrontendNotReady(t *testing.T) {
 		require.NoError(t, err)
 	})
 	test := func(addr string) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/query-frontend/ready", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/ready", addr), nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
@@ -262,7 +262,6 @@ func testFrontendRunWorker(t *testing.T, handler http.Handler, test func(addr st
 	RegisterFrontendServer(grpcServer, frontend)
 
 	r := mux.NewRouter()
-	r.HandleFunc("/query-frontend/ready", frontend.ReadinessHandler)
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},

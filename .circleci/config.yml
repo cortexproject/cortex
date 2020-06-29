@@ -72,10 +72,6 @@ jobs:
     - run:
         name: Lint
         command: make BUILD_IN_CONTAINER=false lint
-    # fails to run everything first time - see https://github.com/golangci/golangci-lint/issues/866
-    - run:
-        name: Lint again
-        command: make BUILD_IN_CONTAINER=false lint
     - run:
         name: Check vendor directory is consistent.
         command: make BUILD_IN_CONTAINER=false mod-check

@@ -248,6 +248,10 @@ func (p *Purger) workerJobCleanup(job workerJob) {
 			default:
 				// already sent
 			}
+		} else if len(p.usersWithPendingRequests) == 0 {
+			// there are no pending requests from any of the users, set the oldest pending request and number of pending requests to 0
+			p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(0)
+			p.metrics.pendingDeleteRequestsCount.Set(0)
 		}
 	} else {
 		p.pendingPlansCountMtx.Unlock()

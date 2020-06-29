@@ -429,9 +429,6 @@ func TestPurger_Metrics(t *testing.T) {
 		return testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal)
 	})
 
-	// load new delete requests for processing which should update the metrics
-	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())
-
 	// there must be 0 pending delete requests so the age for oldest pending must be 0
 	require.InDelta(t, float64(0), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(0), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))

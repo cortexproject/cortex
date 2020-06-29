@@ -75,7 +75,8 @@ func main() {
 	defer chunkStore.Stop()
 
 	storeQueryable := querier.NewChunkStoreQueryable(cfg.Querier, chunkStore)
-	_, engine := querier.New(cfg.Querier, noopQuerier{}, storeQueryable, nil, nil)
+	queryables := []querier.QueryableWithFilter{querier.UseAlwaysQueryable(storeQueryable)}
+	_, engine := querier.New(cfg.Querier, noopQuerier{}, queryables, nil, nil)
 
 	if flag.NArg() != 1 {
 		level.Error(util.Logger).Log("msg", "usage: oneshot <options> promql-query")

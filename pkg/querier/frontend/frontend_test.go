@@ -195,10 +195,6 @@ func TestFrontendCheckReady(t *testing.T) {
 }
 
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
-	testFrontendRunWorker(t, handler, test, matchMaxConcurrency, true)
-}
-
-func testFrontendRunWorker(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool, runWorker bool) {
 	logger := log.NewNopLogger()
 
 	var (
@@ -245,15 +241,11 @@ func testFrontendRunWorker(t *testing.T, handler http.Handler, test func(addr st
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	var worker services.Service
-	if runWorker {
-		worker, err = NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
-		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
-	}
+	worker, err = NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 
 	test(httpListen.Addr().String())
 
-	if runWorker {
-		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
-	}
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
 }

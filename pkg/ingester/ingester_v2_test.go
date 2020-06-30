@@ -1322,7 +1322,7 @@ func TestIngester_flushing(t *testing.T) {
 				// Shutdown ingester. This triggers flushing of the block.
 				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
 
-				verifyCompactedHead(t, i)
+				verifyCompactedHead(t, i, true)
 
 				// Verify that block has been shipped.
 				m.AssertNumberOfCalls(t, "Sync", 1)
@@ -1342,7 +1342,7 @@ func TestIngester_flushing(t *testing.T) {
 
 				i.ShutdownHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
 
-				verifyCompactedHead(t, i)
+				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
 			},
 		},
@@ -1363,7 +1363,7 @@ func TestIngester_flushing(t *testing.T) {
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
 				time.Sleep(1 * time.Second)
 
-				verifyCompactedHead(t, i)
+				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
 			},
 		},
@@ -1400,22 +1400,6 @@ func TestIngester_flushing(t *testing.T) {
 			tc.action(t, i, m)
 		})
 	}
-}
-
-func verifyCompactedHead(t *testing.T, i *Ingester) {
-	db := i.getTSDB(userID)
-	require.NotNil(t, db)
-
-	h := db.Head()
-	require.Zero(t, h.NumSeries())
-}
-
-func pushSingleSample(t *testing.T, i *Ingester) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	now := time.Now()
-	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, float64(util.TimeToMillis(now)), util.TimeToMillis(now))
-	_, err := i.v2Push(ctx, req)
-	require.NoError(t, err)
 }
 
 func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
@@ -1563,9 +1547,9 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	pushSample(t, i, time.Now(), 0)
+	pushSingleSample(t, i)
 
-	i.compactBlocks(context.Background())
+	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, false)
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -1580,7 +1564,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	// wait one second -- TSDB is now idle.
 	time.Sleep(cfg.TSDBConfig.HeadCompactionIdleTimeout)
 
-	i.compactBlocks(context.Background())
+	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, true)
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -1593,7 +1577,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
 
 	// Pushing another sample still works.
-	pushSample(t, i, time.Now(), 0)
+	pushSingleSample(t, i)
 	verifyCompactedHead(t, i, false)
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -1615,9 +1599,9 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 	require.Equal(t, expected, h.NumSeries() == 0)
 }
 
-func pushSample(t *testing.T, i *Ingester, ts time.Time, val float64) {
+func pushSingleSample(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, val, util.TimeToMillis(ts))
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }

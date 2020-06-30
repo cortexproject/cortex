@@ -71,7 +71,7 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "purger_pending_delete_requests_count",
-		Help:      "Count of requests which are in process or are ready to be processed",
+		Help:      "Count of delete requests which are over their cancellation period and have not finished processing yet",
 	})
 
 	return &m

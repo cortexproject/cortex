@@ -108,7 +108,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
 // MemorySeriesStorage.
 type Ingester struct {
-	services.Service
+	*services.BasicService
 
 	cfg          Config
 	clientConfig client.Config
@@ -207,7 +207,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i.subservicesWatcher = services.NewFailureWatcher()
 	i.subservicesWatcher.WatchService(i.lifecycler)
 
-	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.starting, i.loop, i.stopping)
 	return i, nil
 }
 
@@ -276,7 +276,7 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 		wal:          &noopWAL{},
 	}
 
-	i.Service = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
 	return i, nil
 }
 

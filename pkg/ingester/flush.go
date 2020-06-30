@@ -24,6 +24,11 @@ const (
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
+	if i.cfg.TSDBEnabled {
+		i.v2LifecyclerFlush()
+		return
+	}
+
 	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
 	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
@@ -39,6 +44,11 @@ func (i *Ingester) Flush() {
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
+	if i.cfg.TSDBEnabled {
+		i.v2FlushHandler(w, r)
+		return
+	}
+
 	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
 	level.Info(util.Logger).Log("msg", "flushing of chunks complete")

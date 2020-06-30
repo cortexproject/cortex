@@ -25,6 +25,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -53,8 +54,7 @@ type userTSDB struct {
 	limiter        *Limiter
 
 	// Used to detect idle TSDBs.
-	lastUpdateMutex sync.Mutex
-	lastUpdate      time.Time
+	lastUpdate *atomic.Int64
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper Shipper
@@ -110,16 +110,13 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
-	u.lastUpdateMutex.Lock()
-	defer u.lastUpdateMutex.Unlock()
+	lu := u.lastUpdate.Load()
 
-	return u.lastUpdate.Add(idle).Before(now)
+	return time.Unix(lu, 0).Add(idle).Before(now)
 }
 
 func (u *userTSDB) setLastUpdate(t time.Time) {
-	u.lastUpdateMutex.Lock()
-	defer u.lastUpdateMutex.Unlock()
-	u.lastUpdate = t
+	u.lastUpdate.Store(t.Unix())
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -875,6 +872,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		lastUpdate:          atomic.NewInt64(0),
 	}
 
 	// Create a new user database
@@ -896,7 +894,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
-	userDB.lastUpdate = time.Now() // After WAL replay.
+	userDB.setLastUpdate(time.Now()) // After WAL replay.
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading

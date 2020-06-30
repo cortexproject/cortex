@@ -6857,6 +6857,7 @@ __replica__: replica2
 &lt;/ul>
 &lt;/li>
 &lt;li>[CHANGE] Metric &lt;code>cortex_ingester_flush_reasons&lt;/code> has been renamed to &lt;code>cortex_ingester_series_flushed_total&lt;/code>, and is now incremented during flush, not when series is enqueued for flushing. &lt;a href="https://github.com/cortexproject/cortex/pull/2802">#2802&lt;/a>&lt;/li>
+&lt;li>[CHANGE] Experimental Delete Series: Metric &lt;code>cortex_purger_oldest_pending_delete_request_age_seconds&lt;/code> would track age of delete requests since they are over their cancellation period instead of their creation time. &lt;a href="https://github.com/cortexproject/cortex/pull/2806">#2806&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-outage-tolerance&lt;/code>, Max time to tolerate outage for restoring &amp;ldquo;for&amp;rdquo; state of alert. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-grace-period&lt;/code>, Minimum duration between alert and restored &amp;ldquo;for&amp;rdquo; state. This is maintained only for alerts with configured &amp;ldquo;for&amp;rdquo; time greater than grace period. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.resend-delay&lt;/code>, Minimum amount of time to wait before resending an alert to Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>

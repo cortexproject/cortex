@@ -1160,7 +1160,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 
 		case i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout):
 			reason = "idle"
-			level.Debug(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
+			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
 			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
 
 		default:

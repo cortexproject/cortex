@@ -1211,7 +1211,7 @@ sendLoop:
 
 // This method is called as part of Lifecycler's shutdown, to flush all data.
 // Lifecycler shutdown happens as part of Ingester shutdown (see stoppingV2 method).
-// Samples are not received at this stage. Shipping service has already been stopped as well.
+// Samples are not received at this stage. Compaction and Shipping loops have already been stopped as well.
 func (i *Ingester) v2LifecyclerFlush() {
 	level.Info(util.Logger).Log("msg", "starting to flush and ship TSDB blocks")
 

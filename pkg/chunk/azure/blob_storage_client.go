@@ -201,8 +201,8 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 	return storageObjects, commonPrefixes, nil
 }
 
-func (b *BlobStorage) DeleteObject(ctx context.Context, chunkID string) error {
-	blockBlobURL, err := b.getBlobURL(chunkID)
+func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
+	blockBlobURL, err := b.getBlobURL(blobID)
 	if err != nil {
 		return err
 	}

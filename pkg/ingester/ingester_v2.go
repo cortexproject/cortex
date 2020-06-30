@@ -25,6 +25,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -51,6 +52,9 @@ type userTSDB struct {
 	refCache       *cortex_tsdb.RefCache
 	seriesInMetric *metricCounter
 	limiter        *Limiter
+
+	// Used to detect idle TSDBs.
+	lastUpdate *atomic.Int64
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper Shipper
@@ -103,6 +107,16 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 	}
+}
+
+func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
+	lu := u.lastUpdate.Load()
+
+	return time.Unix(lu, 0).Add(idle).Before(now)
+}
+
+func (u *userTSDB) setLastUpdate(t time.Time) {
+	u.lastUpdate.Store(t.Unix())
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -437,6 +451,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		return nil, wrapWithUser(err, userID)
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
+
+	db.setLastUpdate(time.Now())
 
 	// Increment metrics only if the samples have been successfully committed.
 	// If the code didn't reach this point, it means that we returned an error
@@ -856,6 +872,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		lastUpdate:          atomic.NewInt64(0),
 	}
 
 	// Create a new user database
@@ -877,6 +894,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
+	userDB.setLastUpdate(time.Now()) // After WAL replay.
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
@@ -1099,8 +1117,22 @@ func (i *Ingester) compactBlocks(ctx context.Context) {
 			return
 		}
 
+		// Don't do anything, if there is nothing to compact.
+		h := userDB.Head()
+		if h.NumSeries() == 0 {
+			return
+		}
+
+		var err error
+
 		i.TSDBState.compactionsTriggered.Inc()
-		err := userDB.Compact()
+		if i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout) {
+			level.Debug(util.Logger).Log("msg", "Forcing compaction due to TSDB being idle")
+			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+		} else {
+			err = userDB.Compact()
+		}
+
 		if err != nil {
 			i.TSDBState.compactionsFailed.Inc()
 			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err)

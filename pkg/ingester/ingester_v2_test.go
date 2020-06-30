@@ -1410,3 +1410,86 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
 }
+
+func TestIngesterCompactIdleBlock(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 1
+	cfg.TSDBConfig.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
+	cfg.TSDBConfig.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
+
+	r := prometheus.NewRegistry()
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, r)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSample(t, i, time.Now(), 0)
+
+	i.compactBlocks(context.Background())
+	verifyCompactedHead(t, i, false)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// wait one second -- TSDB is now idle.
+	time.Sleep(cfg.TSDBConfig.HeadCompactionIdleTimeout)
+
+	i.compactBlocks(context.Background())
+	verifyCompactedHead(t, i, true)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// Pushing another sample still works.
+	pushSample(t, i, time.Now(), 0)
+	verifyCompactedHead(t, i, false)
+
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 2
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+}
+
+func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+	require.Equal(t, expected, h.NumSeries() == 0)
+}
+
+func pushSample(t *testing.T, i *Ingester, ts time.Time, val float64) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, val, util.TimeToMillis(ts))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}

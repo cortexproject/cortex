@@ -25,6 +25,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	uber_atomic "go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -176,7 +177,7 @@ func TestFrontendCheckReady(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
-				connectedClients: tt.connectedClients,
+				connectedClients: uber_atomic.NewInt32(tt.connectedClients),
 				log:              log.NewNopLogger(),
 				cfg: Config{
 					DownstreamURL: tt.downstreamURL,

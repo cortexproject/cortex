@@ -13,7 +13,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -25,6 +24,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -67,7 +67,7 @@ type Frontend struct {
 	cond   *sync.Cond
 	queues *queueIterator
 
-	connectedClients int32
+	connectedClients *atomic.Int32
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -101,6 +101,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
 		}),
+		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
@@ -288,8 +289,8 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
-	atomic.AddInt32(&f.connectedClients, 1)
-	defer atomic.AddInt32(&f.connectedClients, -1)
+	f.connectedClients.Inc()
+	defer f.connectedClients.Dec()
 
 	// If the downstream request(from querier -> frontend) is cancelled,
 	// we need to ping the condition variable to unblock getNextRequest.
@@ -444,7 +445,7 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	}
 
 	// if we have more than one querier connected we will consider ourselves ready
-	connectedClients := atomic.LoadInt32(&f.connectedClients)
+	connectedClients := f.connectedClients.Load()
 	if connectedClients > 0 {
 		return nil
 	}

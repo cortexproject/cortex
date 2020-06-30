@@ -17,12 +17,14 @@ type Config struct {
 	ServerMetricsPort int
 	LogLevel          logging.Level
 	ProxyConfig       querytee.ProxyConfig
+	PathPrefix        string
 }
 
 func main() {
 	// Parse CLI flags.
 	cfg := Config{}
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
+	flag.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Prefix for API paths (query-tee will accept Prometheus API calls at <prefix>/api/v1/...)")
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
@@ -42,7 +44,7 @@ func main() {
 	}
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, cortexReadRoutes(), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, cortexReadRoutes(cfg.PathPrefix), registry)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
@@ -56,16 +58,21 @@ func main() {
 	proxy.Await()
 }
 
-func cortexReadRoutes() []querytee.Route {
+func cortexReadRoutes(prefix string) []querytee.Route {
+	// Strip trailing slashes.
+	for len(prefix) > 0 && prefix[len(prefix)-1] == '/' {
+		prefix = prefix[:len(prefix)-1]
+	}
+
 	samplesComparator := querytee.NewSamplesComparator()
 	return []querytee.Route{
-		{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
-		{Path: "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
-		{Path: "/api/v1/labels", RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/v1/series", RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/v1/rules", RouteName: "api_v1_rules", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
+		{Path: prefix + "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
+		{Path: prefix + "/api/v1/labels", RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/series", RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/metadata", RouteName: "api_v1_metadata", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/rules", RouteName: "api_v1_rules", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: prefix + "/api/v1/alerts", RouteName: "api_v1_alerts", Methods: []string{"GET"}, ResponseComparator: nil},
 	}
 }

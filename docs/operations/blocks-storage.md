@@ -435,7 +435,7 @@ tsdb:
 
   # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
   # CLI flag: -experimental.tsdb.head-compaction-idle-timeout
-  [head_compaction_idle_timeout: <duration> | default = 0s]
+  [head_compaction_idle_timeout: <duration> | default = 1h]
 
   # The number of shards of series to use in TSDB (must be a power of 2).
   # Reducing this will decrease memory footprint, but can negatively impact

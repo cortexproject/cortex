@@ -6875,6 +6875,7 @@ __replica__: replica2
 &lt;li>&lt;code>cortex_prometheus_notifications_alertmanagers_discovered&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Delete Series: Add support for deletion of chunks for remaining stores. &lt;a href="https://github.com/cortexproject/cortex/pull/2801">#2801&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add &lt;code>-modules&lt;/code> command line flag to list possible values for &lt;code>-target&lt;/code>. Also, log warning if given target is internal component. &lt;a href="https://github.com/cortexproject/cortex/pull/2752">#2752&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Added &lt;code>-ingester.flush-on-shutdown-with-wal-enabled&lt;/code> option to enable chunks flushing even when WAL is enabled. &lt;a href="https://github.com/cortexproject/cortex/pull/2780">#2780&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Query-tee: Support for custom API prefix by using &lt;code>-server.path-prefix&lt;/code> option. &lt;a href="https://github.com/cortexproject/cortex/pull/2814">#2814&lt;/a>&lt;/li>

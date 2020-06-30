@@ -23,6 +23,7 @@
   * `cortex_prometheus_notifications_queue_length`
   * `cortex_prometheus_notifications_queue_capacity`
   * `cortex_prometheus_notifications_alertmanagers_discovered`
+* [ENHANCEMENT] Experimental Delete Series: Add support for deletion of chunks for remaining stores. #2801
 * [ENHANCEMENT] Add `-modules` command line flag to list possible values for `-target`. Also, log warning if given target is internal component. #2752
 * [ENHANCEMENT] Added `-ingester.flush-on-shutdown-with-wal-enabled` option to enable chunks flushing even when WAL is enabled. #2780
 * [ENHANCEMENT] Query-tee: Support for custom API prefix by using `-server.path-prefix` option. #2814

@@ -413,7 +413,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 	p.inProcessRequestIDsMtx.RUnlock()
 
 	now := model.Now()
-	oldestPendingRequestCreatedAt := now
+	oldestPendingRequestCreatedAt := model.Time(0)
 
 	// requests which are still being processed are also considered pending
 	if pendingDeleteRequestsCount != 0 {
@@ -430,7 +430,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		pendingDeleteRequestsCount++
-		if deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
+		if oldestPendingRequestCreatedAt == 0 || deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
 			oldestPendingRequestCreatedAt = deleteRequest.CreatedAt
 		}
 
@@ -479,7 +479,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 
 	// track age of oldest delete request since they are over their cancellation period
 	oldestPendingRequestAge := time.Duration(0)
-	if !oldestPendingRequestCreatedAt.Equal(now) {
+	if oldestPendingRequestCreatedAt != 0 {
 		oldestPendingRequestAge = now.Sub(oldestPendingRequestCreatedAt.Add(p.cfg.DeleteRequestCancelPeriod))
 	}
 	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(oldestPendingRequestAge / time.Second))

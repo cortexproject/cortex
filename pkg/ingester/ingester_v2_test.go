@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1303,8 +1302,6 @@ func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 }
 
 func TestIngester_flushing(t *testing.T) {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
-
 	for name, tc := range map[string]struct {
 		setupIngester func(cfg *Config)
 		action        func(t *testing.T, i *Ingester, m *shipperMock)

@@ -53,6 +53,8 @@ type ingesterMetrics struct {
 	chunkSize                     prometheus.Histogram
 	chunkAge                      prometheus.Histogram
 	memoryChunks                  prometheus.Gauge
+	seriesEnqueuedForFlush        *prometheus.CounterVec
+	seriesDequeuedOutcome         *prometheus.CounterVec
 	flushedSeries                 *prometheus.CounterVec
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
@@ -192,8 +194,16 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_chunks",
 			Help: "The total number of chunks in memory.",
 		}),
+		seriesEnqueuedForFlush: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_enqueued_series_total",
+			Help: "Total number of series enqueued for flushing, with reasons.",
+		}, []string{"reason"}),
+		seriesDequeuedOutcome: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_dequeued_series_total",
+			Help: "Total number of series dequeued for flushing, with outcome (superset of enqueue reasons)",
+		}, []string{"outcome"}),
 		flushedSeries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_series_flushed_total",
+			Name: "cortex_ingester_flushed_series_total",
 			Help: "Total number of flushed series, with reasons.",
 		}, []string{"reason"}),
 		droppedChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{

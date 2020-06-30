@@ -54,8 +54,8 @@ func (a *appendable) Rollback() error {
 
 // appender fulfills the storage.Appendable interface for prometheus manager
 type appender struct {
-	pusher    Pusher
-	userID    string
+	pusher Pusher
+	userID string
 }
 
 // Appender returns a storage.Appender

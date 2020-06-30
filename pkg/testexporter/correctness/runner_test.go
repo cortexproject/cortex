@@ -27,7 +27,6 @@ func TestMinQueryTime(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		//require.Equal(t, tt.expected, tc.MinQueryTime())
-		assert.WithinDuration(t, tt.expected, calculateMinQueryTime(tt.durationQuerySince, tt.timeQueryStart), 5*time.Millisecond)
+		assert.WithinDuration(t, tt.expected, calculateMinQueryTime(tt.durationQuerySince, tt.timeQueryStart), 50*time.Millisecond)
 	}
 }

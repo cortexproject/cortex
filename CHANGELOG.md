@@ -8,7 +8,7 @@
   * `cortex_bucket_stores_gate_queries_in_flight`
   * `cortex_bucket_stores_gate_duration_seconds`
 * [CHANGE] Metric `cortex_ingester_flush_reasons` has been renamed to `cortex_ingester_flushed_series_total`, and is now incremented during flush, not when series is enqueued for flushing. #2802, #2818
-* [CHANGE] Added `cortex_ingester_enqueued_series_total` with `reason` label and `cortex_ingester_dequeued_series_total` with `outcome` label (superset of reason). #2818
+* [CHANGE] Added `cortex_ingester_enqueued_series_total` with `reason` label (works the same as `cortex_ingester_flush_reasons` did before) and `cortex_ingester_dequeued_series_total` with `outcome` label (superset of reason). #2818
 * [CHANGE] Experimental Delete Series: Metric `cortex_purger_oldest_pending_delete_request_age_seconds` would track age of delete requests since they are over their cancellation period instead of their creation time. #2806
 * [CHANGE] Experimental TSDB: the store-gateway service is required in a Cortex cluster running with the experimental blocks storage. Removed the `-experimental.tsdb.store-gateway-enabled` CLI flag and `store_gateway_enabled` YAML config option. The store-gateway is now always enabled when the storage engine is `tsdb`. #2822
 * [CHANGE] Ingester: Chunks flushed via /flush stay in memory until retention period is reached. This affects `cortex_ingester_memory_chunks` metric. #2778

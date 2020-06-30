@@ -61,42 +61,6 @@ func TestFrontend(t *testing.T) {
 	testFrontend(t, handler, test, true)
 }
 
-func TestFrontendReady(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("Hello World"))
-		require.NoError(t, err)
-	})
-	test := func(addr string) {
-		time.Sleep(100 * time.Millisecond)
-
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/ready", addr), nil)
-		require.NoError(t, err)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-	}
-	testFrontend(t, handler, test, false)
-	testFrontend(t, handler, test, true)
-}
-
-func TestFrontendNotReady(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("Hello World"))
-		require.NoError(t, err)
-	})
-	test := func(addr string) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/ready", addr), nil)
-		require.NoError(t, err)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 503, resp.StatusCode)
-	}
-	testFrontendRunWorker(t, handler, test, false, false)
-	testFrontendRunWorker(t, handler, test, true, false)
-}
-
 func TestFrontendPropagateTrace(t *testing.T) {
 	closer, err := config.Configuration{}.InitGlobalTracer("test")
 	require.NoError(t, err)
@@ -198,7 +162,7 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
-func TestFrontendReadyForRequests(t *testing.T) {
+func TestFrontendCheckReady(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
 		downstreamURL    string
@@ -206,8 +170,8 @@ func TestFrontendReadyForRequests(t *testing.T) {
 		msg              string
 		readyForRequests bool
 	}{
-		{"downstream url is always ready", "super url", 0, "ready: downstream url set", true},
-		{"connected clients are ready", "", 3, "ready: connected clients 3", true},
+		{"downstream url is always ready", "super url", 0, "", true},
+		{"connected clients are ready", "", 3, "", true},
 		{"no url, no clients is not ready", "", 0, "not ready: connected clients 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -218,9 +182,14 @@ func TestFrontendReadyForRequests(t *testing.T) {
 					DownstreamURL: tt.downstreamURL,
 				},
 			}
-			ready, msg := f.readyForRequests()
-			require.Equal(t, tt.readyForRequests, ready)
-			require.Equal(t, tt.msg, msg)
+			err := f.CheckReady(context.Background())
+			errMsg := ""
+
+			if err != nil {
+				errMsg = err.Error()
+			}
+
+			require.Equal(t, tt.msg, errMsg)
 		})
 	}
 }

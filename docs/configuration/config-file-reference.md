@@ -50,8 +50,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Supported values are: all, distributor, ingester,
-# querier, query-frontend, table-manager, ruler, alertmanager, configs.
+# The Cortex service to run. Use "-modules" command line flag to get a list of
+# available options.
 # CLI flag: -target
 [target: <string> | default = "all"]
 

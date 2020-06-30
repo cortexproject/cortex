@@ -6877,6 +6877,7 @@ __replica__: replica2
 &lt;/li>
 &lt;li>[ENHANCEMENT] Add &lt;code>-modules&lt;/code> command line flag to list possible values for &lt;code>-target&lt;/code>. Also, log warning if given target is internal component. &lt;a href="https://github.com/cortexproject/cortex/pull/2752">#2752&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Added &lt;code>-ingester.flush-on-shutdown-with-wal-enabled&lt;/code> option to enable chunks flushing even when WAL is enabled. &lt;a href="https://github.com/cortexproject/cortex/pull/2780">#2780&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Query-tee: Support for custom API prefix by using &lt;code>-server.path-prefix&lt;/code> option. &lt;a href="https://github.com/cortexproject/cortex/pull/2814">#2814&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>

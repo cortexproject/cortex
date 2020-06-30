@@ -1230,7 +1230,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	go func() {
 		ingCtx := i.BasicService.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {
-			// Not started or already finished.
+			level.Info(util.Logger).Log("msg", "flushing TSDB blocks: ingester not running, ignoring flush request")
 			return
 		}
 
@@ -1241,7 +1241,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 		case i.TSDBState.forceCompactTrigger <- ch:
 			// Compacting now.
 		case <-ingCtx.Done():
-			level.Info(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			level.Warn(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
 			return
 		}
 
@@ -1250,7 +1250,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 		case <-ch:
 			level.Info(util.Logger).Log("msg", "finished compacting TSDB blocks")
 		case <-ingCtx.Done():
-			level.Info(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			level.Warn(util.Logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
 			return
 		}
 
@@ -1261,7 +1261,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 			case i.TSDBState.shipTrigger <- ch:
 				// shipping now
 			case <-ingCtx.Done():
-				level.Info(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				level.Warn(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
 				return
 			}
 
@@ -1270,7 +1270,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 			case <-ch:
 				level.Info(util.Logger).Log("msg", "shipping of TSDB blocks finished")
 			case <-ingCtx.Done():
-				level.Info(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				level.Warn(util.Logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
 				return
 			}
 		}

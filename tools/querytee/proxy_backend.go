@@ -12,6 +12,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const orgIdHeader = "X-Scope-OrgId"
+
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
 	name     string
@@ -85,6 +87,11 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 		req.SetBasicAuth(endpointUser, clientPass)
 	} else if clientAuth {
 		req.SetBasicAuth(clientUser, clientPass)
+	}
+
+	// If there is X-Scope-OrgId header in the request, forward it. This is done even if there was username/password.
+	if orgId := orig.Header.Get(orgIdHeader); orgId != "" {
+		req.Header.Set(orgIdHeader, orgId)
 	}
 
 	return req, nil

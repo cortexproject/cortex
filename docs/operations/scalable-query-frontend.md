@@ -9,7 +9,7 @@ Historically scaling the Cortex query frontend has [posed some challenges](https
 
 ## DNS Configuration / Readiness
 
-When a new frontend is first created on scale up it will not immediately have queriers attached to it.  The existing endpoint `/ready` was updated to only return http 200 when the query frontend was ready to serve queries.  Make sure to configure this endpoint as a healthcheck in your load balancer.  Otherwise a query frontend scale up event might result in failed queries for a bit while queriers attach.
+When a new frontend is first created on scale up it will not immediately have queriers attached to it.  The existing endpoint `/ready` was updated to only return http 200 when the query frontend was ready to serve queries.  Make sure to configure this endpoint as a healthcheck in your load balancer.  Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.
 
 ## Querier Max Concurrency
 

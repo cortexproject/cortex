@@ -50,8 +50,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Supported values are: all, distributor, ingester,
-# querier, query-frontend, table-manager, ruler, alertmanager, configs.
+# The Cortex service to run. Use "-modules" command line flag to get a list of
+# available options.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -446,6 +446,11 @@ walconfig:
   # Interval at which checkpoints should be created.
   # CLI flag: -ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 30m]
+
+  # When WAL is enabled, should chunks be flushed to long-term storage on
+  # shutdown. Useful eg. for migration to blocks engine.
+  # CLI flag: -ingester.flush-on-shutdown-with-wal-enabled
+  [flush_on_shutdown_with_wal_enabled: <boolean> | default = false]
 
 lifecycler:
   ring:

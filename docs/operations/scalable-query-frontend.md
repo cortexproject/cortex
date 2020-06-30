@@ -19,7 +19,7 @@ Make sure to configure the querier frontend worker to match max concurrency.  Th
 
 **CLI**
 ```
--querier.worker-match-max-concurrent
+-querier.worker-match-max-concurrent=true
 ```
 
 **Config File**

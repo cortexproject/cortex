@@ -265,7 +265,7 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
-	srv := NewBucketStoreSeriesServer(ctx)
+	srv := newBucketStoreSeriesServer(ctx)
 	err := stores.Series(req, srv)
 
 	return srv.SeriesSet, srv.Warnings, err

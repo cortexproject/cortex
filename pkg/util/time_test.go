@@ -34,3 +34,7 @@ func TestDurationWithJitter(t *testing.T) {
 		assert.LessOrEqual(t, int64(actual), int64(90*time.Second))
 	}
 }
+
+func TestDurationWithJitter_ZeroInputDuration(t *testing.T) {
+	assert.Equal(t, time.Duration(0), DurationWithJitter(time.Duration(0), 0.5))
+}

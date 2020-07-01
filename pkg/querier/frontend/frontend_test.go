@@ -173,7 +173,7 @@ func TestFrontendCheckReady(t *testing.T) {
 	}{
 		{"downstream url is always ready", "super url", 0, "", true},
 		{"connected clients are ready", "", 3, "", true},
-		{"no url, no clients is not ready", "", 0, "not ready: connected clients 0", false},
+		{"no url, no clients is not ready", "", 0, "not ready: number of queriers connected to query-frontend is 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{

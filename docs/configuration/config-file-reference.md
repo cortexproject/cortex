@@ -50,8 +50,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Supported values are: all, distributor, ingester,
-# querier, query-frontend, table-manager, ruler, alertmanager, configs.
+# The Cortex service to run. Use "-modules" command line flag to get a list of
+# available options.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -3049,6 +3049,10 @@ bucket_store:
 # CLI flag: -experimental.tsdb.head-compaction-concurrency
 [head_compaction_concurrency: <int> | default = 5]
 
+# If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+# CLI flag: -experimental.tsdb.head-compaction-idle-timeout
+[head_compaction_idle_timeout: <duration> | default = 1h]
+
 # The number of shards of series to use in TSDB (must be a power of 2). Reducing
 # this will decrease memory footprint, but can negatively impact performance.
 # CLI flag: -experimental.tsdb.stripe-size
@@ -3062,6 +3066,12 @@ bucket_store:
 # querier should query the bucket store via the store-gateway.
 # CLI flag: -experimental.tsdb.store-gateway-enabled
 [store_gateway_enabled: <boolean> | default = false]
+
+# If true, and transfer of blocks on shutdown fails or is disabled, incomplete
+# blocks are flushed to storage instead. If false, incomplete blocks will be
+# reused after restart, and uploaded when finished.
+# CLI flag: -experimental.tsdb.flush-blocks-on-shutdown
+[flush_blocks_on_shutdown: <boolean> | default = false]
 
 # limit the number of concurrently opening TSDB's on startup
 # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup

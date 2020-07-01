@@ -2,12 +2,15 @@ package aws
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -46,10 +49,22 @@ type S3Config struct {
 	Region          string
 	AccessKeyID     string
 	SecretAccessKey string
+	HTTPConfig      HTTPConfig
 
 	// SignatureV2?
-	// SSEEcnryption?
-	// PutUserMetadata?
+	// Insecure?
+
+	// PUT Options?
+	// SSEEncryption?    putobjectoptions.serversideencryption
+	// PutUserMetadata?  putobjectoptions.metadata?
+	// PartSize
+}
+
+// HTTPConfig stores the http.Transport configuration
+type HTTPConfig struct {
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -100,6 +115,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, error) {
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
 	}
+
 	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
 	if err != nil {
 		return nil, err
@@ -125,6 +141,29 @@ func buildS3Config(cfg S3Config) (*aws.Config, error) {
 		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey, "")
 		s3Config = s3Config.WithCredentials(creds)
 	}
+
+	// Use a custom http.Client with the golang defaults but also specifying
+	// MaxIdleConnsPerHost because of a bug in golang https://github.com/golang/go/issues/13801
+	// where MaxIdleConnsPerHost does not work as expected.
+	s3Config = s3Config.WithHTTPClient(&http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}).DialContext,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout, //90 * time.Second,
+			MaxIdleConnsPerHost:   100,
+			TLSHandshakeTimeout:   3 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
+		},
+	})
+
+	return s3Config, nil
 }
 
 // Stop fulfills the chunk.ObjectClient interface

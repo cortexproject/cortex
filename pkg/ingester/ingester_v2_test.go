@@ -1163,9 +1163,11 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 	}
 
 	ingesterCfg.TSDBEnabled = true
-	ingesterCfg.TSDBConfig.Dir = dir
+	ingesterCfg.TSDBConfig.Dir = filepath.Join(dir, "tsdb")
 	ingesterCfg.TSDBConfig.Backend = "s3"
 	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.TSDBConfig.BackfillLimit = 48 * time.Hour
+	ingesterCfg.TSDBConfig.BackfillDir = filepath.Join(dir, "backfill_tsdb")
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {

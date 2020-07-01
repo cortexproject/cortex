@@ -121,8 +121,9 @@ func (u *userTSDB) setLastUpdate(t time.Time) {
 
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs    map[string]*userTSDB // tsdb sharded by userID
-	bucket objstore.Bucket
+	dbs         map[string]*userTSDB // tsdb sharded by userID
+	backfillDBs *backfillTSDBs
+	bucket      objstore.Bucket
 
 	// Value used by shipper as external label.
 	shipperIngesterID string
@@ -460,13 +461,23 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				}
 			}
 
+			cause := errors.Cause(err)
+			if cause == storage.ErrOutOfBounds && s.TimestampMs > db.Head().MaxTime()-i.cfg.TSDBConfig.BackfillLimit.Milliseconds() {
+				fmt.Println(s.TimestampMs, db.Head().MaxTime(), i.cfg.TSDBConfig.BackfillLimit.Milliseconds())
+				err := i.v2BackfillPush(userID, ts.Labels, s)
+				if err == nil {
+					succeededSamplesCount++
+					continue
+				}
+				cause = errors.Cause(err)
+			}
+
 			failedSamplesCount++
 
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
 					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().UTC().Format(time.RFC3339Nano))
@@ -1350,4 +1361,174 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	}()
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getBucketID returns the bucket id for the timestamp in the following format
+// [ Empty (2 bytes) | YYYY (2 bytes) | MM (1 byte) | DD (1 byte) | HH (1 byte) | Bucket Range (1 byte) ]
+func getBucketID(ts int64, bucketSize int) uint64 {
+	t := time.Unix(ts/1000, 0).UTC()
+	yyyy := t.Year()
+	mm := t.Month()
+	dd := t.Day()
+	hh := t.Hour()
+	bucketId := (uint64(yyyy) << 32) | (uint64(mm) << 24) | (uint64(dd) << 16) | uint64(hh)<<8 | uint64(bucketSize)
+	return bucketId
+}
+
+// getBucketIDString returns the string representation of the bucketID.
+// YYYY_MM_DD_HH_YYYY_MM_DD_HH
+func getBucketIDString(bucketID uint64) string {
+	startYYYY := (bucketID & 0x0000FFFF00000000) >> 32
+	startMM := (bucketID & 0x00000000FF000000) >> 24
+	startDD := (bucketID & 0x0000000000FF0000) >> 16
+	startHH := (bucketID & 0x000000000000FF00) >> 8
+	bucketRange := bucketID & 0x00000000000000FF
+
+	startTime := time.Date(int(startYYYY), time.Month(startMM), int(startDD), int(startHH), 0, 0, 0, time.UTC)
+	endTime := startTime.Add(time.Duration(bucketRange) * time.Hour)
+
+	return fmt.Sprintf(
+		"%04d_%02d_%02d_%02d_%04d_%02d_%02d_%02d",
+		startYYYY, startMM, startDD, startHH,
+		endTime.Year(), endTime.Month(), endTime.Day(), endTime.Hour(),
+	)
+}
+
+// createBackfillTSDB creates a TSDB for a given userID and bucketID, and returns the created db.
+func (i *Ingester) createBackfillTSDB(userID string, bucketID uint64) (*userTSDB, error) {
+	tsdbPromReg := prometheus.NewRegistry()
+	udir := i.cfg.TSDBConfig.BackfillBlocksDir(userID)
+	dbDir := filepath.Join(udir, getBucketIDString(bucketID))
+	userLogger := util.WithUserID(userID, util.Logger)
+
+	userDB := &userTSDB{
+		userID:              userID,
+		refCache:            cortex_tsdb.NewRefCache(),
+		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		lastUpdate:          atomic.NewInt64(0),
+	}
+
+	// Create a new user database
+	db, err := tsdb.Open(dbDir, userLogger, tsdbPromReg, &tsdb.Options{
+		RetentionDuration: i.cfg.TSDBConfig.Retention.Milliseconds(),
+		MinBlockDuration:  2 * time.Hour.Milliseconds(),
+		MaxBlockDuration:  2 * time.Hour.Milliseconds(),
+		NoLockfile:        true,
+		StripeSize:        i.cfg.TSDBConfig.StripeSize,
+		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
+	})
+	if err != nil {
+		return nil, err
+	}
+	db.DisableCompactions() // we will compact on our own schedule
+
+	userDB.DB = db
+	userDB.setLastUpdate(time.Now()) // After WAL replay.
+
+	// Thanos shipper requires at least 1 external label to be set. For this reason,
+	// we set the tenant ID as external label and we'll filter it out when reading
+	// the series from the storage.
+	l := labels.Labels{
+		{
+			Name:  cortex_tsdb.TenantIDExternalLabel,
+			Value: userID,
+		}, {
+			Name:  cortex_tsdb.IngesterIDExternalLabel,
+			Value: i.lifecycler.ID,
+		},
+	}
+
+	// Create a new shipper for this database
+	if i.cfg.TSDBConfig.ShipInterval > 0 {
+		userDB.shipper = shipper.New(
+			userLogger,
+			tsdbPromReg,
+			udir,
+			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
+			func() labels.Labels { return l },
+			metadata.ReceiveSource,
+			true, // Allow out of order uploads. It's fine in Cortex's context.
+		)
+	}
+
+	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
+	return userDB, nil
+}
+
+func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s client.Sample) error {
+	bucketID := getBucketID(s.TimestampMs, 1)
+	db, err := i.getOrCreateBackfillTSDB(userID, bucketID)
+	if err != nil {
+		return err
+	}
+
+	startAppend := time.Now()
+	cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(la))
+
+	app := db.Appender()
+	// If the cached reference exists, we try to use it.
+	if cachedRefExists {
+		err = app.AddFast(cachedRef, s.TimestampMs, s.Value)
+		if err != nil && errors.Cause(err) == storage.ErrNotFound {
+			cachedRefExists = false
+			err = nil
+		}
+	}
+
+	// If the cached reference doesn't exist, we (re)try without using the reference.
+	if !cachedRefExists {
+		var ref uint64
+
+		// Copy the label set because both TSDB and the cache may retain it.
+		copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(la)
+
+		if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
+			db.refCache.SetRef(startAppend, copiedLabels, ref)
+			cachedRef = ref
+			cachedRefExists = true
+		}
+	}
+
+	if err == nil {
+		err = app.Commit()
+	}
+
+	return err
+}
+
+// Assumes 1h bucket range.
+type backfillTSDBs struct {
+	tsdbs map[string]map[uint64]*backfillTSDB
+}
+
+func newBackfillTSDBs() *backfillTSDBs {
+	return &backfillTSDBs{
+		tsdbs: make(map[string]map[uint64]*backfillTSDB),
+	}
+}
+
+func (i *Ingester) getOrCreateBackfillTSDB(userID string, bucketID uint64) (*userTSDB, error) {
+	userMap, ok := i.TSDBState.backfillDBs.tsdbs[userID]
+	if !ok {
+		userMap = make(map[uint64]*backfillTSDB)
+		i.TSDBState.backfillDBs.tsdbs[userID] = userMap
+	}
+
+	db, ok := userMap[bucketID]
+	if !ok {
+		tsdb, err := i.createBackfillTSDB(userID, bucketID)
+		if err != nil {
+			return nil, err
+		}
+		db = &backfillTSDB{db: tsdb}
+		userMap[bucketID] = db
+	}
+
+	return db.db, nil
+}
+
+type backfillTSDB struct {
+	db         *userTSDB
+	lastAppend time.Time
 }

@@ -71,6 +71,8 @@ type Config struct {
 	StripeSize                int               `yaml:"stripe_size"`
 	WALCompressionEnabled     bool              `yaml:"wal_compression_enabled"`
 	FlushBlocksOnShutdown     bool              `yaml:"flush_blocks_on_shutdown"`
+	BackfillDir               string            `yaml:"backfill_dir"`
+	BackfillLimit             time.Duration     `yaml:"backfill_limit"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -148,6 +150,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.StripeSize, "experimental.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.tsdb.flush-blocks-on-shutdown", false, "If true, and transfer of blocks on shutdown fails or is disabled, incomplete blocks are flushed to storage instead. If false, incomplete blocks will be reused after restart, and uploaded when finished.")
+
+	f.StringVar(&cfg.BackfillDir, "experimental.tsdb.backfill-dir", "backfill_tsdb", "Local directory to store backfill TSDBs in the ingesters.")
+	f.DurationVar(&cfg.BackfillLimit, "experimental.tsdb.backfill-limit", 6*time.Hour, "")
 }
 
 // Validate the config.
@@ -243,4 +248,10 @@ func (cfg *BucketStoreConfig) Validate() error {
 // stored by the ingester
 func (cfg *Config) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
+}
+
+// BackfillBlocksDir returns the directory path where old TSDB blocks and wal should be
+// stored by the ingester
+func (cfg *Config) BackfillBlocksDir(userID string) string {
+	return filepath.Join(cfg.BackfillDir, userID)
 }

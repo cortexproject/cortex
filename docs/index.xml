@@ -4474,7 +4474,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;p>The alternative is, instead of building a distributed queue, to add a new cortex queueing service that sits in between the frontends and the queriers. This queueing service would pull from the frontends and distribute to the queriers. It would decouple the stateful queue from the stateless elements of the query frontend and allow us to easily scale the query frontend while keeping the queue itself a singleton. In a single binary HA mode one (or few) of the replicas would be leader elected to serve this role.&lt;/p>
 &lt;p>Having a singleton queue is attractive because it is simple to reason about and gives us a single place to make fair cross tenant queueing decisions. It does, however, create a single point of failure and add another network hop to the query path.&lt;/p>
 &lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>In this document we reviewed the [reasons the frontend exists](#query frontend-role), &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
+&lt;p>In this document we reviewed the &lt;a href="#query-frontend-role">reasons the frontend exists&lt;/a>, &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
 &lt;table>
 &lt;tr>
 &lt;td>&lt;strong>Challenge&lt;/strong>
@@ -4506,6 +4506,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;td>Operational/Configuration Issue. No Changes Proposed.
 &lt;/td>
 &lt;td>
+N/A
 &lt;/td>
 &lt;/tr>
 &lt;tr>
@@ -4513,7 +4514,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;/td>
 &lt;td>Query Frontend HTTP Health Checks
 &lt;/td>
-&lt;td>Proposed
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2733">Pull Request&lt;/a>
 &lt;/td>
 &lt;/tr>
 &lt;tr>
@@ -4521,7 +4522,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;/td>
 &lt;td>Round Robin with additional alternatives proposed
 &lt;/td>
-&lt;td>&lt;a href="https://github.com/cortexproject/cortex/issues/2431">Issue&lt;/a>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2553">Pull Request&lt;/a>
 &lt;/td>
 &lt;/tr>
 &lt;/table></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>
@@ -5948,9 +5949,9 @@ cassandra:
 addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command bellow (currently it is &lt;code>v1.1.0&lt;/code>).&lt;/p>
+to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.2.0&lt;/code>).&lt;/p>
 &lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.1.0 -config.file=/etc/single-process-config.yaml
+&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.2.0 -config.file=/etc/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/getting-started/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
 &lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
 &lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
@@ -6649,7 +6650,19 @@ Consider you have 4 ingesters &lt;code>ingester-0 ingester-1 ingester-2 ingester
 &lt;/li>
 &lt;li>2 ingesters should not be working with the same volume/directory for the WAL. It will cause data corruptions.&lt;/li>
 &lt;li>Basing from above point, rollout should include bringing down an ingester completely and then starting the new ingester. Not the other way round, i.e. bringing another ingester live and taking the old one down.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/production/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/tls/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Scaling the Query Frontend</title><link>/docs/operations/scaling-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/scaling-query-frontend/</guid><description>
+&lt;p>Historically scaling the Cortex query frontend has &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/">posed some challenges&lt;/a>. This document aims to detail how to use some of the added configuration parameters to correctly scale the frontend. Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p>
+&lt;h2 id="dns-configuration--readiness">DNS Configuration / Readiness&lt;/h2>
+&lt;p>When a new frontend is first created on scale up it will not immediately have queriers attached to it. The existing endpoint &lt;code>/ready&lt;/code> was updated to only return http 200 when the query frontend was ready to serve queries. Make sure to configure this endpoint as a healthcheck in your load balancer. Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
+&lt;h2 id="querier-max-concurrency">Querier Max Concurrency&lt;/h2>
+&lt;p>Make sure to configure the querier frontend worker to match max concurrency. This will allow the operator to freely scale the frontend up and down without impacting the amount of work an individual querier is attempting to perform. More details &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/#dynamic-querier-concurrency">here&lt;/a>.&lt;/p>
+&lt;h3 id="example-configuration">Example Configuration&lt;/h3>
+&lt;p>&lt;strong>CLI&lt;/strong>&lt;/p>
+&lt;pre>&lt;code>-querier.worker-match-max-concurrent=true
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Config File&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">frontend_worker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">match_max_concurrent&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/production/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/tls/</guid><description>
 &lt;p>Cortex is a distributed system with significant traffic between its services.
 To allow for secure communication, Cortex supports TLS between all its
 components. This guide describes the process of setting up TLS.&lt;/p>
@@ -6895,6 +6908,7 @@ __replica__: replica2
 &lt;li>&lt;code>cortex_prometheus_notifications_alertmanagers_discovered&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>[ENHANCEMENT] The behavior of the &lt;code>/ready&lt;/code> was changed for the query frontend to indicate when it was ready to accept queries. This is intended for use by a read path load balancer that would want to wait for the frontend to have attached queriers before including it in the backend. &lt;a href="https://github.com/cortexproject/cortex/pull/2733">#2733&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental Delete Series: Add support for deletion of chunks for remaining stores. &lt;a href="https://github.com/cortexproject/cortex/pull/2801">#2801&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add &lt;code>-modules&lt;/code> command line flag to list possible values for &lt;code>-target&lt;/code>. Also, log warning if given target is internal component. &lt;a href="https://github.com/cortexproject/cortex/pull/2752">#2752&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Added &lt;code>-ingester.flush-on-shutdown-with-wal-enabled&lt;/code> option to enable chunks flushing even when WAL is enabled. &lt;a href="https://github.com/cortexproject/cortex/pull/2780">#2780&lt;/a>&lt;/li>
@@ -6908,8 +6922,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. &lt;a href="https://github.com/cortexproject/cortex/pull/2766">#2766&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. &lt;a href="https://github.com/cortexproject/cortex/pull/2800">#2800&lt;/a>&lt;/li>
 &lt;/ul>
-&lt;h2 id="120--2020-06-xx">1.2.0 / 2020-06-xx&lt;/h2>
-&lt;p>(in progress of release: current release candidate is &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0">https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0&lt;/a>)&lt;/p>
+&lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>
 &lt;li>[CHANGE] Metric &lt;code>cortex_kv_request_duration_seconds&lt;/code> now includes &lt;code>name&lt;/code> label to denote which client is being used as well as the &lt;code>backend&lt;/code> label to denote the KV backend implementation in use. &lt;a href="https://github.com/cortexproject/cortex/pull/2648">#2648&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Ruler: Rule groups persisted to object storage using the experimental API have an updated object key encoding to better handle special characters. Rule groups previously-stored using object storage must be renamed to the new format. &lt;a href="https://github.com/cortexproject/cortex/pull/2646">#2646&lt;/a>&lt;/li>
@@ -7078,7 +7091,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Experimental TSDB: when the querier receives a &lt;code>/series&lt;/code> request with a time range older than the data stored in the ingester, it now ignores the requested time range and returns known series anyway instead of returning an empty response. This aligns the behaviour with the chunks storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2617">#2617&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Cassandra: fixed an edge case leading to an invalid CQL query when querying the index on a Cassandra store. &lt;a href="https://github.com/cortexproject/cortex/pull/2639">#2639&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: increment series per metric when recovering from WAL or transfer. &lt;a href="https://github.com/cortexproject/cortex/pull/2674">#2674&lt;/a>&lt;/li>
-&lt;li>[BUGFIX] Fixed &lt;code>wrong number of arguments for 'mget' command&lt;/code> Redis error when a query has no chunks to lookup from storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2700">#2700&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fixed &lt;code>wrong number of arguments for 'mget' command&lt;/code> Redis error when a query has no chunks to lookup from storage. &lt;a href="https://github.com/cortexproject/cortex/pull/2700">#2700&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Automatically remove old tmp checkpoints, fixing a potential disk space leak after an ingester crashes. &lt;a href="https://github.com/cortexproject/cortex/pull/2726">#2726&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="110--2020-05-21">1.1.0 / 2020-05-21&lt;/h2>

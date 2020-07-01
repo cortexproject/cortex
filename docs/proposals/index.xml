@@ -446,7 +446,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;p>The alternative is, instead of building a distributed queue, to add a new cortex queueing service that sits in between the frontends and the queriers. This queueing service would pull from the frontends and distribute to the queriers. It would decouple the stateful queue from the stateless elements of the query frontend and allow us to easily scale the query frontend while keeping the queue itself a singleton. In a single binary HA mode one (or few) of the replicas would be leader elected to serve this role.&lt;/p>
 &lt;p>Having a singleton queue is attractive because it is simple to reason about and gives us a single place to make fair cross tenant queueing decisions. It does, however, create a single point of failure and add another network hop to the query path.&lt;/p>
 &lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>In this document we reviewed the [reasons the frontend exists](#query frontend-role), &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
+&lt;p>In this document we reviewed the &lt;a href="#query-frontend-role">reasons the frontend exists&lt;/a>, &lt;a href="#challenges-and-proposals">challenges and proposals to scaling the frontend&lt;/a> and &lt;a href="#alternative">an alternative architecture that avoids most problems but comes with its own challenges.&lt;/a>&lt;/p>
 &lt;table>
 &lt;tr>
 &lt;td>&lt;strong>Challenge&lt;/strong>
@@ -478,6 +478,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;td>Operational/Configuration Issue. No Changes Proposed.
 &lt;/td>
 &lt;td>
+N/A
 &lt;/td>
 &lt;/tr>
 &lt;tr>
@@ -485,7 +486,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;/td>
 &lt;td>Query Frontend HTTP Health Checks
 &lt;/td>
-&lt;td>Proposed
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2733">Pull Request&lt;/a>
 &lt;/td>
 &lt;/tr>
 &lt;tr>
@@ -493,7 +494,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;/td>
 &lt;td>Round Robin with additional alternatives proposed
 &lt;/td>
-&lt;td>&lt;a href="https://github.com/cortexproject/cortex/issues/2431">Issue&lt;/a>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/2553">Pull Request&lt;/a>
 &lt;/td>
 &lt;/tr>
 &lt;/table></description></item><item><title>Docs: Support metadata API</title><link>/docs/proposals/support-metadata-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/support-metadata-api/</guid><description>

@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -38,8 +39,17 @@ func init() {
 // S3Config specifies config for storing chunks on AWS S3.
 type S3Config struct {
 	S3               flagext.URLValue
-	BucketNames      string
 	S3ForcePathStyle bool
+
+	BucketNames     string
+	Endpoint        string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+
+	// SignatureV2?
+	// SSEEcnryption?
+	// PutUserMetadata?
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -63,22 +73,16 @@ type S3ObjectClient struct {
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
-	if cfg.S3.URL == nil {
-		return nil, fmt.Errorf("no URL specified for S3")
-	}
-	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
+	s3Config, err := buildS3Config(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
-
-	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	s3Config = s3Config.WithHTTPClient(&http.Client{Transport: defaultTransport})
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
 		return nil, err
 	}
+
 	s3Client := s3.New(sess)
 	bucketNames := []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
 	if cfg.BucketNames != "" {
@@ -90,6 +94,37 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 		delimiter:   delimiter,
 	}
 	return &client, nil
+}
+
+func buildS3Config(cfg S3Config) (*aws.Config, error) {
+	if cfg.S3.URL == nil {
+		return nil, fmt.Errorf("no URL specified for S3")
+	}
+	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
+	if err != nil {
+		return nil, err
+	}
+	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
+	s3Config = s3Config.WithHTTPClient(&http.Client{Transport: defaultTransport})
+	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
+
+	if cfg.Endpoint != "" {
+		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
+	}
+
+	if cfg.Region != "" {
+		s3Config = s3Config.WithRegion(cfg.Region)
+	}
+
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
+		return nil, fmt.Errorf("Must supply both an Access Key ID and Secret Access Key or neither")
+	}
+
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey, "")
+		s3Config = s3Config.WithCredentials(creds)
+	}
 }
 
 // Stop fulfills the chunk.ObjectClient interface

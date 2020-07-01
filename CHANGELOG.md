@@ -10,8 +10,7 @@
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 
-## 1.2.0 / 2020-06-xx
-(in progress of release: current release candidate is https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0)
+## 1.2.0 / 2020-07-01
 
 * [CHANGE] Metric `cortex_kv_request_duration_seconds` now includes `name` label to denote which client is being used as well as the `backend` label to denote the KV backend implementation in use. #2648
 * [CHANGE] Experimental Ruler: Rule groups persisted to object storage using the experimental API have an updated object key encoding to better handle special characters. Rule groups previously-stored using object storage must be renamed to the new format. #2646

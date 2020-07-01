@@ -1363,42 +1363,11 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// getBucketID returns the bucket id for the timestamp in the following format
-// [ Empty (2 bytes) | YYYY (2 bytes) | MM (1 byte) | DD (1 byte) | HH (1 byte) | Bucket Range (1 byte) ]
-func getBucketID(ts int64, bucketSize int) uint64 {
-	t := time.Unix(ts/1000, 0).UTC()
-	yyyy := t.Year()
-	mm := t.Month()
-	dd := t.Day()
-	hh := t.Hour()
-	bucketId := (uint64(yyyy) << 32) | (uint64(mm) << 24) | (uint64(dd) << 16) | uint64(hh)<<8 | uint64(bucketSize)
-	return bucketId
-}
-
-// getBucketIDString returns the string representation of the bucketID.
-// YYYY_MM_DD_HH_YYYY_MM_DD_HH
-func getBucketIDString(bucketID uint64) string {
-	startYYYY := (bucketID & 0x0000FFFF00000000) >> 32
-	startMM := (bucketID & 0x00000000FF000000) >> 24
-	startDD := (bucketID & 0x0000000000FF0000) >> 16
-	startHH := (bucketID & 0x000000000000FF00) >> 8
-	bucketRange := bucketID & 0x00000000000000FF
-
-	startTime := time.Date(int(startYYYY), time.Month(startMM), int(startDD), int(startHH), 0, 0, 0, time.UTC)
-	endTime := startTime.Add(time.Duration(bucketRange) * time.Hour)
-
-	return fmt.Sprintf(
-		"%04d_%02d_%02d_%02d_%04d_%02d_%02d_%02d",
-		startYYYY, startMM, startDD, startHH,
-		endTime.Year(), endTime.Month(), endTime.Day(), endTime.Hour(),
-	)
-}
-
-// createBackfillTSDB creates a TSDB for a given userID and bucketID, and returns the created db.
-func (i *Ingester) createBackfillTSDB(userID string, bucketID uint64) (*userTSDB, error) {
+// createBackfillTSDB creates a TSDB for a given userID and bucketName, and returns the created db.
+func (i *Ingester) createBackfillTSDB(userID, bucketName string, blockRange int64) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
 	udir := i.cfg.TSDBConfig.BackfillBlocksDir(userID)
-	dbDir := filepath.Join(udir, getBucketIDString(bucketID))
+	dbDir := filepath.Join(udir, bucketName)
 	userLogger := util.WithUserID(userID, util.Logger)
 
 	userDB := &userTSDB{
@@ -1412,8 +1381,8 @@ func (i *Ingester) createBackfillTSDB(userID string, bucketID uint64) (*userTSDB
 	// Create a new user database
 	db, err := tsdb.Open(dbDir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration: i.cfg.TSDBConfig.Retention.Milliseconds(),
-		MinBlockDuration:  2 * time.Hour.Milliseconds(),
-		MaxBlockDuration:  2 * time.Hour.Milliseconds(),
+		MinBlockDuration:  blockRange,
+		MaxBlockDuration:  blockRange,
 		NoLockfile:        true,
 		StripeSize:        i.cfg.TSDBConfig.StripeSize,
 		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
@@ -1457,13 +1426,14 @@ func (i *Ingester) createBackfillTSDB(userID string, bucketID uint64) (*userTSDB
 }
 
 func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s client.Sample) error {
-	bucketID := getBucketID(s.TimestampMs, 1)
-	db, err := i.getOrCreateBackfillTSDB(userID, bucketID)
+	bucket, err := i.getOrCreateBackfillTSDB(userID, s.TimestampMs)
 	if err != nil {
 		return err
 	}
 
 	startAppend := time.Now()
+	db := bucket.db
+	bucket.lastAppend = startAppend
 	cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(la))
 
 	app := db.Appender()
@@ -1497,38 +1467,94 @@ func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s cli
 	return err
 }
 
-// Assumes 1h bucket range.
+// Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
-	tsdbs map[string]map[uint64]*backfillTSDB
+	tsdbs map[string][]*tsdbBucket
 }
 
 func newBackfillTSDBs() *backfillTSDBs {
 	return &backfillTSDBs{
-		tsdbs: make(map[string]map[uint64]*backfillTSDB),
+		tsdbs: make(map[string][]*tsdbBucket),
 	}
 }
 
-func (i *Ingester) getOrCreateBackfillTSDB(userID string, bucketID uint64) (*userTSDB, error) {
-	userMap, ok := i.TSDBState.backfillDBs.tsdbs[userID]
-	if !ok {
-		userMap = make(map[uint64]*backfillTSDB)
-		i.TSDBState.backfillDBs.tsdbs[userID] = userMap
+func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, error) {
+	userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]
+
+	start, end := getTimeRangesForBucket(ts, 1)
+
+	var bucket *tsdbBucket
+	insertIdx := len(userBuckets)
+	for idx, b := range userBuckets {
+		if model.Time(ts) >= b.bucketStart && model.Time(ts) < b.bucketEnd {
+			bucket = b
+			break
+		}
+
+		// Existing: |-----------|
+		//      New:       |------------|
+		if b.bucketStart < start && start < b.bucketEnd {
+			start = b.bucketEnd
+		}
+
+		// Existing:         |-----------|
+		//      New:  |------------|
+		if end > b.bucketStart && end < b.bucketEnd {
+			end = b.bucketStart
+			insertIdx = idx
+			break
+		}
+
+		if b.bucketStart > end {
+			insertIdx = idx
+			break
+		}
 	}
 
-	db, ok := userMap[bucketID]
-	if !ok {
-		tsdb, err := i.createBackfillTSDB(userID, bucketID)
+	if bucket == nil {
+		tsdb, err := i.createBackfillTSDB(userID, getBucketName(start, end), int64(end-start)*2)
 		if err != nil {
 			return nil, err
 		}
-		db = &backfillTSDB{db: tsdb}
-		userMap[bucketID] = db
+		bucket = &tsdbBucket{db: tsdb}
+		userBuckets = append(userBuckets[:insertIdx], append([]*tsdbBucket{bucket}, userBuckets[insertIdx:]...)...)
+		i.TSDBState.backfillDBs.tsdbs[userID] = userBuckets
 	}
 
-	return db.db, nil
+	return bucket, nil
 }
 
-type backfillTSDB struct {
-	db         *userTSDB
-	lastAppend time.Time
+type tsdbBucket struct {
+	db                     *userTSDB
+	bucketStart, bucketEnd model.Time
+	lastAppend             time.Time
+}
+
+// getBucketName returns the string representation of the bucket.
+// YYYY_MM_DD_HH_YYYY_MM_DD_HH
+func getBucketName(start, end model.Time) string {
+	startTime := start.Time()
+	endTime := end.Time()
+
+	return fmt.Sprintf(
+		"%04d_%02d_%02d_%02d_%04d_%02d_%02d_%02d",
+		startTime.Year(), startTime.Month(), startTime.Day(), startTime.Hour(),
+		endTime.Year(), endTime.Month(), endTime.Day(), endTime.Hour(),
+	)
+}
+
+func getTimeRangesForBucket(ts int64, bucketSize int) (model.Time, model.Time) {
+	// TODO(codesome): Replace this entire thing with 1-2 simple equations
+	// to align ts with the nearest hours which also aligns with bucketSize.
+	t := time.Unix(ts/1000, 0).UTC()
+	yyyy := t.Year()
+	mm := t.Month()
+	dd := t.Day()
+	hh := bucketSize * (t.Hour() / bucketSize)
+	t = time.Date(yyyy, mm, dd, hh, 0, 0, 0, time.UTC)
+
+	start := model.Time(t.Unix() * 1000)
+	end := start.Add(time.Duration(bucketSize) * time.Hour)
+
+	return start, end
 }

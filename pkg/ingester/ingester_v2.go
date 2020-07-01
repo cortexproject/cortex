@@ -592,6 +592,16 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 		return nil, ss.Err()
 	}
 
+	backfillSSs, err := i.backfillSelect(ctx, userID, int64(from), int64(through), matchers)
+	if err != nil {
+		return nil, err
+	}
+	if len(backfillSSs) > 0 {
+		// TODO(codesome): If any TSDB in backfill buckets were overlapping
+		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
+		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
+	}
+
 	numSamples := 0
 
 	result := &client.QueryResponse{}
@@ -1489,10 +1499,14 @@ func newBackfillTSDBs() *backfillTSDBs {
 	}
 }
 
+func (b *backfillTSDBs) getBucketsForUser(userID string) []*tsdbBucket {
+	b.userStateMtx.RLock()
+	defer b.userStateMtx.RUnlock()
+	return b.tsdbs[userID]
+}
+
 func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, error) {
-	i.TSDBState.backfillDBs.userStateMtx.RLock()
-	userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]
-	i.TSDBState.backfillDBs.userStateMtx.RUnlock()
+	userBuckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
 
 	start, end := getBucketRangesForTimestamp(ts, 1)
 
@@ -1647,10 +1661,79 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 	return runErr
 }
 
+func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, through int64, matchers []*labels.Matcher) ([]storage.SeriesSet, error) {
+	buckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
+
+	var queriers []storage.Querier
+	defer func() {
+		for _, q := range queriers {
+			q.Close()
+		}
+	}()
+	for _, b := range buckets {
+		if !b.overlaps(from, through) {
+			mint, err := b.db.DB.StartTime()
+			if err != nil {
+				return nil, err
+			}
+			maxt := b.db.Head().MaxTime()
+			if !overlapsOpenInterval(mint, maxt, from, through) {
+				continue
+			}
+		}
+
+		q, err := b.db.Querier(ctx, from, through)
+		if err != nil {
+			return nil, err
+		}
+
+		queriers = append(queriers, q)
+	}
+
+	if len(queriers) == 0 {
+		return nil, nil
+	}
+
+	result := make([]storage.SeriesSet, len(queriers))
+	errC := make(chan error, 1)
+	var wg sync.WaitGroup
+	for i, q := range queriers {
+		wg.Add(1)
+		go func(i int, q storage.Querier) {
+			defer wg.Done()
+
+			ss := q.Select(false, nil, matchers...)
+			if ss.Err() != nil {
+				select {
+				case errC <- ss.Err():
+				default:
+				}
+			}
+			result[i] = ss
+		}(i, q)
+	}
+
+	wg.Wait()
+	select {
+	case err := <-errC:
+		return nil, err
+	}
+
+	return result, nil
+}
+
 type tsdbBucket struct {
 	db                     *userTSDB
 	bucketStart, bucketEnd model.Time
 	lastAppend             time.Time
+}
+
+func (b *tsdbBucket) overlaps(mint, maxt int64) bool {
+	return overlapsOpenInterval(int64(b.bucketStart), int64(b.bucketEnd), mint, maxt)
+}
+
+func overlapsOpenInterval(mint1, maxt1, mint2, maxt2 int64) bool {
+	return mint1 < maxt2 && mint2 < maxt1
 }
 
 // getBucketName returns the string representation of the bucket.

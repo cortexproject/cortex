@@ -23,6 +23,7 @@
   * `cortex_prometheus_notifications_queue_length`
   * `cortex_prometheus_notifications_queue_capacity`
   * `cortex_prometheus_notifications_alertmanagers_discovered`
+* [ENHANCEMENT] The behavior of the `/ready` was changed for the query frontend to indicate when it was ready to accept queries. This is intended for use by a read path load balancer that would want to wait for the frontend to have attached queriers before including it in the backend. #2733
 * [ENHANCEMENT] Experimental Delete Series: Add support for deletion of chunks for remaining stores. #2801
 * [ENHANCEMENT] Add `-modules` command line flag to list possible values for `-target`. Also, log warning if given target is internal component. #2752
 * [ENHANCEMENT] Added `-ingester.flush-on-shutdown-with-wal-enabled` option to enable chunks flushing even when WAL is enabled. #2780

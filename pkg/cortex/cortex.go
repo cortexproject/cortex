@@ -401,6 +401,15 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 		}
 
+		// Query Frontend has a special check that makes sure that a querier is attached before it signals
+		// itself as ready
+		if t.Frontend != nil {
+			if err := t.Frontend.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Query Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		http.Error(w, "ready", http.StatusOK)
 	}
 }

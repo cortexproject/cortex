@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -273,6 +276,13 @@ func (i *Ingester) startingV2ForFlusher(ctx context.Context) error {
 func (i *Ingester) startingV2(ctx context.Context) error {
 	if err := i.openExistingTSDB(ctx); err != nil {
 		return errors.Wrap(err, "opening existing TSDBs")
+	}
+
+	// Scan and open backfill TSDB's that already exist on disk.
+	// TODO(codesome): run this in parallel with opening main TSDBs
+	// to make full use of TSDB opening concurrency.
+	if err := i.openExistingBackfillTSDB(context.Background()); err != nil {
+		return errors.Wrap(err, "opening existing backfill TSDBs")
 	}
 
 	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
@@ -1421,7 +1431,7 @@ func (i *Ingester) createBackfillTSDB(userID, bucketName string, blockRange int6
 		)
 	}
 
-	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
+	//i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
 	return userDB, nil
 }
 
@@ -1469,7 +1479,8 @@ func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s cli
 
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
-	tsdbs map[string][]*tsdbBucket
+	userStateMtx sync.RWMutex
+	tsdbs        map[string][]*tsdbBucket
 }
 
 func newBackfillTSDBs() *backfillTSDBs {
@@ -1479,9 +1490,11 @@ func newBackfillTSDBs() *backfillTSDBs {
 }
 
 func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, error) {
+	i.TSDBState.backfillDBs.userStateMtx.RLock()
 	userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]
+	i.TSDBState.backfillDBs.userStateMtx.RUnlock()
 
-	start, end := getTimeRangesForBucket(ts, 1)
+	start, end := getBucketRangesForTimestamp(ts, 1)
 
 	var bucket *tsdbBucket
 	insertIdx := len(userBuckets)
@@ -1516,12 +1529,122 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 		if err != nil {
 			return nil, err
 		}
-		bucket = &tsdbBucket{db: tsdb}
+		bucket = &tsdbBucket{
+			db:          tsdb,
+			lastAppend:  time.Now(),
+			bucketStart: start,
+			bucketEnd:   end,
+		}
 		userBuckets = append(userBuckets[:insertIdx], append([]*tsdbBucket{bucket}, userBuckets[insertIdx:]...)...)
+		i.TSDBState.backfillDBs.userStateMtx.Lock()
 		i.TSDBState.backfillDBs.tsdbs[userID] = userBuckets
+		i.TSDBState.backfillDBs.userStateMtx.Unlock()
 	}
 
 	return bucket, nil
+}
+
+func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
+	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
+	wg := &sync.WaitGroup{}
+	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
+
+	users, err := ioutil.ReadDir(i.cfg.TSDBConfig.BackfillDir)
+	if err != nil {
+		return err
+	}
+
+	var runErr error
+	for _, u := range users {
+		if !u.IsDir() {
+			continue
+		}
+
+		userID := u.Name()
+		userPath := filepath.Join(i.cfg.TSDBConfig.BackfillDir, userID)
+
+		bucketNames, err := ioutil.ReadDir(userPath)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to open user TSDB dir for backfill", "err", err, "user", u, "path", userPath)
+			continue
+		}
+
+		for _, bucketName := range bucketNames {
+			if bucketName.IsDir() {
+				continue
+			}
+
+			dbPath := filepath.Join(userPath, bucketName.Name())
+			f, err := os.Open(dbPath)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open user backfill TSDB dir", "err", err, "user", userID, "path", dbPath)
+				return filepath.SkipDir
+			}
+			defer f.Close()
+
+			// If the dir is empty skip it
+			if _, err := f.Readdirnames(1); err != nil {
+				if err != io.EOF {
+					level.Error(util.Logger).Log("msg", "unable to read backfill TSDB dir", "err", err, "user", userID, "path", dbPath)
+				}
+
+				return filepath.SkipDir
+			}
+
+			// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
+			if err := openGate.Start(ctx); err != nil {
+				runErr = err
+				break
+			}
+
+			wg.Add(1)
+			go func(userID, bucketName string) {
+				defer wg.Done()
+				defer openGate.Done()
+				defer func(ts time.Time) {
+					i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
+				}(time.Now())
+
+				start, end, err := getBucketRangesForBucketName(bucketName)
+				db, err := i.createBackfillTSDB(userID, bucketName, int64(end-start)*2)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to open user backfill TSDB", "err", err, "user", userID)
+					return
+				}
+
+				bucket := &tsdbBucket{
+					db:          db,
+					lastAppend:  time.Now(),
+					bucketStart: start,
+					bucketEnd:   end,
+				}
+
+				i.TSDBState.backfillDBs.userStateMtx.Lock()
+				// Append at the end, we will sort it at the end.
+				i.TSDBState.backfillDBs.tsdbs[userID] = append(i.TSDBState.backfillDBs.tsdbs[userID], bucket)
+				i.TSDBState.backfillDBs.userStateMtx.Unlock()
+			}(userID, bucketName.Name())
+		}
+
+		if runErr != nil {
+			break
+		}
+
+	}
+
+	// Wait for all opening routines to finish
+	wg.Wait()
+
+	// Sort the buckets within the users.
+	i.TSDBState.backfillDBs.userStateMtx.Lock()
+	for _, buckets := range i.TSDBState.backfillDBs.tsdbs {
+		sort.Slice(buckets, func(i, j int) bool {
+			return buckets[i].bucketStart < buckets[i].bucketEnd
+		})
+	}
+	i.TSDBState.backfillDBs.userStateMtx.Unlock()
+
+	return runErr
 }
 
 type tsdbBucket struct {
@@ -1543,7 +1666,7 @@ func getBucketName(start, end model.Time) string {
 	)
 }
 
-func getTimeRangesForBucket(ts int64, bucketSize int) (model.Time, model.Time) {
+func getBucketRangesForTimestamp(ts int64, bucketSize int) (model.Time, model.Time) {
 	// TODO(codesome): Replace this entire thing with 1-2 simple equations
 	// to align ts with the nearest hours which also aligns with bucketSize.
 	t := time.Unix(ts/1000, 0).UTC()
@@ -1557,4 +1680,54 @@ func getTimeRangesForBucket(ts int64, bucketSize int) (model.Time, model.Time) {
 	end := start.Add(time.Duration(bucketSize) * time.Hour)
 
 	return start, end
+}
+
+func getBucketRangesForBucketName(bucketName string) (model.Time, model.Time, error) {
+	// YYYY_MM_DD_HH_YYYY_MM_DD_HH
+	// 012345678901234567890123456
+	if len(bucketName) != 27 {
+		return 0, 0, errors.New("Invalid bucket name")
+	}
+
+	startYYYY, err := strconv.Atoi(bucketName[0:4])
+	if err != nil {
+		return 0, 0, err
+	}
+	startMM, err := strconv.Atoi(bucketName[5:7])
+	if err != nil {
+		return 0, 0, err
+	}
+	startDD, err := strconv.Atoi(bucketName[8:10])
+	if err != nil {
+		return 0, 0, err
+	}
+	startHH, err := strconv.Atoi(bucketName[11:13])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	endYYYY, err := strconv.Atoi(bucketName[14:18])
+	if err != nil {
+		return 0, 0, err
+	}
+	endMM, err := strconv.Atoi(bucketName[19:21])
+	if err != nil {
+		return 0, 0, err
+	}
+	endDD, err := strconv.Atoi(bucketName[22:24])
+	if err != nil {
+		return 0, 0, err
+	}
+	endHH, err := strconv.Atoi(bucketName[25:27])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	startTime := time.Date(startYYYY, time.Month(startMM), startDD, startHH, 0, 0, 0, time.UTC)
+	endTime := time.Date(endYYYY, time.Month(endMM), endDD, endHH, 0, 0, 0, time.UTC)
+
+	start := model.Time(startTime.Unix() * 1000)
+	end := model.Time(endTime.Unix() * 1000)
+
+	return start, end, nil
 }

@@ -153,7 +153,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, s.From.String(), reg)
+		reg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"purpose": s.From.String()}, reg)
+
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -163,7 +166,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if objectStoreType == "" {
 			objectStoreType = s.IndexType
 		}
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, s.From.String(), reg)
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
@@ -180,7 +183,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, purpose string, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
 			return indexClientFactory.indexClientFactoryFunc()
@@ -208,7 +211,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, purpo
 		cfg.GCPStorageConfig.DistributeKeys = true
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, purpose, registerer)
+		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case "boltdb":
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case "grpc-store":
@@ -219,7 +222,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, purpo
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, purpose string, registerer prometheus.Registerer) (chunk.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.Client, error) {
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -245,7 +248,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, purpo
 	case "swift":
 		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
 	case "cassandra":
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, purpose, registerer)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case "filesystem":
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {

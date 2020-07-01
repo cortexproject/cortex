@@ -329,7 +329,9 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	}
 
 	var indexClient chunk.IndexClient
-	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema, "delete-requests", prometheus.DefaultRegisterer)
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"purpose": "delete-requests"}, prometheus.DefaultRegisterer)
+	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema, reg)
 	if err != nil {
 		return
 	}

@@ -138,7 +138,7 @@ func TestCustomIndexClient(t *testing.T) {
 			RegisterIndexStore(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
 		}
 
-		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg, "test", nil)
+		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg, nil)
 		if tc.errorExpected {
 			require.Error(t, err)
 		} else {

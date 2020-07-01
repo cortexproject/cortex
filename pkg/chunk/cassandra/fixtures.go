@@ -34,14 +34,13 @@ func (f *fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient,
 
 	// Get a SchemaConfig with the defaults.
 	schemaConfig := testutils.DefaultSchemaConfig("cassandra")
-	schemaStart := schemaConfig.Configs[0].From.String()
 
-	storageClient, err := NewStorageClient(cfg, schemaConfig, schemaStart, nil)
+	storageClient, err := NewStorageClient(cfg, schemaConfig, nil)
 	if err != nil {
 		return nil, nil, nil, schemaConfig, nil, err
 	}
 
-	objectClient, err := NewObjectClient(cfg, schemaConfig, schemaStart, nil)
+	objectClient, err := NewObjectClient(cfg, schemaConfig, nil)
 	if err != nil {
 		return nil, nil, nil, schemaConfig, nil, err
 	}

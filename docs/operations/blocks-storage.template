@@ -60,7 +60,7 @@ When blocks sharding is **disabled**, queriers need the `-experimental.querier.s
 
 ### Anatomy of a query execution
 
-When a querier receives a query range request, it contains few main information:
+When a querier receives a query range request, it contains following parameters:
 
 - `query`: the PromQL query expression itself (e.g. `rate(node_cpu_seconds_total[1m])`)
 - `start`: the start time

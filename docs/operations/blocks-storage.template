@@ -40,7 +40,7 @@ At startup **store-gateways** iterate over the entire storage bucket to discover
 
 Similarly, **queriers** also iterate over the entire storage bucket at startup, to discover all tenants Blocks and download the `meta.json` for each Block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
-Store-gateways and queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks marked for deletion or hard deleted in the meantime, as a result of compaction or an optional retention policy. The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+Store-gateways and queriers periodically rescan the storage bucket to discover new Blocks (uploaded by the ingesters and compactor) and Blocks marked for deletion or fully deleted since last scan (as a result of compaction or an optional retention policy). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 

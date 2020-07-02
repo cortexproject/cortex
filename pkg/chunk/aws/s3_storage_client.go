@@ -52,12 +52,11 @@ type S3Config struct {
 	Insecure        bool
 	HTTPConfig      HTTPConfig
 	SSEEncryption   bool
+	PutUserMetadata map[string]*string
 
 	// SignatureV2?
 
 	// PUT Options?
-
-	// PutUserMetadata?  putobjectoptions.metadata?
 	// PartSize
 }
 
@@ -82,10 +81,11 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type S3ObjectClient struct {
-	bucketNames   []string
-	S3            s3iface.S3API
-	delimiter     string
-	sseEncryption *string
+	bucketNames     []string
+	S3              s3iface.S3API
+	delimiter       string
+	sseEncryption   *string
+	putUserMetadata map[string]*string
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -108,10 +108,11 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	}
 
 	client := S3ObjectClient{
-		S3:            s3Client,
-		bucketNames:   bucketNames,
-		delimiter:     delimiter,
-		sseEncryption: sseEncryption,
+		S3:              s3Client,
+		bucketNames:     bucketNames,
+		delimiter:       delimiter,
+		sseEncryption:   sseEncryption,
+		putUserMetadata: cfg.PutUserMetadata,
 	}
 	return &client, nil
 }
@@ -268,6 +269,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			Bucket:               aws.String(a.bucketFromKey(objectKey)),
 			Key:                  aws.String(objectKey),
 			ServerSideEncryption: a.sseEncryption,
+			Metadata:             a.putUserMetadata,
 		})
 		return err
 	})

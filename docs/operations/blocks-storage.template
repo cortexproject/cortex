@@ -22,7 +22,7 @@ The rest of the document assumes you have read the [Cortex architecture](../arch
 
 When the blocks storage is used, each **ingester** creates a per-tenant TSDB and ships the TSDB Blocks - which by default are cut every 2 hours - to the long-term storage.
 
-The **store-gateway** periodically iterate over the storage bucket to discover recently uploaded Blocks and - for each Block - download a subset of the block index - called index-header - which is kept in memory and used to provide fast lookups at query time.
+The **store-gateways** periodically iterate over the storage bucket to discover recently uploaded Blocks, and for each block they download a subset of the block index (index-header) which is kept in memory and used to provide fast lookups at query time.
 
 **Queriers** periodically iterate over the storage bucket too to discover recently uploaded Blocks but, contrary to the store-gateway, do **not** download any content from each Block except a small `meta.json` file containing the Block's metadata (including the minimum and maximum timestamp of samples within the Block). The querier uses the knowledge about Blocks in the storage and their min/max timestamp in order to compute the list of Blocks required to be queried at query time and fetch matching series from the store-gateway instances holding the required Blocks.
 

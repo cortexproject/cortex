@@ -154,6 +154,9 @@ type Config struct {
 
 	// for testing
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
+
+	// when true the distributor does not validate the label name
+	SkipLabelNameValidation bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -332,7 +335,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Returns the validated series with it's labels/samples, and any error.
 func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
-	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, d.cfg.SkipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 

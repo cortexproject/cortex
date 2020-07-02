@@ -8,10 +8,11 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/stretchr/testify/require"
 )
 
 func TestS3Client(t *testing.T) {

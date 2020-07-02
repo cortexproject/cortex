@@ -51,11 +51,12 @@ type S3Config struct {
 	SecretAccessKey string
 	Insecure        bool
 	HTTPConfig      HTTPConfig
+	SSEEncryption   bool
 
 	// SignatureV2?
 
 	// PUT Options?
-	// SSEEncryption?    putobjectoptions.serversideencryption
+
 	// PutUserMetadata?  putobjectoptions.metadata?
 	// PartSize
 }
@@ -81,9 +82,10 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type S3ObjectClient struct {
-	bucketNames []string
-	S3          s3iface.S3API
-	delimiter   string
+	bucketNames   []string
+	S3            s3iface.S3API
+	delimiter     string
+	sseEncryption *string
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -100,10 +102,16 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 
 	s3Client := s3.New(sess)
 
+	var sseEncryption *string
+	if cfg.SSEEncryption {
+		sseEncryption = aws.String("AES256")
+	}
+
 	client := S3ObjectClient{
-		S3:          s3Client,
-		bucketNames: bucketNames,
-		delimiter:   delimiter,
+		S3:            s3Client,
+		bucketNames:   bucketNames,
+		delimiter:     delimiter,
+		sseEncryption: sseEncryption,
 	}
 	return &client, nil
 }
@@ -256,9 +264,10 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
-			Body:   object,
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+			Body:                 object,
+			Bucket:               aws.String(a.bucketFromKey(objectKey)),
+			Key:                  aws.String(objectKey),
+			ServerSideEncryption: a.sseEncryption,
 		})
 		return err
 	})

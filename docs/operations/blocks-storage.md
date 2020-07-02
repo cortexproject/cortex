@@ -38,7 +38,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 At startup **store-gateways** iterate over the entire storage bucket to discover all tenants Blocks and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
-Similarly, **queriers** - at startup - iterate over the entire storage bucket to discover all tenants Blocks and - for each of them - download the `meta.json`. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+Similarly, **queriers** also iterate over the entire storage bucket at startup, to discover all tenants Blocks and download the `meta.json` for each Block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
 Store-gateways and queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks marked for deletion or hard deleted in the meantime, as a result of compaction or an optional retention policy. The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 

@@ -84,7 +84,7 @@ The **compactor** is an optional - but highly recommended - service which compac
 
 The **vertical compaction** compacts all the Blocks of a tenant uploaded by any ingester for the same Block range period (defaults to 2 hours) into a single Block, de-duplicating samples that are originally written to N Blocks as effect of the replication.
 
-The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index-header kept in memory by queriers.
+The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks with adjacent 2-hour range periods into a single larger Block. Even though the total size of block chunks doesn't change after this compaction, it may still significantly reduce the size of the index and index-header kept in memory by queriers and store-gateways.
 
 The compactor is **stateless**.
 

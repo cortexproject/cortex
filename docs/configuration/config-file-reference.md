@@ -2486,7 +2486,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_global_series_per_metric: <int> | default = 0]
 
 # Minimum number of samples in an idle chunk to flush it to the store. Use with
-# care, if chunks are less than this size they will be discarded.
+# care, if chunks are less than this size they will be discarded. This option is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -ingester.min-chunk-length
 [min_chunk_length: <int> | default = 0]
 

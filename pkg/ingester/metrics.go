@@ -47,6 +47,7 @@ type ingesterMetrics struct {
 	sentBytes      prometheus.Counter
 
 	// Chunks flushing.
+	flushSeriesInProgress         prometheus.Gauge
 	chunkUtilization              prometheus.Histogram
 	chunkLength                   prometheus.Histogram
 	chunkSize                     prometheus.Histogram
@@ -161,6 +162,10 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		}),
 
 		// Chunks flushing.
+		flushSeriesInProgress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_flush_series_in_progress",
+			Help: "Number of flush series operations in progress.",
+		}),
 		chunkUtilization: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",

@@ -73,7 +73,7 @@ The request sent to each store-gateway contains the list of Block IDs that are e
 
 If the query time range covers a period within `-querier.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
 
-Once all samples have been fetched from both store-gateways and ingesters, the querier proceed running the PromQL engine to execute the query and send back the result to the client.
+Once all samples have been fetched from both store-gateways and ingesters, the querier proceeds with running the PromQL engine to execute the query and send back the result to the client.
 
 ### Compactor
 

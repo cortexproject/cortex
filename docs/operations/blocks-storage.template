@@ -132,7 +132,7 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 ## Chunks cache
 
-Store-gateway also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
 To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
 

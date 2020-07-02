@@ -22,25 +22,25 @@ The rest of the document assumes you have read the [Cortex architecture](../arch
 
 When the blocks storage is used, each **ingester** creates a per-tenant TSDB and ships the TSDB Blocks - which by default are cut every 2 hours - to the long-term storage.
 
-The **store-gateway** periodically iterate over the storage bucket to discover recently uploaded Blocks and - for each Block - download a subset of the block index - called index-header - which is kept in memory and used to provide fast lookups at query time.
+The **store-gateways** periodically iterate over the storage bucket to discover recently uploaded Blocks, and for each block they download a subset of the block index (index-header) which is kept in memory and used to provide fast lookups at query time.
 
-**Queriers** periodically iterate over the storage bucket too to discover recently uploaded Blocks but, contrary to the store-gateway, do **not** download any content from each Block except a small `meta.json` file containing the Block's metadata (including the minimum and maximum timestamp of samples within the Block). The querier uses the knowledge about Blocks in the storage and their min/max timestamp in order to compute the list of Blocks required to be queried at query time and fetch matching series from the store-gateway instances holding the required Blocks.
+**Queriers** periodically iterate over the storage bucket too to discover recently uploaded Blocks but, unlike store-gateways, queriers do **not** download any content from Blocks except a small `meta.json` file containing the Block's metadata (including the minimum and maximum timestamp of samples within the Block). Queriers use the metadata to compute the list of Blocks that need to be queried at query time and fetch matching series from the store-gateway instances holding the required Blocks.
 
 ### The write path
 
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester append the received samples to the specific per-tenant TSDB. The received samples are both kept in-memory and written to a write-ahead log (WAL) stored on the local disk and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester upon the first push request is received for that tenant.
 
-The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is cut, which by default occurs every 2 hours. Each new Block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new Block from the storage and download its index-header.
+The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is created, which by default occurs every 2 hours. Each newly created Block is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers and store-gateways enough time to discover the new Block on the storage and download its index-header.
 
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent local disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters.
 
 ### The read path
 
-**Store-gateways** - at startup - iterate over the entire storage bucket to discover all tenants Blocks and - for each of them - download the `meta.json` and index-header. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
+At startup **store-gateways** iterate over the entire storage bucket to discover all tenants Blocks and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
 Similarly, **queriers** - at startup - iterate over the entire storage bucket to discover all tenants Blocks and - for each of them - download the `meta.json`. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
-Store-gateways and queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks marked for deletion or hard deleted in the meanwhile, as effect of compaction or an optional retention policy. The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+Store-gateways and queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks marked for deletion or hard deleted in the meantime, as a result of compaction or an optional retention policy. The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 

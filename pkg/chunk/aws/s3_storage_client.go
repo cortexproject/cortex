@@ -53,11 +53,6 @@ type S3Config struct {
 	HTTPConfig      HTTPConfig
 	SSEEncryption   bool
 	PutUserMetadata map[string]*string
-
-	// SignatureV2?
-
-	// PUT Options?
-	// PartSize
 }
 
 // HTTPConfig stores the http.Transport configuration

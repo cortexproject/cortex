@@ -2776,8 +2776,8 @@ The `tsdb_config` configures the experimental blocks storage.
 [block_ranges_period: <list of duration> | default = 2h0m0s]
 
 # TSDB blocks retention in the ingester before a block is removed. This should
-# be larger than the block_ranges_period and large enough to give queriers
-# enough time to discover newly uploaded blocks.
+# be larger than the block_ranges_period and large enough to give store-gateways
+# and queriers enough time to discover newly uploaded blocks.
 # CLI flag: -experimental.tsdb.retention-period
 [retention_period: <duration> | default = 6h]
 
@@ -3065,11 +3065,6 @@ bucket_store:
 # True to enable TSDB WAL compression.
 # CLI flag: -experimental.tsdb.wal-compression-enabled
 [wal_compression_enabled: <boolean> | default = false]
-
-# True if the Cortex cluster is running the store-gateway service and the
-# querier should query the bucket store via the store-gateway.
-# CLI flag: -experimental.tsdb.store-gateway-enabled
-[store_gateway_enabled: <boolean> | default = false]
 
 # If true, and transfer of blocks on shutdown fails or is disabled, incomplete
 # blocks are flushed to storage instead. If false, incomplete blocks will be

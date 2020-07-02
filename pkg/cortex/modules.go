@@ -254,10 +254,6 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, r
 		return querier.NewChunkStoreQueryable(cfg.Querier, chunkStore), nil
 
 	case storage.StorageEngineTSDB:
-		if !cfg.TSDB.StoreGatewayEnabled {
-			return querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, reg)
-		}
-
 		// When running in single binary, if the blocks sharding is disabled and no custom
 		// store-gateway address has been configured, we can set it to the running process.
 		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {

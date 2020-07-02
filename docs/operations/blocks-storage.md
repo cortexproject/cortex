@@ -22,31 +22,58 @@ The rest of the document assumes you have read the [Cortex architecture](../arch
 
 When the blocks storage is used, each **ingester** creates a per-tenant TSDB and ships the TSDB Blocks - which by default are cut every 2 hours - to the long-term storage.
 
-**Queriers** periodically iterate over the storage bucket to discover recently uploaded Blocks and - for each Block - download a subset of the block index - called "index header" - which is kept in memory and used to provide fast lookups.
+The **store-gateways** periodically iterate over the storage bucket to discover recently uploaded Blocks, and for each block they download a subset of the block index (index-header) which is kept in memory and used to provide fast lookups at query time.
+
+**Queriers** periodically iterate over the storage bucket too to discover recently uploaded Blocks but, unlike store-gateways, queriers do **not** download any content from Blocks except a small `meta.json` file containing the Block's metadata (including the minimum and maximum timestamp of samples within the Block). Queriers use the metadata to compute the list of Blocks that need to be queried at query time and fetch matching series from the store-gateway instances holding the required Blocks.
 
 ### The write path
 
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester append the received samples to the specific per-tenant TSDB. The received samples are both kept in-memory and written to a write-ahead log (WAL) stored on the local disk and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester upon the first push request is received for that tenant.
 
-The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is cut, which by default occurs every 2 hours. Each new Block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new Block from the storage and download its index header.
+The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is created, which by default occurs every 2 hours. Each newly created Block is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers and store-gateways enough time to discover the new Block on the storage and download its index-header.
 
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent local disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters.
 
 ### The read path
 
-**Queriers** - at startup - iterate over the entire storage bucket to discover all tenants Blocks and - for each of them - download the index header. During this initial synchronization phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
-Queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks deleted in the meanwhile, as effect of an optional retention policy.
+Similarly, **queriers** also iterate over the entire storage bucket at startup, to discover all tenants Blocks and download the `meta.json` for each Block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
-The blocks chunks and the entire index is never fully downloaded by the queriers. In the read path, a querier lookups the series label names and values using the in-memory index header and then download the required segments of the index and chunks for the matching series directly from the long-term storage using byte-range requests.
+Store-gateways and queriers periodically rescan the storage bucket to discover new Blocks (uploaded by the ingesters and compactor) and Blocks marked for deletion or fully deleted since last scan (as a result of compaction or an optional retention policy). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 
-The index header is also stored to the local disk, in order to avoid to re-download it on subsequent restarts of a querier. For this reason, it's recommended - but not required - to run the querier with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the queriers.
+The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
-### Series sharding and replication
+### Distributor series sharding and replication
 
-The series sharding and replication doesn't change based on the storage engine, so the general overview provided by the "[Cortex architecture](../architecture.md)" documentation applies to the blocks storage as well.
+The series sharding and replication done by the distributor doesn't change based on the storage engine, so the general overview provided by the "[Cortex architecture](../architecture.md)" documentation applies to the blocks storage as well.
 
 It's important to note that - differently than the [chunks storage](../architecture.md#chunks-storage-default) - time series are effectively written N times to the long-term storage, where N is the replication factor (typically 3). This may lead to a storage utilization N times more than the chunks storage, but is actually mitigated by the [compactor](#compactor) service (see "vertical compaction").
+
+### Store-gateway blocks sharding and replication
+
+Blocks can be optionally sharded and replicated across a pool of store-gateway instances. This feature can be enabled via `-experimental.store-gateway.sharding-enabled=true` and requires the  backend ring to be configured via `-experimental.store-gateway.sharding-ring.*` flags (or their respective YAML config options).
+
+When blocks sharding is **enabled**, store-gateway instances builds a ring and blocks are sharded accordingly. Queriers also need to have the same store-gateway sharding config in order to be able to correctly address blocks across the pool of store-gateways.
+
+When blocks sharding is **disabled**, queriers need the `-experimental.querier.store-gateway-addresses` CLI flag (or its respective YAML config option) being set to a comma separated list of store-gateway addresses in [DNS Service Discovery format]((../configuration/arguments.md#dns-service-discovery). Queriers will evenly balance the requests to query blocks across the resolved addresses.
+
+### Anatomy of a query execution
+
+When a querier receives a query range request, it contains following parameters:
+
+- `query`: the PromQL query expression itself (e.g. `rate(node_cpu_seconds_total[1m])`)
+- `start`: the start time
+- `end`: the end time
+- `step`: the query resolution (e.g. `30` to have 1 resulting data point every 30s)
+
+Given a query, the querier analyzes the `start` and `end` time range to compute a list of all known Blocks containing at least 1 sample within this time range. Given the list of Blocks, the querier then computes a list of store-gateway instances holding these Blocks and sends a request to each matching store-gateway instance asking to fetch all the samples for the series matching the `query` within the `start` and `end` time range.
+
+The request sent to each store-gateway contains the list of Block IDs that are expected to be queried, and the response sent back by the store-gateway to the querier contains the list of Block IDs that were actually queried. This list may be a subset of the requested Blocks, for example due to recent Blocks resharding event (ie. last few seconds). The querier runs a consistency check on responses received from the store-gateways to ensure all expected Blocks have been queried; if not, the querier retries to fetch samples from missing Blocks from different store-gateways (if the `-experimental.store-gateway.replication-factor` is greater than `1`) and if the consistency check fails after all retries, the query execution fails as well (correctness is always guaranteed).
+
+If the query time range covers a period within `-querier.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
+
+Once all samples have been fetched from both store-gateways and ingesters, the querier proceeds with running the PromQL engine to execute the query and send back the result to the client.
 
 ### Compactor
 
@@ -57,7 +84,7 @@ The **compactor** is an optional - but highly recommended - service which compac
 
 The **vertical compaction** compacts all the Blocks of a tenant uploaded by any ingester for the same Block range period (defaults to 2 hours) into a single Block, de-duplicating samples that are originally written to N Blocks as effect of the replication.
 
-The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index header kept in memory by queriers.
+The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks with adjacent 2-hour range periods into a single larger Block. Even though the total size of block chunks doesn't change after this compaction, it may still significantly reduce the size of the index and index-header kept in memory by queriers and store-gateways.
 
 The compactor is **stateless**.
 
@@ -74,7 +101,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The querier and store-gateway support a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+The store-gateway can use a cache to speed up lookups of postings and series from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -84,7 +111,7 @@ The querier and store-gateway support a cache to speed up postings and series lo
 The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
 
 - Pros: zero latency
-- Cons: increased querier memory usage, not shared across multiple querier replicas
+- Cons: increased store-gateway memory usage, not shared across multiple store-gateway replicas (when sharding is disabled or replication factor > 1)
 
 ### Memcached index cache
 
@@ -92,7 +119,7 @@ The `memcached` index cache allows to use [Memcached](https://memcached.org/) as
 
 The trade-off of using the Memcached index cache is:
 
-- Pros: can scale beyond a single node memory (Memcached cluster), shared across multiple querier instances
+- Pros: can scale beyond a single node memory (Memcached cluster), shared across multiple store-gateway instances
 - Cons: higher latency in the cache round trip compared to the in-memory one
 
 The Memcached client uses a jump hash algorithm to shard cached entries across a cluster of Memcached servers. For this reason, you should make sure memcached servers are **not** behind any kind of load balancer and their address is configured so that servers are added/removed to the end of the list whenever a scale up/down occurs.
@@ -105,7 +132,7 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 ## Chunks cache
 
-Store-gateway and querier also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
 To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
 
@@ -113,7 +140,7 @@ There are additional low-level options for configuring chunks cache. Please refe
 
 ## Metadata cache
 
-Store-gateway and querier can use memcached for storing metadata: list of users, list of blocks per user, meta.json files and deletion mark files. Using the cache can reduce number of API calls to object storage significantly.
+Store-gateway and querier can use memcached for caching bucket metadata: list of users, list of blocks per user, meta.json files and deletion mark files. Using the cache can reduce number of API calls to object storage significantly.
 
 To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached` prefix.
 
@@ -154,8 +181,8 @@ tsdb:
   [block_ranges_period: <list of duration> | default = 2h0m0s]
 
   # TSDB blocks retention in the ingester before a block is removed. This should
-  # be larger than the block_ranges_period and large enough to give queriers
-  # enough time to discover newly uploaded blocks.
+  # be larger than the block_ranges_period and large enough to give
+  # store-gateways and queriers enough time to discover newly uploaded blocks.
   # CLI flag: -experimental.tsdb.retention-period
   [retention_period: <duration> | default = 6h]
 
@@ -447,11 +474,6 @@ tsdb:
   # CLI flag: -experimental.tsdb.wal-compression-enabled
   [wal_compression_enabled: <boolean> | default = false]
 
-  # True if the Cortex cluster is running the store-gateway service and the
-  # querier should query the bucket store via the store-gateway.
-  # CLI flag: -experimental.tsdb.store-gateway-enabled
-  [store_gateway_enabled: <boolean> | default = false]
-
   # If true, and transfer of blocks on shutdown fails or is disabled, incomplete
   # blocks are flushed to storage instead. If false, incomplete blocks will be
   # reused after restart, and uploaded when finished.
@@ -725,4 +747,4 @@ The typical case where this issue triggers is after a long outage. Let's conside
 
 ### Migrating from the chunks to the blocks storage
 
-Currently, no smooth migration path is provided to migrate from chunks to blocks storage. For this reason, the blocks storage can only be enabled in new Cortex clusters.
+We're currently working on a smooth migration path from chunks to blocks storage. More information can be find in this [proposal](../proposals/ingesters-migration.md).

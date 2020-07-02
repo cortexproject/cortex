@@ -1,0 +1,18 @@
+[Unit]
+Description=Horizontally scalable, highly available, multi-tenant, long term Prometheus.
+Documentation=https://cortexmetrics.io/docs
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Restart=always
+User=cortex
+EnvironmentFile=/etc/default/cortex
+ExecStart=/usr/local/bin/cortex --config.file $CONFIG_FILE --log.level $LOG_LEVEL $CUSTOM_ARGS
+ExecReload=/bin/kill -HUP $MAINPID
+TimeoutStopSec=20s
+SendSIGKILL=no
+WorkingDirectory=/var/lib/cortex
+
+[Install]
+WantedBy=multi-user.target

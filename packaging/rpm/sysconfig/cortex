@@ -1,0 +1,11 @@
+# Log level. Valid levels: [debug, info, warn, error]. Default: "info"
+LOG_LEVEL="info"
+
+# Path to Cortex YAML configuration file.
+CONFIG_FILE="/etc/cortex/single-process-config.yaml"
+
+# Custom user defined arguments.
+CUSTOM_ARGS=""
+
+# Restart on system upgrade. Default: "true".
+RESTART_ON_UPGRADE="true"

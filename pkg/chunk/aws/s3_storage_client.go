@@ -3,8 +3,8 @@ package aws
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
-	"fmt"
 	"hash/fnv"
 	"io"
 	"net"
@@ -49,10 +49,10 @@ type S3Config struct {
 	Region          string
 	AccessKeyID     string
 	SecretAccessKey string
+	Insecure        bool
 	HTTPConfig      HTTPConfig
 
 	// SignatureV2?
-	// Insecure?
 
 	// PUT Options?
 	// SSEEncryption?    putobjectoptions.serversideencryption
@@ -88,7 +88,7 @@ type S3ObjectClient struct {
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
-	s3Config, err := buildS3Config(cfg)
+	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +99,7 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	}
 
 	s3Client := s3.New(sess)
-	bucketNames := []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
-	if cfg.BucketNames != "" {
-		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
-	}
+
 	client := S3ObjectClient{
 		S3:          s3Client,
 		bucketNames: bucketNames,
@@ -111,15 +108,22 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	return &client, nil
 }
 
-func buildS3Config(cfg S3Config) (*aws.Config, error) {
-	if cfg.S3.URL == nil {
-		return nil, fmt.Errorf("no URL specified for S3")
+func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
+	var s3Config *aws.Config
+	var err error
+
+	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
+	if cfg.S3.URL != nil {
+		s3Config, err = awscommon.ConfigFromURL(cfg.S3.URL)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		s3Config = &aws.Config{}
+		s3Config = s3Config.WithRegion("dummy")
+		s3Config = s3Config.WithCredentials(credentials.AnonymousCredentials)
 	}
 
-	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
-	if err != nil {
-		return nil, err
-	}
 	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithHTTPClient(&http.Client{Transport: defaultTransport})
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
@@ -128,13 +132,17 @@ func buildS3Config(cfg S3Config) (*aws.Config, error) {
 		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
 	}
 
+	if cfg.Insecure {
+		s3Config = s3Config.WithDisableSSL(true)
+	}
+
 	if cfg.Region != "" {
 		s3Config = s3Config.WithRegion(cfg.Region)
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, fmt.Errorf("Must supply both an Access Key ID and Secret Access Key or neither")
+		return nil, nil, errors.New("Failed to initialize s3_storage_client:  Must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
@@ -163,7 +171,21 @@ func buildS3Config(cfg S3Config) (*aws.Config, error) {
 		},
 	})
 
-	return s3Config, nil
+	// bucketnames
+	var bucketNames []string
+	if cfg.S3.URL != nil {
+		bucketNames = []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
+	}
+
+	if cfg.BucketNames != "" {
+		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
+	}
+
+	if len(bucketNames) == 0 {
+		return nil, nil, errors.New("Failed to initialize s3_storage_client:  At least one bucket name must be specified")
+	}
+
+	return s3Config, bucketNames, nil
 }
 
 // Stop fulfills the chunk.ObjectClient interface

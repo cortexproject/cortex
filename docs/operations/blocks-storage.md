@@ -36,11 +36,11 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 ### The read path
 
-At startup **store-gateways** iterate over the entire storage bucket to discover all tenants Blocks and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
+At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
 Similarly, **queriers** also iterate over the entire storage bucket at startup, to discover all tenants Blocks and download the `meta.json` for each Block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
-Store-gateways and queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks marked for deletion or hard deleted in the meantime, as a result of compaction or an optional retention policy. The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+Store-gateways and queriers periodically rescan the storage bucket to discover new Blocks (uploaded by the ingesters and compactor) and Blocks marked for deletion or fully deleted since last scan (as a result of compaction or an optional retention policy). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
@@ -60,20 +60,20 @@ When blocks sharding is **disabled**, queriers need the `-experimental.querier.s
 
 ### Anatomy of a query execution
 
-When a querier receives a query range request, it contains few main information:
+When a querier receives a query range request, it contains following parameters:
 
 - `query`: the PromQL query expression itself (e.g. `rate(node_cpu_seconds_total[1m])`)
 - `start`: the start time
 - `end`: the end time
-- `step`: the query resolution (e.g. `30000` ms to have 1 resulting data point every 30s)
+- `step`: the query resolution (e.g. `30` to have 1 resulting data point every 30s)
 
 Given a query, the querier analyzes the `start` and `end` time range to compute a list of all known Blocks containing at least 1 sample within this time range. Given the list of Blocks, the querier then computes a list of store-gateway instances holding these Blocks and sends a request to each matching store-gateway instance asking to fetch all the samples for the series matching the `query` within the `start` and `end` time range.
 
-The request sent to each store-gateway instance contains the list of Block IDs that are expected to be queried, and the response sent by the store-gateway back to the querier contains the list of Block IDs actually queried. The set of Blocks actually queried by a store-gateway may be a subset of the requested Blocks as effect of a Blocks re-sharding recently occurred (ie. last few seconds). The querier runs a consistency check on responses received from the store-gateways to ensure all expected Blocks have been queried; if not, the querier retries to fetch missing Blocks from different store-gateways (if the `-experimental.store-gateway.replication-factor` is greater than `1`) and if the consistency check fails after all retries, the query execution will fail as well (correctness is always guaranteed).
+The request sent to each store-gateway contains the list of Block IDs that are expected to be queried, and the response sent back by the store-gateway to the querier contains the list of Block IDs that were actually queried. This list may be a subset of the requested Blocks, for example due to recent Blocks resharding event (ie. last few seconds). The querier runs a consistency check on responses received from the store-gateways to ensure all expected Blocks have been queried; if not, the querier retries to fetch samples from missing Blocks from different store-gateways (if the `-experimental.store-gateway.replication-factor` is greater than `1`) and if the consistency check fails after all retries, the query execution fails as well (correctness is always guaranteed).
 
-Alongside the requests sent to the store-gateway, if the query time range covers a period within `-querier.query-ingesters-within`, the querier also sends a request to ingesters, in order to fetch samples which have not been persistent into a Block uploaded to the long-term storage yet.
+If the query time range covers a period within `-querier.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
 
-Once all samples have been fetched from both store-gateways and ingesters, the querier proceed running the PromQL engine to execute the query and send back the result to the client.
+Once all samples have been fetched from both store-gateways and ingesters, the querier proceeds with running the PromQL engine to execute the query and send back the result to the client.
 
 ### Compactor
 
@@ -84,7 +84,7 @@ The **compactor** is an optional - but highly recommended - service which compac
 
 The **vertical compaction** compacts all the Blocks of a tenant uploaded by any ingester for the same Block range period (defaults to 2 hours) into a single Block, de-duplicating samples that are originally written to N Blocks as effect of the replication.
 
-The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index-header kept in memory by queriers.
+The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks with adjacent 2-hour range periods into a single larger Block. Even though the total size of block chunks doesn't change after this compaction, it may still significantly reduce the size of the index and index-header kept in memory by queriers and store-gateways.
 
 The compactor is **stateless**.
 
@@ -101,7 +101,7 @@ Whenever the pool of compactors increase or decrease (ie. following up a scale u
 
 ## Index cache
 
-The store-gateway support a cache to speed up postings and series lookups from TSDB blocks indexes. Two backends are supported:
+The store-gateway can use a cache to speed up lookups of postings and series from TSDB blocks indexes. Two backends are supported:
 
 - `inmemory`
 - `memcached`
@@ -132,7 +132,7 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 ## Chunks cache
 
-Store-gateway also support cache for storing chunks fetched from storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
 To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached` prefix.
 

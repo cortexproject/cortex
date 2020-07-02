@@ -65,7 +65,7 @@ When a querier receives a query range request, it contains following parameters:
 - `query`: the PromQL query expression itself (e.g. `rate(node_cpu_seconds_total[1m])`)
 - `start`: the start time
 - `end`: the end time
-- `step`: the query resolution (e.g. `30000` ms to have 1 resulting data point every 30s)
+- `step`: the query resolution (e.g. `30` to have 1 resulting data point every 30s)
 
 Given a query, the querier analyzes the `start` and `end` time range to compute a list of all known Blocks containing at least 1 sample within this time range. Given the list of Blocks, the querier then computes a list of store-gateway instances holding these Blocks and sends a request to each matching store-gateway instance asking to fetch all the samples for the series matching the `query` within the `start` and `end` time range.
 

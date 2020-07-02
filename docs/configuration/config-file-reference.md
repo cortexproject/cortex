@@ -2514,10 +2514,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
-# Limit the query time range length (end - start time). This limit is enforced
-# in the query-frontend (on the received query), in the querier (on the query
-# eventually splitted by the query-frontend) and in the chunks storage. 0 to
-# disable.
+# Limit the query time range (end - start time). This limit is enforced in the
+# query-frontend (on the received query), in the querier (on the query possibly
+# split by the query-frontend) and in the chunks storage. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 

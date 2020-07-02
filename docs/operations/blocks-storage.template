@@ -36,7 +36,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 ### The read path
 
-At startup **store-gateways** iterate over the entire storage bucket to discover all tenants Blocks and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
+At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each Block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
 Similarly, **queriers** also iterate over the entire storage bucket at startup, to discover all tenants Blocks and download the `meta.json` for each Block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 

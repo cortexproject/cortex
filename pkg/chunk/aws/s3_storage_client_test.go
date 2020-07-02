@@ -50,6 +50,18 @@ func TestS3Client(t *testing.T) {
 				S3ForcePathStyle: true,
 			},
 		},
+		{
+			name: "mixed-config",
+			cfg: S3Config{
+				S3: flagext.URLValue{
+					URL: urlMustParse("http://" + minio.HTTPEndpoint()),
+				},
+				BucketNames:      bucketName,
+				S3ForcePathStyle: true,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+			},
+		},
 	}
 
 	for _, tt := range tests {

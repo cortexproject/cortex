@@ -37,8 +37,8 @@ func TestSweepImmediateDropsSamples(t *testing.T) {
 	notify := make(chan struct{})
 	ing.preFlushChunks = func() {
 		if ing.State() == services.Running {
-			notify <- struct{}{}
 			pushSample(t, ing, <-samples)
+			notify <- struct{}{}
 		}
 	}
 

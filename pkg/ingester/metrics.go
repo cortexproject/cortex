@@ -195,11 +195,11 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Help: "The total number of chunks in memory.",
 		}),
 		seriesEnqueuedForFlush: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_enqueued_series_total",
+			Name: "cortex_ingester_flushing_enqueued_series_total",
 			Help: "Total number of series enqueued for flushing, with reasons.",
 		}, []string{"reason"}),
 		seriesDequeuedOutcome: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_dequeued_series_total",
+			Name: "cortex_ingester_flushing_dequeued_series_total",
 			Help: "Total number of series dequeued for flushing, with outcome (superset of enqueue reasons)",
 		}, []string{"outcome"}),
 		flushedSeries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{

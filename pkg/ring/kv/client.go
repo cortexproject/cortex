@@ -151,8 +151,10 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		client = PrefixClient(client, prefix)
 	}
 
-	// If no Registerer is provided return the raw client
-	if reg == nil {
+	// If no Registerer is provided or backend is "multi", return the raw client.
+	// The multi KV store does not have to register metrics.
+	// Because metrics are registered when creating primary and secondary KV stores.
+	if reg == nil || backend == "multi" {
 		return client, nil
 	}
 

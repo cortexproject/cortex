@@ -36,7 +36,7 @@ type dynamoTableClient struct {
 	DynamoDB    dynamodbiface.DynamoDBAPI
 	callManager callManager
 	autoscale   autoscale
-	metrics     *metrics
+	metrics     *dynamoDBMetrics
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -53,7 +53,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig, reg prometheus.Registerer) (chun
 
 	var autoscale autoscale
 	if cfg.Metrics.URL != "" {
-		autoscale, err = newAutoScale(cfg)
+		autoscale, err = newMetricsAutoScaling(cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +323,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 				return err
 			})
 		}); err != nil {
-			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics.dynamoFailures)
+			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
 				level.Warn(util.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
@@ -341,7 +341,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 				return err
 			})
 		}); err != nil {
-			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics.dynamoFailures)
+			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
 				level.Warn(util.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {

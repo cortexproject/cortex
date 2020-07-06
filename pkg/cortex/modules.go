@@ -330,7 +330,7 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 
 	var indexClient chunk.IndexClient
 	reg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"purpose": "delete-requests"}, prometheus.DefaultRegisterer)
+		prometheus.Labels{"component": DeleteRequestsStore}, prometheus.DefaultRegisterer)
 	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema, reg)
 	if err != nil {
 		return
@@ -427,7 +427,10 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage, prometheus.DefaultRegisterer)
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": "table-manager-index-chunk-" + lastConfig.From.String()}, prometheus.DefaultRegisterer)
+
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -437,14 +440,12 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 
 	var extraTables []chunk.ExtraTables
 	if t.Cfg.PurgerConfig.Enable {
-		var deleteStoreTableClient chunk.TableClient
-		if lastConfig.IndexType == t.Cfg.Storage.DeleteStoreConfig.Store {
-			deleteStoreTableClient = tableClient
-		} else {
-			deleteStoreTableClient, err = storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, prometheus.DefaultRegisterer)
-			if err != nil {
-				return nil, err
-			}
+		reg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "table-manager-" + DeleteRequestsStore}, prometheus.DefaultRegisterer)
+
+		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, reg)
+		if err != nil {
+			return nil, err
 		}
 
 		extraTables = append(extraTables, chunk.ExtraTables{TableClient: deleteStoreTableClient, Tables: t.Cfg.Storage.DeleteStoreConfig.GetTables()})

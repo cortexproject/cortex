@@ -153,10 +153,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
-		reg := prometheus.WrapRegistererWith(
-			prometheus.Labels{"purpose": s.From.String()}, reg)
+		indexClientReg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
 
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, reg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -166,7 +166,11 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if objectStoreType == "" {
 			objectStoreType = s.IndexType
 		}
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, reg)
+
+		chunkClientReg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "chunk-store-" + s.From.String()}, reg)
+
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, chunkClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}

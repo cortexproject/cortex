@@ -100,7 +100,7 @@ type dynamoDBStorageClient struct {
 	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 
-	metrics *metrics
+	metrics *dynamoDBMetrics
 }
 
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.
@@ -141,9 +141,9 @@ func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-func logWriteRetry(unprocessed dynamoDBWriteBatch, dynamoThrottled *prometheus.CounterVec) {
+func logWriteRetry(unprocessed dynamoDBWriteBatch, metrics *dynamoDBMetrics) {
 	for table, reqs := range unprocessed {
-		dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
+		metrics.dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
 		for _, req := range reqs {
 			item := req.PutRequest.Item
 			var hash, rnge string
@@ -191,13 +191,13 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 
 		if err != nil {
 			for tableName := range requests {
-				recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem", a.metrics.dynamoFailures)
+				recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem", a.metrics)
 			}
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-				logWriteRetry(requests, a.metrics.dynamoThrottled)
+				logWriteRetry(requests, a.metrics)
 				unprocessed.TakeReqs(requests, -1)
 				_ = a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
@@ -222,7 +222,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		// If there are unprocessed items, retry those items.
 		unprocessedItems := dynamoDBWriteBatch(resp.UnprocessedItems)
 		if len(unprocessedItems) > 0 {
-			logWriteRetry(unprocessedItems, a.metrics.dynamoThrottled)
+			logWriteRetry(unprocessedItems, a.metrics)
 			_ = a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
@@ -304,7 +304,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 			}
 
 			return callback(query, &dynamoDBReadResponse{items: output.Items})
-		}, retryer.withRetries, withErrorHandler(query.TableName, "DynamoDB.QueryPages", a.metrics.dynamoFailures))
+		}, retryer.withRetries, withErrorHandler(query.TableName, "DynamoDB.QueryPages", a.metrics))
 	})
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
@@ -447,7 +447,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 		if err != nil {
 			for tableName := range requests {
-				recordDynamoError(tableName, err, "DynamoDB.BatchGetItemPages", a.metrics.dynamoFailures)
+				recordDynamoError(tableName, err, "DynamoDB.BatchGetItemPages", a.metrics)
 			}
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
@@ -746,21 +746,21 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 	}
 }
 
-func withErrorHandler(tableName, operation string, dynamoFailures *prometheus.CounterVec) func(req *request.Request) {
+func withErrorHandler(tableName, operation string, metrics *dynamoDBMetrics) func(req *request.Request) {
 	return func(req *request.Request) {
 		req.Handlers.CompleteAttempt.PushBack(func(req *request.Request) {
 			if req.Error != nil {
-				recordDynamoError(tableName, req.Error, operation, dynamoFailures)
+				recordDynamoError(tableName, req.Error, operation, metrics)
 			}
 		})
 	}
 }
 
-func recordDynamoError(tableName string, err error, operation string, dynamoFailures *prometheus.CounterVec) {
+func recordDynamoError(tableName string, err error, operation string, metrics *dynamoDBMetrics) {
 	if awsErr, ok := err.(awserr.Error); ok {
-		dynamoFailures.WithLabelValues(tableName, awsErr.Code(), operation).Add(float64(1))
+		metrics.dynamoFailures.WithLabelValues(tableName, awsErr.Code(), operation).Add(float64(1))
 	} else {
-		dynamoFailures.WithLabelValues(tableName, otherError, operation).Add(float64(1))
+		metrics.dynamoFailures.WithLabelValues(tableName, otherError, operation).Add(float64(1))
 	}
 }
 

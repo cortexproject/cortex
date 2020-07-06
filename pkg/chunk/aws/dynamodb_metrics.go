@@ -6,7 +6,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
-type metrics struct {
+type dynamoDBMetrics struct {
 	dynamoRequestDuration  *instrument.HistogramCollector
 	dynamoConsumedCapacity *prometheus.CounterVec
 	dynamoThrottled        *prometheus.CounterVec
@@ -15,8 +15,8 @@ type metrics struct {
 	dynamoQueryPagesCount  prometheus.Histogram
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	m := metrics{}
+func newMetrics(r prometheus.Registerer) *dynamoDBMetrics {
+	m := dynamoDBMetrics{}
 
 	m.dynamoRequestDuration = instrument.NewHistogramCollector(promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",

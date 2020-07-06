@@ -52,7 +52,7 @@ var (
 
 	AlertmanagerFlags = map[string]string{
 		"-alertmanager.configs.poll-interval": "1s",
-		"-alertmanager.web.external-url":      "http://localhost/alertmanager",
+		"-alertmanager.web.external-url":      "http://localhost/api/prom",
 	}
 
 	AlertmanagerLocalFlags = map[string]string{

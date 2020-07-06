@@ -49,7 +49,7 @@ func Test_createClient_multi(t *testing.T) {
 		},
 	}
 	require.NotPanics(t, func() {
-		_, err := createClient("multi", "/collector", cfg, codec.NewProtoCodec("test", nil), prometheus.DefaultRegisterer)
+		_, err := createClient("multi", "/collector", cfg, codec.NewProtoCodec("test", nil), prometheus.NewRegistry())
 		require.NoError(t, err)
 	})
 }

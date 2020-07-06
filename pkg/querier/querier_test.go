@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -153,8 +155,11 @@ func TestQuerier(t *testing.T) {
 						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
+						overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+						require.NoError(t, err)
+
 						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
-						queryable, _ := New(cfg, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
+						queryable, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
 						testQuery(t, queryable, through, query)
 					})
 				}
@@ -275,7 +280,10 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
+				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				require.NoError(t, err)
+
+				queryable, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -295,7 +303,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 			})
 		}
 	}
-
 }
 
 func TestNoFutureQueries(t *testing.T) {
@@ -366,7 +373,10 @@ func TestNoFutureQueries(t *testing.T) {
 				chunkStore := &errChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(chunkStore)}, purger.NewTombstonesLoader(nil, nil), nil)
+				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				require.NoError(t, err)
+
+				queryable, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(chunkStore)}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -384,6 +394,82 @@ func TestNoFutureQueries(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestQuerier_ValidateQueryTimeRange(t *testing.T) {
+	const maxQueryLength = 30 * 24 * time.Hour
+
+	tests := map[string]struct {
+		query          string
+		queryStartTime time.Time
+		queryEndTime   time.Time
+		expected       error
+	}{
+		"should allow query on short time range and rate time window close to the limit": {
+			query:          "rate(foo[29d])",
+			queryStartTime: time.Now().Add(-time.Hour),
+			queryEndTime:   time.Now(),
+			expected:       nil,
+		},
+		"should allow query on large time range close to the limit and short rate time window": {
+			query:          "rate(foo[1m])",
+			queryStartTime: time.Now().Add(-maxQueryLength).Add(time.Hour),
+			queryEndTime:   time.Now(),
+			expected:       nil,
+		},
+		"should forbid query on short time range and rate time window over the limit": {
+			query:          "rate(foo[31d])",
+			queryStartTime: time.Now().Add(-time.Hour),
+			queryEndTime:   time.Now(),
+			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 745h0m0s, limit: 720h0m0s)"),
+		},
+		"should forbid query on large time range over the limit and short rate time window": {
+			query:          "rate(foo[1m])",
+			queryStartTime: time.Now().Add(-maxQueryLength).Add(-time.Hour),
+			queryEndTime:   time.Now(),
+			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 721h1m0s, limit: 720h0m0s)"),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+
+			limits := defaultLimitsConfig()
+			limits.MaxQueryLength = maxQueryLength
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			// We don't need to query any data for this test, so an empty store is fine.
+			chunkStore := &emptyChunkStore{}
+			distributor := &emptyDistributor{}
+
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
+			queryable, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
+
+			// Create the PromQL engine to execute the query.
+			engine := promql.NewEngine(promql.EngineOpts{
+				Logger:             util.Logger,
+				ActiveQueryTracker: nil,
+				MaxSamples:         1e6,
+				Timeout:            1 * time.Minute,
+			})
+
+			query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			r := query.Exec(ctx)
+
+			if testData.expected != nil {
+				require.NotNil(t, r.Err)
+				assert.Equal(t, testData.expected.Error(), r.Err.Error())
+			} else {
+				assert.Nil(t, r.Err)
+			}
+		})
 	}
 }
 
@@ -495,6 +581,32 @@ func (c *emptyChunkStore) IsCalled() bool {
 	return c.called
 }
 
+type emptyDistributor struct{}
+
+func (d *emptyDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+	return &client.QueryStreamResponse{}, nil
+}
+
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) LabelNames(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	return nil, nil
+}
+
 func TestShortTermQueryToLTS(t *testing.T) {
 	testCases := []struct {
 		name                 string
@@ -557,7 +669,10 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				queryable, _ := New(cfg, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
+				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				require.NoError(t, err)
+
+				queryable, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil)
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -632,4 +747,10 @@ func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storag
 func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
+}
+
+func defaultLimitsConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
 }

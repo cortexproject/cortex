@@ -593,7 +593,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 		},
 	}
 
-	srv := NewBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.NoError(t, err)
 	assert.Empty(t, srv.Warnings)

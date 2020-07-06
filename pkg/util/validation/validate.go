@@ -39,8 +39,8 @@ const (
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
 	errLabelsNotSorted    = "labels not sorted: %.200q metric %.200q"
 
-	// ErrQueryTooLong is used in chunk store and query frontend.
-	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
+	// ErrQueryTooLong is used in chunk store, querier and query frontend.
+	ErrQueryTooLong = "the query time range exceeds the limit (query length: %s, limit: %s)"
 
 	missingMetricName       = "missing_metric_name"
 	invalidMetricName       = "metric_name_invalid"

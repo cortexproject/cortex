@@ -70,7 +70,7 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.Ale
 	return config, nil
 }
 
-// GetAlertConfig returns a specified users alertmanager configuration
+// GetAlertConfig returns a specified user's alertmanager configuration
 func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
 	cfg, err := a.getAlertConfig(ctx, alertPrefix+user)
 	if err == chunk.ErrStorageObjectNotFound {
@@ -80,7 +80,7 @@ func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.Al
 	return cfg, err
 }
 
-// SetAlertConfig sets a specified users alertmanager configuration
+// SetAlertConfig sets a specified user's alertmanager configuration
 func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
 	cfgBytes, err := cfg.Marshal()
 	if err != nil {
@@ -90,7 +90,7 @@ func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigD
 	return a.client.PutObject(ctx, alertPrefix+cfg.User, bytes.NewReader(cfgBytes))
 }
 
-// DeleteAlertConfig deletes a specified users alertmanager configuration
+// DeleteAlertConfig deletes a specified user's alertmanager configuration
 func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
 	return a.client.DeleteObject(ctx, alertPrefix+user)
 }

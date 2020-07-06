@@ -180,7 +180,7 @@ type ServerStatus struct {
 
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/status", nil)
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {

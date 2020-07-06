@@ -8,8 +8,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
 func TestParseConfig(t *testing.T) {
@@ -36,20 +35,21 @@ multi:
 }
 
 func Test_createClient_multi(t *testing.T) {
+	testCodec := codec.NewProtoCodec("test", nil)
 	cfg := StoreConfig{
-		Consul: consul.Config{
-			Host: "consul.test",
-		},
-		Etcd: etcd.Config{
-			Endpoints: []string{"etcd.test"},
-		},
 		Multi: MultiConfig{
-			Primary:   "consul",
-			Secondary: "etcd",
+			Primary:   "inmemory",
+			Secondary: "memberlist",
+		},
+		MemberlistKV: func() (*memberlist.KV, error) {
+			cfg := memberlist.KVConfig{
+				Codecs: []codec.Codec{testCodec},
+			}
+			return memberlist.NewKV(cfg), nil
 		},
 	}
 	require.NotPanics(t, func() {
-		_, err := createClient("multi", "/collector", cfg, codec.NewProtoCodec("test", nil), prometheus.NewRegistry())
+		_, err := createClient("multi", "/collector", cfg, testCodec, prometheus.NewRegistry())
 		require.NoError(t, err)
 	})
 }

@@ -54,6 +54,7 @@ var (
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
+	errEmptyBackfillDir             = errors.New("empty backfill directory")
 )
 
 // Config holds the config information for TSDB storage
@@ -152,7 +153,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.tsdb.flush-blocks-on-shutdown", false, "If true, and transfer of blocks on shutdown fails or is disabled, incomplete blocks are flushed to storage instead. If false, incomplete blocks will be reused after restart, and uploaded when finished.")
 
 	f.StringVar(&cfg.BackfillDir, "experimental.tsdb.backfill-dir", "backfill_tsdb", "Local directory to store backfill TSDBs in the ingesters.")
-	f.DurationVar(&cfg.BackfillLimit, "experimental.tsdb.backfill-limit", 6*time.Hour, "")
+	f.DurationVar(&cfg.BackfillLimit, "experimental.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling. 0 disables it.")
 }
 
 // Validate the config.
@@ -179,6 +180,10 @@ func (cfg *Config) Validate() error {
 
 	if len(cfg.BlockRanges) == 0 {
 		return errEmptyBlockranges
+	}
+
+	if cfg.BackfillLimit > 0 && cfg.BackfillDir == "" {
+		return errEmptyBackfillDir
 	}
 
 	return cfg.BucketStore.Validate()
@@ -250,8 +255,8 @@ func (cfg *Config) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
 }
 
-// BackfillBlocksDir returns the directory path where old TSDB blocks and wal should be
-// stored by the ingester
+// BackfillBlocksDir returns the directory path where TSDB blocks and wal used for
+// backfilling should be stored by the ingester
 func (cfg *Config) BackfillBlocksDir(userID string) string {
 	return filepath.Join(cfg.BackfillDir, userID)
 }

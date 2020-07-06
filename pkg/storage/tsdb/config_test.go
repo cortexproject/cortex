@@ -222,6 +222,39 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errEmptyBlockranges,
 		},
+		"should pass on non empty backfill dir": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                1 << 14,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
+				BlockRanges:   DurationList{1 * time.Minute},
+				BackfillLimit: 6 * time.Hour,
+				BackfillDir:   "somedir",
+			},
+			expectedErr: nil,
+		},
+		"should fail on empty backfill dir": {
+			config: Config{
+				Backend:                   "s3",
+				HeadCompactionInterval:    1 * time.Minute,
+				HeadCompactionConcurrency: 5,
+				StripeSize:                1 << 14,
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
+				BlockRanges:   DurationList{1 * time.Minute},
+				BackfillLimit: 6 * time.Hour,
+			},
+			expectedErr: errEmptyBackfillDir,
+		},
 	}
 
 	for testName, testData := range tests {

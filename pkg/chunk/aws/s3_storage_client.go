@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"io"
 	"net"
@@ -87,12 +88,12 @@ type S3ObjectClient struct {
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
 	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to initialize s3_storage_client: %v", err)
 	}
 
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to initialize s3_storage_client: %v", err)
 	}
 
 	s3Client := s3.New(sess)
@@ -146,7 +147,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, nil, errors.New("Failed to initialize s3_storage_client:  Must supply both an Access Key ID and Secret Access Key or neither")
+		return nil, nil, errors.New("Must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
@@ -186,7 +187,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	if len(bucketNames) == 0 {
-		return nil, nil, errors.New("Failed to initialize s3_storage_client:  At least one bucket name must be specified")
+		return nil, nil, errors.New("At least one bucket name must be specified")
 	}
 
 	return s3Config, bucketNames, nil

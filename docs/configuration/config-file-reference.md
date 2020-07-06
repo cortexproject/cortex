@@ -112,9 +112,9 @@ api:
 # The query_frontend_config configures the Cortex query-frontend.
 [frontend: <query_frontend_config>]
 
-# The queryrange_config configures the query splitting and caching in the Cortex
-# query-frontend.
-[query_range: <queryrange_config>]
+# The query_range_config configures the query splitting and caching in the
+# Cortex query-frontend.
+[query_range: <query_range_config>]
 
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
@@ -708,9 +708,9 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [log_queries_longer_than: <duration> | default = 0s]
 ```
 
-### `queryrange_config`
+### `query_range_config`
 
-The `queryrange_config` configures the query splitting and caching in the Cortex query-frontend.
+The `query_range_config` configures the query splitting and caching in the Cortex query-frontend.
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
@@ -2517,7 +2517,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
-# Limit to length of chunk store queries, 0 to disable.
+# Limit the query time range (end - start time). This limit is enforced in the
+# query-frontend (on the received query), in the querier (on the query possibly
+# split by the query-frontend) and in the chunks storage. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 

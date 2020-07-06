@@ -169,7 +169,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
@@ -451,7 +451,7 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -586,11 +586,11 @@ func (t *Cortex) setupModuleManager() error {
 		Store:          {Overrides, DeleteRequestsStore},
 		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
 		Flusher:        {Store, API},
-		Querier:        {Distributor, Store, Ring, API, StoreQueryable},
+		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
 		StoreQueryable: {Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
-		Ruler:          {Distributor, Store, StoreQueryable},
+		Ruler:          {Overrides, Distributor, Store, StoreQueryable},
 		Configs:        {API},
 		AlertManager:   {API},
 		Compactor:      {API},

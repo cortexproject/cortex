@@ -71,9 +71,9 @@ var (
 			desc:       "The query_frontend_config configures the Cortex query-frontend.",
 		},
 		{
-			name:       "queryrange_config",
+			name:       "query_range_config",
 			structType: reflect.TypeOf(queryrange.Config{}),
-			desc:       "The queryrange_config configures the query splitting and caching in the Cortex query-frontend.",
+			desc:       "The query_range_config configures the query splitting and caching in the Cortex query-frontend.",
 		},
 		{
 			name:       "ruler_config",

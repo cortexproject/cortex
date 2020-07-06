@@ -99,3 +99,10 @@ store_gateway:
 
 frontend_worker:
   frontend_address: "query-frontend:9007"
+
+query_range:
+  split_queries_by_interval: 24h
+
+limits:
+  # Limit max query time range to 31d
+  max_query_length: 744h

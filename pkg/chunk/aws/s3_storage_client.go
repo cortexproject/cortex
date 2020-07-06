@@ -88,12 +88,12 @@ type S3ObjectClient struct {
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
 	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize s3_storage_client: %v", err)
+		return nil, fmt.Errorf("Failed to build s3 config: %v", err)
 	}
 
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize s3_storage_client: %v", err)
+		return nil, fmt.Errorf("Failed to create new s3 session: %v", err)
 	}
 
 	s3Client := s3.New(sess)

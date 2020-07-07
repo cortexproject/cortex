@@ -175,7 +175,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 				DualStack: true,
 			}).DialContext,
 			MaxIdleConns:          100,
-			IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout, //90 * time.Second,
+			IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
 			MaxIdleConnsPerHost:   100,
 			TLSHandshakeTimeout:   3 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,

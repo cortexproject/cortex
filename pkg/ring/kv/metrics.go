@@ -33,8 +33,8 @@ func errorCode(err error) string {
 
 const (
 	MetricNamespace = "cortex"
-	MetricName = "kv_request_duration_seconds"
-	MetricHelp = "Time spent on kv store requests."
+	MetricName      = "kv_request_duration_seconds"
+	MetricHelp      = "Time spent on kv store requests."
 )
 
 type metrics struct {

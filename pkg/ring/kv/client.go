@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -211,7 +211,7 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 
 // The mockClient does not anything.
 // This is used for testing only.
-type mockClient struct {}
+type mockClient struct{}
 
 func buildMockClient() (Client, error) {
 	level.Warn(util.Logger).Log("msg", "created mockClient for testing only")

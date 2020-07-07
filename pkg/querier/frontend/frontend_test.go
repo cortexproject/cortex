@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -24,6 +25,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	uber_atomic "go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -161,6 +163,38 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
+func TestFrontendCheckReady(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		downstreamURL    string
+		connectedClients int32
+		msg              string
+		readyForRequests bool
+	}{
+		{"downstream url is always ready", "super url", 0, "", true},
+		{"connected clients are ready", "", 3, "", true},
+		{"no url, no clients is not ready", "", 0, "not ready: number of queriers connected to query-frontend is 0", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &Frontend{
+				connectedClients: uber_atomic.NewInt32(tt.connectedClients),
+				log:              log.NewNopLogger(),
+				cfg: Config{
+					DownstreamURL: tt.downstreamURL,
+				},
+			}
+			err := f.CheckReady(context.Background())
+			errMsg := ""
+
+			if err != nil {
+				errMsg = err.Error()
+			}
+
+			require.Equal(t, tt.msg, errMsg)
+		})
+	}
+}
+
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
 	logger := log.NewNopLogger()
 
@@ -193,18 +227,22 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string), ma
 
 	RegisterFrontendServer(grpcServer, frontend)
 
+	r := mux.NewRouter()
+	r.PathPrefix("/").Handler(middleware.Merge(
+		middleware.AuthenticateUser,
+		middleware.Tracer{},
+	).Wrap(frontend.Handler()))
+
 	httpServer := http.Server{
-		Handler: middleware.Merge(
-			middleware.AuthenticateUser,
-			middleware.Tracer{},
-		).Wrap(frontend.Handler()),
+		Handler: r,
 	}
 	defer httpServer.Shutdown(context.Background()) //nolint:errcheck
 
 	go httpServer.Serve(httpListen) //nolint:errcheck
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
-	worker, err := NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	var worker services.Service
+	worker, err = NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

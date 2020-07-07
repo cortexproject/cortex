@@ -131,18 +131,19 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
 	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
-	require.NoError(t, s.StartAndWaitReady(queryFrontend, distributor, ingester))
+
+	require.NoError(t, s.Start(queryFrontend))
+
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, ingester, distributor))
+	require.NoError(t, s.WaitReady(queryFrontend))
 
 	// Check if we're discovering memcache or not.
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(1), "cortex_memcache_client_servers"))
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Greater(0), "cortex_dns_lookups_total"))
-
-	// Start the querier after the query-frontend otherwise we're not
-	// able to get the query-frontend network endpoint.
-	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
-	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until both the distributor and querier have updated the ring.
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))

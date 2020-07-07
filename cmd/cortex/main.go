@@ -94,7 +94,9 @@ func main() {
 		}
 	}
 
-	if testMode {
+	// Continue on if -modules flag is given. Code handling the
+	// -modules flag will not start cortex.
+	if testMode && !cfg.ListModules {
 		DumpYaml(&cfg)
 		return
 	}
@@ -117,11 +119,15 @@ func main() {
 
 	util.InitEvents(eventSampleRate)
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target); err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
-	} else {
-		defer trace.Close()
+	// In testing mode skip JAEGER setup to avoid panic due to
+	// "duplicate metrics collector registration attempted"
+	if !testMode {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
+		if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target); err != nil {
+			level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
+		} else {
+			defer trace.Close()
+		}
 	}
 
 	// Initialise seed for randomness usage.
@@ -129,6 +135,18 @@ func main() {
 
 	t, err := cortex.New(cfg)
 	util.CheckFatal("initializing cortex", err)
+
+	if t.Cfg.ListModules {
+		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
+			fmt.Fprintln(os.Stdout, m)
+		}
+
+		// in test mode we cannot call os.Exit, it will stop to whole test process.
+		if testMode {
+			return
+		}
+		os.Exit(2)
+	}
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 

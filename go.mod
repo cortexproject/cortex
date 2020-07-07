@@ -45,7 +45,7 @@ require (
 	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200626094909-cef4dd6fff06
+	github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2

@@ -50,8 +50,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Supported values are: all, distributor, ingester,
-# querier, query-frontend, table-manager, ruler, alertmanager, configs.
+# The Cortex service to run. Use "-modules" command line flag to get a list of
+# available options.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -112,9 +112,9 @@ api:
 # The query_frontend_config configures the Cortex query-frontend.
 [frontend: <query_frontend_config>]
 
-# The queryrange_config configures the query splitting and caching in the Cortex
-# query-frontend.
-[query_range: <queryrange_config>]
+# The query_range_config configures the query splitting and caching in the
+# Cortex query-frontend.
+[query_range: <query_range_config>]
 
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
@@ -447,6 +447,11 @@ walconfig:
   # CLI flag: -ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 30m]
 
+  # When WAL is enabled, should chunks be flushed to long-term storage on
+  # shutdown. Useful eg. for migration to blocks engine.
+  # CLI flag: -ingester.flush-on-shutdown-with-wal-enabled
+  [flush_on_shutdown_with_wal_enabled: <boolean> | default = false]
+
 lifecycler:
   ring:
     kvstore:
@@ -703,9 +708,9 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [log_queries_longer_than: <duration> | default = 0s]
 ```
 
-### `queryrange_config`
+### `query_range_config`
 
-The `queryrange_config` configures the query splitting and caching in the Cortex query-frontend.
+The `query_range_config` configures the query splitting and caching in the Cortex query-frontend.
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
@@ -2322,7 +2327,10 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
-# Other cluster members to join. Can be specified multiple times.
+# Other cluster members to join. Can be specified multiple times. It can be an
+# IP, hostname or an entry specified in the DNS Service Discovery format (see
+# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# for more details).
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
@@ -2485,7 +2493,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_global_series_per_metric: <int> | default = 0]
 
 # Minimum number of samples in an idle chunk to flush it to the store. Use with
-# care, if chunks are less than this size they will be discarded.
+# care, if chunks are less than this size they will be discarded. This option is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -ingester.min-chunk-length
 [min_chunk_length: <int> | default = 0]
 
@@ -2512,7 +2521,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
-# Limit to length of chunk store queries, 0 to disable.
+# Limit the query time range (end - start time). This limit is enforced in the
+# query-frontend (on the received query), in the querier (on the query possibly
+# split by the query-frontend) and in the chunks storage. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 
@@ -2771,8 +2782,8 @@ The `tsdb_config` configures the experimental blocks storage.
 [block_ranges_period: <list of duration> | default = 2h0m0s]
 
 # TSDB blocks retention in the ingester before a block is removed. This should
-# be larger than the block_ranges_period and large enough to give queriers
-# enough time to discover newly uploaded blocks.
+# be larger than the block_ranges_period and large enough to give store-gateways
+# and queriers enough time to discover newly uploaded blocks.
 # CLI flag: -experimental.tsdb.retention-period
 [retention_period: <duration> | default = 6h]
 
@@ -3048,6 +3059,10 @@ bucket_store:
 # CLI flag: -experimental.tsdb.head-compaction-concurrency
 [head_compaction_concurrency: <int> | default = 5]
 
+# If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+# CLI flag: -experimental.tsdb.head-compaction-idle-timeout
+[head_compaction_idle_timeout: <duration> | default = 1h]
+
 # The number of shards of series to use in TSDB (must be a power of 2). Reducing
 # this will decrease memory footprint, but can negatively impact performance.
 # CLI flag: -experimental.tsdb.stripe-size
@@ -3057,10 +3072,11 @@ bucket_store:
 # CLI flag: -experimental.tsdb.wal-compression-enabled
 [wal_compression_enabled: <boolean> | default = false]
 
-# True if the Cortex cluster is running the store-gateway service and the
-# querier should query the bucket store via the store-gateway.
-# CLI flag: -experimental.tsdb.store-gateway-enabled
-[store_gateway_enabled: <boolean> | default = false]
+# If true, and transfer of blocks on shutdown fails or is disabled, incomplete
+# blocks are flushed to storage instead. If false, incomplete blocks will be
+# reused after restart, and uploaded when finished.
+# CLI flag: -experimental.tsdb.flush-blocks-on-shutdown
+[flush_blocks_on_shutdown: <boolean> | default = false]
 
 # limit the number of concurrently opening TSDB's on startup
 # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup

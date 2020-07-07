@@ -67,9 +67,10 @@ type Config struct {
 	BucketStore               BucketStoreConfig `yaml:"bucket_store"`
 	HeadCompactionInterval    time.Duration     `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int               `yaml:"head_compaction_concurrency"`
+	HeadCompactionIdleTimeout time.Duration     `yaml:"head_compaction_idle_timeout"`
 	StripeSize                int               `yaml:"stripe_size"`
 	WALCompressionEnabled     bool              `yaml:"wal_compression_enabled"`
-	StoreGatewayEnabled       bool              `yaml:"store_gateway_enabled"`
+	FlushBlocksOnShutdown     bool              `yaml:"flush_blocks_on_shutdown"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -132,16 +133,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "Local directory to store TSDBs in the ingesters.")
 	f.Var(&cfg.BlockRanges, "experimental.tsdb.block-ranges-period", "TSDB blocks range period.")
-	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB blocks retention in the ingester before a block is removed. This should be larger than the block_ranges_period and large enough to give queriers enough time to discover newly uploaded blocks.")
+	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB blocks retention in the ingester before a block is removed. This should be larger than the block_ranges_period and large enough to give store-gateways and queriers enough time to discover newly uploaded blocks.")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 1*time.Minute, "How frequently the TSDB blocks are scanned and new ones are shipped to the storage. 0 means shipping is disabled.")
 	f.IntVar(&cfg.ShipConcurrency, "experimental.tsdb.ship-concurrency", 10, "Maximum number of tenants concurrently shipping blocks to the storage.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
 	f.DurationVar(&cfg.HeadCompactionInterval, "experimental.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "experimental.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
+	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "experimental.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. 0 means disabled.")
 	f.IntVar(&cfg.StripeSize, "experimental.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
-	f.BoolVar(&cfg.StoreGatewayEnabled, "experimental.tsdb.store-gateway-enabled", false, "True if the Cortex cluster is running the store-gateway service and the querier should query the bucket store via the store-gateway.")
+	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.tsdb.flush-blocks-on-shutdown", false, "If true, and transfer of blocks on shutdown fails or is disabled, incomplete blocks are flushed to storage instead. If false, incomplete blocks will be reused after restart, and uploaded when finished.")
 }
 
 // Validate the config.

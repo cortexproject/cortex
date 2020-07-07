@@ -155,7 +155,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, nil, errors.New("Must supply both an Access Key ID and Secret Access Key or neither")
+		return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
@@ -195,7 +195,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	if len(bucketNames) == 0 {
-		return nil, nil, errors.New("At least one bucket name must be specified")
+		return nil, nil, errors.New("at least one bucket name must be specified")
 	}
 
 	return s3Config, bucketNames, nil

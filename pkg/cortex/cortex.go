@@ -50,6 +50,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/prometheus/prometheus/promql"
+	prom_storage "github.com/prometheus/prometheus/storage"
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -219,9 +221,8 @@ type Cortex struct {
 	StoreGateway *storegateway.StoreGateway
 	MemberlistKV *memberlist.KVInitService
 
-	// Queryables that the querier should use to query the long
-	// term storage. It depends on the storage engine used.
-	StoreQueryables []querier.QueryableWithFilter
+	Queryable prom_storage.SampleAndChunkQueryable
+	Engine    *promql.Engine
 }
 
 // New makes a new Cortex.

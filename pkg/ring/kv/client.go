@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -13,6 +15,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
+
+const (
+	// Primary is a role to use KV store primarily.
+	Primary = role("primary")
+	// Secondary is a role for KV store used by "multi" KV store.
+	Secondary = role("secondary")
+)
+
+// The role type indicates a role of KV store.
+type role string
+
+// Labels method returns Prometheus labels relevant to itself.
+func (r *role) Labels() prometheus.Labels {
+	return prometheus.Labels{"role": string(*r)}
+}
 
 // The NewInMemoryKVClient returned by NewClient() is a singleton, so
 // that distributors and ingesters started in the same process can
@@ -104,10 +121,10 @@ func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client
 		return cfg.Mock, nil
 	}
 
-	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, reg)
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, Primary, reg)
 }
 
-func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, role role, reg prometheus.Registerer) (Client, error) {
 	var client Client
 	var err error
 
@@ -139,6 +156,10 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 	case "multi":
 		client, err = buildMultiClient(cfg, codec, reg)
 
+	// this case is for testing. The mock KV client does not anything internally.
+	case "mock":
+		client, err = buildMockClient()
+
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", backend)
 	}
@@ -151,22 +172,15 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		client = PrefixClient(client, prefix)
 	}
 
-	// If no Registerer is provided or backend is "multi", return the raw client.
-	// The multi KV store does not have to register metrics.
-	// Because metrics are registered when creating primary and secondary KV stores.
-	if reg == nil || backend == "multi" {
+	// If no Registerer is provided return the raw client.
+	if reg == nil {
 		return client, nil
 	}
 
-	return newMetricsClient(backend, client, reg), nil
+	return newMetricsClient(backend, client, prometheus.WrapRegistererWith(role.Labels(), reg)), nil
 }
 
 func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
-	var (
-		primaryLabel   = prometheus.Labels{"role": "primary"}
-		secondaryLabel = prometheus.Labels{"role": "secondary"}
-	)
-
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -177,12 +191,12 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, prometheus.WrapRegistererWith(primaryLabel, reg))
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, Primary, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, prometheus.WrapRegistererWith(secondaryLabel, reg))
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, Secondary, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -193,4 +207,35 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 	}
 
 	return NewMultiClient(cfg.Multi, clients), nil
+}
+
+// The mockClient does not anything.
+// This is used for testing only.
+type mockClient struct {}
+
+func buildMockClient() (Client, error) {
+	level.Warn(util.Logger).Log("msg", "created mockClient for testing only")
+	return mockClient{}, nil
+}
+
+func (m mockClient) List(ctx context.Context, prefix string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m mockClient) Get(ctx context.Context, key string) (interface{}, error) {
+	return "", nil
+}
+
+func (m mockClient) Delete(ctx context.Context, key string) error {
+	return nil
+}
+
+func (m mockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return nil
+}
+
+func (m mockClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+}
+
+func (m mockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 }

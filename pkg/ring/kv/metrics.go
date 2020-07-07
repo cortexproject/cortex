@@ -31,6 +31,12 @@ func errorCode(err error) string {
 	return "500"
 }
 
+const (
+	MetricNamespace = "cortex"
+	MetricName = "kv_request_duration_seconds"
+	MetricHelp = "Time spent on kv store requests."
+)
+
 type metrics struct {
 	c               Client
 	requestDuration *instrument.HistogramCollector
@@ -41,9 +47,9 @@ func newMetricsClient(backend string, c Client, reg prometheus.Registerer) Clien
 		c: c,
 		requestDuration: instrument.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: "cortex",
-				Name:      "kv_request_duration_seconds",
-				Help:      "Time spent on kv store requests.",
+				Namespace: MetricNamespace,
+				Name:      MetricName,
+				Help:      MetricHelp,
 				Buckets:   prometheus.DefBuckets,
 				ConstLabels: prometheus.Labels{
 					"type": backend,

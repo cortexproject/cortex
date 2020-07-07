@@ -1,4 +1,6 @@
-package aws
+// +build requires_docker
+
+package e2e_test
 
 import (
 	"bytes"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
+	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -29,11 +32,11 @@ func TestS3Client(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cfg  S3Config
+		cfg  s3.S3Config
 	}{
 		{
 			name: "expanded-config",
-			cfg: S3Config{
+			cfg: s3.S3Config{
 				Endpoint:         minio.HTTPEndpoint(),
 				BucketNames:      bucketName,
 				S3ForcePathStyle: true,
@@ -48,7 +51,7 @@ func TestS3Client(t *testing.T) {
 		},
 		{
 			name: "url-config",
-			cfg: S3Config{
+			cfg: s3.S3Config{
 				S3: flagext.URLValue{
 					URL: urlMustParse("http://" + e2edb.MinioAccessKey + ":" + e2edb.MinioSecretKey + "@" + minio.HTTPEndpoint()),
 				},
@@ -58,7 +61,7 @@ func TestS3Client(t *testing.T) {
 		},
 		{
 			name: "mixed-config",
-			cfg: S3Config{
+			cfg: s3.S3Config{
 				S3: flagext.URLValue{
 					URL: urlMustParse("http://" + minio.HTTPEndpoint()),
 				},
@@ -72,7 +75,7 @@ func TestS3Client(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewS3ObjectClient(tt.cfg, "/")
+			client, err := s3.NewS3ObjectClient(tt.cfg, "/")
 
 			require.NoError(t, err)
 

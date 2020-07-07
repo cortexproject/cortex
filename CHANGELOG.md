@@ -37,6 +37,16 @@
 * [ENHANCEMENT] Experimental TSDB: Added support to enforce max query time range length via `-store.max-query-length`. #2826
 * [ENHANCEMENT] Ingester: Added new metric `cortex_ingester_flush_series_in_progress` that reports number of ongoing flush-series operations. Useful when calling `/flush` handler: if `cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress` is 0, all flushes are finished. #2778
 * [ENHANCEMENT] Memberlist members can join cluster via SRV records. #2788
+* [ENHANCEMENT] Added configuration options for chunks s3 client. #2831
+  * `s3.endpoint`
+  * `s3.region`
+  * `s3.access-key-id`
+  * `s3.secret-access-key`
+  * `s3.insecure`
+  * `s3.sse-encryption`
+  * `s3.http.idle-conn-timeout`
+  * `s3.http.response-header-timeout`
+  * `s3.http.insecure-skip-verify`
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

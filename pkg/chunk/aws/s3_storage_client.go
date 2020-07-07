@@ -52,7 +52,7 @@ type S3Config struct {
 	SecretAccessKey string             `yaml:"secret_access_key"`
 	Insecure        bool               `yaml:"insecure"`
 	SSEEncryption   bool               `yaml:"sse_encryption"`
-	PutUserMetadata map[string]*string `yaml:"put_user_metadata"`
+	PutUserMetadata map[string]*string `yaml:"put_user_metadata" doc:"hidden"` // hidden from docs to prevent the generator from failing.
 	HTTPConfig      HTTPConfig         `yaml:"http_config"`
 }
 
@@ -79,6 +79,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
+	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AES256 AWS Server Side Encryption")
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")

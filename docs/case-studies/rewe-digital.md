@@ -2,7 +2,7 @@
 title: "How Cortex helped REWE digital ensure stability while scaling services during the Covid-19 pandemic"
 linkTitle: "REWE digital"
 weight: 2
-slug: rewe-digital 
+slug: rewe-digital
 ---
 
 [REWE digital](https://www.rewe-digital.com/) builds the technology that drives the e-commerce, app, and food pickup and delivery services for one of Germany’s largest grocery chains, REWE. Like other companies involved in the food supply chain, REWE has seen demand spike during the Covid-19 pandemic. Thanks to its adoption of Cortex last year, the monitoring team has been able to ensure stability at growing scale.
@@ -22,11 +22,11 @@ Each tribe had one Prometheus HA pair that was used by all the teams in the trib
 The solution needed to support the Prometheus format, since all of REWE’s microservices had a Prometheus end point. And the team wanted to have trust in the project’s longevity. After considering M3, Victoria Metrics, and Thanos, the REWE digital team decided to go with Cortex. “Cortex had just been released as a CNCF project, and there were several developers from different companies,” he says. “That was another plus point for us.”
 The key selling point, he adds, was Cortex’s multi-tenant support, which also involves the different protection mechanisms built into Cortex to limit a tenant’s usage so that a single tenant doesn’t affect the performance for other tenants. “Every platform team was providing one Prometheus for their tribe,” Schneppenheim says, “and we wanted to move to something like a software-as-a-service approach, with just one team that provides Cortex, which can be used by all the teams within the company.”
 
-### Implementation 
+### Implementation
 
 Implementation began with the Big Data tribe, which has since merged with the other tribes and has been the smallest in the company. “We already had Prometheus set up, and we just switched the data source from Prometheus to Cortex,” Schneppenheim says. “In the beginning it was just one dashboard where we switched the data sources, and later on we switched the data source for the whole tribe so that all dashboards used the Cortex data source by default, and the Prometheus deployment basically acted as remote writing Prometheus. We always had the chance to just switch back to the Prometheus, in case there were any failures, so there was not a big risk.”
 
-In fact, things went smoothly, and a few months later, the ECOM tribe started writing metrics to Cortex. At the same time, the platform tribe decided to create one Grafana instance and use organizations to offer multi-tenancy. After that second migration, the tribe’s teams were able to migrate dashboards to the new Grafana instance, and then start querying against that data. By the end of the year, all the tribes will have migrated to Cortex and the Grafana instance. 
+In fact, things went smoothly, and a few months later, the ECOM tribe started writing metrics to Cortex. At the same time, the platform tribe decided to create one Grafana instance and use organizations to offer multi-tenancy. After that second migration, the tribe’s teams were able to migrate dashboards to the new Grafana instance, and then start querying against that data. By the end of the year, all the tribes will have migrated to Cortex and the Grafana instance.
 
 REWE digital adopted Cortex at “a very early stage,” Schneppenheim says. At first, “sometimes we had to read the code, because there was little documentation, but we were still confident that we took the right decision, because we got lots of support [from the community] in debugging some problems, which were usually misconfigurations.”
 
@@ -34,7 +34,7 @@ He points out that configuration has become simpler over the past year, with def
 
 ### Results
 
-Cortex’s horizontal scaling has proven to be crucial during the Covid-19 pandemic, when REWE’s grocery and food delivery services have seen extremely high demand. “Our primary focus was to ensure stability, so we had to scale, and we deployed more containers,” he says. “That meant we had way more metrics than before, on the one hand, and on the other hand, I believe our developers were watching our dashboards more closely, so we had way more queries as well.” 
+Cortex’s horizontal scaling has proven to be crucial during the Covid-19 pandemic, when REWE’s grocery and food delivery services have seen extremely high demand. “Our primary focus was to ensure stability, so we had to scale, and we deployed more containers,” he says. “That meant we had way more metrics than before, on the one hand, and on the other hand, I believe our developers were watching our dashboards more closely, so we had way more queries as well.”
 
 Schneppenheim estimates that over the past two months, reads and writes have increased significantly, and the platform was able to handle the added load. Plus, “it was quite easy deploying another set of queriers,” he says.
 
@@ -50,7 +50,7 @@ Plus, there is a higher retention with Cortex. “We now have 60 days’ retenti
 
 The benefits are also clear as the infrastructure grows. REWE digital has added a few more small Kubernetes clusters, which “obviously have the same monitoring/alerting needs as our biggest clusters,” he says. Previously, the team would have to deploy Prometheus and a separate Grafana instance (along with NGINX and DNS setup).
 
-“With our new SaaS approach, making monitoring available for these is as easy as adding a Prometheus pair, which sends metrics to our Cortex cluster, and adding this new tenant in our Grafana organization,” he says. 
+“With our new SaaS approach, making monitoring available for these is as easy as adding a Prometheus pair, which sends metrics to our Cortex cluster, and adding this new tenant in our Grafana organization,” he says.
 
 With Cortex, they’ve also been able to solve two use cases (Kubernetes clusters that had been split for technical reasons, and cloud migration) that required metrics from two different clusters to be available with the same tenant. “The dev teams had the need to aggregate metrics across these two clusters, which was easily possible, because we just ingested them under the same tenant ID,” says Schneppenheim.
 

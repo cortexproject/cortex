@@ -137,8 +137,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		s3Config = s3Config.WithCredentials(credentials.AnonymousCredentials)
 	}
 
-	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	s3Config = s3Config.WithHTTPClient(&http.Client{Transport: defaultTransport})
+	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
 	if cfg.Endpoint != "" {
@@ -163,9 +162,10 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		s3Config = s3Config.WithCredentials(creds)
 	}
 
-	// Use a custom http.Client with the golang defaults but also specifying
-	// MaxIdleConnsPerHost because of a bug in golang https://github.com/golang/go/issues/13801
-	// where MaxIdleConnsPerHost does not work as expected.
+	// While extending S3 configuration this http config was copied in order to
+	// to maintain backwards compatibility with previous versions of Cortex while providing
+	// more flexible configuration of the http client
+	// https://github.com/weaveworks/common/blob/4b1847531bc94f54ce5cf210a771b2a86cd34118/aws/config.go#L23
 	s3Config = s3Config.WithHTTPClient(&http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,

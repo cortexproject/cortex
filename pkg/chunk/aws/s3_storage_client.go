@@ -46,14 +46,13 @@ type S3Config struct {
 	S3ForcePathStyle bool
 
 	BucketNames     string
-	Endpoint        string             `yaml:"endpoint"`
-	Region          string             `yaml:"region"`
-	AccessKeyID     string             `yaml:"access_key_id"`
-	SecretAccessKey string             `yaml:"secret_access_key"`
-	Insecure        bool               `yaml:"insecure"`
-	SSEEncryption   bool               `yaml:"sse_encryption"`
-	PutUserMetadata map[string]*string `yaml:"put_user_metadata" doc:"hidden"` // hidden from docs to prevent the generator from failing.
-	HTTPConfig      HTTPConfig         `yaml:"http_config"`
+	Endpoint        string     `yaml:"endpoint"`
+	Region          string     `yaml:"region"`
+	AccessKeyID     string     `yaml:"access_key_id"`
+	SecretAccessKey string     `yaml:"secret_access_key"`
+	Insecure        bool       `yaml:"insecure"`
+	SSEEncryption   bool       `yaml:"sse_encryption"`
+	HTTPConfig      HTTPConfig `yaml:"http_config"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -88,11 +87,10 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type S3ObjectClient struct {
-	bucketNames     []string
-	S3              s3iface.S3API
-	delimiter       string
-	sseEncryption   *string
-	putUserMetadata map[string]*string
+	bucketNames   []string
+	S3            s3iface.S3API
+	delimiter     string
+	sseEncryption *string
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -115,11 +113,10 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	}
 
 	client := S3ObjectClient{
-		S3:              s3Client,
-		bucketNames:     bucketNames,
-		delimiter:       delimiter,
-		sseEncryption:   sseEncryption,
-		putUserMetadata: cfg.PutUserMetadata,
+		S3:            s3Client,
+		bucketNames:   bucketNames,
+		delimiter:     delimiter,
+		sseEncryption: sseEncryption,
 	}
 	return &client, nil
 }
@@ -276,7 +273,6 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			Bucket:               aws.String(a.bucketFromKey(objectKey)),
 			Key:                  aws.String(objectKey),
 			ServerSideEncryption: a.sseEncryption,
-			Metadata:             a.putUserMetadata,
 		})
 		return err
 	})

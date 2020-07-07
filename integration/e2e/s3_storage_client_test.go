@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -43,10 +42,6 @@ func TestS3Client(t *testing.T) {
 				Insecure:         true,
 				AccessKeyID:      e2edb.MinioAccessKey,
 				SecretAccessKey:  e2edb.MinioSecretKey,
-				PutUserMetadata: map[string]*string{
-					"test":  aws.String("test"),
-					"blerg": nil,
-				},
 			},
 		},
 		{

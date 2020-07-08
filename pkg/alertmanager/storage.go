@@ -30,7 +30,7 @@ type AlertStoreConfig struct {
 	Local    local.StoreConfig `yaml:"local"`
 
 	GCS gcp.GCSConfig `yaml:"gcs"`
-	S3  aws.S3Config  `yaml:"s3,omitempty"`
+	S3  aws.S3Config  `yaml:"s3"`
 }
 
 // RegisterFlags registers flags.

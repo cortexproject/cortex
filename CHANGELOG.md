@@ -49,6 +49,7 @@
   * `s3.http.insecure-skip-verify`
 * [ENHANCEMENT] Prometheus upgraded. #2798 #2849
   * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
+* [ENHANCEMENT] Add metric `ruler_config_update_failures_total` to Ruler to track failures of loading rules files. #2857
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

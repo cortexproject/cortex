@@ -214,11 +214,6 @@ tsdb:
     # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
 
-    # Max number of samples per query when loading series from the long-term
-    # storage. 0 disables the limit.
-    # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
-    [max_sample_count: <int> | default = 0]
-
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
     # CLI flag: -experimental.tsdb.bucket-store.max-concurrent

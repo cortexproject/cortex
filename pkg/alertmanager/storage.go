@@ -29,7 +29,7 @@ type AlertStoreConfig struct {
 	ConfigDB client.Config     `yaml:"configdb"`
 	Local    local.StoreConfig `yaml:"local"`
 
-	GCS gcp.GCSConfig `yaml:"gcs,omitempty"`
+	GCS gcp.GCSConfig `yaml:"gcs"`
 	S3  aws.S3Config  `yaml:"s3,omitempty"`
 }
 
@@ -37,7 +37,7 @@ type AlertStoreConfig struct {
 func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Local.RegisterFlags(f)
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"local\".")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("alertmanager.storage.", f)

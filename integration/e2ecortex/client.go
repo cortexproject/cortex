@@ -193,7 +193,7 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("not found")
+		return nil, ErrNotFound
 	}
 
 	var ss *ServerStatus
@@ -326,7 +326,7 @@ func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, tem
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("not found")
+		return ErrNotFound
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -350,7 +350,7 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("not found")
+		return ErrNotFound
 	}
 
 	if resp.StatusCode != http.StatusOK {

@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -80,7 +79,7 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
 	require.NoError(t, err)
 
-	time.Sleep(time.Second * 2)
+	require.NoError(t, am.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_configs"))
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())
 	require.NoError(t, err)

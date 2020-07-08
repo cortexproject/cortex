@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	errReadOnly = errors.New("local alertmanager config storage is read-only")
+	errReadOnly = errors.New("configdb alertmanager config storage is read-only")
 )
 
 // Store is a concrete implementation of RuleStore that sources rules from the config service
@@ -66,6 +66,13 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 
 // GetAlertConfig finds and returns the AlertManager configuration of an user.
 func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+
+	// Refresh the local state before fetching an specific one.
+	_, err := c.ListAlertConfigs(ctx)
+	if err != nil {
+		return alerts.AlertConfigDesc{}, err
+	}
+
 	cfg, exists := c.alertConfigs[user]
 
 	if !exists {

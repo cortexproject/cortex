@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"path"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -72,7 +73,7 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.Ale
 
 // GetAlertConfig returns a specified user's alertmanager configuration
 func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
-	cfg, err := a.getAlertConfig(ctx, alertPrefix+user)
+	cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, user))
 	if err == chunk.ErrStorageObjectNotFound {
 		return cfg, alerts.ErrNotFound
 	}
@@ -87,10 +88,10 @@ func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigD
 		return err
 	}
 
-	return a.client.PutObject(ctx, alertPrefix+cfg.User, bytes.NewReader(cfgBytes))
+	return a.client.PutObject(ctx, path.Join(alertPrefix, cfg.User), bytes.NewReader(cfgBytes))
 }
 
 // DeleteAlertConfig deletes a specified user's alertmanager configuration
 func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
-	return a.client.DeleteObject(ctx, alertPrefix+user)
+	return a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
 }

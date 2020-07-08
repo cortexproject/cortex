@@ -889,14 +889,52 @@ storage:
     # CLI flag: -ruler.storage.s3.url
     [s3: <url> | default = ]
 
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -ruler.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
     # Comma separated list of bucket names to evenly distribute chunks over.
     # Overrides any buckets specified in s3.url flag
     # CLI flag: -ruler.storage.s3.buckets
     [bucketnames: <string> | default = ""]
 
-    # Set this to `true` to force the request to use path-style addressing.
-    # CLI flag: -ruler.storage.s3.force-path-style
-    [s3forcepathstyle: <boolean> | default = false]
+    # S3 Endpoint to connect to.
+    # CLI flag: -ruler.storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # AWS region to use.
+    # CLI flag: -ruler.storage.s3.region
+    [region: <string> | default = ""]
+
+    # AWS Access Key ID
+    # CLI flag: -ruler.storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # AWS Secret Access Key
+    # CLI flag: -ruler.storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # Disable https on s3 connection.
+    # CLI flag: -ruler.storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Enable AES256 AWS Server Side Encryption
+    # CLI flag: -ruler.storage.s3.sse-encryption
+    [sse_encryption: <boolean> | default = false]
+
+    http_config:
+      # The maximum amount of time an idle connection will be held open.
+      # CLI flag: -ruler.storage.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # If non-zero, specifies the amount of time to wait for a server's
+      # response headers after fully writing the request.
+      # CLI flag: -ruler.storage.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 0s]
+
+      # Set to false to skip verifying the certificate chain and hostname.
+      # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
 
   swift:
     # Openstack authentication URL.
@@ -1543,14 +1581,52 @@ aws:
   # CLI flag: -s3.url
   [s3: <url> | default = ]
 
+  # Set this to `true` to force the request to use path-style addressing.
+  # CLI flag: -s3.force-path-style
+  [s3forcepathstyle: <boolean> | default = false]
+
   # Comma separated list of bucket names to evenly distribute chunks over.
   # Overrides any buckets specified in s3.url flag
   # CLI flag: -s3.buckets
   [bucketnames: <string> | default = ""]
 
-  # Set this to `true` to force the request to use path-style addressing.
-  # CLI flag: -s3.force-path-style
-  [s3forcepathstyle: <boolean> | default = false]
+  # S3 Endpoint to connect to.
+  # CLI flag: -s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # AWS region to use.
+  # CLI flag: -s3.region
+  [region: <string> | default = ""]
+
+  # AWS Access Key ID
+  # CLI flag: -s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # AWS Secret Access Key
+  # CLI flag: -s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # Disable https on s3 connection.
+  # CLI flag: -s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # Enable AES256 AWS Server Side Encryption
+  # CLI flag: -s3.sse-encryption
+  [sse_encryption: <boolean> | default = false]
+
+  http_config:
+    # The maximum amount of time an idle connection will be held open.
+    # CLI flag: -s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # If non-zero, specifies the amount of time to wait for a server's response
+    # headers after fully writing the request.
+    # CLI flag: -s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 0s]
+
+    # Set to false to skip verifying the certificate chain and hostname.
+    # CLI flag: -s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
 
 azure:
   # Name of the blob container used to store chunks. Defaults to `cortex`. This

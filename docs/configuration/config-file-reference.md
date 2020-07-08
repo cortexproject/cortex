@@ -2461,11 +2461,15 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -experimental.distributor.user-subring-size
 [user_subring_size: <int> | default = 0]
 
-# The maximum number of series that a query can return.
+# The maximum number of series for which a query can fetch samples from each
+# ingester. This limit is enforced only in the ingesters (when querying samples
+# not flushed to the storage yet) and it's a per-instance limit. This limit is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
-# The maximum number of samples that a query can return.
+# The maximum number of samples that a query can return. This limit only applies
+# when running the Cortex chunks storage with -querier.ingester-streaming=false.
 # CLI flag: -ingester.max-samples-per-query
 [max_samples_per_query: <int> | default = 1000000]
 
@@ -2513,7 +2517,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query.
+# Maximum number of chunks that can be fetched in a single query. This limit is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
@@ -2527,7 +2532,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
-# Cardinality limit for index queries.
+# Cardinality limit for index queries. This limit is ignored when running the
+# Cortex blocks storage.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
 

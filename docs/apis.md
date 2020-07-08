@@ -259,6 +259,8 @@ GET /api/v1/alerts
 
 **Code**: `200 OK`
 
+**Body**: None
+
 ### Set Alertmanager configuration
 
 ```
@@ -269,6 +271,16 @@ POST /api/v1/alerts
 
 **Code**: `201 CREATED`
 
+**Body**:
+
+```yaml
+template_files:
+  default_template: |
+    {{ define "__alertmanager" }}AlertManager{{ end }}
+    {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+alertmanager_config: "global: \n  smtp_smarthost: 'localhost:25' \n  smtp_from: 'youraddress@example.org' \nroute: \n  receiver: example-email \nreceivers: \n  - name: example-email \n    email_configs: \n    - to: 'youraddress@example.org' \n"
+```
+
 ### Delete Alertmanager configuration
 
 ```
@@ -278,6 +290,9 @@ DELETE /api/v1/alerts
 ##### Success Response
 
 **Code**: `200 OK`
+
+**Body**: None
+
 
 ## Configs API
 

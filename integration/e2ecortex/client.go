@@ -329,7 +329,7 @@ func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, tem
 		return ErrNotFound
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("setting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 

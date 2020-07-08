@@ -237,6 +237,9 @@ func NewSingleBinary(name string, flags map[string]string, image string, otherPo
 			"-ingester.concurrent-flushes":   "10",
 			"-ingester.max-transfer-retries": "10",
 			"-ingester.num-tokens":           "512",
+			// Ruler
+			"-ruler.storage.type":                  "local",
+			"-ruler.storage.local.chunk-directory": "/tmp/cortex/rules",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

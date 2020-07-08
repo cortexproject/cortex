@@ -98,3 +98,12 @@ frontend_worker:
     tls_cert_path: "client.crt"
     tls_key_path: "client.key"
     tls_ca_path: "root.crt"
+
+ruler:
+  enable_api: true
+  enable_sharding: false
+  poll_interval: 2s
+  storage:
+    type: local
+    local:
+      directory: /tmp/cortex/rules

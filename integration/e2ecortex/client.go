@@ -330,7 +330,7 @@ func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, tem
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("setting config failed, %v", string(body))
+		return fmt.Errorf("setting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	return nil
@@ -354,7 +354,7 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("deleting config failed, %v", string(body))
+		return fmt.Errorf("deleting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	return nil

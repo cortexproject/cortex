@@ -59,7 +59,7 @@ func TestCortex(t *testing.T) {
 				Type: "s3",
 				S3: aws.S3Config{
 					S3: flagext.URLValue{
-						URL: rulerUrl,
+						URL: rulerURL,
 					},
 				},
 			},

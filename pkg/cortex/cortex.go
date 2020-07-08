@@ -20,6 +20,9 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
+	"github.com/prometheus/prometheus/promql"
+	prom_storage "github.com/prometheus/prometheus/storage"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -50,8 +53,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/prometheus/prometheus/promql"
-	prom_storage "github.com/prometheus/prometheus/storage"
 )
 
 // The design pattern for Cortex is a series of config objects, which are

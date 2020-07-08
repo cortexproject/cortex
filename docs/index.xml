@@ -6967,12 +6967,22 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Experimental TSDB: Added support to enforce max query time range length via &lt;code>-store.max-query-length&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2826">#2826&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Ingester: Added new metric &lt;code>cortex_ingester_flush_series_in_progress&lt;/code> that reports number of ongoing flush-series operations. Useful when calling &lt;code>/flush&lt;/code> handler: if &lt;code>cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress&lt;/code> is 0, all flushes are finished. &lt;a href="https://github.com/cortexproject/cortex/pull/2778">#2778&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Memberlist members can join cluster via SRV records. &lt;a href="https://github.com/cortexproject/cortex/pull/2788">#2788&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2798">#2798&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a>
+&lt;ul>
+&lt;li>Optimized labels regex matchers for patterns containing literals (eg. &lt;code>foo.*&lt;/code>, &lt;code>.*foo&lt;/code>, &lt;code>.*foo.*&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. &lt;a href="https://github.com/cortexproject/cortex/pull/2766">#2766&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. &lt;a href="https://github.com/cortexproject/cortex/pull/2800">#2800&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Flushing chunks via &lt;code>/flush&lt;/code> endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by &lt;code>/flush&lt;/code> handler. Immediate flush now doesn&amp;rsquo;t cause chunks to be flushed again. Samples received during flush triggered via &lt;code>/flush&lt;/code> handler are no longer discarded. &lt;a href="https://github.com/cortexproject/cortex/pull/2778">#2778&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a>
+&lt;ul>
+&lt;li>Fixed unknown symbol error during head compaction&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

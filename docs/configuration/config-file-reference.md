@@ -1116,7 +1116,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 storage:
   # Type of backend to use to store alertmanager configs. Supported values are:
-  # "configdb", "local".
+  # "configdb", "gcs", "s3", "local".
   # CLI flag: -alertmanager.storage.type
   [type: <string> | default = "configdb"]
 

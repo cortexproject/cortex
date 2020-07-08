@@ -37,12 +37,16 @@
 * [ENHANCEMENT] Experimental TSDB: Added support to enforce max query time range length via `-store.max-query-length`. #2826
 * [ENHANCEMENT] Ingester: Added new metric `cortex_ingester_flush_series_in_progress` that reports number of ongoing flush-series operations. Useful when calling `/flush` handler: if `cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress` is 0, all flushes are finished. #2778
 * [ENHANCEMENT] Memberlist members can join cluster via SRV records. #2788
+* [ENHANCEMENT] Prometheus upgraded. #2798 #2849
+  * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 * [BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. #2766
 * [BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. #2800
 * [BUGFIX] Ingester: Flushing chunks via `/flush` endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by `/flush` handler. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via `/flush` handler are no longer discarded. #2778
+* [BUGFIX] Prometheus upgraded. #2849
+  * Fixed unknown symbol error during head compaction
 
 ## 1.2.0 / 2020-07-01
 

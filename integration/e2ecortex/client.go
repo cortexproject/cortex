@@ -142,13 +142,15 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 
 // LabelValues gets label values
 func (c *Client) LabelValues(label string) (model.LabelValues, error) {
-	value, _, err := c.querierClient.LabelValues(context.Background(), label)
+	// Cortex currently doesn't support start/end time.
+	value, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
 	return value, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames() ([]string, error) {
-	value, _, err := c.querierClient.LabelNames(context.Background())
+	// Cortex currently doesn't support start/end time.
+	value, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
 	return value, err
 }
 

@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package e2e_test
+package main
 
 import (
 	"bytes"
@@ -18,9 +18,6 @@ import (
 )
 
 func TestS3Client(t *testing.T) {
-	networkName := "s3-test"
-	bucketName := "test"
-
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

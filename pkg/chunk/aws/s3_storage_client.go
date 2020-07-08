@@ -3,9 +3,7 @@ package aws
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
-	"fmt"
 	"hash/fnv"
 	"io"
 	"net"
@@ -19,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
@@ -97,12 +96,12 @@ type S3ObjectClient struct {
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
 	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build s3 config: %v", err)
+		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
 
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new s3 session: %v", err)
+		return nil, errors.Wrap(err, "failed to create new s3 session")
 	}
 
 	s3Client := s3.New(sess)

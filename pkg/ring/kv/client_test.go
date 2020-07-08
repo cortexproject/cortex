@@ -94,6 +94,7 @@ func Test_createClient_multiBackend_mustContainRoleAndTypeLabels(t *testing.T) {
 	require.Equal(t, "primary", actual["multi"])
 	require.Equal(t, "primary", actual["inmemory"])
 	require.Equal(t, "secondary", actual["mock"])
+
 }
 
 func typeToRoleMap(t *testing.T, reg prometheus.Gatherer) map[string]string {

@@ -187,17 +187,26 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
-	// Get the initial timestamp so that we can then assert on the timestamp updated.
-	desc, _ := getInstanceFromStore(t, store, testInstanceID)
-	initialTimestamp := desc.GetTimestamp()
 	onStoppingCalled := false
 
 	delegate.onStopping = func(_ *BasicLifecycler) {
+		// Since the hearbeat timestamp is in seconds we would have to wait 1s before we can assert
+		// on it being changed, regardless the heartbeat period. To speed up this test, we're going
+		// to reset the timestamp to 0 and then assert it has been updated.
+		require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			ringDesc := GetOrCreateRingDesc(in)
+			instanceDesc := ringDesc.Ingesters[testInstanceID]
+			instanceDesc.Timestamp = 0
+			ringDesc.Ingesters[testInstanceID] = instanceDesc
+			return ringDesc, true, nil
+		}))
+
+		// Wait until the timestamp has been updated.
 		test.Poll(t, time.Second, true, func() interface{} {
 			desc, _ := getInstanceFromStore(t, store, testInstanceID)
 			currTimestamp := desc.GetTimestamp()
 
-			return currTimestamp > initialTimestamp
+			return currTimestamp != 0
 		})
 
 		onStoppingCalled = true

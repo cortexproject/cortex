@@ -32,7 +32,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.0
-	github.com/json-iterator/go v1.1.9
+	github.com/json-iterator/go v1.1.10
 	github.com/lib/pq v1.3.0
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.50
@@ -42,10 +42,10 @@ require (
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/alertmanager v0.20.0
-	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
+	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
+	github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
@@ -59,7 +59,6 @@ require (
 	go.uber.org/zap v1.14.1 // indirect
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
-	golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1 // indirect
 	golang.org/x/time v0.0.0-20200416051211-89c76fbcd5d1
 	google.golang.org/api v0.26.0
 	google.golang.org/grpc v1.29.1

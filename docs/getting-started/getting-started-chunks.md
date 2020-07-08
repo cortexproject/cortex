@@ -56,7 +56,7 @@ $ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus).
+**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
 
 ## Horizontally scale out
 

@@ -47,12 +47,16 @@
   * `s3.http.idle-conn-timeout`
   * `s3.http.response-header-timeout`
   * `s3.http.insecure-skip-verify`
+* [ENHANCEMENT] Prometheus upgraded. #2798 #2849
+  * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 * [BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. #2766
 * [BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. #2800
 * [BUGFIX] Ingester: Flushing chunks via `/flush` endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by `/flush` handler. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via `/flush` handler are no longer discarded. #2778
+* [BUGFIX] Prometheus upgraded. #2849
+  * Fixed unknown symbol error during head compaction
 
 ## 1.2.0 / 2020-07-01
 
@@ -159,7 +163,7 @@
 * [ENHANCEMENT] Experimental TSDB: Use shared cache for metadata. This is especially useful when running multiple querier and store-gateway components to reduce number of object store API calls. #2626 #2640
 * [ENHANCEMENT] Experimental TSDB: when `-querier.query-store-after` is configured and running the experimental blocks storage, the time range of the query sent to the store is now manipulated to ensure the query end time is not more recent than 'now - query-store-after'. #2642
 * [ENHANCEMENT] Experimental TSDB: small performance improvement in concurrent usage of RefCache, used during samples ingestion. #2651
-* [ENHANCEMENT] The following endpoints now respond appropriately to an `Accepts` header with the value `application/json` #2673
+* [ENHANCEMENT] The following endpoints now respond appropriately to an `Accept` header with the value `application/json` #2673
   * `/distributor/all_user_stats`
   * `/distributor/ha_tracker`
   * `/ingester/ring`

@@ -19,7 +19,7 @@ import (
 )
 
 func TestCortex(t *testing.T) {
-	rulerUrl, err := url.Parse("inmemory:///rules")
+	rulerURL, err := url.Parse("inmemory:///rules")
 	require.NoError(t, err)
 
 	cfg := Config{

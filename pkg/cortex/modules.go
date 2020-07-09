@@ -428,7 +428,7 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	}
 
 	reg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"component": "table-manager-index-chunk-" + lastConfig.From.String()}, prometheus.DefaultRegisterer)
+		prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
 	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage, reg)
 	if err != nil {

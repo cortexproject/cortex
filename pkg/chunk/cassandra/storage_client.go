@@ -89,7 +89,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string, registerer prometheus.Registerer) (*gocql.Session, error) {
+func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -107,7 +107,7 @@ func (cfg *Config) session(name string, registerer prometheus.Registerer) (*gocq
 	cluster.NumConns = cfg.NumConnections
 	cluster.Logger = log.With(pkgutil.Logger, "module", "gocql", "client", name)
 	cluster.Registerer = prometheus.WrapRegistererWith(
-		prometheus.Labels{"client": name}, registerer)
+		prometheus.Labels{"client": name}, reg)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,

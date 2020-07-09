@@ -151,7 +151,7 @@ func validateChunks(cfg PeriodConfig) error {
 		objectStore = cfg.ObjectType
 	}
 	switch objectStore {
-	case "cassandra", "aws-dynamo", "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "boltdb", "grpc-store":
+	case "cassandra", "aws-dynamo", "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "grpc-store":
 		if cfg.ChunkTables.Prefix == "" {
 			return errConfigChunkPrefixNotSet
 		}

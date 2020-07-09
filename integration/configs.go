@@ -51,9 +51,20 @@ var (
 	cortexSchemaConfigYaml = buildSchemaConfigWith([]storeConfig{{From: "2019-03-20", IndexStore: "aws-dynamo"}})
 
 	AlertmanagerFlags = map[string]string{
-		"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+		"-alertmanager.configs.poll-interval": "1s",
+		"-alertmanager.web.external-url":      "http://localhost/api/prom",
+	}
+
+	AlertmanagerLocalFlags = map[string]string{
 		"-alertmanager.storage.type":       "local",
-		"-alertmanager.web.external-url":   "http://localhost/api/prom",
+		"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+
+	AlertmanagerS3Flags = map[string]string{
+		"-alertmanager.storage.type":                "s3",
+		"-alertmanager.storage.s3.buckets":          "cortex-alerts",
+		"-alertmanager.storage.s3.force-path-style": "true",
+		"-alertmanager.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
 	}
 
 	RulerConfigs = map[string]string{

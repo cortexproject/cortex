@@ -5,6 +5,7 @@ package alertmanager
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -40,6 +41,18 @@ type mockAlertStore struct {
 
 func (m *mockAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
 	return m.configs, nil
+}
+
+func (m *mockAlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+	return alerts.AlertConfigDesc{}, fmt.Errorf("not implemented")
+}
+
+func (m *mockAlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
+	return fmt.Errorf("not implemented")
 }
 
 // TestLoadAllConfigs ensures the multitenant alertmanager can properly load configs from a local backend store.

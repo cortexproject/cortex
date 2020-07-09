@@ -1154,7 +1154,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 storage:
   # Type of backend to use to store alertmanager configs. Supported values are:
-  # "configdb", "local".
+  # "configdb", "gcs", "s3", "local".
   # CLI flag: -alertmanager.storage.type
   [type: <string> | default = "configdb"]
 
@@ -1167,6 +1167,40 @@ storage:
     # Path at which alertmanager configurations are stored.
     # CLI flag: -alertmanager.storage.local.path
     [path: <string> | default = ""]
+
+  gcs:
+    # Name of GCS bucket to put chunks in.
+    # CLI flag: -alertmanager.storage.gcs.bucketname
+    [bucket_name: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -alertmanager.storage.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    # The duration after which the requests to GCS should be timed out.
+    # CLI flag: -alertmanager.storage.gcs.request-timeout
+    [request_timeout: <duration> | default = 0s]
+
+  s3:
+    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+    # specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<bucket-name> to use a mock in-memory implementation.
+    # CLI flag: -alertmanager.storage.s3.url
+    [s3: <url> | default = ]
+
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -alertmanager.storage.s3.buckets
+    [bucketnames: <string> | default = ""]
+
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -alertmanager.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
+# Enable the experimental alertmanager config api.
+# CLI flag: -experimental.alertmanager.enable-api
+[enable_api: <boolean> | default = false]
 ```
 
 ### `table_manager_config`

@@ -21,24 +21,24 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.directory", "", "Directory to scan for rules")
 }
 
-// LocalClient expects to load already existing rules located at:
+// Client expects to load already existing rules located at:
 //  cfg.Directory / userID / namespace
-type LocalClient struct {
+type Client struct {
 	cfg Config
 }
 
-func NewLocalRulesClient(cfg Config) (*LocalClient, error) {
+func NewLocalRulesClient(cfg Config) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")
 	}
 
-	return &LocalClient{
+	return &Client{
 		cfg: cfg,
 	}, nil
 }
 
 // ListAllRuleGroups implements RuleStore
-func (l *LocalClient) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	lists := make(map[string]rules.RuleGroupList)
 
 	root := l.cfg.Directory
@@ -64,7 +64,7 @@ func (l *LocalClient) ListAllRuleGroups(ctx context.Context) (map[string]rules.R
 }
 
 // ListRuleGroups implements RuleStore
-func (l *LocalClient) ListRuleGroups(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (l *Client) ListRuleGroups(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	if namespace != "" {
 		return l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}
@@ -73,21 +73,21 @@ func (l *LocalClient) ListRuleGroups(ctx context.Context, userID string, namespa
 }
 
 // GetRuleGroup implements RuleStore
-func (l *LocalClient) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error) {
+func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error) {
 	return nil, errors.New("GetRuleGroup unsupported in rule local store")
 }
 
 // SetRuleGroup implements RuleStore
-func (l *LocalClient) SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error {
+func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error {
 	return errors.New("SetRuleGroup unsupported in rule local store")
 }
 
 // DeleteRuleGroup implements RuleStore
-func (l *LocalClient) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
 	return errors.New("DeleteRuleGroup unsupported in rule local store")
 }
 
-func (l *LocalClient) listAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
+func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
 	var allLists rules.RuleGroupList
 
 	root := path.Join(l.cfg.Directory, userID)
@@ -112,7 +112,7 @@ func (l *LocalClient) listAllRulesGroupsForUser(ctx context.Context, userID stri
 	return allLists, nil
 }
 
-func (l *LocalClient) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	filename := path.Join(l.cfg.Directory, userID, namespace)
 
 	rulegroups, allErrors := rulefmt.ParseFile(filename)

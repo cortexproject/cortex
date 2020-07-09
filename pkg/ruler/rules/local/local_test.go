@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
 func TestLoadingRules(t *testing.T) {

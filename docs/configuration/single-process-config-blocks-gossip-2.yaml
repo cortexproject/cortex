@@ -84,7 +84,6 @@ frontend_worker:
 ruler:
   enable_api: true
   enable_sharding: true
-  poll_interval: 2s
   storage:
     type: local
     local:

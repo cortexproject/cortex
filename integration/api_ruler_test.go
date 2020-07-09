@@ -106,6 +106,7 @@ func TestRulerAPISingleBinary(t *testing.T) {
 
 	configOverrides := map[string]string{
 		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler.poll-interval":           "2s",
 	}
 
 	// Start Cortex components.

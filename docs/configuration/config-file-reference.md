@@ -1154,7 +1154,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 storage:
   # Type of backend to use to store alertmanager configs. Supported values are:
-  # "configdb", "local".
+  # "configdb", "gcs", "s3", "local".
   # CLI flag: -alertmanager.storage.type
   [type: <string> | default = "configdb"]
 
@@ -1167,6 +1167,78 @@ storage:
     # Path at which alertmanager configurations are stored.
     # CLI flag: -alertmanager.storage.local.path
     [path: <string> | default = ""]
+
+  gcs:
+    # Name of GCS bucket to put chunks in.
+    # CLI flag: -alertmanager.storage.gcs.bucketname
+    [bucket_name: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -alertmanager.storage.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    # The duration after which the requests to GCS should be timed out.
+    # CLI flag: -alertmanager.storage.gcs.request-timeout
+    [request_timeout: <duration> | default = 0s]
+
+  s3:
+    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+    # specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<bucket-name> to use a mock in-memory implementation.
+    # CLI flag: -alertmanager.storage.s3.url
+    [s3: <url> | default = ]
+
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -alertmanager.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -alertmanager.storage.s3.buckets
+    [bucketnames: <string> | default = ""]
+
+    # S3 Endpoint to connect to.
+    # CLI flag: -alertmanager.storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # AWS region to use.
+    # CLI flag: -alertmanager.storage.s3.region
+    [region: <string> | default = ""]
+
+    # AWS Access Key ID
+    # CLI flag: -alertmanager.storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # AWS Secret Access Key
+    # CLI flag: -alertmanager.storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # Disable https on s3 connection.
+    # CLI flag: -alertmanager.storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Enable AES256 AWS Server Side Encryption
+    # CLI flag: -alertmanager.storage.s3.sse-encryption
+    [sse_encryption: <boolean> | default = false]
+
+    http_config:
+      # The maximum amount of time an idle connection will be held open.
+      # CLI flag: -alertmanager.storage.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # If non-zero, specifies the amount of time to wait for a server's
+      # response headers after fully writing the request.
+      # CLI flag: -alertmanager.storage.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 0s]
+
+      # Set to false to skip verifying the certificate chain and hostname.
+      # CLI flag: -alertmanager.storage.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+# Enable the experimental alertmanager config api.
+# CLI flag: -experimental.alertmanager.enable-api
+[enable_api: <boolean> | default = false]
 ```
 
 ### `table_manager_config`

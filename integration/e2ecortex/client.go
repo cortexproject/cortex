@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -20,6 +21,10 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 // Client is a client used to interact with Cortex in integration tests
@@ -63,7 +68,7 @@ func NewClient(
 
 	if alertmanagerAddress != "" {
 		alertmanagerAPIClient, err := promapi.NewClient(promapi.Config{
-			Address:      "http://" + alertmanagerAddress + "/api/prom",
+			Address:      "http://" + alertmanagerAddress,
 			RoundTripper: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
 		})
 		if err != nil {
@@ -175,16 +180,20 @@ type ServerStatus struct {
 
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("/api/v1/status", nil)
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	_, body, err := c.alertmanagerClient.Do(ctx, req)
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
 	}
 
 	var ss *ServerStatus
@@ -284,5 +293,69 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	}
 
 	defer res.Body.Close()
+	return nil
+}
+
+// userConfig is used to communicate a users alertmanager configs
+type userConfig struct {
+	TemplateFiles      map[string]string `yaml:"template_files"`
+	AlertmanagerConfig string            `yaml:"alertmanager_config"`
+}
+
+// SetAlertmanagerConfig gets the status of an alertmanager instance
+func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, templates map[string]string) error {
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
+
+	data, err := yaml.Marshal(&userConfig{
+		AlertmanagerConfig: amConfig,
+		TemplateFiles:      templates,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("setting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// DeleteAlertmanagerConfig gets the status of an alertmanager instance
+func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
+	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("deleting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
 	return nil
 }

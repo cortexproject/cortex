@@ -367,7 +367,7 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 	for i := range requestsWithBuildingPlanStatus {
 		deleteRequest := requestsWithBuildingPlanStatus[i]
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-		p.inProcessRequests.add(deleteRequest.UserID, &deleteRequest)
+		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
 
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
 
@@ -392,7 +392,7 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
-		p.inProcessRequests.add(deleteRequest.UserID, &deleteRequest)
+		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
 		p.executePlansChan <- req
 	}
 
@@ -448,7 +448,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 			return err
 		}
 
-		p.inProcessRequests.add(deleteRequest.UserID, &deleteRequest)
+		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
 		level.Info(req.logger).Log("msg", "building plan for a new delete request")
@@ -703,7 +703,7 @@ func newInProcessRequestsCollection() *inProcessRequestsCollection {
 	return &inProcessRequestsCollection{requests: map[string]*DeleteRequest{}}
 }
 
-func (i *inProcessRequestsCollection) add(userID string, request *DeleteRequest) {
+func (i *inProcessRequestsCollection) set(userID string, request *DeleteRequest) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 

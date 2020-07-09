@@ -1,4 +1,4 @@
- This is typically done in Grafana Labs or Weaveworks but we are looking for more volunteers!---
+---
 title: "Roadmap"
 linkTitle: "Roadmap"
 weight: 50

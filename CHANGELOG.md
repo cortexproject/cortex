@@ -12,7 +12,8 @@
 * [CHANGE] Experimental TSDB: the store-gateway service is required in a Cortex cluster running with the experimental blocks storage. Removed the `-experimental.tsdb.store-gateway-enabled` CLI flag and `store_gateway_enabled` YAML config option. The store-gateway is now always enabled when the storage engine is `tsdb`. #2822
 * [CHANGE] Ingester: Chunks flushed via /flush stay in memory until retention period is reached. This affects `cortex_ingester_memory_chunks` metric. #2778
 * [CHANGE] Querier: the error message returned when the query time range exceeds `-store.max-query-length` has changed from `invalid query, length > limit (X > Y)` to `the query time range exceeds the limit (query length: X, limit: Y)`. #2826
-* [CHANGE] Add `component` label for chunk, delete and index store client metrics. #2774
+* [CHANGE] Add `component` label to metrics exposed by chunk, delete and index store clients. #2774
+* [CHANGE] KV: The `role` label which was a label of `multi` KV store client only has been added to metrics of every KV store client. If KV store client is not `multi`, then the value of `role` label is `primary`. #2837
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
@@ -38,8 +39,19 @@
 * [ENHANCEMENT] Experimental TSDB: Added support to enforce max query time range length via `-store.max-query-length`. #2826
 * [ENHANCEMENT] Ingester: Added new metric `cortex_ingester_flush_series_in_progress` that reports number of ongoing flush-series operations. Useful when calling `/flush` handler: if `cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress` is 0, all flushes are finished. #2778
 * [ENHANCEMENT] Memberlist members can join cluster via SRV records. #2788
+* [ENHANCEMENT] Added configuration options for chunks s3 client. #2831
+  * `s3.endpoint`
+  * `s3.region`
+  * `s3.access-key-id`
+  * `s3.secret-access-key`
+  * `s3.insecure`
+  * `s3.sse-encryption`
+  * `s3.http.idle-conn-timeout`
+  * `s3.http.response-header-timeout`
+  * `s3.http.insecure-skip-verify`
 * [ENHANCEMENT] Prometheus upgraded. #2798 #2849
   * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
+* [ENHANCEMENT] Experimental Alertmanager: Alertmanager configuration persisted to object storage using an experimental API that accepts and returns YAML-based Alertmanager configuration. #2768
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
@@ -49,6 +61,8 @@
 * [BUGFIX] Prometheus upgraded. #2849
   * Fixed unknown symbol error during head compaction
 * [BUGFIX] Fix panic when using cassandra as store for both index and delete requests. #2774
+* [BUGFIX] Experimental Delete Series: Fixed a data race in Purger. #2817
+* [BUGFIX] KV: Fixed a bug that triggered a panic due to metrics being registered with the same name but different labels when using a `multi` configured KV client. #2837
 
 ## 1.2.0 / 2020-07-01
 

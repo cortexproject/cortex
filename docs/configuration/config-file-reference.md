@@ -889,14 +889,52 @@ storage:
     # CLI flag: -ruler.storage.s3.url
     [s3: <url> | default = ]
 
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -ruler.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
     # Comma separated list of bucket names to evenly distribute chunks over.
     # Overrides any buckets specified in s3.url flag
     # CLI flag: -ruler.storage.s3.buckets
     [bucketnames: <string> | default = ""]
 
-    # Set this to `true` to force the request to use path-style addressing.
-    # CLI flag: -ruler.storage.s3.force-path-style
-    [s3forcepathstyle: <boolean> | default = false]
+    # S3 Endpoint to connect to.
+    # CLI flag: -ruler.storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # AWS region to use.
+    # CLI flag: -ruler.storage.s3.region
+    [region: <string> | default = ""]
+
+    # AWS Access Key ID
+    # CLI flag: -ruler.storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # AWS Secret Access Key
+    # CLI flag: -ruler.storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # Disable https on s3 connection.
+    # CLI flag: -ruler.storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Enable AES256 AWS Server Side Encryption
+    # CLI flag: -ruler.storage.s3.sse-encryption
+    [sse_encryption: <boolean> | default = false]
+
+    http_config:
+      # The maximum amount of time an idle connection will be held open.
+      # CLI flag: -ruler.storage.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # If non-zero, specifies the amount of time to wait for a server's
+      # response headers after fully writing the request.
+      # CLI flag: -ruler.storage.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 0s]
+
+      # Set to false to skip verifying the certificate chain and hostname.
+      # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
 
   swift:
     # Openstack authentication URL.
@@ -1116,7 +1154,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 storage:
   # Type of backend to use to store alertmanager configs. Supported values are:
-  # "configdb", "local".
+  # "configdb", "gcs", "s3", "local".
   # CLI flag: -alertmanager.storage.type
   [type: <string> | default = "configdb"]
 
@@ -1129,6 +1167,78 @@ storage:
     # Path at which alertmanager configurations are stored.
     # CLI flag: -alertmanager.storage.local.path
     [path: <string> | default = ""]
+
+  gcs:
+    # Name of GCS bucket to put chunks in.
+    # CLI flag: -alertmanager.storage.gcs.bucketname
+    [bucket_name: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -alertmanager.storage.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    # The duration after which the requests to GCS should be timed out.
+    # CLI flag: -alertmanager.storage.gcs.request-timeout
+    [request_timeout: <duration> | default = 0s]
+
+  s3:
+    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+    # specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<bucket-name> to use a mock in-memory implementation.
+    # CLI flag: -alertmanager.storage.s3.url
+    [s3: <url> | default = ]
+
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -alertmanager.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -alertmanager.storage.s3.buckets
+    [bucketnames: <string> | default = ""]
+
+    # S3 Endpoint to connect to.
+    # CLI flag: -alertmanager.storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # AWS region to use.
+    # CLI flag: -alertmanager.storage.s3.region
+    [region: <string> | default = ""]
+
+    # AWS Access Key ID
+    # CLI flag: -alertmanager.storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # AWS Secret Access Key
+    # CLI flag: -alertmanager.storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # Disable https on s3 connection.
+    # CLI flag: -alertmanager.storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Enable AES256 AWS Server Side Encryption
+    # CLI flag: -alertmanager.storage.s3.sse-encryption
+    [sse_encryption: <boolean> | default = false]
+
+    http_config:
+      # The maximum amount of time an idle connection will be held open.
+      # CLI flag: -alertmanager.storage.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # If non-zero, specifies the amount of time to wait for a server's
+      # response headers after fully writing the request.
+      # CLI flag: -alertmanager.storage.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 0s]
+
+      # Set to false to skip verifying the certificate chain and hostname.
+      # CLI flag: -alertmanager.storage.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+# Enable the experimental alertmanager config api.
+# CLI flag: -experimental.alertmanager.enable-api
+[enable_api: <boolean> | default = false]
 ```
 
 ### `table_manager_config`
@@ -1543,14 +1653,52 @@ aws:
   # CLI flag: -s3.url
   [s3: <url> | default = ]
 
+  # Set this to `true` to force the request to use path-style addressing.
+  # CLI flag: -s3.force-path-style
+  [s3forcepathstyle: <boolean> | default = false]
+
   # Comma separated list of bucket names to evenly distribute chunks over.
   # Overrides any buckets specified in s3.url flag
   # CLI flag: -s3.buckets
   [bucketnames: <string> | default = ""]
 
-  # Set this to `true` to force the request to use path-style addressing.
-  # CLI flag: -s3.force-path-style
-  [s3forcepathstyle: <boolean> | default = false]
+  # S3 Endpoint to connect to.
+  # CLI flag: -s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # AWS region to use.
+  # CLI flag: -s3.region
+  [region: <string> | default = ""]
+
+  # AWS Access Key ID
+  # CLI flag: -s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # AWS Secret Access Key
+  # CLI flag: -s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # Disable https on s3 connection.
+  # CLI flag: -s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # Enable AES256 AWS Server Side Encryption
+  # CLI flag: -s3.sse-encryption
+  [sse_encryption: <boolean> | default = false]
+
+  http_config:
+    # The maximum amount of time an idle connection will be held open.
+    # CLI flag: -s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # If non-zero, specifies the amount of time to wait for a server's response
+    # headers after fully writing the request.
+    # CLI flag: -s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 0s]
+
+    # Set to false to skip verifying the certificate chain and hostname.
+    # CLI flag: -s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
 
 azure:
   # Name of the blob container used to store chunks. Defaults to `cortex`. This
@@ -2461,11 +2609,15 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -experimental.distributor.user-subring-size
 [user_subring_size: <int> | default = 0]
 
-# The maximum number of series that a query can return.
+# The maximum number of series for which a query can fetch samples from each
+# ingester. This limit is enforced only in the ingesters (when querying samples
+# not flushed to the storage yet) and it's a per-instance limit. This limit is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
-# The maximum number of samples that a query can return.
+# The maximum number of samples that a query can return. This limit only applies
+# when running the Cortex chunks storage with -querier.ingester-streaming=false.
 # CLI flag: -ingester.max-samples-per-query
 [max_samples_per_query: <int> | default = 1000000]
 
@@ -2513,7 +2665,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query.
+# Maximum number of chunks that can be fetched in a single query. This limit is
+# ignored when running the Cortex blocks storage.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
@@ -2527,7 +2680,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
-# Cardinality limit for index queries.
+# Cardinality limit for index queries. This limit is ignored when running the
+# Cortex blocks storage.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
 

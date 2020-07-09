@@ -72,6 +72,15 @@ ruler:
     configdb:
       configs_api_url: http://configstore:80/
 
+alertmanager:
+  enable_api: true
+  storage:
+    type: s3
+    s3:
+      bucketnames: cortex-alertmanager
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+
 storage:
   engine: tsdb
 

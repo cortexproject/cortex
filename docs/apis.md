@@ -243,6 +243,57 @@ DELETE /api/v1/rules/{namespace}/{group_name}
 
 **Body**: None
 
+## Alertmanager
+
+### Experimental API
+
+Similarly to the Cortex Ruler, the Cortex Alertmanager supports operations using a configured object storage client as a backend for the storage and management of user's Alertmanager configuration. These API endpoints are opt-in and must be enabled via the `experimental.alertmanger.enable-api` CLI flag.
+
+### Get Alertmanager configuration
+
+```
+GET /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Body**: None
+
+### Set Alertmanager configuration
+
+```
+POST /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `201 CREATED`
+
+**Body**:
+
+```yaml
+template_files:
+  default_template: |
+    {{ define "__alertmanager" }}AlertManager{{ end }}
+    {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+alertmanager_config: "global: \n  smtp_smarthost: 'localhost:25' \n  smtp_from: 'youraddress@example.org' \nroute: \n  receiver: example-email \nreceivers: \n  - name: example-email \n    email_configs: \n    - to: 'youraddress@example.org' \n"
+```
+
+### Delete Alertmanager configuration
+
+```
+DELETE /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Body**: None
+
+
 ## Configs API
 
 The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.

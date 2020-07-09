@@ -1,4 +1,4 @@
-FROM       alpine:3.8
+FROM       alpine:3.12
 RUN        apk add --no-cache ca-certificates
 COPY       migrations /migrations/
 COPY       cortex /bin/cortex

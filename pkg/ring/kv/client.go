@@ -154,7 +154,7 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 	case "multi":
 		client, err = buildMultiClient(cfg, codec, reg)
 
-	// this case is for testing. The mock KV client does not anything internally.
+	// This case is for testing. The mock KV client does not do anything internally.
 	case "mock":
 		client, err = buildMockClient()
 

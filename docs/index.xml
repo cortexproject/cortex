@@ -7117,6 +7117,7 @@ __replica__: replica2
 &lt;li>[CHANGE] Experimental TSDB: the store-gateway service is required in a Cortex cluster running with the experimental blocks storage. Removed the &lt;code>-experimental.tsdb.store-gateway-enabled&lt;/code> CLI flag and &lt;code>store_gateway_enabled&lt;/code> YAML config option. The store-gateway is now always enabled when the storage engine is &lt;code>tsdb&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2822">#2822&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Ingester: Chunks flushed via /flush stay in memory until retention period is reached. This affects &lt;code>cortex_ingester_memory_chunks&lt;/code> metric. &lt;a href="https://github.com/cortexproject/cortex/pull/2778">#2778&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Querier: the error message returned when the query time range exceeds &lt;code>-store.max-query-length&lt;/code> has changed from &lt;code>invalid query, length &amp;gt; limit (X &amp;gt; Y)&lt;/code> to &lt;code>the query time range exceeds the limit (query length: X, limit: Y)&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2826">#2826&lt;/a>&lt;/li>
+&lt;li>[CHANGE] KV: The &lt;code>role&lt;/code> label which was a label of &lt;code>multi&lt;/code> KV store client only has been added to metrics of every KV store client. If KV store client is not &lt;code>multi&lt;/code>, then the value of &lt;code>role&lt;/code> label is &lt;code>primary&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2837">#2837&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-outage-tolerance&lt;/code>, Max time to tolerate outage for restoring &amp;ldquo;for&amp;rdquo; state of alert. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-grace-period&lt;/code>, Minimum duration between alert and restored &amp;ldquo;for&amp;rdquo; state. This is maintained only for alerts with configured &amp;ldquo;for&amp;rdquo; time greater than grace period. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.resend-delay&lt;/code>, Minimum amount of time to wait before resending an alert to Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
@@ -7175,6 +7176,7 @@ __replica__: replica2
 &lt;li>Fixed unknown symbol error during head compaction&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>[BUGFIX] KV: Fixed a bug that triggered a panic due to metrics being registered with the same name but different labels when using a &lt;code>multi&lt;/code> configured KV client. &lt;a href="https://github.com/cortexproject/cortex/pull/2837">#2837&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

@@ -40,6 +40,7 @@
 * [ENHANCEMENT] Ingester: Added new metric `cortex_ingester_flush_series_in_progress` that reports number of ongoing flush-series operations. Useful when calling `/flush` handler: if `cortex_ingester_flush_queue_length + cortex_ingester_flush_series_in_progress` is 0, all flushes are finished. #2778
 * [ENHANCEMENT] Memberlist members can join cluster via SRV records. #2788
 * [ENHANCEMENT] Added ruler to the single binary.  #2854
+  * Two sets of Prometheus query engine metrics now appear in the single binary.  The `engine` label has been added to distinguish between `ruler` and `querier` metrics.
 * [ENHANCEMENT] Added configuration options for chunks s3 client. #2831
   * `s3.endpoint`
   * `s3.region`

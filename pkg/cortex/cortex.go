@@ -20,9 +20,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
-	"github.com/prometheus/prometheus/promql"
-	prom_storage "github.com/prometheus/prometheus/storage"
-
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -222,8 +219,9 @@ type Cortex struct {
 	StoreGateway *storegateway.StoreGateway
 	MemberlistKV *memberlist.KVInitService
 
-	Queryable prom_storage.SampleAndChunkQueryable
-	Engine    *promql.Engine
+	// Queryables that the querier should use to query the long
+	// term storage. It depends on the storage engine used.
+	StoreQueryables []querier.QueryableWithFilter
 }
 
 // New makes a new Cortex.

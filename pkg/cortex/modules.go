@@ -51,7 +51,7 @@ const (
 	Ingester            string = "ingester"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
-	Queryable           string = "queryable"
+	StoreQueryable      string = "store-queryable"
 	QueryFrontend       string = "query-frontend"
 	Store               string = "store"
 	DeleteRequestsStore string = "delete-requests-store"
@@ -169,6 +169,9 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
+	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
+
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -179,7 +182,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := t.Cfg.Target != All
-	handler := t.API.RegisterQuerier(t.Queryable, t.Engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration)
+	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -199,15 +202,14 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	return worker, nil
 }
 
-func (t *Cortex) initQueryable() (services.Service, error) {
+func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
-	var storeQueryables []querier.QueryableWithFilter
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
 	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
 	} else {
-		storeQueryables = append(storeQueryables, querier.UseAlwaysQueryable(q))
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
 		if s, ok := q.(services.Service); ok {
 			servs = append(servs, s)
 		}
@@ -223,16 +225,12 @@ func (t *Cortex) initQueryable() (services.Service, error) {
 			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)
 		}
 
-		storeQueryables = append(storeQueryables, querier.UseBeforeTimestampQueryable(sq, time.Time(t.Cfg.Querier.UseSecondStoreBeforeTime)))
+		t.StoreQueryables = append(t.StoreQueryables, querier.UseBeforeTimestampQueryable(sq, time.Time(t.Cfg.Querier.UseSecondStoreBeforeTime)))
 
 		if s, ok := sq.(services.Service); ok {
 			servs = append(servs, s)
 		}
 	}
-
-	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, storeQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
-	t.Queryable = queryable
-	t.Engine = engine
 
 	// Return service, if any.
 	switch len(servs) {
@@ -454,8 +452,10 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
-	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, t.Engine, t.Queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
+	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
 		return
 	}
@@ -569,7 +569,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(Queryable, t.initQueryable, modules.UserInvisibleModule)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -582,24 +582,24 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:           {Server},
-		Ring:          {API, RuntimeConfig, MemberlistKV},
-		Overrides:     {RuntimeConfig},
-		Distributor:   {Ring, API, Overrides},
-		Store:         {Overrides, DeleteRequestsStore},
-		Ingester:      {Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		Flusher:       {Store, API},
-		Querier:       {Overrides, Ring, API, Queryable},
-		Queryable:     {Store, Distributor},
-		QueryFrontend: {API, Overrides, DeleteRequestsStore},
-		TableManager:  {API},
-		Ruler:         {Overrides, Queryable},
-		Configs:       {API},
-		AlertManager:  {API},
-		Compactor:     {API},
-		StoreGateway:  {API},
-		Purger:        {Store, DeleteRequestsStore, API},
-		All:           {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:            {Server},
+		Ring:           {API, RuntimeConfig, MemberlistKV},
+		Overrides:      {RuntimeConfig},
+		Distributor:    {Ring, API, Overrides},
+		Store:          {Overrides, DeleteRequestsStore},
+		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Flusher:        {Store, API},
+		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
+		StoreQueryable: {Store},
+		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
+		TableManager:   {API},
+		Ruler:          {Overrides, Distributor, Store, StoreQueryable},
+		Configs:        {API},
+		AlertManager:   {API},
+		Compactor:      {API},
+		StoreGateway:   {API},
+		Purger:         {Store, DeleteRequestsStore, API},
+		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

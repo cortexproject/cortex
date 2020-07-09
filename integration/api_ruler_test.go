@@ -130,4 +130,8 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	require.True(t, exists)
 	require.Len(t, retrievedNamespace, 1)
 	require.Equal(t, retrievedNamespace[0].Name, "rule")
+
+	// Check to make sure prometheus engine metrics are available for both engine types
+	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "querier"}))
+	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "ruler"}))
 }

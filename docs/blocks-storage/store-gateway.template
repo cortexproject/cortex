@@ -5,6 +5,8 @@ weight: 3
 slug: store-gateway
 ---
 
+{{ .GeneratedFileWarning }}
+
 The store-gateway is the Cortex service responsible to query series from blocks. The store-gateway is required when running the Cortex blocks storage.
 
 The store-gateway is **semi-stateful**.

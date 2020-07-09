@@ -5,6 +5,8 @@ weight: 2
 slug: querier
 ---
 
+{{ .GeneratedFileWarning }}
+
 The **querier** service handles queries using the [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query language. The querier service is used both by the chunks and blocks storage, and the [general architecture documentation](../architecture.md#querier) applies to the blocks storage too, except for the differences described in this document.
 
 The querier is **stateless**.

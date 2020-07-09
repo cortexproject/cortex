@@ -46,3 +46,9 @@ The store-gateway heavily rely on caching both to speed up queries and reduce th
 ### Ensure a high number of max open file descriptors
 
 The store-gateway stores each block’s index-header on the local disk and loads it via mmap. This means that the store-gateway keeps a file descriptor open for each loaded block. If your Cortex cluster has many blocks in the bucket, the store-gateway may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system.
+
+## Compactor
+
+### Ensure the compactor has enough disk space
+
+The compactor generally needs much disk space in order to download source blocks from the bucket and store the compacted block before uploading it to the storage. Please refer to [Compactor disk utilization](./compactor.md#compactor-disk-utilization) for more information about how to do capacity planning.

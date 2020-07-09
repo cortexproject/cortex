@@ -5,6 +5,8 @@ weight: 4
 slug: compactor
 ---
 
+{{ .GeneratedFileWarning }}
+
 The **compactor** is an optional - but highly recommended - service which compacts multiple blocks of a given tenant into a single optimized larger block.
 
 The compactor is **stateless**.
@@ -47,6 +49,18 @@ The compactor is both responsible to mark blocks for deletion and then hard dele
 The soft deletion is based on a tiny `deletion-mark.json` file stored within the block location in the bucket which gets looked up both by queriers and store-gateways.
 
 This soft deletion mechanism is used to give enough time to queriers and store-gateways to discover the new compacted blocks before the old source blocks are deleted. If source blocks would be immediately hard deleted by the compactor, some queries involving the compacted blocks may fail until the queriers and store-gateways haven't rescanned the bucket and found both deleted source blocks and the new compacted ones.
+
+## Compactor disk utilization
+
+The compactor requires to download source blocks from the bucket to the local disk and store the compacted block to the local disk before uploading it to the bucket. Depending on the largest tenants in your cluster and the configured `-compactor.block-ranges`, the compactor may need much disk space.
+
+The formula to estimate the minimum disk space required is the following, where `max_compaction_range_blocks_size` is the total size of blocks for the largest tenant (you can measure it inspecting the bucket) for the largest `-compactor.block-ranges` period:
+
+```
+min_disk_space_required = -compactor.compaction-concurrency * max_compaction_range_blocks_size * 2
+```
+
+Alternatively, assuming the largest `-compactor.block-ranges` is `24h` (default), you could consider 150GB of disk space every 10M active series owned by the largest tenant. For example, if your largest tenant has 30M active series and `-compactor.compaction-concurrency=1` we would recommend having a disk with at least 450GB available.
 
 ## Compactor HTTP endpoints
 

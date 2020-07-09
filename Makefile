@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes dist
+.PHONY: all test clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 
 # Version number

@@ -11,10 +11,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rules/local"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 )
 
@@ -28,7 +28,7 @@ type RuleStoreConfig struct {
 	GCS   gcp.GCSConfig           `yaml:"gcs"`
 	S3    aws.S3Config            `yaml:"s3"`
 	Swift openstack.SwiftConfig   `yaml:"swift"`
-	Local local.FSConfig          `yaml:"local"`
+	Local local.Config            `yaml:"local"`
 
 	mock rules.RuleStore `yaml:"-"`
 }
@@ -77,7 +77,7 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 	case "swift":
 		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
 	case "local":
-		return newObjRuleStore(local.NewFSObjectClient(cfg.Local))
+		return local.NewLocalRulesClient(cfg.Local)
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
 	}

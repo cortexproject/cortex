@@ -54,7 +54,7 @@ var (
 		Namespace: "cortex",
 		Name:      "ruler_config_update_failures_total",
 		Help:      "Total number of config update failures triggered by a user",
-	}, []string{"user"})
+	}, []string{"user", "reason"})
 	managersTotal = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "ruler_managers_total",
@@ -508,6 +508,7 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 		if !exists {
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
+				configUpdateFailuresTotal.WithLabelValues(user, "rule-manager-creation-failure").Inc()
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
@@ -516,7 +517,7 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
-			configUpdateFailuresTotal.WithLabelValues(user).Inc()
+			configUpdateFailuresTotal.WithLabelValues(user, "rules-update-failure").Inc()
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}

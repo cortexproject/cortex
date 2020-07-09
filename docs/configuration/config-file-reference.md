@@ -960,8 +960,8 @@ storage:
     [container_name: <string> | default = "cortex"]
 
   local:
-    # Directory to store chunks in.
-    # CLI flag: -ruler.storage.local.chunk-directory
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
     [directory: <string> | default = ""]
 
 # file path to store temporary rule files for the prometheus rule managers

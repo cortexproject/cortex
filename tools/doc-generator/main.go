@@ -327,11 +327,13 @@ func main() {
 		TSDBConfigBlock         string
 		StoreGatewayConfigBlock string
 		CompactorConfigBlock    string
+		QuerierConfigBlock      string
 	}{
 		ConfigFile:              generateBlocksMarkdown(blocks),
 		TSDBConfigBlock:         generateBlockMarkdown(blocks, "tsdb_config", "tsdb"),
 		StoreGatewayConfigBlock: generateBlockMarkdown(blocks, "store_gateway_config", "store_gateway"),
 		CompactorConfigBlock:    generateBlockMarkdown(blocks, "compactor_config", "compactor"),
+		QuerierConfigBlock:      generateBlockMarkdown(blocks, "querier_config", "querier"),
 	}
 
 	// Load the template file.

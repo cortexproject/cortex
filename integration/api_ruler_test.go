@@ -3,7 +3,6 @@
 package main
 
 import (
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -111,7 +110,7 @@ func TestRulerAPISingleBinary(t *testing.T) {
 
 	// Start Cortex components.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
-	require.NoError(t, writeFileToSharedDir(s, path.Join("ruler_configs", user, namespace), []byte(cortexRulerUserConfigYaml)))
+	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerUserConfigYaml)))
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
 

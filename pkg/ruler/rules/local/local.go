@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
-	"path"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 
@@ -44,7 +44,7 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	root := l.cfg.Directory
 	infos, err := ioutil.ReadDir(root)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to read dir "+root)
+		return nil, errors.Wrapf(err, "unable to read dir %s", root)
 	}
 
 	for _, info := range infos {
@@ -54,7 +54,7 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 
 		list, err := l.listAllRulesGroupsForUser(ctx, info.Name())
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to list rule group")
+			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", info.Name())
 		}
 
 		lists[info.Name()] = list
@@ -90,10 +90,10 @@ func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, 
 func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
 	var allLists rules.RuleGroupList
 
-	root := path.Join(l.cfg.Directory, userID)
+	root := filepath.Join(l.cfg.Directory, userID)
 	infos, err := ioutil.ReadDir(root)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to read dir "+root)
+		return nil, errors.Wrapf(err, "unable to read dir %s", root)
 	}
 
 	for _, info := range infos {
@@ -101,9 +101,9 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 			continue
 		}
 
-		list, err := l.ListRuleGroups(ctx, userID, info.Name())
+		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, info.Name())
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to list rule group")
+			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, info.Name())
 		}
 
 		allLists = append(allLists, list...)
@@ -113,16 +113,16 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 }
 
 func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
-	filename := path.Join(l.cfg.Directory, userID, namespace)
+	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
 	rulegroups, allErrors := rulefmt.ParseFile(filename)
 	if len(allErrors) > 0 {
-		return nil, errors.Wrap(allErrors[0], "error parsing "+filename)
+		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}
 
 	allErrors = rulegroups.Validate()
 	if len(allErrors) > 0 {
-		return nil, errors.Wrap(allErrors[0], "error validating "+filename)
+		return nil, errors.Wrapf(allErrors[0], "error validating %s", filename)
 	}
 
 	var list rules.RuleGroupList

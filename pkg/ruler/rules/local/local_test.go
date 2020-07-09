@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
-func TestLoadingRules(t *testing.T) {
+func TestClient_ListAllRuleGroups(t *testing.T) {
 	user := "user"
 	namespace := "ns"
 

@@ -364,8 +364,8 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 		return err
 	}
 
-	for _, deleteRequest := range requestsWithBuildingPlanStatus {
-		deleteRequest := deleteRequest
+	for i := range requestsWithBuildingPlanStatus {
+		deleteRequest := requestsWithBuildingPlanStatus[i]
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		p.inProcessRequests.add(deleteRequest.UserID, &deleteRequest)
 
@@ -387,8 +387,8 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 		return err
 	}
 
-	for _, deleteRequest := range requestsWithDeletingStatus {
-		deleteRequest := deleteRequest
+	for i := range requestsWithDeletingStatus {
+		deleteRequest := requestsWithDeletingStatus[i]
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
@@ -419,8 +419,8 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 		}
 	}
 
-	for _, deleteRequest := range deleteRequests {
-		deleteRequest := deleteRequest
+	for i := range deleteRequests {
+		deleteRequest := deleteRequests[i]
 
 		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
 		if deleteRequest.CreatedAt.Add(p.cfg.DeleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {

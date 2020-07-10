@@ -45,6 +45,8 @@ require (
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
+	// When upgrading prometheus please open a PR on github.com/thanos-io/thanos
+	// to upgrade it there as well with the same version.
 	github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e

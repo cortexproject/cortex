@@ -4,6 +4,7 @@ set -euf -o pipefail
 
 readonly IMAGE_PREFIX=$1
 readonly VERSION=$2
+readonly DISABLE_CLEANUP=${DISABLE_CLEANUP:-0}
 
 declare -a CONTAINERS=()
 
@@ -12,7 +13,9 @@ function error() {
 }
 
 function cleanup() {
-    docker rm --force "${CONTAINERS[@]}" &>/dev/null
+    if [[ "${DISABLE_CLEANUP}" -ne 1 ]]; then
+        docker rm --force "${CONTAINERS[@]}" &>/dev/null
+    fi
 }
 
 function ready() {

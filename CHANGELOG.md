@@ -49,7 +49,7 @@
   * `s3.http.idle-conn-timeout`
   * `s3.http.response-header-timeout`
   * `s3.http.insecure-skip-verify`
-* [ENHANCEMENT] Prometheus upgraded. #2798 #2849
+* [ENHANCEMENT] Prometheus upgraded. #2798 #2849 #2867
   * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
 * [ENHANCEMENT] Experimental Alertmanager: Alertmanager configuration persisted to object storage using an experimental API that accepts and returns YAML-based Alertmanager configuration. #2768
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796

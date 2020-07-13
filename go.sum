@@ -958,8 +958,8 @@ github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f/go.mod h1:rM
 github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef/go.mod h1:7U90zPoLkWjEIQcy/rweQla82OCTUzxVHE51G3OhJbI=
 github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33/go.mod h1:fkIPPkuZnkXyopYHmXPxf9rgiPkVgZCN8w9o8+UgBlY=
 github.com/prometheus/prometheus v1.8.2-0.20200619100132-74207c04655e/go.mod h1:QV6T0PPQi5UFmqcLBJw3JiyIR8r1O7KEv9qlVw4VV40=
-github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c h1:Iz2q3wgo4xiURb7Ku0MCrM7osAVHX03lF1vHNht1fb8=
-github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c/go.mod h1:/kMSPIRsxr/apyHxlzYMdFnaPXUXXqILU5uzIoNhOvc=
+github.com/prometheus/prometheus v1.8.2-0.20200711170716-492061b24c00 h1:21zZwg0Dd9pf+q9iZg8XjyabBKDEq85TE4egL8o3GtU=
+github.com/prometheus/prometheus v1.8.2-0.20200711170716-492061b24c00/go.mod h1:/kMSPIRsxr/apyHxlzYMdFnaPXUXXqILU5uzIoNhOvc=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1 h1:+kGqA4dNN5hn7WwvKdzHl0rdN5AEkbNZd0VjRltAiZg=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1/go.mod h1:JaY6n2sDr+z2WTsXkOmNRUfDy6FN0L6Nk7x06ndm4tY=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=

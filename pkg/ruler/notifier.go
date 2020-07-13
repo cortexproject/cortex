@@ -99,42 +99,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 
 	amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
 	for _, url := range validURLs {
-
-		var sdConfig sd_config.ServiceDiscoveryConfig
-		if rulerConfig.AlertmanagerDiscovery {
-			sdConfig.DNSSDConfigs = []*dns.SDConfig{{
-				Names:           []string{url.Host},
-				RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
-				Type:            "SRV",
-				Port:            0, // Ignored, because of SRV.
-			}}
-		} else {
-			sdConfig.StaticConfigs = []*targetgroup.Group{{
-				Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(url.Host)}},
-			}}
-		}
-
-		amConfig := &config.AlertmanagerConfig{
-			APIVersion:             apiVersion,
-			Scheme:                 url.Scheme,
-			PathPrefix:             url.Path,
-			Timeout:                model.Duration(rulerConfig.NotificationTimeout),
-			ServiceDiscoveryConfig: sdConfig,
-		}
-
-		if url.User != nil {
-			amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
-				BasicAuth: &config_util.BasicAuth{
-					Username: url.User.Username(),
-				},
-			}
-
-			if password, isSet := url.User.Password(); isSet {
-				amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
-			}
-		}
-
-		amConfigs = append(amConfigs, amConfig)
+		amConfigs = append(amConfigs, amConfigFromURL(rulerConfig, url, apiVersion))
 	}
 
 	promConfig := &config.Config{
@@ -144,4 +109,42 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	return promConfig, nil
+}
+
+func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
+	var sdConfig sd_config.ServiceDiscoveryConfig
+	if rulerConfig.AlertmanagerDiscovery {
+		sdConfig.DNSSDConfigs = []*dns.SDConfig{{
+			Names:           []string{url.Host},
+			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+			Type:            "SRV",
+			Port:            0, // Ignored, because of SRV.
+		}}
+	} else {
+		sdConfig.StaticConfigs = []*targetgroup.Group{{
+			Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(url.Host)}},
+		}}
+	}
+
+	amConfig := &config.AlertmanagerConfig{
+		APIVersion:             apiVersion,
+		Scheme:                 url.Scheme,
+		PathPrefix:             url.Path,
+		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
+		ServiceDiscoveryConfig: sdConfig,
+	}
+
+	if url.User != nil {
+		amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
+			BasicAuth: &config_util.BasicAuth{
+				Username: url.User.Username(),
+			},
+		}
+
+		if password, isSet := url.User.Password(); isSet {
+			amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
+		}
+	}
+
+	return amConfig
 }

@@ -895,6 +895,14 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 	db.DisableCompactions() // we will compact on our own schedule
 
+	// Run compaction before using this TSDB. If there is data in head that needs to be put into blocks,
+	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op.
+	// We don't do blocks compaction.
+	err = db.Compact()
+	if err != nil {
+		return nil, err
+	}
+
 	userDB.DB = db
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.

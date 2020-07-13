@@ -19,22 +19,53 @@ import (
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s client.Sample) error {
-	bucket, err := i.getOrCreateBackfillTSDB(userID, s.TimestampMs)
-	if err != nil {
-		return err
+// backfillAppender is an appender to ingest old data.
+// This _does not_ implement storage.Appender interface.
+// The methods of this appender should not be called concurrently.
+type backfillAppender struct {
+	userID    string
+	ingester  *Ingester
+	buckets   []*tsdbBucket
+	appenders map[int]storage.Appender
+}
+
+func (i *Ingester) newBackfillAppender(userID string) *backfillAppender {
+	return &backfillAppender{
+		userID:    userID,
+		ingester:  i,
+		buckets:   i.TSDBState.backfillDBs.getBucketsForUser(userID),
+		appenders: make(map[int]storage.Appender),
+	}
+}
+
+func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err error) {
+	bucket := getBucketForTimestamp(s.TimestampMs, a.buckets)
+	if bucket == nil {
+		var userBuckets []*tsdbBucket
+		bucket, userBuckets, err = a.ingester.getOrCreateBackfillTSDB(a.userID, s.TimestampMs)
+		if err != nil {
+			return err
+		}
+		a.buckets = userBuckets
+	}
+
+	db := bucket.db
+	var app storage.Appender
+	if ap, ok := a.appenders[bucket.id]; ok {
+		app = ap
+	} else {
+		app = db.Appender()
+		a.appenders[bucket.id] = app
 	}
 
 	startAppend := time.Now()
-	db := bucket.db
 	cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(la))
-
-	app := db.Appender()
 	// If the cached reference exists, we try to use it.
 	if cachedRefExists {
 		err = app.AddFast(cachedRef, s.TimestampMs, s.Value)
@@ -46,46 +77,66 @@ func (i *Ingester) v2BackfillPush(userID string, la []client.LabelAdapter, s cli
 
 	// If the cached reference doesn't exist, we (re)try without using the reference.
 	if !cachedRefExists {
-		var ref uint64
-
 		// Copy the label set because both TSDB and the cache may retain it.
 		copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(la)
-
-		if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
+		if ref, err := app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
 			db.refCache.SetRef(startAppend, copiedLabels, ref)
-			cachedRef = ref
-			cachedRefExists = true
 		}
-	}
-
-	if err == nil {
-		err = app.Commit()
 	}
 
 	return err
 }
 
-func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, error) {
-	userBuckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
+func (a *backfillAppender) commit() error {
+	var merr tsdb_errors.MultiError
+	for _, app := range a.appenders {
+		merr.Add(app.Commit())
+	}
+	return merr.Err()
+}
+
+func (a *backfillAppender) rollback() error {
+	var merr tsdb_errors.MultiError
+	for _, app := range a.appenders {
+		merr.Add(app.Rollback())
+	}
+	return merr.Err()
+}
+
+func getBucketForTimestamp(ts int64, userBuckets []*tsdbBucket) *tsdbBucket {
+	// As the number of buckets will be small, we are iterating instead of binary search.
+	for _, b := range userBuckets {
+		if ts >= b.bucketStart && ts < b.bucketEnd {
+			return b
+		}
+	}
+	return nil
+}
+
+func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, []*tsdbBucket, error) {
+	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
+	defer i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+
+	userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]
 
 	start, end := getBucketRangesForTimestamp(ts, 1)
 
-	var bucket *tsdbBucket
 	insertIdx := len(userBuckets)
 	for idx, b := range userBuckets {
 		if ts >= b.bucketStart && ts < b.bucketEnd {
-			bucket = b
-			break
+			return b, userBuckets, nil
 		}
 
-		// Existing: |-----------|
-		//      New:       |------------|
+		//   Existing: |-----------|
+		//        New:       |------------|
+		// Changed to:             |------| (no overlaps)
 		if b.bucketStart < start && start < b.bucketEnd {
 			start = b.bucketEnd
 		}
 
-		// Existing:         |-----------|
-		//      New:  |------------|
+		//   Existing:         |-----------|
+		//        New:  |------------|
+		// Changed to:  |------| (no overlaps)
 		if end > b.bucketStart && end < b.bucketEnd {
 			end = b.bucketStart
 			insertIdx = idx
@@ -98,26 +149,26 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 		}
 	}
 
-	if bucket == nil {
-		tsdb, err := i.createNewTSDB(
-			userID, filepath.Join(userID, getBucketName(start, end)),
-			(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
-		)
-		if err != nil {
-			return nil, err
-		}
-		bucket = &tsdbBucket{
-			db:          tsdb,
-			bucketStart: start,
-			bucketEnd:   end,
-		}
-		userBuckets = append(userBuckets[:insertIdx], append([]*tsdbBucket{bucket}, userBuckets[insertIdx:]...)...)
-		i.TSDBState.backfillDBs.tsdbsMtx.Lock()
-		i.TSDBState.backfillDBs.tsdbs[userID] = userBuckets
-		i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+	tsdb, err := i.createNewTSDB(
+		userID, filepath.Join(userID, getBucketName(start, end)),
+		(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
+	)
+	if err != nil {
+		return nil, nil, err
 	}
+	bucket := &tsdbBucket{
+		db:          tsdb,
+		bucketStart: start,
+		bucketEnd:   end,
+	}
+	if len(userBuckets) > 0 {
+		bucket.id = userBuckets[len(userBuckets)-1].id + 1
+	}
+	userBuckets = append(userBuckets[:insertIdx], append([]*tsdbBucket{bucket}, userBuckets[insertIdx:]...)...)
 
-	return bucket, nil
+	i.TSDBState.backfillDBs.tsdbs[userID] = userBuckets
+
+	return bucket, userBuckets, nil
 }
 
 func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
@@ -127,6 +178,9 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 
 	users, err := ioutil.ReadDir(i.cfg.TSDBConfig.BackfillDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
 
@@ -145,7 +199,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 			continue
 		}
 
-		for _, bucketName := range bucketNames {
+		for bucketID, bucketName := range bucketNames {
 			if bucketName.IsDir() {
 				continue
 			}
@@ -174,7 +228,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 			}
 
 			wg.Add(1)
-			go func(userID, bucketName string) {
+			go func(bucketID int, userID, bucketName string) {
 				defer wg.Done()
 				defer openGate.Done()
 				defer func(ts time.Time) {
@@ -182,6 +236,10 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 				}(time.Now())
 
 				start, end, err := getBucketRangesForBucketName(bucketName)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to get bucket range", "err", err, "user", userID, "bucketName", bucketName)
+					return
+				}
 				db, err := i.createNewTSDB(userID, filepath.Join(userID, bucketName), (end-start)*2, (end-start)*2, prometheus.NewRegistry())
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "unable to open user backfill TSDB", "err", err, "user", userID)
@@ -189,6 +247,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 				}
 
 				bucket := &tsdbBucket{
+					id:          bucketID,
 					db:          db,
 					bucketStart: start,
 					bucketEnd:   end,
@@ -198,7 +257,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 				// Append at the end, we will sort it at the end.
 				i.TSDBState.backfillDBs.tsdbs[userID] = append(i.TSDBState.backfillDBs.tsdbs[userID], bucket)
 				i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
-			}(userID, bucketName.Name())
+			}(bucketID, userID, bucketName.Name())
 		}
 
 		if runErr != nil {
@@ -278,6 +337,7 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 	select {
 	case err := <-errC:
 		return nil, err
+	default:
 	}
 
 	return result, nil
@@ -286,7 +346,8 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
 	tsdbsMtx sync.RWMutex
-	tsdbs    map[string][]*tsdbBucket
+	// TODO(codesome): have more granular locks.
+	tsdbs map[string][]*tsdbBucket
 }
 
 func newBackfillTSDBs() *backfillTSDBs {
@@ -302,6 +363,7 @@ func (b *backfillTSDBs) getBucketsForUser(userID string) []*tsdbBucket {
 }
 
 type tsdbBucket struct {
+	id                     int // This is any number but should be unique among all buckets of a user.
 	db                     *userTSDB
 	bucketStart, bucketEnd int64
 }

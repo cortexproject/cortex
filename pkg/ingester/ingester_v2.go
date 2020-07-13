@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -158,6 +159,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 		tsdbMetrics:         newTSDBMetrics(registerer),
 		forceCompactTrigger: make(chan chan<- struct{}),
 		shipTrigger:         make(chan chan<- struct{}),
+		backfillDBs:         newBackfillTSDBs(),
 
 		compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_tsdb_compactions_triggered_total",
@@ -426,6 +428,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
+	var backfillApp *backfillAppender
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
@@ -470,7 +473,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			if cause == storage.ErrOutOfBounds &&
 				i.cfg.TSDBConfig.BackfillLimit > 0 &&
 				s.TimestampMs > db.Head().MaxTime()-i.cfg.TSDBConfig.BackfillLimit.Milliseconds() {
-				err := i.v2BackfillPush(userID, ts.Labels, s)
+				if backfillApp == nil {
+					backfillApp = i.newBackfillAppender(userID)
+				}
+				err := backfillApp.add(ts.Labels, s)
 				if err == nil {
 					succeededSamplesCount++
 					continue
@@ -512,8 +518,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			}
 
 			// The error looks an issue on our side, so we should rollback
-			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+			var merr tsdb_errors.MultiError
+			merr.Add(errors.Wrap(app.Rollback(), "main appender"))
+			if backfillApp != nil {
+				merr.Add(errors.Wrap(backfillApp.rollback(), "backfill appender"))
+			}
+			if merr.Err() != nil {
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", merr.Err())
 			}
 
 			return nil, wrapWithUser(err, userID)
@@ -524,8 +535,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
 
 	startCommit := time.Now()
-	if err := app.Commit(); err != nil {
-		return nil, wrapWithUser(err, userID)
+	var merr tsdb_errors.MultiError
+	merr.Add(errors.Wrap(app.Commit(), "main appender"))
+	if backfillApp != nil {
+		merr.Add(errors.Wrap(backfillApp.commit(), "backfill appender"))
+	}
+	if merr.Err() != nil {
+		return nil, wrapWithUser(merr.Err(), userID)
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
@@ -989,7 +1005,7 @@ func (i *Ingester) createNewTSDB(userID, dbDir string, minBlockDuration, maxBloc
 		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
+		return nil, errors.Wrapf(err, "failed to open TSDB: %s", dbDir)
 	}
 	db.DisableCompactions() // we will compact on our own schedule
 
@@ -999,7 +1015,7 @@ func (i *Ingester) createNewTSDB(userID, dbDir string, minBlockDuration, maxBloc
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
 	err = db.Compact()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
+		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", dbDir)
 	}
 
 	userDB.DB = db

@@ -2,7 +2,9 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"net/url"
+	"regexp"
 	"sync"
 
 	gklog "github.com/go-kit/kit/log"
@@ -75,6 +77,7 @@ func (rn *rulerNotifier) stop() {
 func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	validURLs := make([]*url.URL, 0, len(rulerConfig.AlertmanagerURL))
 
+	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
 	for _, h := range rulerConfig.AlertmanagerURL {
 		url, err := url.Parse(h)
 		if err != nil {
@@ -83,6 +86,13 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 
 		if url.String() == "" {
 			continue
+		}
+
+		// Given we only support SRV lookups as part of service discovery, we need to ensure
+		// hosts provided follow this specification: _service._proto.name
+		// e.g. _http._tcp.alertmanager.com
+		if rulerConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
+			return nil, fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
 		}
 
 		validURLs = append(validURLs, url)

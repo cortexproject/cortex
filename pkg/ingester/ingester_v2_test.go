@@ -1632,7 +1632,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		db.DisableCompactions()
 		head := db.Head()
 
-		l := labels.Labels{{"n", "v"}}
+		l := labels.Labels{{Name: "n", Value: "v"}}
 		for i := 0; i < numFullChunks; i++ {
 			// Not using db.Appender() as it checks for compaction.
 			app := head.Appender()

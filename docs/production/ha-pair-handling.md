@@ -43,4 +43,29 @@ The replica label should be set so that the value for each prometheus is unique 
 
 ### Server Side
 
-To enable handling of samples, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.
+The minimal configuration requires:
+
+* Enabling the HA tracker code path
+* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](https://cortexmetrics.io/docs/configuration/arguments/#ringha-tracker-store))
+* Setting the limits configuration to accept samples
+
+```yaml
+limits:
+  ...
+  accept_ha_samples: true
+  ...
+distributor:
+  ...
+  ha_tracker:
+    enable_ha_tracker: true
+    ...
+    kvstore:
+      [store: <string> | default = "consul"]
+      [consul | etcd | memberlist: <config>]
+      ...
+  ...
+```
+
+For further configuration file documentation, see the [distributor section](https://cortexmetrics.io/docs/configuration/configuration-file/#distributor_config) and [Ring/HA Tracker Store](https://cortexmetrics.io/docs/configuration/arguments/#ringha-tracker-store).
+
+For flag configuration, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.

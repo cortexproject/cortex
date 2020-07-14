@@ -450,6 +450,15 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 }
 
 func (t *Cortex) initRuler() (serv services.Service, err error) {
+	// if the ruler is not configured and we're in single binary then let's just log an error and continue
+	// unfortunately there is no way to generate a "default" config and compare default against actual
+	// to determine if it's unconfigured.  the following check, however, correctly tests this.
+	// Single binary integration tests will break if this ever drifts
+	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.Type == "configdb" && t.Cfg.Ruler.StoreConfig.ConfigDB.ConfigsAPIURL.URL == nil {
+		level.Info(util.Logger).Log("msg", "Ruler is not configured in single binary mode and will not be started.")
+		return nil, nil
+	}
+
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)

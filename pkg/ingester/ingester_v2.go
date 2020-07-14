@@ -891,9 +891,17 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
 	}
 	db.DisableCompactions() // we will compact on our own schedule
+
+	// Run compaction before using this TSDB. If there is data in head that needs to be put into blocks,
+	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op, although
+	// local blocks compaction may still take place if configured.
+	err = db.Compact()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
+	}
 
 	userDB.DB = db
 	// We set the limiter here because we don't want to limit

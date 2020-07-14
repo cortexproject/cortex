@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1601,4 +1602,78 @@ func pushSingleSample(t *testing.T, i *Ingester) {
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
+}
+
+func TestHeadCompactionOnStartup(t *testing.T) {
+	// Create a temporary directory for TSDB
+	tempDir, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+
+	// Build TSDB for user, with data covering 24 hours.
+	{
+		// Number of full chunks, 12 chunks for 24hrs.
+		numFullChunks := 12
+		chunkRange := 2 * time.Hour.Milliseconds()
+
+		userDir := filepath.Join(tempDir, userID)
+		require.NoError(t, os.Mkdir(userDir, 0700))
+
+		db, err := tsdb.Open(userDir, nil, nil, &tsdb.Options{
+			RetentionDuration: int64(time.Hour * 25 / time.Millisecond),
+			NoLockfile:        true,
+			MinBlockDuration:  chunkRange,
+			MaxBlockDuration:  chunkRange,
+		})
+		require.NoError(t, err)
+
+		db.DisableCompactions()
+		head := db.Head()
+
+		l := labels.Labels{{Name: "n", Value: "v"}}
+		for i := 0; i < numFullChunks; i++ {
+			// Not using db.Appender() as it checks for compaction.
+			app := head.Appender()
+			_, err := app.Add(l, int64(i)*chunkRange+1, 9.99)
+			require.NoError(t, err)
+			_, err = app.Add(l, int64(i+1)*chunkRange, 9.99)
+			require.NoError(t, err)
+			require.NoError(t, app.Commit())
+		}
+
+		dur := time.Duration(head.MaxTime()-head.MinTime()) * time.Millisecond
+		require.True(t, dur > 23*time.Hour)
+		require.Equal(t, 0, len(db.Blocks()))
+		require.NoError(t, db.Close())
+	}
+
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+
+	ingesterCfg := defaultIngesterTestConfig()
+	ingesterCfg.TSDBEnabled = true
+	ingesterCfg.TSDBConfig.Dir = tempDir
+	ingesterCfg.TSDBConfig.Backend = "s3"
+	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.TSDBConfig.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
+
+	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+
+	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+
+	db := ingester.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+
+	dur := time.Duration(h.MaxTime()-h.MinTime()) * time.Millisecond
+	require.True(t, dur <= 2*time.Hour)
+	require.Equal(t, 11, len(db.Blocks()))
 }

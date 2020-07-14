@@ -15,7 +15,7 @@ The querier relies on caching to reduce the number API calls to the storage buck
 
 ### Avoid querying non compacted blocks
 
-Querying non compacted blocks may be inefficient, when running a Cortex blocks storage cluster at scale, because of two reasons:
+When running Cortex blocks storage cluster at scale, querying non compacted blocks may be inefficient for two reasons:
 
 1. Non compacted blocks contain duplicated samples (as effect of the ingested samples replication)
 2. Overhead introduced querying many small indexes

@@ -473,7 +473,7 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
 Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:
 
-- [Blocks storage's memcached index cache](../operations/blocks-storage.md#memcached-index-cache)
+- [Blocks storage's memcached cache](../blocks-storage/store-gateway.md#caching)
 - [All caching memcached servers](./config-file-reference.md#memcached-client-config)
 - [Memberlist KV store](./config-file-reference.md#memberlist-config)
 

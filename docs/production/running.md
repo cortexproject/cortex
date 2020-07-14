@@ -25,7 +25,7 @@ Commercial cloud options are DynamoDB/S3 and Bigtable/GCS: the advantage is you 
 Alternatively you can choose Apache Cassandra, which you will have to install and manage.
 Cassandra support can also be used with commecial Cassandra-compatible services such as Azure Cosmos DB.
 
-Cortex has an alternative to chunk storage: [block storage](../operations/blocks-storage.md).  Block storage is not ready for production usage at this time.
+Cortex has an alternative to chunk storage: [block storage](../blocks-storage/).  Block storage is not ready for production usage at this time.
 
 ## 2. Deploy Query Frontend
 

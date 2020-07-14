@@ -1,0 +1,123 @@
+---
+title: "Store-gateway"
+linkTitle: "Store-gateway"
+weight: 3
+slug: store-gateway
+---
+
+{{ .GeneratedFileWarning }}
+
+The store-gateway is the Cortex service responsible to query series from blocks. The store-gateway is required when running the Cortex blocks storage.
+
+The store-gateway is **semi-stateful**.
+
+## How it works
+
+At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
+
+While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+
+The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
+
+_For more information about the index-header, please refer to [Binary index-header documentation](./binary-index-header.md)._
+
+## Blocks sharding and replication
+
+The store-gateway optionally supports blocks sharding.
+
+When sharding is enabled, store-gateway instances builds an [hash ring](../architecture.md#the-hash-ring) and blocks get sharded and replicated across the pool of store-gateway instances registered within the ring.
+
+Store-gateways continuously monitor the ring state and whenever the ring topology changes (e.g. a new instance has been added/removed or gets healthy/unhealthy) each store-gateway instance resync the blocks assigned to its shard, based on the block ID hash matching the token ranges assigned to the instance itself within the ring.
+
+For each block belonging to a store-gateway shard, the store-gateway loads its `meta.json`, the `deletion-mark.json` and the index-header. Once a block is loaded on the store-gateway, it's ready to be queried by queriers. When the querier queries blocks through a store-gateway, the response will contain the list of actually queried block IDs. If a querier tries to query a block which has not been loaded by a store-gateway, the querier will either retry on a different store-gateway (if blocks replication is enabled) or fail the query.
+
+Blocks can be replicated across multiple store-gateway instances based on a replication factor configured via `-experimental.store-gateway.replication-factor`. The blocks replication is used to protect from query failures caused by some blocks not loaded by any store-gateway instance at a given time like, for example, in the event of a store-gateway failure or while restarting a store-gateway instance (e.g. during a rolling update).
+
+This feature can be enabled via `-experimental.store-gateway.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-experimental.store-gateway.sharding-ring.*` flags (or their respective YAML config options).
+
+### Auto-forget
+
+When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.
+
+To protect from this, when an healthy store-gateway instance finds another instance in the ring which is unhealthy for more than 10 times the configured `-experimental.store-gateway.sharding-ring.heartbeat-timeout`, the healthy instance forcibly removes the unhealthy one from the ring.
+
+This feature is called **auto-forget** and is built into the store-gateway.
+
+## Caching
+
+The store-gateway supports the following caches:
+
+- [Index cache](#index-cache)
+- [Chunks cache](#chunks-cache)
+- [Metadata cache](#metadata-cache)
+
+Caching is optional, but **highly recommended** in a production environment.
+
+### Index cache
+
+The store-gateway can use a cache to speed up lookups of postings and series from TSDB blocks indexes. Two backends are supported:
+
+- `inmemory`
+- `memcached`
+
+#### In-memory index cache
+
+The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
+
+- Pros: zero latency
+- Cons: increased store-gateway memory usage, not shared across multiple store-gateway replicas (when sharding is disabled or replication factor > 1)
+
+#### Memcached index cache
+
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
+
+The trade-off of using the Memcached index cache is:
+
+- Pros: can scale beyond a single node memory (Memcached cluster), shared across multiple store-gateway instances
+- Cons: higher latency in the cache round trip compared to the in-memory one
+
+The Memcached client uses a jump hash algorithm to shard cached entries across a cluster of Memcached servers. For this reason, you should make sure memcached servers are **not** behind any kind of load balancer and their address is configured so that servers are added/removed to the end of the list whenever a scale up/down occurs.
+
+For example, if you're running Memcached in Kubernetes, you may:
+
+1. Deploy your Memcached cluster using a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+2. Create an [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
+3. Configure the Cortex's Memcached client address using the `dnssrvnoa+` [service discovery](../configuration/arguments.md#dns-service-discovery)
+
+### Chunks cache
+
+Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+
+To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached.*` prefix.
+
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.tsdb.bucket-store.chunks-cache.*` prefix.
+
+### Metadata cache
+
+Store-gateway and [querier](./querier.md) can use memcached for caching bucket metadata:
+
+- List of tenants
+- List of blocks per tenant
+- Block's `meta.json` content
+- Block's `deletion-mark.json` existence and content
+
+Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
+
+To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached.*` prefix.
+
+Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+
+_The same memcached backend cluster should be shared between store-gateways and queriers._
+
+## Store-gateway HTTP endpoints
+
+- `GET /store-gateway/ring`<br />
+  Displays the status of the store-gateways ring, including the tokens owned by each store-gateway and an option to remove (forget) instances from the ring.
+
+## Store-gateway configuration
+
+This section described the store-gateway configuration. For the general Cortex configuration and references to common config blocks, please refer to the [configuration documentation](../configuration/config-file-reference.md).
+
+{{ .StoreGatewayConfigBlock }}
+
+{{ .TSDBConfigBlock }}

@@ -169,3 +169,9 @@ func newSampleGenerator(t *testing.T, initTime time.Time, step time.Duration) <-
 
 	return ts
 }
+
+func TestFlushReasonString(t *testing.T) {
+	for fr := flushReason(0); fr < maxFlushReason; fr++ {
+		require.True(t, len(fr.String()) > 0)
+	}
+}

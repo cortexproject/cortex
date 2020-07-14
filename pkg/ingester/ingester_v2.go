@@ -896,8 +896,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	db.DisableCompactions() // we will compact on our own schedule
 
 	// Run compaction before using this TSDB. If there is data in head that needs to be put into blocks,
-	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op.
-	// We don't do blocks compaction.
+	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op, although
+	// local blocks compaction may still take place if configured.
 	err = db.Compact()
 	if err != nil {
 		return nil, err

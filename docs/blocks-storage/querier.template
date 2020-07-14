@@ -1,0 +1,78 @@
+---
+title: "Querier"
+linkTitle: "Querier"
+weight: 2
+slug: querier
+---
+
+{{ .GeneratedFileWarning }}
+
+The **querier** service handles queries using the [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query language. The querier service is used both by the chunks and blocks storage, and the [general architecture documentation](../architecture.md#querier) applies to the blocks storage too, except for the differences described in this document.
+
+The querier is **stateless**.
+
+## How it works
+
+At startup **queriers** iterate over the entire storage bucket to discover all tenants blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+
+While running, queriers periodically iterate over the storage bucket to discover new tenants and recently uploaded blocks. Queriers do **not** download any content from blocks except a small `meta.json` file containing the block's metadata (including the minimum and maximum timestamp of samples within the block).
+
+Queriers use the metadata to compute the list of blocks that need to be queried at query time and fetch matching series from the [store-gateway](./store-gateway.md) instances holding the required blocks.
+
+### Anatomy of a query request
+
+When a querier receives a query range request, it contains the following parameters:
+
+- `query`: the PromQL query expression itself (e.g. `rate(node_cpu_seconds_total[1m])`)
+- `start`: the start time
+- `end`: the end time
+- `step`: the query resolution (e.g. `30` to have 1 resulting data point every 30s)
+
+Given a query, the querier analyzes the `start` and `end` time range to compute a list of all known blocks containing at least 1 sample within this time range. Given the list of blocks, the querier then computes a list of store-gateway instances holding these blocks and sends a request to each matching store-gateway instance asking to fetch all the samples for the series matching the `query` within the `start` and `end` time range.
+
+The request sent to each store-gateway contains the list of block IDs that are expected to be queried, and the response sent back by the store-gateway to the querier contains the list of block IDs that were actually queried. This list may be a subset of the requested blocks, for example due to recent blocks resharding event (ie. last few seconds). The querier runs a consistency check on responses received from the store-gateways to ensure all expected blocks have been queried; if not, the querier retries to fetch samples from missing blocks from different store-gateways (if the `-experimental.store-gateway.replication-factor` is greater than `1`) and if the consistency check fails after all retries, the query execution fails as well (correctness is always guaranteed).
+
+If the query time range covers a period within `-querier.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
+
+Once all samples have been fetched from both store-gateways and ingesters, the querier proceeds with running the PromQL engine to execute the query and send back the result to the client.
+
+### How queriers connect to store-gateway
+
+Queriers need to discover store-gateways in order to connect to them at query time. The service discovery mechanism used depends whether blocks sharding is enabled in the store-gateways.
+
+When blocks sharding is **enabled**, queriers need to access to the store-gateways hash ring and thus queriers need to be configured with the same `-experimental.store-gateway.sharding-ring.*` flags (or their respective YAML config options) store-gateways have been configured.
+
+When blocks sharding is **disabled**, queriers need the `-experimental.querier.store-gateway-addresses` CLI flag (or its respective YAML config option) being set to a comma separated list of store-gateway addresses in [DNS Service Discovery format]((../configuration/arguments.md#dns-service-discovery). Queriers will evenly balance the requests to query blocks across the resolved addresses.
+
+## Caching
+
+The querier supports the following caches:
+
+- [Metadata cache](#metadata-cache)
+
+Caching is optional, but **highly recommended** in a production environment.
+
+### Metadata cache
+
+[Store-gateway](./store-gateway.md) and querier can use memcached for caching bucket metadata:
+
+- List of tenants
+- List of blocks per tenant
+- Block's `meta.json` content
+- Block's `deletion-mark.json` existence and content
+
+Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
+
+To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached.*` prefix.
+
+Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+
+_The same memcached backend cluster should be shared between store-gateways and queriers._
+
+## Querier configuration
+
+This section described the querier configuration. For the general Cortex configuration and references to common config blocks, please refer to the [configuration documentation](../configuration/config-file-reference.md).
+
+{{ .QuerierConfigBlock }}
+
+{{ .TSDBConfigBlock }}

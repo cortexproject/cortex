@@ -1645,7 +1645,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 
 		dur := time.Duration(head.MaxTime()-head.MinTime()) * time.Millisecond
 		require.True(t, dur > 23*time.Hour)
-		require.Empty(t, db.Blocks())
+		require.Equal(t, 0, len(db.Blocks()))
 		require.NoError(t, db.Close())
 	}
 
@@ -1660,6 +1660,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	ingesterCfg.TSDBConfig.Dir = tempDir
 	ingesterCfg.TSDBConfig.Backend = "s3"
 	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.TSDBConfig.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 	require.NoError(t, err)
@@ -1673,6 +1674,6 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	h := db.Head()
 
 	dur := time.Duration(h.MaxTime()-h.MinTime()) * time.Millisecond
-	require.True(t, dur < 4*time.Hour)
-	require.NotEmpty(t, db.Blocks())
+	require.True(t, dur <= 2*time.Hour)
+	require.Equal(t, 11, len(db.Blocks()))
 }

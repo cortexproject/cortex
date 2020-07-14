@@ -35,6 +35,8 @@ var (
 	}, []string{"operation", "status_code"}))
 )
 
+type WrapRequestMiddleware func(http.RoundTripper) http.RoundTripper
+
 func init() {
 	s3RequestDuration.Register()
 }
@@ -93,8 +95,8 @@ type S3ObjectClient struct {
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
-	s3Config, bucketNames, err := buildS3Config(cfg)
+func NewS3ObjectClient(cfg S3Config, delimiter string, wrapper WrapRequestMiddleware) (*S3ObjectClient, error) {
+	s3Config, bucketNames, err := buildS3Config(cfg, wrapper)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
@@ -120,7 +122,7 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	return &client, nil
 }
 
-func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
+func buildS3Config(cfg S3Config, wrapper WrapRequestMiddleware) (*aws.Config, []string, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -165,22 +167,28 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	// to maintain backwards compatibility with previous versions of Cortex while providing
 	// more flexible configuration of the http client
 	// https://github.com/weaveworks/common/blob/4b1847531bc94f54ce5cf210a771b2a86cd34118/aws/config.go#L23
+	transport := http.RoundTripper(&http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
+		MaxIdleConnsPerHost:   100,
+		TLSHandshakeTimeout:   3 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
+	})
+
+	if wrapper != nil {
+		transport = wrapper(transport)
+	}
+
 	s3Config = s3Config.WithHTTPClient(&http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
-			MaxIdleConnsPerHost:   100,
-			TLSHandshakeTimeout:   3 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
-		},
+		Transport: transport,
 	})
 
 	// bucketnames

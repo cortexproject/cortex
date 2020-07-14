@@ -77,7 +77,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 				AlertmanagerURL:       []string{"http://_http.default.svc.cluster.local/alertmanager"},
 				AlertmanagerDiscovery: true,
 			},
-			err: fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is \"alertmanager.default.svc.cluster.local\")"),
+			err: fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is \"alertmanager.default.svc.cluster.local\")"),
 		},
 		{
 			name: "with multiple URLs and no service discovery",

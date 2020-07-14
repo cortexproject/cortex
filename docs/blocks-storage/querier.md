@@ -13,7 +13,9 @@ The querier is **stateless**.
 
 ## How it works
 
-Queriers periodically iterate over the storage bucket to discover recently uploaded blocks. Queriers do **not** download any content from blocks except a small `meta.json` file containing the block's metadata (including the minimum and maximum timestamp of samples within the block).
+At startup **queriers** iterate over the entire storage bucket to discover all tenants blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+
+While running, queriers periodically iterate over the storage bucket to discover new tenants and recently uploaded blocks. Queriers do **not** download any content from blocks except a small `meta.json` file containing the block's metadata (including the minimum and maximum timestamp of samples within the block).
 
 Queriers use the metadata to compute the list of blocks that need to be queried at query time and fetch matching series from the [store-gateway](./store-gateway.md) instances holding the required blocks.
 
@@ -213,11 +215,6 @@ tsdb:
     # allocations.
     # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
-
-    # Max number of samples per query when loading series from the long-term
-    # storage. 0 disables the limit.
-    # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
-    [max_sample_count: <int> | default = 0]
 
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.

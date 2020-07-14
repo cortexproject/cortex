@@ -552,7 +552,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		return nil, nil, nil, 0, err
 	}
 
-	return seriesSets, queriedBlocks, warnings, int(numChunks), nil
+	return seriesSets, queriedBlocks, warnings, int(atomic.LoadInt32(&numChunks)), nil
 }
 
 func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {

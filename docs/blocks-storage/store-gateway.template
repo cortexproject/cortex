@@ -39,7 +39,7 @@ This feature can be enabled via `-experimental.store-gateway.sharding-enabled=tr
 
 When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.
 
-To protect from this, when an healthy store-gateway instance finds another instance in the ring which is unhealthy since more then 10 times the configured `-experimental.store-gateway.sharding-ring.heartbeat-timeout`, the healthy instance forcely removes the unhealthy one from the ring.
+To protect from this, when an healthy store-gateway instance finds another instance in the ring which is unhealthy for more than 10 times the configured `-experimental.store-gateway.sharding-ring.heartbeat-timeout`, the healthy instance forcibly removes the unhealthy one from the ring.
 
 This feature is called **auto-forget** and is built into the store-gateway.
 

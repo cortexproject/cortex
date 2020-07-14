@@ -1,0 +1,17 @@
+{{ $pages := (where .Site.Pages "Section" .Section).ByWeight }}
+{{ $parent := .Page }}
+
+{{ if $parent.Params.no_section_index }}
+    {{/* If no_section_index is true we don't show a list of subpages */}}
+{{ else }}
+    {{ if $parent.Params.no_section_index_title }}{{ else }}
+        <h2 id="more-in-this-section">More in this section</h2>
+    {{ end }}
+    <ul>
+        {{ range $pages }}
+            {{ if eq .Parent $parent }}
+                <li><a href="{{ .RelPermalink }}">{{- .Title -}}</a></li>
+            {{ end }}
+        {{ end }}
+    </ul>
+{{ end }}

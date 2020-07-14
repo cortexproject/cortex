@@ -134,9 +134,6 @@ if [ -n "$PARALLEL" ]; then
 fi
 
 if [ -n "$SLOW" ] && [ -z "$COVERDIR" ]; then
-    go get github.com/weaveworks/tools/cover
-    go mod vendor # re-vendor everything
-
     cover "$coverdir"/* >profile.cov
     rm -rf "$coverdir"
     go tool cover -html=profile.cov -o=coverage.html

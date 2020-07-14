@@ -205,7 +205,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
-	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, prometheus.DefaultRegisterer); err != nil {
+	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
 	} else {
 		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
@@ -219,7 +219,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 			return nil, fmt.Errorf("second store engine used by querier '%s' must be different than primary engine '%s'", t.Cfg.Querier.SecondStoreEngine, t.Cfg.Storage.Engine)
 		}
 
-		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, prometheus.DefaultRegisterer)
+		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)
 		}
@@ -245,7 +245,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	}
 }
 
-func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
 	switch engine {
 	case storage.StorageEngineChunks:
 		if chunkStore == nil {
@@ -260,7 +260,7 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, r
 			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 		}
 
-		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, util.Logger, reg)
+		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, limits, util.Logger, reg)
 
 	default:
 		return nil, fmt.Errorf("unknown storage engine '%s'", engine)
@@ -588,7 +588,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
 		Flusher:        {Store, API},
 		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
-		StoreQueryable: {Store},
+		StoreQueryable: {Overrides, Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
 		Ruler:          {Overrides, Distributor, Store, StoreQueryable},

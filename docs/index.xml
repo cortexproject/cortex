@@ -7166,6 +7166,7 @@ __replica__: replica2
 &lt;li>Optimized labels regex matchers for patterns containing literals (eg. &lt;code>foo.*&lt;/code>, &lt;code>.*foo&lt;/code>, &lt;code>.*foo.*&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>[ENHANCEMENT] Add metric &lt;code>cortex_ruler_config_update_failures_total&lt;/code> to Ruler to track failures of loading rules files. &lt;a href="https://github.com/cortexproject/cortex/pull/2857">#2857&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Experimental Alertmanager: Alertmanager configuration persisted to object storage using an experimental API that accepts and returns YAML-based Alertmanager configuration. &lt;a href="https://github.com/cortexproject/cortex/pull/2768">#2768&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>

@@ -52,7 +52,7 @@ This soft deletion mechanism is used to give enough time to queriers and store-g
 
 ## Compactor disk utilization
 
-The compactor requires to download source blocks from the bucket to the local disk and store the compacted block to the local disk before uploading it to the bucket. Depending on the largest tenants in your cluster and the configured `-compactor.block-ranges`, the compactor may need much disk space.
+The compactor needs to download source blocks from the bucket to the local disk, and store the compacted block to the local disk before uploading it to the bucket. Depending on the largest tenants in your cluster and the configured `-compactor.block-ranges`, the compactor may need a lot of disk space.
 
 The formula to estimate the minimum disk space required is the following, where `max_compaction_range_blocks_size` is the total size of blocks for the largest tenant (you can measure it inspecting the bucket) for the largest `-compactor.block-ranges` period:
 

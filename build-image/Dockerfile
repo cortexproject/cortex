@@ -20,7 +20,8 @@ RUN GO111MODULE=on go get -tags netgo \
 		github.com/client9/misspell/cmd/misspell@v0.3.4 \
 		github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
 		github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
-		github.com/gogo/protobuf/gogoproto@v1.3.0 && \
+		github.com/gogo/protobuf/gogoproto@v1.3.0 \
+		github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 && \
 	rm -rf /go/pkg /go/src
 
 ENV KUBEVAL_VERSION=0.15.0

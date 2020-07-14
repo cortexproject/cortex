@@ -45,9 +45,12 @@ The replica label should be set so that the value for each prometheus is unique 
 
 The minimal configuration requires:
 
-* Enabling the HA tracker code path
-* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](https://cortexmetrics.io/docs/configuration/arguments/#ringha-tracker-store))
-* Setting the limits configuration to accept samples
+* Enabling the HA tracker via `-distributor.ha-tracker.enable=true` CLI flag (or its YAML config option)
+* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store))
+* Setting the limits configuration to accept samples via `-distributor.ha-tracker.enable-for-all-users` (or its YAML config option)
+
+
+The following configuration snippet shows an example of the HA tracker config via YAML config file:
 
 ```yaml
 limits:
@@ -66,6 +69,6 @@ distributor:
   ...
 ```
 
-For further configuration file documentation, see the [distributor section](https://cortexmetrics.io/docs/configuration/configuration-file/#distributor_config) and [Ring/HA Tracker Store](https://cortexmetrics.io/docs/configuration/arguments/#ringha-tracker-store).
+For further configuration file documentation, see the [distributor section](../configuration/config-file-reference.md#distributor_config) and [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store).
 
 For flag configuration, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.

@@ -11,7 +11,7 @@ This page shares some tips and things to take in consideration when setting up a
 
 ### Ensure caching is enabled
 
-The querier rely on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured.
+The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured.
 
 ### Avoid querying non compacted blocks
 

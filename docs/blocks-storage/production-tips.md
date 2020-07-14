@@ -41,7 +41,7 @@ The following diagram shows all the timings involved in the estimation of the re
 
 ### Ensure caching is enabled
 
-The store-gateway heavily rely on caching both to speed up queries and reduce the number API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured.
+The store-gateway heavily relies on caching both to speed up the queries and to reduce the number of API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured.
 
 ### Ensure a high number of max open file descriptors
 

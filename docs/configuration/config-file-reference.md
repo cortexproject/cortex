@@ -2669,7 +2669,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_global_metadata_per_metric: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query. This limit is
-# ignored when running the Cortex blocks storage.
+# enforced when fetching chunks from the long-term storage.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
@@ -2967,11 +2967,6 @@ bucket_store:
   # allocations.
   # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
   [max_chunk_pool_bytes: <int> | default = 2147483648]
-
-  # Max number of samples per query when loading series from the long-term
-  # storage. 0 disables the limit.
-  # CLI flag: -experimental.tsdb.bucket-store.max-sample-count
-  [max_sample_count: <int> | default = 0]
 
   # Max number of concurrent queries to execute against the long-term storage.
   # The limit is shared across all tenants.

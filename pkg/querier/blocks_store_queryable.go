@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -25,6 +24,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
@@ -457,7 +457,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		seriesSets    = []storage.SeriesSet(nil)
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
-		numChunks     = int32(0)
+		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
 	)
 
@@ -503,7 +503,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
 					if maxChunksLimit > 0 {
-						actual := atomic.AddInt32(&numChunks, int32(len(s.Chunks)))
+						actual := numChunks.Add(int32(len(s.Chunks)))
 						if actual > int32(leftChunksLimit) {
 							return fmt.Errorf(errMaxChunksPerQueryLimit, convertMatchersToString(matchers), maxChunksLimit)
 						}
@@ -552,7 +552,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		return nil, nil, nil, 0, err
 	}
 
-	return seriesSets, queriedBlocks, warnings, int(atomic.LoadInt32(&numChunks)), nil
+	return seriesSets, queriedBlocks, warnings, int(numChunks.Load()), nil
 }
 
 func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {

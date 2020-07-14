@@ -57,7 +57,7 @@ The compactor needs to download source blocks from the bucket to the local disk,
 Assuming `max_compaction_range_blocks_size` is the total size of blocks for the largest tenant (you can measure it inspecting the bucket) and the longest `-compactor.block-ranges` period, the formula to estimate the minimum disk space required is:
 
 ```
-min_disk_space_required = -compactor.compaction-concurrency * max_compaction_range_blocks_size * 2
+min_disk_space_required = compactor.compaction-concurrency * max_compaction_range_blocks_size * 2
 ```
 
 Alternatively, assuming the largest `-compactor.block-ranges` is `24h` (default), you could consider 150GB of disk space every 10M active series owned by the largest tenant. For example, if your largest tenant has 30M active series and `-compactor.compaction-concurrency=1` we would recommend having a disk with at least 450GB available.

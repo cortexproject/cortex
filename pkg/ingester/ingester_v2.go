@@ -190,7 +190,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 	}
 }
 
-// NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
+// NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
@@ -315,12 +315,12 @@ func (i *Ingester) stoppingV2(_ error) error {
 	// there's no shipping on-going.
 
 	if err := services.StopManagerAndAwaitStopped(context.Background(), i.TSDBState.subservices); err != nil {
-		level.Warn(util.Logger).Log("msg", "stopping ingester subservices", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to stop ingester subservices", "err", err)
 	}
 
 	// Next initiate our graceful exit from the ring.
 	if err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler); err != nil {
-		level.Warn(util.Logger).Log("msg", "stopping ingester lifecycler", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to stop ingester lifecycler", "err", err)
 	}
 
 	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {

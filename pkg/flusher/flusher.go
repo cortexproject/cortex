@@ -23,9 +23,9 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Directory to read WAL from. (Chunks-only)")
-	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Number of concurrent goroutines flushing to storage. (Chunks-only)")
-	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Timeout for individual flush operations. (Chunks-only)")
+	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Directory to read WAL from (chunks storage engine only).")
+	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Number of concurrent goroutines flushing to storage (chunks storage engine only).")
+	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Timeout for individual flush operations (chunks storage engine only).")
 }
 
 // Flusher is designed to be used as a job to flush the data from the WAL on disk.

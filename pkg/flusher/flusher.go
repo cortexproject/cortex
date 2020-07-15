@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ingester"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -24,18 +23,18 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Directory to read WAL from.")
-	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
-	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Timeout for individual flush operations.")
+	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Directory to read WAL from. (Chunks-only)")
+	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Number of concurrent goroutines flushing to storage. (Chunks-only)")
+	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Timeout for individual flush operations. (Chunks-only)")
 }
 
-// Flusher is designed to be used as a job to flush the chunks from the WAL on disk.
+// Flusher is designed to be used as a job to flush the data from the WAL on disk.
+// Flusher works with both chunks-based and blocks-based ingesters.
 type Flusher struct {
 	services.Service
 
 	cfg            Config
 	ingesterConfig ingester.Config
-	clientConfig   client.Config
 	chunkStore     ingester.ChunkStore
 	registerer     prometheus.Registerer
 }
@@ -49,11 +48,11 @@ const (
 func New(
 	cfg Config,
 	ingesterConfig ingester.Config,
-	clientConfig client.Config,
 	chunkStore ingester.ChunkStore,
 	registerer prometheus.Registerer,
 ) (*Flusher, error) {
 
+	// These are ignored by blocks-ingester, but that's fine.
 	ingesterConfig.WALConfig.Dir = cfg.WALDir
 	ingesterConfig.ConcurrentFlushes = cfg.ConcurrentFlushes
 	ingesterConfig.FlushOpTimeout = cfg.FlushOpTimeout
@@ -61,7 +60,6 @@ func New(
 	f := &Flusher{
 		cfg:            cfg,
 		ingesterConfig: ingesterConfig,
-		clientConfig:   clientConfig,
 		chunkStore:     chunkStore,
 		registerer:     registerer,
 	}
@@ -70,7 +68,7 @@ func New(
 }
 
 func (f *Flusher) running(ctx context.Context) error {
-	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.clientConfig, f.chunkStore, f.registerer)
+	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.registerer)
 	if err != nil {
 		return errors.Wrap(err, "create ingester")
 	}

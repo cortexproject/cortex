@@ -1400,6 +1400,60 @@ func TestIngester_flushing(t *testing.T) {
 	}
 }
 
+func TestIngester_ForFlush(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 1
+	cfg.TSDBConfig.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// mock user's shipper
+	m := mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Push some data.
+	pushSingleSample(t, i)
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Nothing shipped yet.
+	m.AssertNumberOfCalls(t, "Sync", 0)
+
+	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
+	i, err = NewV2ForFlusher(i.cfg, nil)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	m = mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Our single sample should be reloaded from WAL
+	verifyCompactedHead(t, i, false)
+	i.Flush()
+
+	// Head should be empty after flushing.
+	verifyCompactedHead(t, i, true)
+
+	// Verify that block has been shipped.
+	m.AssertNumberOfCalls(t, "Sync", 1)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+}
+
 func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
 	m := &shipperMock{}
 	userDB, err := i.getOrCreateTSDB(userID, false)

@@ -1,16 +1,16 @@
 package ruler
 
 import (
+	"gopkg.in/yaml.v3"
 	"net/url"
 	"os"
 	"testing"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-
-	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 var (
@@ -22,78 +22,78 @@ var (
 	fileOnePath = "/rules/user1/" + fileOneEncoded
 	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
-	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 		},
 	}
 
-	outOfOrderRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	outOfOrderRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 		},
 	}
 
-	updatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	updatedRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_three",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
@@ -158,23 +158,23 @@ func Test_mapper_MapRules(t *testing.T) {
 }
 
 var (
-	twoFilesRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
@@ -182,33 +182,33 @@ var (
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 		},
 	}
 
-	twoFilesUpdatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
@@ -216,33 +216,33 @@ var (
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_ruleupdated",
-						Expr:   "example_exprupdated",
+						Record: yaml.Node{Value: "example_ruleupdated"},
+						Expr:   yaml.Node{Value: "example_exprupdated"},
 					},
 				},
 			},
 		},
 	}
 
-	twoFilesDeletedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
@@ -325,14 +325,14 @@ var (
 	specialCharFileEncoded = url.PathEscape(specialCharFile)
 	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
 
-	specialCharactersRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	specialCharactersRuleSet = map[string][]rulefmt.RuleGroup{
 		specialCharFile: {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: yaml.Node{Value: "example_rule"},
+						Expr:   yaml.Node{Value: "example_expr"},
 					},
 				},
 			},
@@ -362,7 +362,7 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 	})
 
 	t.Run("delete special characters rulegroup", func(t *testing.T) {
-		updated, files, err := m.MapRules(testUser, map[string][]legacy_rulefmt.RuleGroup{})
+		updated, files, err := m.MapRules(testUser, map[string][]rulefmt.RuleGroup{})
 		require.NoError(t, err)
 		require.True(t, updated)
 		require.Len(t, files, 0)

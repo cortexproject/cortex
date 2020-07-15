@@ -80,6 +80,10 @@ type Config struct {
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+
+	// If true, user TSDBs are not closed on shutdown. Only for testing.
+	// If false (default), user TSDBs are closed to make sure all resources are released and closed properly.
+	KeepUserTSDBOpenOnShutdown bool `yaml:"-"`
 }
 
 // DurationList is the block ranges for a tsdb

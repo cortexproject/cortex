@@ -302,7 +302,9 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 }
 
 func (i *Ingester) stoppingV2ForFlusher(_ error) error {
-	i.closeAllTSDB()
+	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+		i.closeAllTSDB()
+	}
 	return nil
 }
 
@@ -321,7 +323,9 @@ func (i *Ingester) stoppingV2(_ error) error {
 		level.Warn(util.Logger).Log("msg", "stopping ingester lifecycler", "err", err)
 	}
 
-	i.closeAllTSDB()
+	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+		i.closeAllTSDB()
+	}
 	return nil
 }
 

@@ -2144,6 +2144,11 @@ The `flusher_config` configures the WAL flusher target, used to manually run one
 # Timeout for individual flush operations (chunks storage engine only).
 # CLI flag: -flusher.flush-op-timeout
 [flush_op_timeout: <duration> | default = 2m]
+
+# Stop Cortex after flush has finished. If false, Cortex process will keep
+# running, doing nothing.
+# CLI flag: -flusher.exit-after-flush
+[exit_after_flush: <boolean> | default = true]
 ```
 
 ### `chunk_store_config`

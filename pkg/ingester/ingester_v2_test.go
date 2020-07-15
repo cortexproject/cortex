@@ -1438,6 +1438,7 @@ func TestIngester_ForFlush(t *testing.T) {
 
 	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
 	i, err = NewV2ForFlusher(i.cfg, nil)
+	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 
 	m = mockUserShipper(t, i)

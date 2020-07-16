@@ -35,7 +35,9 @@ var (
 	}, []string{"operation", "status_code"}))
 )
 
-type WrapRequestMiddleware func(http.RoundTripper) http.RoundTripper
+// InjectRequestMiddleware gives users of this client the ability to make arbitrary
+// changes to outgoing requests.
+type InjectRequestMiddleware func(next http.RoundTripper) http.RoundTripper
 
 func init() {
 	s3RequestDuration.Register()
@@ -95,8 +97,13 @@ type S3ObjectClient struct {
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config, delimiter string, wrapper WrapRequestMiddleware) (*S3ObjectClient, error) {
-	s3Config, bucketNames, err := buildS3Config(cfg, wrapper)
+func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
+	return NewS3ObjectClientWithMiddleware(cfg, delimiter, nil)
+}
+
+// NewS3ObjectClientWithMiddleware makes a new S3-backed ObjectClient with an option to add request middleware
+func NewS3ObjectClientWithMiddleware(cfg S3Config, delimiter string, injectMiddleware InjectRequestMiddleware) (*S3ObjectClient, error) {
+	s3Config, bucketNames, err := buildS3Config(cfg, injectMiddleware)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
@@ -122,7 +129,7 @@ func NewS3ObjectClient(cfg S3Config, delimiter string, wrapper WrapRequestMiddle
 	return &client, nil
 }
 
-func buildS3Config(cfg S3Config, wrapper WrapRequestMiddleware) (*aws.Config, []string, error) {
+func buildS3Config(cfg S3Config, injectMiddleware InjectRequestMiddleware) (*aws.Config, []string, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -183,8 +190,8 @@ func buildS3Config(cfg S3Config, wrapper WrapRequestMiddleware) (*aws.Config, []
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
 	})
 
-	if wrapper != nil {
-		transport = wrapper(transport)
+	if injectMiddleware != nil {
+		transport = injectMiddleware(transport)
 	}
 
 	s3Config = s3Config.WithHTTPClient(&http.Client{

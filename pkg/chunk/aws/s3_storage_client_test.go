@@ -36,7 +36,7 @@ func TestRequestMiddleware(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		fn       WrapRequestMiddleware
+		fn       InjectRequestMiddleware
 		expected string
 	}{
 		{
@@ -58,7 +58,7 @@ func TestRequestMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewS3ObjectClient(cfg, "/", tt.fn)
+			client, err := NewS3ObjectClientWithMiddleware(cfg, "/", tt.fn)
 			require.NoError(t, err)
 
 			readCloser, err := client.GetObject(context.Background(), "key")

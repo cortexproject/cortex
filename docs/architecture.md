@@ -133,7 +133,7 @@ The supported KV stores for the hash ring are:
 
 * [Consul](https://www.consul.io)
 * [Etcd](https://etcd.io)
-* Gossip [memberlist](https://github.com/hashicorp/memberlist) (experimental)
+* Gossip [memberlist](https://github.com/hashicorp/memberlist)
 
 #### Quorum consistency
 
@@ -176,9 +176,9 @@ If an ingester process crashes or exits abruptly, all the in-memory series that 
 
 The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
 
-The **write-ahead log** (WAL) is used to write to a persistent local disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
+The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
-Contrary to the sole replication and given the persistent local disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
+Contrary to the sole replication and given the persistent disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
 
 The WAL for the chunks storage is disabled by default, while it's always enabled for the blocks storage.
 

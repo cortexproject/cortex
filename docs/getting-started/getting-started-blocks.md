@@ -10,7 +10,7 @@ The single-binary mode is easier to deploy and is aimed mainly at users wanting 
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 
 This document will focus on single-process Cortex with the experimental blocks storage.
-See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../operations/blocks-storage.md)
+See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../blocks-storage/)
 for more information about the blocks storage.
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).

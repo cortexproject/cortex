@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes dist
+.PHONY: all test clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 
 # Version number
@@ -177,8 +177,10 @@ web-deploy:
 
 # Generates the config file documentation.
 doc: clean-doc
-	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template >> ./docs/configuration/config-file-reference.md
-	go run ./tools/doc-generator ./docs/operations/blocks-storage.template           >> ./docs/operations/blocks-storage.md
+	go run ./tools/doc-generator ./docs/configuration/config-file-reference.template > ./docs/configuration/config-file-reference.md
+	go run ./tools/doc-generator ./docs/blocks-storage/compactor.template            > ./docs/blocks-storage/compactor.md
+	go run ./tools/doc-generator ./docs/blocks-storage/store-gateway.template        > ./docs/blocks-storage/store-gateway.md
+	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 
 endif
@@ -207,10 +209,14 @@ load-images:
 	done
 
 clean-doc:
-	rm -f ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md
+	rm -f \
+		./docs/configuration/config-file-reference.md \
+		./docs/blocks-storage/compactor.md \
+		./docs/blocks-storage/store-gateway.md \
+		./docs/blocks-storage/querier.md
 
 check-doc: doc
-	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/operations/blocks-storage.md
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md
 
 clean-white-noise:
 	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \

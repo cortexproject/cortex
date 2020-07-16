@@ -35,6 +35,12 @@
     }
 }
 
+@media (min-width: 768px) {
+    .td-sidebar-nav__section > ul {
+        padding-left: 1rem;
+    }
+}
+
 //
 // Content
 //

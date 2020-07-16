@@ -93,6 +93,7 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 	rgs := rulefmt.RuleGroups{Groups: groups}
 
 	d, err := yaml.Marshal(&rgs)
+	level.Info(m.logger).Log("msg", "printing rulegroups before mapping to file", "rulegroups", d)
 	if err != nil {
 		return false, err
 	}

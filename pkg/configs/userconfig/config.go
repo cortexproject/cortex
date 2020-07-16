@@ -370,7 +370,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						labels.FromMap(rl.Annotations),
 						nil,
 						true,
-						log.With(util.Logger, "alert", rl.Alert),
+						log.With(util.Logger, "alert", rl.Alert.Value),
 					))
 					continue
 				}

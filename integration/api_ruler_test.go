@@ -5,12 +5,12 @@ package main
 import (
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 func TestRulerAPI(t *testing.T) {

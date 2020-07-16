@@ -48,10 +48,16 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	}
 
 	for i, rl := range rg.GetRules() {
+		recordNode := yaml.Node{}
+		recordNode.SetString(rl.GetRecord())
+		alertNode := yaml.Node{}
+		alertNode.SetString(rl.GetAlert())
+		exprNode := yaml.Node{}
+		exprNode.SetString(rl.GetExpr())
 		newRule := rulefmt.RuleNode{
-			Record:      yaml.Node{Value: rl.GetRecord()},
-			Alert:       yaml.Node{Value: rl.GetAlert()},
-			Expr:        yaml.Node{Value: rl.GetExpr()},
+			Record:      recordNode,
+			Alert:       alertNode,
+			Expr:        exprNode,
 			Labels:      client.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: client.FromLabelAdaptersToLabels(rl.Annotations).Map(),
 			For:         model.Duration(rl.GetFor()),

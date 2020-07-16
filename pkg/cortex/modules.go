@@ -56,6 +56,7 @@ const (
 	Store               string = "store"
 	DeleteRequestsStore string = "delete-requests-store"
 	TableManager        string = "table-manager"
+	RulerStorage        string = "ruler-storage"
 	Ruler               string = "ruler"
 	Configs             string = "configs"
 	AlertManager        string = "alertmanager"
@@ -448,12 +449,18 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	return t.TableManager, err
 }
 
+func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
+	t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig)
+
+	return
+}
+
 func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
-	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
+	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger, t.RulerStorage)
 	if err != nil {
 		return
 	}
@@ -570,6 +577,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
@@ -591,7 +599,7 @@ func (t *Cortex) setupModuleManager() error {
 		StoreQueryable: {Overrides, Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
-		Ruler:          {Overrides, Distributor, Store, StoreQueryable},
+		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
 		Configs:        {API},
 		AlertManager:   {API},
 		Compactor:      {API},

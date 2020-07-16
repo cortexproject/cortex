@@ -1310,6 +1310,7 @@ func TestIngester_flushing(t *testing.T) {
 		"ingesterShutdown": {
 			setupIngester: func(cfg *Config) {
 				cfg.TSDBConfig.FlushBlocksOnShutdown = true
+				cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown = true
 			},
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
 				pushSingleSample(t, i)
@@ -1330,6 +1331,7 @@ func TestIngester_flushing(t *testing.T) {
 		"shutdownHandler": {
 			setupIngester: func(cfg *Config) {
 				cfg.TSDBConfig.FlushBlocksOnShutdown = false
+				cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown = true
 			},
 
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
@@ -1398,6 +1400,61 @@ func TestIngester_flushing(t *testing.T) {
 			tc.action(t, i, m)
 		})
 	}
+}
+
+func TestIngester_ForFlush(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.TSDBConfig.ShipConcurrency = 1
+	cfg.TSDBConfig.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// mock user's shipper
+	m := mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Push some data.
+	pushSingleSample(t, i)
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Nothing shipped yet.
+	m.AssertNumberOfCalls(t, "Sync", 0)
+
+	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
+	i, err = NewV2ForFlusher(i.cfg, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	m = mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Our single sample should be reloaded from WAL
+	verifyCompactedHead(t, i, false)
+	i.Flush()
+
+	// Head should be empty after flushing.
+	verifyCompactedHead(t, i, true)
+
+	// Verify that block has been shipped.
+	m.AssertNumberOfCalls(t, "Sync", 1)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
 }
 
 func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
@@ -1676,4 +1733,37 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	dur := time.Duration(h.MaxTime()-h.MinTime()) * time.Millisecond
 	require.True(t, dur <= 2*time.Hour)
 	require.Equal(t, 11, len(db.Blocks()))
+}
+
+func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some data.
+	pushSingleSample(t, i)
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Verify that DB is no longer in memory, but was closed
+	db = i.getTSDB(userID)
+	require.Nil(t, db)
 }

@@ -818,7 +818,8 @@ ruler_client:
 [poll_interval: <duration> | default = 1m]
 
 storage:
-  # Method to use for backend rule storage (configdb, azure, gcs, s3)
+  # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
+  # local)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = "configdb"]
 
@@ -845,7 +846,7 @@ storage:
     # CLI flag: -ruler.storage.azure.download-buffer-size
     [download_buffer_size: <int> | default = 512000]
 
-    # Preallocated buffer size for up;oads (default is 256KB)
+    # Preallocated buffer size for uploads (default is 256KB)
     # CLI flag: -ruler.storage.azure.upload-buffer-size
     [upload_buffer_size: <int> | default = 256000]
 
@@ -997,6 +998,11 @@ storage:
     # Name of the Swift container to put chunks in.
     # CLI flag: -ruler.storage.swift.container-name
     [container_name: <string> | default = "cortex"]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
+    [directory: <string> | default = ""]
 
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path
@@ -1723,7 +1729,7 @@ azure:
   # CLI flag: -azure.download-buffer-size
   [download_buffer_size: <int> | default = 512000]
 
-  # Preallocated buffer size for up;oads (default is 256KB)
+  # Preallocated buffer size for uploads (default is 256KB)
   # CLI flag: -azure.upload-buffer-size
   [upload_buffer_size: <int> | default = 256000]
 
@@ -2132,17 +2138,23 @@ grpc_store:
 The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
 
 ```yaml
-# Directory to read WAL from.
+# Directory to read WAL from (chunks storage engine only).
 # CLI flag: -flusher.wal-dir
 [wal_dir: <string> | default = "wal"]
 
-# Number of concurrent goroutines flushing to dynamodb.
+# Number of concurrent goroutines flushing to storage (chunks storage engine
+# only).
 # CLI flag: -flusher.concurrent-flushes
 [concurrent_flushes: <int> | default = 50]
 
-# Timeout for individual flush operations.
+# Timeout for individual flush operations (chunks storage engine only).
 # CLI flag: -flusher.flush-op-timeout
 [flush_op_timeout: <duration> | default = 2m]
+
+# Stop Cortex after flush has finished. If false, Cortex process will keep
+# running, doing nothing.
+# CLI flag: -flusher.exit-after-flush
+[exit_after_flush: <boolean> | default = true]
 ```
 
 ### `chunk_store_config`

@@ -76,4 +76,14 @@ storage:
 #  to max_concurrent on the queriers.
 frontend_worker:
   match_max_concurrent: true
+
+# Configure the ruler to scan the /tmp/cortex/rules directory for prometheus
+# rules: https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules
+ruler:
+  enable_api: true
+  enable_sharding: false
+  storage:
+    type: local
+    local:
+      directory: /tmp/cortex/rules
 ```

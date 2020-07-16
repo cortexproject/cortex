@@ -3,6 +3,7 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,4 +94,44 @@ func TestRulerAPI(t *testing.T) {
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Ruler, ruler)
+}
+
+func TestRulerAPISingleBinary(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	namespace := "ns"
+	user := "fake"
+
+	configOverrides := map[string]string{
+		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler.poll-interval":           "2s",
+	}
+
+	// Start Cortex components.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerUserConfigYaml)))
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Create a client with the ruler address configured
+	c, err := e2ecortex.NewClient("", "", "", cortex.HTTPEndpoint(), "")
+	require.NoError(t, err)
+
+	// Wait until the user manager is created
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+
+	// Check to ensure the rules running in the cortex match what was set
+	rgs, err := c.GetRuleGroups()
+	require.NoError(t, err)
+
+	retrievedNamespace, exists := rgs[namespace]
+	require.True(t, exists)
+	require.Len(t, retrievedNamespace, 1)
+	require.Equal(t, retrievedNamespace[0].Name, "rule")
+
+	// Check to make sure prometheus engine metrics are available for both engine types
+	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "querier"}))
+	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "ruler"}))
 }

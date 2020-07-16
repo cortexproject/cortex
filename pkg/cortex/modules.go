@@ -267,13 +267,17 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, l
 	}
 }
 
+func (t *Cortex) tsdbIngesterConfig() {
+	t.Cfg.Ingester.TSDBEnabled = t.Cfg.Storage.Engine == storage.StorageEngineTSDB
+	t.Cfg.Ingester.TSDBConfig = t.Cfg.TSDB
+}
+
 func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ingester.TSDBEnabled = t.Cfg.Storage.Engine == storage.StorageEngineTSDB
-	t.Cfg.Ingester.TSDBConfig = t.Cfg.TSDB
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
+	t.tsdbIngesterConfig()
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -286,10 +290,11 @@ func (t *Cortex) initIngester() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initFlusher() (serv services.Service, err error) {
+	t.tsdbIngesterConfig()
+
 	t.Flusher, err = flusher.New(
 		t.Cfg.Flusher,
 		t.Cfg.Ingester,
-		t.Cfg.IngesterClient,
 		t.Store,
 		prometheus.DefaultRegisterer,
 	)

@@ -818,7 +818,8 @@ ruler_client:
 [poll_interval: <duration> | default = 1m]
 
 storage:
-  # Method to use for backend rule storage (configdb, azure, gcs, s3)
+  # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
+  # local)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = "configdb"]
 
@@ -997,6 +998,11 @@ storage:
     # Name of the Swift container to put chunks in.
     # CLI flag: -ruler.storage.swift.container-name
     [container_name: <string> | default = "cortex"]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
+    [directory: <string> | default = ""]
 
 # file path to store temporary rule files for the prometheus rule managers
 # CLI flag: -ruler.rule-path

@@ -45,6 +45,18 @@ const (
 receivers:
   - name: "example_receiver"
 `
+
+	cortexRulerUserConfigYaml = `groups:
+- name: rule
+  interval: 100s
+  rules:
+  - record: test_rule
+    alert: ""
+    expr: up
+    for: 0s
+    labels: {}
+    annotations: {}	
+`
 )
 
 var (

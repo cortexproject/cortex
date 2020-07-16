@@ -169,7 +169,8 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
-	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
 
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
@@ -454,9 +455,19 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 }
 
 func (t *Cortex) initRuler() (serv services.Service, err error) {
+	// if the ruler is not configured and we're in single binary then let's just log an error and continue
+	// unfortunately there is no way to generate a "default" config and compare default against actual
+	// to determine if it's unconfigured.  the following check, however, correctly tests this.
+	// Single binary integration tests will break if this ever drifts
+	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.Type == "configdb" && t.Cfg.Ruler.StoreConfig.ConfigDB.ConfigsAPIURL.URL == nil {
+		level.Info(util.Logger).Log("msg", "Ruler is not configured in single binary mode and will not be started.")
+		return nil, nil
+	}
+
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
 	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -602,7 +613,7 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:      {API},
 		StoreGateway:   {API},
 		Purger:         {Store, DeleteRequestsStore, API},
-		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway},
+		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

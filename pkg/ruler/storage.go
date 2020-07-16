@@ -53,6 +53,11 @@ func (cfg *RuleStoreConfig) Validate() error {
 	return nil
 }
 
+// IsDefaults returns true if the storage options have not been set
+func (cfg *RuleStoreConfig) IsDefaults() bool {
+	return cfg.Type == "configdb" && cfg.ConfigDB.ConfigsAPIURL.URL == nil
+}
+
 // NewRuleStorage returns a new rule storage backend poller and store
 func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 	if cfg.mock != nil {

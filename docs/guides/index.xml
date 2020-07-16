@@ -7,7 +7,17 @@
 &lt;/code>&lt;/pre>&lt;p>In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p>
 &lt;pre>&lt;code> -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
 &lt;/code>&lt;/pre>&lt;p>The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p>
-&lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+&lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p>
+&lt;h2 id="ruler-storage">Ruler Storage&lt;/h2>
+&lt;p>The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local). Most kinds of storage work with the sharded ruler configuration in an obvious way. i.e. configure all rulers to use the same backend.&lt;/p>
+&lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through &lt;a href="https://cortexmetrics.io/docs/apis/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
+&lt;p>A typical local config may look something like:&lt;/p>
+&lt;pre>&lt;code> -ruler.storage.type=local
+-ruler.storage.local.directory=/tmp/cortex/rules
+&lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
+&lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
+/rules2.yaml
+&lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p>
 &lt;h2 id="configuration">Configuration&lt;/h2>
 &lt;p>Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes within the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code>ingester.availability-zone&lt;/code> flag or using the yaml configuration:&lt;/p>

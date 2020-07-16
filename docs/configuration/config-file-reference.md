@@ -845,7 +845,7 @@ storage:
     # CLI flag: -ruler.storage.azure.download-buffer-size
     [download_buffer_size: <int> | default = 512000]
 
-    # Preallocated buffer size for up;oads (default is 256KB)
+    # Preallocated buffer size for uploads (default is 256KB)
     # CLI flag: -ruler.storage.azure.upload-buffer-size
     [upload_buffer_size: <int> | default = 256000]
 
@@ -1723,7 +1723,7 @@ azure:
   # CLI flag: -azure.download-buffer-size
   [download_buffer_size: <int> | default = 512000]
 
-  # Preallocated buffer size for up;oads (default is 256KB)
+  # Preallocated buffer size for uploads (default is 256KB)
   # CLI flag: -azure.upload-buffer-size
   [upload_buffer_size: <int> | default = 256000]
 

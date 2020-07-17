@@ -1,7 +1,6 @@
 package ruler
 
 import (
-	"gopkg.in/yaml.v3"
 	"net/url"
 	"os"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -22,14 +22,36 @@ var (
 	fileOnePath = "/rules/user1/" + fileOneEncoded
 	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
+	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
+	specialCharFileEncoded = url.PathEscape(specialCharFile)
+	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
+
+	initialRuleSet           map[string][]rulefmt.RuleGroup
+	outOfOrderRuleSet        map[string][]rulefmt.RuleGroup
+	updatedRuleSet           map[string][]rulefmt.RuleGroup
+	twoFilesRuleSet          map[string][]rulefmt.RuleGroup
+	twoFilesUpdatedRuleSet   map[string][]rulefmt.RuleGroup
+	twoFilesDeletedRuleSet   map[string][]rulefmt.RuleGroup
+	specialCharactersRuleSet map[string][]rulefmt.RuleGroup
+)
+
+func setupRuleSets() {
+	recordNode := yaml.Node{}
+	recordNode.SetString("example_rule")
+	exprNode := yaml.Node{}
+	exprNode.SetString("example_expr")
+	recordNodeUpdated := yaml.Node{}
+	recordNodeUpdated.SetString("example_ruleupdated")
+	exprNodeUpdated := yaml.Node{}
+	exprNodeUpdated.SetString("example_exprupdated")
 	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
@@ -37,22 +59,21 @@ var (
 				Name: "rulegroup_two",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-
 	outOfOrderRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_two",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
@@ -60,22 +81,21 @@ var (
 				Name: "rulegroup_one",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-
 	updatedRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
@@ -83,8 +103,8 @@ var (
 				Name: "rulegroup_two",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
@@ -92,18 +112,120 @@ var (
 				Name: "rulegroup_three",
 				Rules: []rulefmt.RuleNode{
 					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-)
+	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+		"file /two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+		"file /two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNodeUpdated,
+						Expr:   exprNodeUpdated,
+					},
+				},
+			},
+		},
+	}
+	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+	specialCharactersRuleSet = map[string][]rulefmt.RuleGroup{
+		specialCharFile: {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+}
 
 func Test_mapper_MapRules(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),
@@ -157,102 +279,10 @@ func Test_mapper_MapRules(t *testing.T) {
 	})
 }
 
-var (
-	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-		},
-		"file /two": {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-		},
-	}
-
-	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-		},
-		"file /two": {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_ruleupdated"},
-						Expr:   yaml.Node{Value: "example_exprupdated"},
-					},
-				},
-			},
-		},
-	}
-
-	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-		},
-	}
-)
-
 func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),
@@ -320,29 +350,10 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 
 }
 
-var (
-	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
-	specialCharFileEncoded = url.PathEscape(specialCharFile)
-	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
-
-	specialCharactersRuleSet = map[string][]rulefmt.RuleGroup{
-		specialCharFile: {
-			{
-				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
-					{
-						Record: yaml.Node{Value: "example_rule"},
-						Expr:   yaml.Node{Value: "example_expr"},
-					},
-				},
-			},
-		},
-	}
-)
-
 func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),

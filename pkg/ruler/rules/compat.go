@@ -1,12 +1,12 @@
 package rules
 
 import (
-	"gopkg.in/yaml.v3"
 	time "time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )

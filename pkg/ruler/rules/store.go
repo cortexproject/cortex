@@ -6,8 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 var (

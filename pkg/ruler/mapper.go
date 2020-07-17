@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // mapper is designed to enusre the provided rule sets are identical
@@ -93,7 +93,7 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 	rgs := rulefmt.RuleGroups{Groups: groups}
 
 	d, err := yaml.Marshal(&rgs)
-	level.Info(m.logger).Log("msg", "printing rulegroups before mapping to file", "rulegroups", d)
+	level.Info(m.logger).Log("msg", "printing rulegroups before mapping to file", "rulegroups", d, "number of groups", len(groups))
 	if err != nil {
 		return false, err
 	}

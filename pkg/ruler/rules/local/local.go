@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
@@ -118,11 +118,6 @@ func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, user
 	rulegroups, allErrors := rulefmt.ParseFile(filename)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
-	}
-
-	allErrors = rulegroups.Validate()
-	if len(allErrors) > 0 {
-		return nil, errors.Wrapf(allErrors[0], "error validating %s", filename)
 	}
 
 	var list rules.RuleGroupList

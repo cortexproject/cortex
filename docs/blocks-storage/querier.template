@@ -50,7 +50,7 @@ The querier supports the following caches:
 
 - [Metadata cache](#metadata-cache)
 
-Caching is optional, but **highly recommended** in a production environment. Please check out also the [production tips](./production-tips.md#caching) for more information about to properly configure caching.
+Caching is optional, but **highly recommended** in a production environment. Please also check out the [production tips](./production-tips.md#caching) for more information about configuring the cache.
 
 ### Metadata cache
 

@@ -63,6 +63,6 @@ The compactor generally needs a lot of disk space in order to download source bl
 
 ### Ensure memcached is properly scaled
 
-The rule of thumb to ensure memcached is probably scaled is to make sure evictions happen infrequently. When that's not the case and they affect query performances, the suggestion is to scale out the memcached cluster adding more nodes or increasing the memory limit of existing ones.
+The rule of thumb to ensure memcached is properly scaled is to make sure evictions happen infrequently. When that's not the case and they affect query performances, the suggestion is to scale out the memcached cluster adding more nodes or increasing the memory limit of existing ones.
 
 We also recommend to run a different memcached cluster for each cache type (metadata, index, chunks). It's not required, but suggested to not worry about the effect of memory pressure on a cache type against others.

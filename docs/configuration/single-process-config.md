@@ -13,8 +13,8 @@ and development.
 ```yaml
 
 # Configuration for running Cortex in single-process mode.
-# This should not be used in production.  It is only for getting started
-# and development.
+# This configuration should not be used in production.
+# It is only for getting started and development.
 
 # Disable the requirement that every request to Cortex has a
 # X-Scope-OrgID header. `fake` will be substituted in instead.

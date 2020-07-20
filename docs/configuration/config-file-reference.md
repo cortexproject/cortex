@@ -1921,7 +1921,7 @@ cassandra:
   # plain text in the table `WITH` like this, "CREATE TABLE
   # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
   # see https://cortexmetrics.io/docs/production/cassandra. By default it will
-  # use default table options of your Cassandra.
+  # use the default table options of your Cassandra cluster.
   # CLI flag: -cassandra.table-options
   [table_options: <string> | default = ""]
 

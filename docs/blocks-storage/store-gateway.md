@@ -23,7 +23,7 @@ _For more information about the index-header, please refer to [Binary index-head
 
 ## Blocks sharding and replication
 
-The store-gateway optionally supports blocks sharding. Sharing can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
+The store-gateway optionally supports blocks sharding. Sharding can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
 
 When sharding is enabled, store-gateway instances builds an [hash ring](../architecture.md#the-hash-ring) and blocks get sharded and replicated across the pool of store-gateway instances registered within the ring.
 
@@ -51,7 +51,7 @@ The store-gateway supports the following caches:
 - [Chunks cache](#chunks-cache)
 - [Metadata cache](#metadata-cache)
 
-Caching is optional, but **highly recommended** in a production environment. Please check out also the [production tips](./production-tips.md#caching) for more information about to properly configure caching.
+Caching is optional, but **highly recommended** in a production environment. Please also check out the [production tips](./production-tips.md#caching) for more information about configuring the cache.
 
 ### Index cache
 

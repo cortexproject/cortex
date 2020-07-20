@@ -7,7 +7,7 @@ slug: schema-configuration
 
 Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.
 
-Currently there are 9 schemas that are used in production but we recommend running with `v9` schema when possible. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.
+Currently there are 11 schemas that are used in production but we recommend running with `v10` schema when possible. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.
 
 You can configure the schemas using a YAML config file, that you can point to using the `-schema-config-file` flag. It has the following YAML spec:
 
@@ -23,7 +23,7 @@ from: <string>
 store: <string>
 # The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
 object_store: <string>
-# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9.
+# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v10.
 schema: <string>
 index: <periodic_table_config>
 chunks: <periodic_table_config>
@@ -43,7 +43,7 @@ Now an example of this file (also something recommended when starting out) is:
 ```
 configs:
   - from: "2020-03-01" # Or typically a week before the Cortex cluster was created.
-    schema: v9
+    schema: v10
     index:
       period: 1w
       prefix: cortex_index_

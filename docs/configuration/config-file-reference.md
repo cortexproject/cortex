@@ -829,8 +829,8 @@ storage:
   [configdb: <configstore_config>]
 
   azure:
-    # Name of the blob container used to store chunks. Defaults to `cortex`.
-    # This container must be created before running cortex.
+    # Name of the blob container used to store chunks. This container must be
+    # created before running cortex.
     # CLI flag: -ruler.storage.azure.container-name
     [container_name: <string> | default = "cortex"]
 
@@ -842,20 +842,19 @@ storage:
     # CLI flag: -ruler.storage.azure.account-key
     [account_key: <string> | default = ""]
 
-    # Preallocated buffer size for downloads (default is 512KB)
+    # Preallocated buffer size for downloads.
     # CLI flag: -ruler.storage.azure.download-buffer-size
     [download_buffer_size: <int> | default = 512000]
 
-    # Preallocated buffer size for uploads (default is 256KB)
+    # Preallocated buffer size for uploads.
     # CLI flag: -ruler.storage.azure.upload-buffer-size
     [upload_buffer_size: <int> | default = 256000]
 
-    # Number of buffers used to used to upload a chunk. (defaults to 1)
+    # Number of buffers used to used to upload a chunk.
     # CLI flag: -ruler.storage.azure.download-buffer-count
     [upload_buffer_count: <int> | default = 1]
 
-    # Timeout for requests made against azure blob storage. Defaults to 30
-    # seconds.
+    # Timeout for requests made against azure blob storage.
     # CLI flag: -ruler.storage.azure.request-timeout
     [request_timeout: <duration> | default = 30s]
 
@@ -1712,8 +1711,8 @@ aws:
     [insecure_skip_verify: <boolean> | default = false]
 
 azure:
-  # Name of the blob container used to store chunks. Defaults to `cortex`. This
-  # container must be created before running cortex.
+  # Name of the blob container used to store chunks. This container must be
+  # created before running cortex.
   # CLI flag: -azure.container-name
   [container_name: <string> | default = "cortex"]
 
@@ -1725,20 +1724,19 @@ azure:
   # CLI flag: -azure.account-key
   [account_key: <string> | default = ""]
 
-  # Preallocated buffer size for downloads (default is 512KB)
+  # Preallocated buffer size for downloads.
   # CLI flag: -azure.download-buffer-size
   [download_buffer_size: <int> | default = 512000]
 
-  # Preallocated buffer size for uploads (default is 256KB)
+  # Preallocated buffer size for uploads.
   # CLI flag: -azure.upload-buffer-size
   [upload_buffer_size: <int> | default = 256000]
 
-  # Number of buffers used to used to upload a chunk. (defaults to 1)
+  # Number of buffers used to used to upload a chunk.
   # CLI flag: -azure.download-buffer-count
   [upload_buffer_count: <int> | default = 1]
 
-  # Timeout for requests made against azure blob storage. Defaults to 30
-  # seconds.
+  # Timeout for requests made against azure blob storage.
   # CLI flag: -azure.request-timeout
   [request_timeout: <duration> | default = 30s]
 
@@ -1894,19 +1892,20 @@ cassandra:
   # CLI flag: -cassandra.reconnent-interval
   [reconnect_interval: <duration> | default = 1s]
 
-  # Number of retries to perform on a request. (Default is 0: no retries)
+  # Number of retries to perform on a request. Set to 0 to disable retries.
   # CLI flag: -cassandra.max-retries
   [max_retries: <int> | default = 0]
 
-  # Maximum time to wait before retrying a failed request. (Default = 10s)
+  # Maximum time to wait before retrying a failed request.
   # CLI flag: -cassandra.retry-max-backoff
   [retry_max_backoff: <duration> | default = 10s]
 
-  # Minimum time to wait before retrying a failed request. (Default = 100ms)
+  # Minimum time to wait before retrying a failed request.
   # CLI flag: -cassandra.retry-min-backoff
   [retry_min_backoff: <duration> | default = 100ms]
 
-  # Limit number of concurrent queries to Cassandra. (Default is 0: no limit)
+  # Limit number of concurrent queries to Cassandra. Set to 0 to disable the
+  # limit.
   # CLI flag: -cassandra.query-concurrency
   [query_concurrency: <int> | default = 0]
 
@@ -1921,8 +1920,8 @@ cassandra:
   # Table options used to create index or chunk tables. This value is used as
   # plain text in the table `WITH` like this, "CREATE TABLE
   # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
-  # see https://cortexmetrics.io/docs/production/cassandra. (Default = "": use
-  # default table options of your Cassandra)
+  # see https://cortexmetrics.io/docs/production/cassandra. By default it will
+  # use the default table options of your Cassandra cluster.
   # CLI flag: -cassandra.table-options
   [table_options: <string> | default = ""]
 
@@ -3207,7 +3206,7 @@ bucket_store:
   # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
   # blocks that are marked for deletion with some delay. This ensures store can
   # still serve blocks that are meant to be deleted but do not have a
-  # replacement yet.Default is 6h, half of the default value for
+  # replacement yet. Default is 6h, half of the default value for
   # -compactor.deletion-delay.
   # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
   [ignore_deletion_mark_delay: <duration> | default = 6h]

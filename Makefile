@@ -182,6 +182,7 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/store-gateway.template        > ./docs/blocks-storage/store-gateway.md
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
+	embedmd -w docs/configuration/single-process-config.md
 
 endif
 
@@ -216,7 +217,7 @@ clean-doc:
 		./docs/blocks-storage/querier.md
 
 check-doc: doc
-	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md
 
 clean-white-noise:
 	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \

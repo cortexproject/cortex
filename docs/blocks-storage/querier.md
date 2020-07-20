@@ -50,7 +50,7 @@ The querier supports the following caches:
 
 - [Metadata cache](#metadata-cache)
 
-Caching is optional, but **highly recommended** in a production environment.
+Caching is optional, but **highly recommended** in a production environment. Please also check out the [production tips](./production-tips.md#caching) for more information about configuring the cache.
 
 ### Metadata cache
 
@@ -442,7 +442,7 @@ tsdb:
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
     # ignore blocks that are marked for deletion with some delay. This ensures
     # store can still serve blocks that are meant to be deleted but do not have
-    # a replacement yet.Default is 6h, half of the default value for
+    # a replacement yet. Default is 6h, half of the default value for
     # -compactor.deletion-delay.
     # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
     [ignore_deletion_mark_delay: <duration> | default = 6h]

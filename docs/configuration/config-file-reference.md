@@ -2321,9 +2321,9 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.worker-match-max-concurrent
 [match_max_concurrent: <boolean> | default = false]
 
-# How often to query DNS.
+# [DEPRECATED] How often to query DNS. This flag is ignored.
 # CLI flag: -querier.dns-lookup-period
-[dns_lookup_duration: <duration> | default = 10s]
+[dns_lookup_duration: <duration> | default = 0s]
 
 grpc_client_config:
   # gRPC client max receive message size (bytes).

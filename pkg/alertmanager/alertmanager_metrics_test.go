@@ -13,7 +13,6 @@ import (
 
 var integrations = []string{
 	"email",
-	"hipchat",
 	"pagerduty",
 	"wechat",
 	"pushover",

@@ -87,4 +87,12 @@ The absolute path of the Cortex repository local checkout (defaults to &lt;code>
 &lt;h3 id="the-requires_docker-tag">The &lt;code>requires_docker&lt;/code> tag&lt;/h3>
 &lt;p>Integration tests have &lt;code>requires_docker&lt;/code> tag (&lt;code>// +build requires_docker&lt;/code> line followed by empty line on top of Go files), to avoid running them unintentionally as they require Docker, e.g. by running &lt;code>go test ./...&lt;/code> in main Cortex package.&lt;/p>
 &lt;h2 id="isolation">Isolation&lt;/h2>
-&lt;p>Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p></description></item></channel></rss>
+&lt;p>Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p></description></item><item><title>Docs: How to update the build image</title><link>/docs/contributing/how-to-update-the-build-image/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-update-the-build-image/</guid><description>
+&lt;p>The build image currently can only be updated by a Cortex maintainer. If you&amp;rsquo;re not a maintainer you can still open a PR with the changes, asking a maintainer to assist you publishing the updated image. The procedure is:&lt;/p>
+&lt;ol>
+&lt;li>Update &lt;code>build-image/Docker&lt;/code>&lt;/li>
+&lt;li>Build the image running &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
+&lt;li>Publish the image to the repository running &lt;code>docker push quay.io/cortexproject/build-image:TAG&lt;/code> (this can only be done by a maintainer)&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.circleci/config.yml&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
+&lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
+&lt;/ol></description></item></channel></rss>

@@ -6,31 +6,13 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 )
 
-var (
-	requestDuration = instr.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "cache_request_duration_seconds",
-		Help:      "Total time spent in seconds doing cache requests.",
-		// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
-		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code"}))
-
-	fetchedKeys = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "cache_fetched_keys",
-		Help:      "Total count of keys requested from cache.",
-	}, []string{"name"})
-
-	hits = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "cache_hits",
-		Help:      "Total count of keys found in cache.",
-	}, []string{"name"})
-
-	valueSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+// Instrument returns an instrumented cache.
+func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
+	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "cache_value_size_bytes",
 		Help:      "Size of values in the cache.",
@@ -39,23 +21,33 @@ var (
 		// 1024 * 4^(7-1) = 4MB
 		Buckets: prometheus.ExponentialBuckets(1024, 4, 7),
 	}, []string{"name", "method"})
-)
 
-func init() {
-	requestDuration.Register()
-	prometheus.MustRegister(fetchedKeys)
-	prometheus.MustRegister(hits)
-	prometheus.MustRegister(valueSize)
-}
+	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "cache_request_duration_seconds",
+		Help:      "Total time spent in seconds doing cache requests.",
+		// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
+		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
+	}, []string{"method", "status_code"})
 
-// Instrument returns an instrumented cache.
-func Instrument(name string, cache Cache) Cache {
 	return &instrumentedCache{
 		name:  name,
 		Cache: cache,
 
-		fetchedKeys:      fetchedKeys.WithLabelValues(name),
-		hits:             hits.WithLabelValues(name),
+		requestDuration: instr.NewHistogramCollector(requestDuration),
+
+		fetchedKeys: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "cache_fetched_keys",
+			Help:      "Total count of keys requested from cache.",
+		}, []string{"name"}).WithLabelValues(name),
+
+		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "cache_hits",
+			Help:      "Total count of keys found in cache.",
+		}, []string{"name"}).WithLabelValues(name),
+
 		storedValueSize:  valueSize.WithLabelValues(name, "store"),
 		fetchedValueSize: valueSize.WithLabelValues(name, "fetch"),
 	}
@@ -67,6 +59,7 @@ type instrumentedCache struct {
 
 	fetchedKeys, hits                 prometheus.Counter
 	storedValueSize, fetchedValueSize prometheus.Observer
+	requestDuration                   *instr.HistogramCollector
 }
 
 func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
@@ -75,7 +68,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	}
 
 	method := i.name + ".store"
-	_ = instr.CollectedRequest(ctx, method, requestDuration, instr.ErrorCode, func(ctx context.Context) error {
+	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
 		i.Cache.Store(ctx, keys, bufs)
@@ -91,7 +84,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		method  = i.name + ".fetch"
 	)
 
-	_ = instr.CollectedRequest(ctx, method, requestDuration, instr.ErrorCode, func(ctx context.Context) error {
+	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 

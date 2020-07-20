@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/dustin/go-humanize"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,64 +17,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-)
-
-var (
-	cacheEntriesAdded = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "added_total",
-		Help:      "The total number of Put calls on the cache",
-	}, []string{"cache"})
-
-	cacheEntriesAddedNew = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "added_new_total",
-		Help:      "The total number of new entries added to the cache",
-	}, []string{"cache"})
-
-	cacheEntriesEvicted = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "evicted_total",
-		Help:      "The total number of evicted entries",
-	}, []string{"cache"})
-
-	cacheEntriesCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "entries",
-		Help:      "The total number of entries",
-	}, []string{"cache"})
-
-	cacheTotalGets = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "gets_total",
-		Help:      "The total number of Get calls",
-	}, []string{"cache"})
-
-	cacheTotalMisses = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "misses_total",
-		Help:      "The total number of Get calls that had no valid entry",
-	}, []string{"cache"})
-
-	cacheStaleGets = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "stale_gets_total",
-		Help:      "The total number of Get calls that had an entry which expired",
-	}, []string{"cache"})
-
-	cacheMemoryBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "querier",
-		Subsystem: "cache",
-		Name:      "memory_bytes",
-		Help:      "The current cache size in bytes",
-	}, []string{"cache"})
 )
 
 const (
@@ -149,20 +92,19 @@ type cacheEntry struct {
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
-// TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
-func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
+func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
 	util.WarnExperimentalUse("In-memory (FIFO) cache")
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
 		cfg.MaxSizeItems = cfg.DeprecatedSize
 	}
 	maxSizeBytes, _ := parsebytes(cfg.MaxSizeBytes)
 
 	if maxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
 		// zero cache capacity - no need to create cache
-		level.Warn(util.Logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
+		level.Warn(logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
 		return nil
 	}
 	return &FifoCache{
@@ -173,14 +115,61 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		lru:          list.New(),
 
 		// TODO(bwplotka): There might be simple cache.Cache wrapper for those.
-		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
-		entriesAddedNew: cacheEntriesAddedNew.WithLabelValues(name),
-		entriesEvicted:  cacheEntriesEvicted.WithLabelValues(name),
-		entriesCurrent:  cacheEntriesCurrent.WithLabelValues(name),
-		totalGets:       cacheTotalGets.WithLabelValues(name),
-		totalMisses:     cacheTotalMisses.WithLabelValues(name),
-		staleGets:       cacheStaleGets.WithLabelValues(name),
-		memoryBytes:     cacheMemoryBytes.WithLabelValues(name),
+		entriesAdded: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "added_total",
+			Help:      "The total number of Put calls on the cache",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		entriesAddedNew: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "added_new_total",
+			Help:      "The total number of new entries added to the cache",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "evicted_total",
+			Help:      "The total number of evicted entries",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		entriesCurrent: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "entries",
+			Help:      "The total number of entries",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		totalGets: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "gets_total",
+			Help:      "The total number of Get calls",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		totalMisses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "misses_total",
+			Help:      "The total number of Get calls that had no valid entry",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		staleGets: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "stale_gets_total",
+			Help:      "The total number of Get calls that had an entry which expired",
+		}, []string{"cache"}).WithLabelValues(name),
+
+		memoryBytes: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "querier",
+			Subsystem: "cache",
+			Name:      "memory_bytes",
+			Help:      "The current cache size in bytes",
+		}, []string{"cache"}).WithLabelValues(name),
 	}
 }
 

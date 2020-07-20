@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gogo/protobuf/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -379,6 +380,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
+		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -409,7 +411,16 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimitsHighMaxCacheFreshness{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		constSplitter(day),
+		fakeLimitsHighMaxCacheFreshness{},
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		prometheus.NewRegistry(),
+	)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -476,6 +487,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,
+				prometheus.NewRegistry(),
 			)
 			require.NoError(t, err)
 
@@ -511,6 +523,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
+		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
 	rc := rm.Wrap(nil).(*resultsCache)

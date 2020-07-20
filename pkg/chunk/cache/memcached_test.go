@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -15,7 +17,8 @@ import (
 func TestMemcached(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
 		client := newMockMemcache()
-		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client, "test")
+		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client,
+			"test", prometheus.NewRegistry(), log.NewNopLogger())
 
 		testMemcache(t, memcache)
 	})
@@ -25,7 +28,7 @@ func TestMemcached(t *testing.T) {
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
-		}, client, "test")
+		}, client, "test", prometheus.NewRegistry(), log.NewNopLogger())
 
 		testMemcache(t, memcache)
 	})
@@ -90,7 +93,8 @@ func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item
 func TestMemcacheFailure(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
 		client := newMockMemcacheFailing()
-		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client, "test")
+		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client,
+			"test", prometheus.NewRegistry(), log.NewNopLogger())
 
 		testMemcacheFailing(t, memcache)
 	})
@@ -100,7 +104,7 @@ func TestMemcacheFailure(t *testing.T) {
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
-		}, client, "test")
+		}, client, "test", prometheus.NewRegistry(), log.NewNopLogger())
 
 		testMemcacheFailing(t, memcache)
 	})

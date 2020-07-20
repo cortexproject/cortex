@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -117,19 +118,20 @@ func (cfg *Config) Validate() error {
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
 	chunkMetrics := newChunkClientMetrics(reg)
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	logger := log.NewNopLogger()
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg)
+	chunksCache, err := cache.New(chunkCacheCfg, reg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +162,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {

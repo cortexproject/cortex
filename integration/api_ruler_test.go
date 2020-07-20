@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 )
 
 func TestRulerAPI(t *testing.T) {
@@ -19,17 +20,21 @@ func TestRulerAPI(t *testing.T) {
 		namespaceOne = "test_/encoded_+namespace/?"
 		namespaceTwo = "test_/encoded_+namespace/?/two"
 
-		ruleGroup = rulefmt.RuleGroup{
-			Name:     "test_encoded_+\"+group_name/?",
-			Interval: 100,
-			Rules: []rulefmt.Rule{
-				{
-					Record: "test_rule",
-					Expr:   "up",
-				},
-			},
-		}
+		recordNode = yaml.Node{}
+		exprNode   = yaml.Node{}
 	)
+	recordNode.SetString("test_rule")
+	exprNode.SetString("up")
+	ruleGroup := rulefmt.RuleGroup{
+		Name:     "test_encoded_+\"+group_name/?",
+		Interval: 100,
+		Rules: []rulefmt.RuleNode{
+			{
+				Record: recordNode,
+				Expr:   exprNode,
+			},
+		},
+	}
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

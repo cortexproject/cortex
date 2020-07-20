@@ -7,10 +7,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-
-	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -22,88 +22,210 @@ var (
 	fileOnePath = "/rules/user1/" + fileOneEncoded
 	fileTwoPath = "/rules/user1/" + fileTwoEncoded
 
-	initialRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
+	specialCharFileEncoded = url.PathEscape(specialCharFile)
+	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
+
+	initialRuleSet           map[string][]rulefmt.RuleGroup
+	outOfOrderRuleSet        map[string][]rulefmt.RuleGroup
+	updatedRuleSet           map[string][]rulefmt.RuleGroup
+	twoFilesRuleSet          map[string][]rulefmt.RuleGroup
+	twoFilesUpdatedRuleSet   map[string][]rulefmt.RuleGroup
+	twoFilesDeletedRuleSet   map[string][]rulefmt.RuleGroup
+	specialCharactersRuleSet map[string][]rulefmt.RuleGroup
+)
+
+func setupRuleSets() {
+	recordNode := yaml.Node{}
+	recordNode.SetString("example_rule")
+	exprNode := yaml.Node{}
+	exprNode.SetString("example_expr")
+	recordNodeUpdated := yaml.Node{}
+	recordNodeUpdated.SetString("example_ruleupdated")
+	exprNodeUpdated := yaml.Node{}
+	exprNodeUpdated.SetString("example_exprupdated")
+	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-
-	outOfOrderRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	outOfOrderRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-
-	updatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
+	updatedRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_three",
-				Rules: []legacy_rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "example_rule",
-						Expr:   "example_expr",
+						Record: recordNode,
+						Expr:   exprNode,
 					},
 				},
 			},
 		},
 	}
-)
+	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+		"file /two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+		"file /two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNodeUpdated,
+						Expr:   exprNodeUpdated,
+					},
+				},
+			},
+		},
+	}
+	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file /one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+	specialCharactersRuleSet = map[string][]rulefmt.RuleGroup{
+		specialCharFile: {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: recordNode,
+						Expr:   exprNode,
+					},
+				},
+			},
+		},
+	}
+}
 
 func Test_mapper_MapRules(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),
@@ -157,102 +279,10 @@ func Test_mapper_MapRules(t *testing.T) {
 	})
 }
 
-var (
-	twoFilesRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-		},
-		"file /two": {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-		},
-	}
-
-	twoFilesUpdatedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-		},
-		"file /two": {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_ruleupdated",
-						Expr:   "example_exprupdated",
-					},
-				},
-			},
-		},
-	}
-
-	twoFilesDeletedRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		"file /one": {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-			{
-				Name: "rulegroup_two",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-		},
-	}
-)
-
 func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),
@@ -320,29 +350,10 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 
 }
 
-var (
-	specialCharFile        = "+A_/ReallyStrange<>NAME:SPACE/?"
-	specialCharFileEncoded = url.PathEscape(specialCharFile)
-	specialCharFilePath    = "/rules/user1/" + specialCharFileEncoded
-
-	specialCharactersRuleSet = map[string][]legacy_rulefmt.RuleGroup{
-		specialCharFile: {
-			{
-				Name: "rulegroup_one",
-				Rules: []legacy_rulefmt.Rule{
-					{
-						Record: "example_rule",
-						Expr:   "example_expr",
-					},
-				},
-			},
-		},
-	}
-)
-
 func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
 	m := &mapper{
 		Path:   "/rules",
 		FS:     afero.NewMemMapFs(),
@@ -362,7 +373,7 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 	})
 
 	t.Run("delete special characters rulegroup", func(t *testing.T) {
-		updated, files, err := m.MapRules(testUser, map[string][]legacy_rulefmt.RuleGroup{})
+		updated, files, err := m.MapRules(testUser, map[string][]rulefmt.RuleGroup{})
 		require.NoError(t, err)
 		require.True(t, updated)
 		require.Len(t, files, 0)

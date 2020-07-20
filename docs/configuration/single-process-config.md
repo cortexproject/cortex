@@ -9,7 +9,13 @@ Configuration for running Cortex in single-process mode.
 This should not be used in production.  It is only for getting started
 and development.
 
+[embedmd]:# (./single-process-config.yaml)
 ```yaml
+
+# Configuration for running Cortex in single-process mode.
+# This configuration should not be used in production.
+# It is only for getting started and development.
+
 # Disable the requirement that every request to Cortex has a
 # X-Scope-OrgID header. `fake` will be substituted in instead.
 auth_enabled: false
@@ -35,7 +41,15 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
-  #chunk_idle_period: 15m
+  # We want our ingesters to flush chunks at the same time to optimise
+  # deduplication opportunities.
+  spread_flushes: true
+  chunk_age_jitter: 0
+
+  walconfig:
+    wal_enabled: true
+    recover_from_wal: true
+    wal_dir: /tmp/cortex/wal
 
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by
@@ -44,8 +58,10 @@ ingester:
 
     # We want to start immediately and flush on shutdown.
     join_after: 0
+    min_ready_duration: 0s
     final_sleep: 0s
     num_tokens: 512
+    tokens_file_path: /tmp/cortex/wal/tokens
 
     # Use an in memory ring store, so we don't need to launch a Consul.
     ring:
@@ -72,9 +88,15 @@ storage:
   filesystem:
     directory: /tmp/cortex/chunks
 
-# Configure the frontend worker in the querier to match worker count
-#  to max_concurrent on the queriers.
+  delete_store:
+    store: boltdb
+
+purger:
+  object_store_type: filesystem
+
 frontend_worker:
+  # Configure the frontend worker in the querier to match worker count
+  # to max_concurrent on the queriers.
   match_max_concurrent: true
 
 # Configure the ruler to scan the /tmp/cortex/rules directory for prometheus

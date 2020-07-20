@@ -11,7 +11,7 @@ This page shares some tips and things to take in consideration when setting up a
 
 ### Ensure caching is enabled
 
-The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured.
+The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
 ### Avoid querying non compacted blocks
 
@@ -47,7 +47,7 @@ Given these assumptions, in the worst case scenario it would take up to 6h and 4
 
 ### Ensure caching is enabled
 
-The store-gateway heavily relies on caching both to speed up the queries and to reduce the number of API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured.
+The store-gateway heavily relies on caching both to speed up the queries and to reduce the number of API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
 ### Ensure a high number of max open file descriptors
 
@@ -58,3 +58,11 @@ The store-gateway stores each block’s index-header on the local disk and loads
 ### Ensure the compactor has enough disk space
 
 The compactor generally needs a lot of disk space in order to download source blocks from the bucket and store the compacted block before uploading it to the storage. Please refer to [Compactor disk utilization](./compactor.md#compactor-disk-utilization) for more information about how to do capacity planning.
+
+## Caching
+
+### Ensure memcached is properly scaled
+
+The rule of thumb to ensure memcached is properly scaled is to make sure evictions happen infrequently. When that's not the case and they affect query performances, the suggestion is to scale out the memcached cluster adding more nodes or increasing the memory limit of existing ones.
+
+We also recommend to run a different memcached cluster for each cache type (metadata, index, chunks). It's not required, but suggested to not worry about the effect of memory pressure on a cache type against others.

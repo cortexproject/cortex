@@ -17,13 +17,13 @@ At startup **store-gateways** iterate over the entire storage bucket to discover
 
 While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
 
-The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent local disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
+The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
 _For more information about the index-header, please refer to [Binary index-header documentation](./binary-index-header.md)._
 
 ## Blocks sharding and replication
 
-The store-gateway optionally supports blocks sharding.
+The store-gateway optionally supports blocks sharding. Sharding can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
 
 When sharding is enabled, store-gateway instances builds an [hash ring](../architecture.md#the-hash-ring) and blocks get sharded and replicated across the pool of store-gateway instances registered within the ring.
 
@@ -51,7 +51,7 @@ The store-gateway supports the following caches:
 - [Chunks cache](#chunks-cache)
 - [Metadata cache](#metadata-cache)
 
-Caching is optional, but **highly recommended** in a production environment.
+Caching is optional, but **highly recommended** in a production environment. Please also check out the [production tips](./production-tips.md#caching) for more information about configuring the cache.
 
 ### Index cache
 
@@ -469,7 +469,7 @@ tsdb:
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
     # ignore blocks that are marked for deletion with some delay. This ensures
     # store can still serve blocks that are meant to be deleted but do not have
-    # a replacement yet.Default is 6h, half of the default value for
+    # a replacement yet. Default is 6h, half of the default value for
     # -compactor.deletion-delay.
     # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
     [ignore_deletion_mark_delay: <duration> | default = 6h]

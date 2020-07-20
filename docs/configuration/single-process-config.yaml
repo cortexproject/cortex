@@ -1,7 +1,7 @@
 
 # Configuration for running Cortex in single-process mode.
-# This should not be used in production.  It is only for getting started
-# and development.
+# This configuration should not be used in production.
+# It is only for getting started and development.
 
 # Disable the requirement that every request to Cortex has a
 # X-Scope-OrgID header. `fake` will be substituted in instead.
@@ -66,7 +66,7 @@ schema:
     schema: v10
     index:
       prefix: index_
-      period: 1w 
+      period: 1w
 
 storage:
   boltdb:
@@ -82,8 +82,12 @@ purger:
   object_store_type: filesystem
 
 frontend_worker:
+  # Configure the frontend worker in the querier to match worker count
+  # to max_concurrent on the queriers.
   match_max_concurrent: true
 
+# Configure the ruler to scan the /tmp/cortex/rules directory for prometheus
+# rules: https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules
 ruler:
   enable_api: true
   enable_sharding: false

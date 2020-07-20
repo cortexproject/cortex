@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
@@ -29,10 +29,10 @@ func TestClient_ListAllRuleGroups(t *testing.T) {
 			{
 				Name:     "rule",
 				Interval: model.Duration(100 * time.Second),
-				Rules: []rulefmt.Rule{
+				Rules: []rulefmt.RuleNode{
 					{
-						Record: "test_rule",
-						Expr:   "up",
+						Record: yaml.Node{Kind: yaml.ScalarNode, Value: "test_rule"},
+						Expr:   yaml.Node{Kind: yaml.ScalarNode, Value: "up"},
 					},
 				},
 			},

@@ -58,7 +58,8 @@ func TestRequestMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewS3ObjectClientWithMiddleware(cfg, "/", tt.fn)
+			cfg.Inject = tt.fn
+			client, err := NewS3ObjectClient(cfg, "/")
 			require.NoError(t, err)
 
 			readCloser, err := client.GetObject(context.Background(), "key")

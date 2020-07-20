@@ -56,6 +56,8 @@ type S3Config struct {
 	Insecure        bool       `yaml:"insecure"`
 	SSEEncryption   bool       `yaml:"sse_encryption"`
 	HTTPConfig      HTTPConfig `yaml:"http_config"`
+
+	Inject InjectRequestMiddleware `yaml:"-"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -98,12 +100,7 @@ type S3ObjectClient struct {
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
 func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
-	return NewS3ObjectClientWithMiddleware(cfg, delimiter, nil)
-}
-
-// NewS3ObjectClientWithMiddleware makes a new S3-backed ObjectClient with an option to add request middleware
-func NewS3ObjectClientWithMiddleware(cfg S3Config, delimiter string, injectMiddleware InjectRequestMiddleware) (*S3ObjectClient, error) {
-	s3Config, bucketNames, err := buildS3Config(cfg, injectMiddleware)
+	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
@@ -129,7 +126,7 @@ func NewS3ObjectClientWithMiddleware(cfg S3Config, delimiter string, injectMiddl
 	return &client, nil
 }
 
-func buildS3Config(cfg S3Config, injectMiddleware InjectRequestMiddleware) (*aws.Config, []string, error) {
+func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -190,8 +187,8 @@ func buildS3Config(cfg S3Config, injectMiddleware InjectRequestMiddleware) (*aws
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
 	})
 
-	if injectMiddleware != nil {
-		transport = injectMiddleware(transport)
+	if cfg.Inject != nil {
+		transport = cfg.Inject(transport)
 	}
 
 	s3Config = s3Config.WithHTTPClient(&http.Client{

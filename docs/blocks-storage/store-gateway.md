@@ -509,7 +509,9 @@ tsdb:
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
   s3:
-    # S3 endpoint without schema
+    # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+    # https://docs.aws.amazon.com/general/latest/gr/s3.html or the hostname and
+    # port of an S3-compatible service in the hostname:port format.
     # CLI flag: -experimental.tsdb.s3.endpoint
     [endpoint: <string> | default = ""]
 

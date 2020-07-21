@@ -469,17 +469,8 @@ func (r *Ruler) loadRules(ctx context.Context) {
 		r.syncManager(ctx, user, filteredGroups)
 	}
 
-	// Check for deleted users and remove them
-	r.userManagerMtx.Lock()
-	defer r.userManagerMtx.Unlock()
-	for user, mngr := range r.userManagers {
-		if _, exists := configs[user]; !exists {
-			go mngr.Stop()
-			delete(r.userManagers, user)
-			level.Info(r.logger).Log("msg", "deleting rule manager", "user", user)
-		}
-	}
-
+	// We purposefully leave managers with no config in the map to prevent a duplicate metrics
+	// registration panic: https://github.com/cortexproject/cortex/issues/2907
 }
 
 // syncManager maps the rule files to disk, detects any changes and will create/update the

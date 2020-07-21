@@ -18,6 +18,7 @@
 * [CHANGE] Added ruler to the single binary when started with `-target=all` (default). #2854
 * [CHANGE] Experimental TSDB: compact head when opening TSDB. This should only affect ingester startup after it was unable to compact head in previous run. #2870
 * [CHANGE] Metric `cortex_overrides_last_reload_successful` has been renamed to `cortex_runtime_config_last_reload_successful`. #2874
+* [CHANGE] HipChat support has been removed from the alertmanager (because removed from the Prometheus upstream too). #2902
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783

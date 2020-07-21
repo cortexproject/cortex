@@ -56,6 +56,7 @@ const (
 	Store               string = "store"
 	DeleteRequestsStore string = "delete-requests-store"
 	TableManager        string = "table-manager"
+	RulerStorage        string = "ruler-storage"
 	Ruler               string = "ruler"
 	Configs             string = "configs"
 	AlertManager        string = "alertmanager"
@@ -454,13 +455,24 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	return t.TableManager, err
 }
 
-func (t *Cortex) initRuler() (serv services.Service, err error) {
-	// if the ruler is not configured and we're in single binary then let's just log an error and continue
+func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
+	// if the ruler is not configured and we're in single binary then let's just log an error and continue.
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.Type == "configdb" && t.Cfg.Ruler.StoreConfig.ConfigDB.ConfigsAPIURL.URL == nil {
-		level.Info(util.Logger).Log("msg", "Ruler is not configured in single binary mode and will not be started.")
+	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		return
+	}
+
+	t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig)
+
+	return
+}
+
+func (t *Cortex) initRuler() (serv services.Service, err error) {
+	if t.RulerStorage == nil {
+		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
@@ -469,7 +481,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
-	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
+	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger, t.RulerStorage)
 	if err != nil {
 		return
 	}
@@ -586,6 +598,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
@@ -607,7 +620,7 @@ func (t *Cortex) setupModuleManager() error {
 		StoreQueryable: {Overrides, Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
-		Ruler:          {Overrides, Distributor, Store, StoreQueryable},
+		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
 		Configs:        {API},
 		AlertManager:   {API},
 		Compactor:      {API},

@@ -180,13 +180,8 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	ruleStore, err := NewRuleStorage(cfg.StoreConfig)
 	if err != nil {
 		return nil, err
 	}

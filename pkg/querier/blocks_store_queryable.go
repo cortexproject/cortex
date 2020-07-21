@@ -334,7 +334,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		maxT = util.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
 
 		if origMaxT != maxT {
-			level.Debug(spanLog).Log("msg", "query max time has been manipulated", "original", origMaxT, "updated", maxT)
+			level.Debug(spanLog).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
 		}
 
 		if maxT < minT {

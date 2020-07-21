@@ -7663,13 +7663,16 @@ and development.&lt;/p>
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls
 then you must add an additional layer of protection.&lt;/p>
-&lt;p>Typically this means you run Cortex behind a reverse proxy, and ensure
-that all callers, both machines sending data over the remote_write
+&lt;p>Typically this means you run Cortex behind a reverse proxy, and you must
+ensure that all callers, both machines sending data over the &lt;code>remote_write&lt;/code>
 interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised.&lt;/p>
-&lt;p>When configuring the remote_write API in Prometheus there is no way to
+&lt;p>When configuring the &lt;code>remote_write&lt;/code> API in Prometheus there is no way to
 add extra headers. The user and password fields of http Basic auth, or
-Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
+Bearer token, can be used to convey the tenant ID and/or credentials.&lt;/p>
+&lt;p>To disable the multi-tenant functionality, you can pass the argument
+&lt;code>-auth.enabled=false&lt;/code> to every Cortex component, which will set the OrgID
+to the string &lt;code>fake&lt;/code> for every request.&lt;/p></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
 &lt;p>For the v1.0 release, we want to provide the following guarantees:&lt;/p>
 &lt;h2 id="flags-config-and-minor-version-upgrades">Flags, Config and minor version upgrades&lt;/h2>
 &lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>cortex_deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>

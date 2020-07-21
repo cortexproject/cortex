@@ -57,10 +57,6 @@ tsdb:
 storage:
   engine: tsdb
 
-querier:
-  query_ingesters_within: 3h
-  query_store_after: 2h
-
 ruler:
   enable_api: true
   enable_sharding: true

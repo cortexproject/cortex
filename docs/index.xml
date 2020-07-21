@@ -7774,6 +7774,7 @@ __replica__: replica2
 &lt;li>[CHANGE] Added ruler to the single binary when started with &lt;code>-target=all&lt;/code> (default). &lt;a href="https://github.com/cortexproject/cortex/pull/2854">#2854&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental TSDB: compact head when opening TSDB. This should only affect ingester startup after it was unable to compact head in previous run. &lt;a href="https://github.com/cortexproject/cortex/pull/2870">#2870&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Metric &lt;code>cortex_overrides_last_reload_successful&lt;/code> has been renamed to &lt;code>cortex_runtime_config_last_reload_successful&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2874">#2874&lt;/a>&lt;/li>
+&lt;li>[CHANGE] HipChat support has been removed from the alertmanager (because removed from the Prometheus upstream too). &lt;a href="https://github.com/cortexproject/cortex/pull/2902">#2902&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-outage-tolerance&lt;/code>, Max time to tolerate outage for restoring &amp;ldquo;for&amp;rdquo; state of alert. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-grace-period&lt;/code>, Minimum duration between alert and restored &amp;ldquo;for&amp;rdquo; state. This is maintained only for alerts with configured &amp;ldquo;for&amp;rdquo; time greater than grace period. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.resend-delay&lt;/code>, Minimum amount of time to wait before resending an alert to Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
@@ -7818,7 +7819,7 @@ __replica__: replica2
 &lt;li>&lt;code>s3.http.insecure-skip-verify&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>[ENHANCEMENT] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2798">#2798&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2867">#2867&lt;/a>
+&lt;li>[ENHANCEMENT] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2798">#2798&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2867">#2867&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2902">#2902&lt;/a>
 &lt;ul>
 &lt;li>Optimized labels regex matchers for patterns containing literals (eg. &lt;code>foo.*&lt;/code>, &lt;code>.*foo&lt;/code>, &lt;code>.*foo.*&lt;/code>)&lt;/li>
 &lt;/ul>

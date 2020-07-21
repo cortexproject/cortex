@@ -15,7 +15,7 @@ import (
 // FromResult transforms a promql query result into a samplestream
 func FromResult(res *promql.Result) ([]SampleStream, error) {
 	if res.Err != nil {
-		return nil, res.Err
+		return nil, errors.Cause(res.Err)
 	}
 	switch v := res.Value.(type) {
 	case promql.Scalar:

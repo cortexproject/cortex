@@ -53,6 +53,7 @@ func TestRemoteReadHandler(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 
 	require.Equal(t, 200, recorder.Result().StatusCode)
+	require.Equal(t, []string([]string{"application/x-protobuf"}), recorder.Result().Header["Content-Type"])
 	responseBody, err := ioutil.ReadAll(recorder.Result().Body)
 	require.NoError(t, err)
 	responseBody, err = snappy.Decode(nil, responseBody)

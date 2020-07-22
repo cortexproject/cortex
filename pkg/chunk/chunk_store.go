@@ -132,7 +132,7 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 }
 
 // Stop any background goroutines (ie in the cache.)
-func (c *store) Stop() {
+func (c *baseStore) Stop() {
 	c.storage.Stop()
 	c.Fetcher.Stop()
 	c.index.Stop()

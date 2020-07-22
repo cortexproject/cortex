@@ -77,6 +77,7 @@
 * [BUGFIX] KV: Fixed a bug that triggered a panic due to metrics being registered with the same name but different labels when using a `multi` configured KV client. #2837
 * [BUGFIX] Query-frontend: Fix passing HTTP `Host` header if `-frontend.downstream-url` is configured. #2880
 * [BUGFIX] Ingester: Improve time-series distribution when `-experimental.distributor.user-subring-size` is enabled. #2887
+* [BUGFIX] Set content type to `application/x-protobuf` for remote_read responses. #2915
 
 ## 1.2.0 / 2020-07-01
 

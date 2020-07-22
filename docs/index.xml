@@ -7845,7 +7845,6 @@ __replica__: replica2
 &lt;li>[BUGFIX] KV: Fixed a bug that triggered a panic due to metrics being registered with the same name but different labels when using a &lt;code>multi&lt;/code> configured KV client. &lt;a href="https://github.com/cortexproject/cortex/pull/2837">#2837&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fix passing HTTP &lt;code>Host&lt;/code> header if &lt;code>-frontend.downstream-url&lt;/code> is configured. &lt;a href="https://github.com/cortexproject/cortex/pull/2880">#2880&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Improve time-series distribution when &lt;code>-experimental.distributor.user-subring-size&lt;/code> is enabled. &lt;a href="https://github.com/cortexproject/cortex/pull/2887">#2887&lt;/a>&lt;/li>
-&lt;li>[BUGFIX] Set content type to &lt;code>application/x-protobuf&lt;/code> for remote_read responses. &lt;a href="https://github.com/cortexproject/cortex/pull/2915">#2915&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

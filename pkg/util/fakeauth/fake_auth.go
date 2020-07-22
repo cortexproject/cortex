@@ -29,15 +29,15 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 			},
 		)
 		return middleware.AuthenticateUser
-	} else {
-		config.GRPCMiddleware = append(config.GRPCMiddleware,
-			fakeGRPCAuthUniaryMiddleware,
-		)
-		config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
-			fakeGRPCAuthStreamMiddleware,
-		)
-		return fakeHTTPAuthMiddleware
 	}
+
+	config.GRPCMiddleware = append(config.GRPCMiddleware,
+		fakeGRPCAuthUniaryMiddleware,
+	)
+	config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
+		fakeGRPCAuthStreamMiddleware,
+	)
+	return fakeHTTPAuthMiddleware
 }
 
 var fakeHTTPAuthMiddleware = middleware.Func(func(next http.Handler) http.Handler {

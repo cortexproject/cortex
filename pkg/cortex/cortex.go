@@ -234,10 +234,6 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
-	cortex := &Cortex{
-		Cfg: cfg,
-	}
-
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
 	//
@@ -245,6 +241,11 @@ func New(cfg Config) (*Cortex, error) {
 	// queries for multiple users.
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
 		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+
+	cortex := &Cortex{
+		Cfg: cfg,
+	}
+
 	cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {

@@ -47,6 +47,15 @@ If a bug fix got accidentally merged into master after non-bug-fix changes in ma
 
 Maintaining the release branches for older minor releases happens on a best effort basis.
 
+### Show that a release is in progress
+
+This helps ongoing PRs to get their changes in the right place, and to consider whether they need cherry-picked.
+
+1. Make a PR to update `CHANGELOG.md` on master
+   - Add a new section for the new release so that "## master / unreleased" is blank and at the top.
+   - New section should say "## x.y.0 in progress".
+2. Get this PR reviewed and merged.
+
 ### Prepare your release
 
 For a new major or minor release, create the corresponding release branch based on the master branch. For a patch release, work in the branch of the minor release you want to patch.
@@ -57,8 +66,7 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
    - You can add a GPG key to your GitHub account following [this procedure](https://help.github.com/articles/generating-a-gpg-key/)
 1. Update the version number in the `VERSION` file to say "X.Y-rc.0"
 2. Update `CHANGELOG.md`
-   - Add a new section for the new release with all the changelog entries
-   - Ensure changelog entries are in this order:
+   - Ensure changelog entries for the new release are in this order:
      * `[CHANGE]`
      * `[FEATURE]`
      * `[ENHANCEMENT]`
@@ -75,6 +83,7 @@ Once your PR with release prepartion is approved, merge it to "release-X.Y" bran
 To publish a release candidate:
 
 1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
+1a. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
 2. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
 3. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 3. Create a pre-release in GitHub
@@ -86,6 +95,7 @@ To publish a release candidate:
 To publish a stable release:
 
 1. Ensure the `VERSION` file has **no** `-rc.X` suffix
+2. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
 3. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
 4. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
 5. Create a release in GitHub

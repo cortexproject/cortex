@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -117,6 +118,18 @@ func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors st
 	if !ok {
 		return nil, fmt.Errorf("didn't get matrix from Prom")
 	}
+
+	// sort samples belonging to different series by first timestamp of the batch
+	sort.Slice(ms, func(i, j int) bool {
+		if len(ms[i].Values) == 0 {
+			return true
+		}
+		if len(ms[j].Values) == 0 {
+			return true
+		}
+
+		return ms[i].Values[0].Timestamp.Before(ms[j].Values[0].Timestamp)
+	})
 
 	var result []model.SamplePair
 	for _, stream := range ms {

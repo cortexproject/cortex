@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -29,11 +30,21 @@ var (
 	Revision string
 )
 
+// configHash exposes information about the loaded config
+var configHash *prometheus.GaugeVec = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "cortex_config_hash",
+		Help: "Hash of the currently active config file.",
+	},
+	[]string{"sha256"},
+)
+
 func init() {
 	version.Version = Version
 	version.Branch = Branch
 	version.Revision = Revision
 	prometheus.MustRegister(version.NewCollector("cortex"))
+	prometheus.MustRegister(configHash)
 }
 
 const (
@@ -183,6 +194,12 @@ func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}
+
+	// create a sha256 hash of the config before expansion and expose it via
+	// the config_info metric
+	hash := sha256.Sum256(buf)
+	configHash.Reset()
+	configHash.WithLabelValues(fmt.Sprintf("%x", hash)).Set(1)
 
 	if expandENV {
 		buf = expandEnv(buf)

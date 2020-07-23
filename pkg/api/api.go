@@ -44,9 +44,9 @@ type Config struct {
 	PrometheusHTTPPrefix   string `yaml:"prometheus_http_prefix"`
 
 	// The following configs are injected by the upstream caller.
-	ServerPrefix       string          `yaml:"-"`
-	LegacyHTTPPrefix   string          `yaml:"-"`
-	HTTPAuthMiddleware middleware.Func `yaml:"-"`
+	ServerPrefix       string               `yaml:"-"`
+	LegacyHTTPPrefix   string               `yaml:"-"`
+	HTTPAuthMiddleware middleware.Interface `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -62,7 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 type API struct {
 	cfg            Config
-	authMiddleware middleware.Func
+	authMiddleware middleware.Interface
 	server         *server.Server
 	logger         log.Logger
 }
@@ -130,7 +130,7 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target bool) {
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
 	// Ensure this route is registered before the prefixed AM route
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false)
 
@@ -143,6 +143,13 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	if target {
 		a.RegisterRoute("/status", am.GetStatusHandler(), false)
 		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
+	}
+
+	// MultiTenant Alertmanager Experimental API routes
+	if apiEnabled {
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
+		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
 	}
 }
 

@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
@@ -9,6 +10,7 @@ import (
 
 type mockRuleStore struct {
 	rules map[string]rules.RuleGroupList
+	mtx   sync.Mutex
 }
 
 var (
@@ -77,10 +79,21 @@ func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 }
 
 func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	return m.rules, nil
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	copy := make(map[string]rules.RuleGroupList)
+	for k, v := range m.rules {
+		copy[k] = v
+	}
+
+	return copy, nil
 }
 
 func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	userRules, exists := m.rules[userID]
 	if !exists {
 		return nil, rules.ErrUserNotFound
@@ -106,6 +119,9 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace st
 }
 
 func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	userRules, exists := m.rules[userID]
 	if !exists {
 		return nil, rules.ErrUserNotFound
@@ -125,6 +141,9 @@ func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespa
 }
 
 func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rules.RuleGroupDesc) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	userRules, exists := m.rules[userID]
 	if !exists {
 		userRules = rules.RuleGroupList{}
@@ -147,6 +166,9 @@ func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespa
 }
 
 func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	userRules, exists := m.rules[userID]
 	if !exists {
 		userRules = rules.RuleGroupList{}

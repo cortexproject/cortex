@@ -13,7 +13,6 @@ import (
 
 var integrations = []string{
 	"email",
-	"hipchat",
 	"pagerduty",
 	"wechat",
 	"pushover",
@@ -90,24 +89,24 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_nflog_snapshot_size_bytes 111
 		# HELP cortex_alertmanager_notification_latency_seconds The latency of notifications in seconds.
 		# TYPE cortex_alertmanager_notification_latency_seconds histogram
-		cortex_alertmanager_notification_latency_seconds_bucket{le="1"} 15
-		cortex_alertmanager_notification_latency_seconds_bucket{le="5"} 21
-		cortex_alertmanager_notification_latency_seconds_bucket{le="10"} 23
-		cortex_alertmanager_notification_latency_seconds_bucket{le="15"} 25
-		cortex_alertmanager_notification_latency_seconds_bucket{le="20"} 27
-		cortex_alertmanager_notification_latency_seconds_bucket{le="+Inf"} 27
-		cortex_alertmanager_notification_latency_seconds_sum 99.9
-		cortex_alertmanager_notification_latency_seconds_count 27
+		cortex_alertmanager_notification_latency_seconds_bucket{le="1"} 14
+		cortex_alertmanager_notification_latency_seconds_bucket{le="5"} 19
+		cortex_alertmanager_notification_latency_seconds_bucket{le="10"} 21
+		cortex_alertmanager_notification_latency_seconds_bucket{le="15"} 23
+		cortex_alertmanager_notification_latency_seconds_bucket{le="20"} 24
+		cortex_alertmanager_notification_latency_seconds_bucket{le="+Inf"} 24
+		cortex_alertmanager_notification_latency_seconds_sum 77.7
+		cortex_alertmanager_notification_latency_seconds_count 24
 		# HELP cortex_alertmanager_notifications_failed_total The total number of failed notifications.
 		# TYPE cortex_alertmanager_notifications_failed_total counter
-		cortex_alertmanager_notifications_failed_total{user="user1"} 36
-		cortex_alertmanager_notifications_failed_total{user="user2"} 360
-		cortex_alertmanager_notifications_failed_total{user="user3"} 3600
+		cortex_alertmanager_notifications_failed_total{user="user1"} 28
+		cortex_alertmanager_notifications_failed_total{user="user2"} 280
+		cortex_alertmanager_notifications_failed_total{user="user3"} 2800
 		# HELP cortex_alertmanager_notifications_total The total number of attempted notifications.
 		# TYPE cortex_alertmanager_notifications_total counter
-		cortex_alertmanager_notifications_total{user="user1"} 36
-		cortex_alertmanager_notifications_total{user="user2"} 360
-		cortex_alertmanager_notifications_total{user="user3"} 3600
+		cortex_alertmanager_notifications_total{user="user1"} 28
+		cortex_alertmanager_notifications_total{user="user2"} 280
+		cortex_alertmanager_notifications_total{user="user3"} 2800
 		# HELP cortex_alertmanager_silences How many silences by state.
 		# TYPE cortex_alertmanager_silences gauge
 		cortex_alertmanager_silences{state="active",user="user1"} 1

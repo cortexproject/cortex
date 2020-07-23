@@ -40,6 +40,7 @@ Currently experimental features are:
 - Zone awareness based replication.
 - User subrings.
 - Ruler API (to PUT rules).
+- Alertmanager API
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.

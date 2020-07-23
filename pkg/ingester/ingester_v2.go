@@ -845,6 +845,16 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return ss.Err()
 	}
 
+	backfillSSs, err := i.backfillSelect(ctx, userID, int64(from), int64(through), matchers)
+	if err != nil {
+		return err
+	}
+	if len(backfillSSs) > 0 {
+		// TODO(codesome): If any TSDB in backfill buckets were overlapping
+		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
+		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
+	}
+
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
 	batchSize := 0
 	numSamples := 0

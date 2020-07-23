@@ -122,7 +122,7 @@ func DefaultTenantManager(
 			QueryFunc:       queryFunc(cfg.EvaluationDelay),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      sendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
 			Logger:          log.With(logger, "user", userID),
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,

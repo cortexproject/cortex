@@ -88,6 +88,7 @@ func (fn StorageLoaderFunc) Load(userID string) (promStorage.Appendable, promSto
 	return fn(userID)
 }
 
+// PushLoader creates a StorageLoader from a Pusher and Queryable
 func PushLoader(p Pusher, q promStorage.Queryable) StorageLoaderFunc {
 	return StorageLoaderFunc(func(userID string) (promStorage.Appendable, promStorage.Queryable) {
 		return &appender{pusher: p, userID: userID}, q

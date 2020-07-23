@@ -57,7 +57,7 @@
   * `s3.http.idle-conn-timeout`
   * `s3.http.response-header-timeout`
   * `s3.http.insecure-skip-verify`
-* [ENHANCEMENT] Prometheus upgraded. #2798 #2849 #2867 #2902
+* [ENHANCEMENT] Prometheus upgraded. #2798 #2849 #2867 #2902 #2918
   * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
 * [ENHANCEMENT] Add metric `cortex_ruler_config_update_failures_total` to Ruler to track failures of loading rules files. #2857
 * [ENHANCEMENT] Experimental Alertmanager: Alertmanager configuration persisted to object storage using an experimental API that accepts and returns YAML-based Alertmanager configuration. #2768

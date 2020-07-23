@@ -150,16 +150,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 }
 
+// StorageLoader is an interface for loading custom promStorage implementations.
+type StorageLoader interface {
+	Load(userID string) (promStorage.Appendable, promStorage.Queryable)
+}
+
 // Ruler evaluates rules.
 type Ruler struct {
 	services.Service
 
-	cfg         Config
-	queryFunc   promRules.QueryFunc
-	queryable   promStorage.Queryable
-	pusher      Pusher
-	alertURL    *url.URL
-	notifierCfg *config.Config
+	cfg           Config
+	queryFunc     promRules.QueryFunc
+	storageLoader StorageLoader
+	alertURL      *url.URL
+	notifierCfg   *config.Config
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -179,25 +183,24 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, queryFunc DelayedQueryFunc, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, storageLoader StorageLoader, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	ruler := &Ruler{
-		cfg:          cfg,
-		queryFunc:    queryFunc(cfg.EvaluationDelay),
-		queryable:    queryable,
-		alertURL:     cfg.ExternalURL.URL,
-		notifierCfg:  ncfg,
-		notifiers:    map[string]*rulerNotifier{},
-		store:        ruleStore,
-		pusher:       pusher,
-		mapper:       newMapper(cfg.RulePath, logger),
-		userManagers: map[string]*promRules.Manager{},
-		registry:     reg,
-		logger:       logger,
+		cfg:           cfg,
+		queryFunc:     queryFunc(cfg.EvaluationDelay),
+		storageLoader: storageLoader,
+		alertURL:      cfg.ExternalURL.URL,
+		notifierCfg:   ncfg,
+		notifiers:     map[string]*rulerNotifier{},
+		store:         ruleStore,
+		mapper:        newMapper(cfg.RulePath, logger),
+		userManagers:  map[string]*promRules.Manager{},
+		registry:      reg,
+		logger:        logger,
 	}
 
 	if cfg.EnableSharding {
@@ -530,13 +533,15 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		return nil, err
 	}
 
+	appendable, queryable := r.storageLoader.Load(userID)
+
 	// Wrap registerer with userID and cortex_ prefix
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
-		Appendable:      &appender{pusher: r.pusher, userID: userID},
-		Queryable:       r.queryable,
+		Appendable:      appendable,
+		Queryable:       queryable,
 		QueryFunc:       r.queryFunc,
 		Context:         user.InjectOrgID(ctx, userID),
 		ExternalURL:     r.alertURL,

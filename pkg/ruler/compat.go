@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -79,3 +80,16 @@ func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQue
 // DelayedQueryFunc consumes a queryable and a delay, returning a Queryfunc which
 // takes this delay into account when executing against the queryable.
 type DelayedQueryFunc = func(time.Duration) rules.QueryFunc
+
+// function adapter for StorageLoader ifc
+type StorageLoaderFunc func(userID string) (promStorage.Appendable, promStorage.Queryable)
+
+func (fn StorageLoaderFunc) Load(userID string) (promStorage.Appendable, promStorage.Queryable) {
+	return fn(userID)
+}
+
+func PushLoader(p Pusher, q promStorage.Queryable) StorageLoaderFunc {
+	return StorageLoaderFunc(func(userID string) (promStorage.Appendable, promStorage.Queryable) {
+		return &appender{pusher: p, userID: userID}, q
+	})
+}

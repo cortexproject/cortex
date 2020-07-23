@@ -509,6 +509,8 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
+			// manager.Run() starts running the manager and blocks until Stop() is called.
+			// Hence run it as another goroutine.
 			go manager.Run()
 			r.userManagers[user] = manager
 		}

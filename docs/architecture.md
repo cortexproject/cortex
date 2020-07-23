@@ -48,7 +48,7 @@ Internally, the access to the chunks storage relies on a unified interface calle
 
 The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
 
-The current schema recommendation is the **v10 schema** (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
+The current schema recommendation is the **v9 schema** for most use cases and **v10 schema** if you expect to have very high cardinality metrics (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
 
 ### Blocks storage (experimental)
 

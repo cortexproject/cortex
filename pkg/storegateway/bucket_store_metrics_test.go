@@ -133,6 +133,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_bucket_store_series_result_series_count 6
 
+			# HELP cortex_bucket_store_queries_dropped_total Number of queries that were dropped due to the max chunks per query limit.
+			# TYPE cortex_bucket_store_queries_dropped_total counter
+			cortex_bucket_store_queries_dropped_total 698089
+
 			# HELP cortex_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
 			# TYPE cortex_bucket_store_cached_postings_compressions_total counter
 			cortex_bucket_store_cached_postings_compressions_total{op="encode"} 1125950

@@ -48,7 +48,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, nil, bucket, mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, nil, bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Query series before the initial sync.
@@ -124,7 +124,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, nil, bucket, mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, nil, bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Run an initial sync to discover 1 block.
@@ -186,7 +186,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
 
-	stores, err := NewBucketStores(cfg, nil, bucketClient, mockLoggingLevel(), log.NewNopLogger(), nil)
+	stores, err := NewBucketStores(cfg, nil, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	// Sync user stores and count the number of times the callback is called.

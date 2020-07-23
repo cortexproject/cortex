@@ -23,7 +23,7 @@ from: <string>
 store: <string>
 # The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
 object_store: <string>
-# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v10.
+# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9 for most use cases or v10 if you expect to have very high cardinality metrics.
 schema: <string>
 index: <periodic_table_config>
 chunks: <periodic_table_config>

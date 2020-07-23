@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -18,14 +17,14 @@ import (
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
-type appendable struct {
+type PusherAppender struct {
 	pusher  Pusher
 	labels  []labels.Labels
 	samples []client.Sample
 	userID  string
 }
 
-func (a *appendable) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *PusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 	a.samples = append(a.samples, client.Sample{
 		TimestampMs: t,
@@ -34,11 +33,11 @@ func (a *appendable) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	return 0, nil
 }
 
-func (a *appendable) AddFast(_ uint64, _ int64, _ float64) error {
+func (a *PusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
 	return storage.ErrNotFound
 }
 
-func (a *appendable) Commit() error {
+func (a *PusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
@@ -47,21 +46,21 @@ func (a *appendable) Commit() error {
 	return err
 }
 
-func (a *appendable) Rollback() error {
+func (a *PusherAppender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
 	return nil
 }
 
-// appender fulfills the storage.Appendable interface for prometheus manager
-type appender struct {
+// PusherAppendable fulfills the storage.Appendable interface for prometheus manager
+type PusherAppendable struct {
 	pusher Pusher
 	userID string
 }
 
-// Appender returns a storage.Appender
-func (t *appender) Appender() storage.Appender {
-	return &appendable{
+// PusherAppender returns a storage.PusherAppender
+func (t *PusherAppendable) Appender() storage.Appender {
+	return &PusherAppender{
 		pusher: t.pusher,
 		userID: t.userID,
 	}
@@ -82,15 +81,15 @@ func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQue
 type DelayedQueryFunc = func(time.Duration) rules.QueryFunc
 
 // function adapter for StorageLoader ifc
-type StorageLoaderFunc func(userID string) (promStorage.Appendable, promStorage.Queryable)
+type StorageLoaderFunc func(userID string) (storage.Appendable, storage.Queryable)
 
-func (fn StorageLoaderFunc) Load(userID string) (promStorage.Appendable, promStorage.Queryable) {
+func (fn StorageLoaderFunc) Load(userID string) (storage.Appendable, storage.Queryable) {
 	return fn(userID)
 }
 
 // PushLoader creates a StorageLoader from a Pusher and Queryable
-func PushLoader(p Pusher, q promStorage.Queryable) StorageLoaderFunc {
-	return StorageLoaderFunc(func(userID string) (promStorage.Appendable, promStorage.Queryable) {
-		return &appender{pusher: p, userID: userID}, q
+func PushLoader(p Pusher, q storage.Queryable) StorageLoaderFunc {
+	return StorageLoaderFunc(func(userID string) (storage.Appendable, storage.Queryable) {
+		return &PusherAppendable{pusher: p, userID: userID}, q
 	})
 }

@@ -7819,7 +7819,7 @@ __replica__: replica2
 &lt;li>&lt;code>s3.http.insecure-skip-verify&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>[ENHANCEMENT] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2798">#2798&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2867">#2867&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2902">#2902&lt;/a>
+&lt;li>[ENHANCEMENT] Prometheus upgraded. &lt;a href="https://github.com/cortexproject/cortex/pull/2798">#2798&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2849">#2849&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2867">#2867&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2902">#2902&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2918">#2918&lt;/a>
 &lt;ul>
 &lt;li>Optimized labels regex matchers for patterns containing literals (eg. &lt;code>foo.*&lt;/code>, &lt;code>.*foo&lt;/code>, &lt;code>.*foo.*&lt;/code>)&lt;/li>
 &lt;/ul>

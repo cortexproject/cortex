@@ -509,7 +509,7 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
-			manager.Run()
+			go manager.Run()
 			r.userManagers[user] = manager
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)

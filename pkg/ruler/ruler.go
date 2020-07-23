@@ -161,7 +161,7 @@ type Ruler struct {
 
 	cfg           Config
 	notifierCfg   *config.Config
-	tenantOptions TenantOptions
+	tenantManager TenantManager
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -181,7 +181,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, tenantOptions TenantOptions, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, tenantManager TenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func NewRuler(cfg Config, tenantOptions TenantOptions, reg prometheus.Registerer
 	ruler := &Ruler{
 		cfg:           cfg,
 		notifierCfg:   ncfg,
-		tenantOptions: tenantOptions,
+		tenantManager: tenantManager,
 		notifiers:     map[string]*rulerNotifier{},
 		store:         ruleStore,
 		mapper:        newMapper(cfg.RulePath, logger),
@@ -521,15 +521,15 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 	}
 }
 
-// TenantOptions returns the manager options for a specific tenant
-type TenantOptions interface {
-	Options(
+// TenantManager returns the manager for a specific tenant
+type TenantManager interface {
+	NewManager(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *promRules.ManagerOptions
+	) *promRules.Manager
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id
@@ -544,8 +544,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
-	opts := r.tenantOptions.Options(ctx, userID, notifier, logger, reg)
-	return promRules.NewManager(opts), nil
+	return r.tenantManager.NewManager(ctx, userID, notifier, logger, reg), nil
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if

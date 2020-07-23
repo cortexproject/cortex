@@ -84,39 +84,39 @@ func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQue
 // takes this delay into account when executing against the queryable.
 type DelayedQueryFunc = func(time.Duration) rules.QueryFunc
 
-// TenantOptionsFunc is a function adapter for the TenantOptions interface
-type TenantOptionsFunc func(
+// TenantManagerFunc is a function adapter for the TenantManager interface
+type TenantManagerFunc func(
 	ctx context.Context,
 	userID string,
 	notifier *notifier.Manager,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *rules.ManagerOptions
+) *rules.Manager
 
-func (fn TenantOptionsFunc) Options(
+func (fn TenantManagerFunc) NewManager(
 	ctx context.Context,
 	userID string,
 	notifier *notifier.Manager,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *rules.ManagerOptions {
+) *rules.Manager {
 	return fn(ctx, userID, notifier, logger, reg)
 }
 
-func DefaultTenantOptions(
+func DefaultTenantManager(
 	cfg Config,
 	p Pusher,
 	q storage.Queryable,
 	queryFunc DelayedQueryFunc,
-) TenantOptionsFunc {
-	return TenantOptionsFunc(func(
+) TenantManagerFunc {
+	return TenantManagerFunc(func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *rules.ManagerOptions {
-		return &rules.ManagerOptions{
+	) *rules.Manager {
+		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
 			QueryFunc:       queryFunc(cfg.EvaluationDelay),
@@ -128,6 +128,6 @@ func DefaultTenantOptions(
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
-		}
+		})
 	})
 }

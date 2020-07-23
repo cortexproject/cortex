@@ -1166,7 +1166,6 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 	ingesterCfg.TSDBConfig.Dir = filepath.Join(dir, "tsdb")
 	ingesterCfg.TSDBConfig.Backend = "s3"
 	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
-	ingesterCfg.TSDBConfig.BackfillLimit = 48 * time.Hour
 	ingesterCfg.TSDBConfig.BackfillDir = filepath.Join(dir, "backfill_tsdb")
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
@@ -1768,4 +1767,102 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	// Verify that DB is no longer in memory, but was closed
 	db = i.getTSDB(userID)
 	require.Nil(t, db)
+}
+
+func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	backfillLimit := 12 * time.Hour
+	cfg.TSDBConfig.BackfillLimit = backfillLimit
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	userID := "testuser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	expectedIngested := make([]client.TimeSeries, 0)
+
+	ingestSample := func(ts int64, numBackfillTSDBs int, errExpected bool) {
+		metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: fmt.Sprintf("test%d", len(expectedIngested))}}
+		metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+		_, err = i.v2Push(ctx, client.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]client.Sample{{TimestampMs: ts}},
+			nil, client.API),
+		)
+
+		require.Equal(t, numBackfillTSDBs, len(i.TSDBState.backfillDBs.tsdbs[userID]))
+		if !errExpected {
+			require.NoError(t, err)
+			expectedIngested = append(expectedIngested, client.TimeSeries{
+				Labels:  metricLabelAdapters,
+				Samples: []client.Sample{{TimestampMs: ts}},
+			})
+		} else {
+			require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(storage.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(ts).Time().UTC().Format(time.RFC3339Nano)), userID).Error()), err)
+		}
+	}
+
+	// Samples for 100h. The main tsdb will be able to handle samples only
+	// upto 99h after this.
+	ts := 100 * time.Hour.Milliseconds()
+	ingestSample(ts, 0, false)
+
+	// 99.5h
+	ts = 99*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()
+	ingestSample(ts, 0, false)
+
+	// 99h
+	ts = 99 * time.Hour.Milliseconds()
+	ingestSample(ts, 0, false)
+
+	// 99h-1s for a backfill TSDB.
+	ts = 99*time.Hour.Milliseconds() - 1*time.Second.Milliseconds()
+	ingestSample(ts, 1, false)
+
+	// 98.5h to backfill in the same TSDB.
+	ts = 98*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()
+	ingestSample(ts, 1, false)
+
+	// 96.5h to jump a bucket in between.
+	ts = 96*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()
+	ingestSample(ts, 2, false)
+
+	// 97.5h for the gap between 2 buckets.
+	ts = 97*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()
+	ingestSample(ts, 3, false)
+
+	// 100h-12h+1ms, testing near the edge.
+	ts = (100-12)*time.Hour.Milliseconds() + 1*time.Millisecond.Milliseconds()
+	ingestSample(ts, 4, false)
+
+	// 100h-12h, out of bounds even for backfill.
+	ts = (100 - 12) * time.Hour.Milliseconds()
+	ingestSample(ts, 4, true)
+
+	// 100h-13h, out of bounds even for backfill.
+	ts = (100 - 13) * time.Hour.Milliseconds()
+	ingestSample(ts, 4, true)
+
+	// Query back all the samples.
+	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, expectedIngested, res.Timeseries)
 }

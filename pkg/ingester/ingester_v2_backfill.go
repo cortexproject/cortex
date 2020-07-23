@@ -124,6 +124,7 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 	insertIdx := len(userBuckets)
 	for idx, b := range userBuckets {
 		if ts >= b.bucketStart && ts < b.bucketEnd {
+			fmt.Println("bucket found")
 			return b, userBuckets, nil
 		}
 
@@ -150,7 +151,7 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 	}
 
 	tsdb, err := i.createNewTSDB(
-		userID, filepath.Join(userID, getBucketName(start, end)),
+		userID, filepath.Join(i.cfg.TSDBConfig.BackfillDir, userID, getBucketName(start, end)),
 		(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
 	)
 	if err != nil {
@@ -406,6 +407,8 @@ func getBucketRangesForTimestamp(ts int64, bucketSize int) (int64, int64) {
 }
 
 func getBucketRangesForBucketName(bucketName string) (int64, int64, error) {
+	// TODO(codesome) use time.Parse.
+
 	// YYYY_MM_DD_HH_YYYY_MM_DD_HH
 	// 012345678901234567890123456
 	if len(bucketName) != 27 {

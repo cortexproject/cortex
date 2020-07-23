@@ -160,10 +160,8 @@ type Ruler struct {
 	services.Service
 
 	cfg           Config
-	queryFunc     promRules.QueryFunc
-	storageLoader StorageLoader
-	alertURL      *url.URL
 	notifierCfg   *config.Config
+	tenantOptions TenantOptions
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -183,7 +181,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, queryFunc DelayedQueryFunc, storageLoader StorageLoader, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, tenantOptions TenantOptions, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -191,10 +189,8 @@ func NewRuler(cfg Config, queryFunc DelayedQueryFunc, storageLoader StorageLoade
 
 	ruler := &Ruler{
 		cfg:           cfg,
-		queryFunc:     queryFunc(cfg.EvaluationDelay),
-		storageLoader: storageLoader,
-		alertURL:      cfg.ExternalURL.URL,
 		notifierCfg:   ncfg,
+		tenantOptions: tenantOptions,
 		notifiers:     map[string]*rulerNotifier{},
 		store:         ruleStore,
 		mapper:        newMapper(cfg.RulePath, logger),
@@ -525,6 +521,17 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 	}
 }
 
+// TenantOptions returns the manager options for a specific tenant
+type TenantOptions interface {
+	Options(
+		ctx context.Context,
+		userID string,
+		notifier *notifier.Manager,
+		logger log.Logger,
+		reg prometheus.Registerer,
+	) *promRules.ManagerOptions
+}
+
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
@@ -533,25 +540,11 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		return nil, err
 	}
 
-	appendable, queryable := r.storageLoader.Load(userID)
-
 	// Wrap registerer with userID and cortex_ prefix
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
-	opts := &promRules.ManagerOptions{
-		Appendable:      appendable,
-		Queryable:       queryable,
-		QueryFunc:       r.queryFunc,
-		Context:         user.InjectOrgID(ctx, userID),
-		ExternalURL:     r.alertURL,
-		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),
-		Logger:          logger,
-		Registerer:      reg,
-		OutageTolerance: r.cfg.OutageTolerance,
-		ForGracePeriod:  r.cfg.ForGracePeriod,
-		ResendDelay:     r.cfg.ResendDelay,
-	}
+	opts := r.tenantOptions.Options(ctx, userID, notifier, logger, reg)
 	return promRules.NewManager(opts), nil
 }
 

@@ -4,6 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -17,14 +20,15 @@ import (
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
-type PusherAppender struct {
+
+type pusherAppender struct {
 	pusher  Pusher
 	labels  []labels.Labels
 	samples []client.Sample
 	userID  string
 }
 
-func (a *PusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 	a.samples = append(a.samples, client.Sample{
 		TimestampMs: t,
@@ -33,11 +37,11 @@ func (a *PusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error
 	return 0, nil
 }
 
-func (a *PusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
+func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
 	return storage.ErrNotFound
 }
 
-func (a *PusherAppender) Commit() error {
+func (a *pusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
@@ -46,7 +50,7 @@ func (a *PusherAppender) Commit() error {
 	return err
 }
 
-func (a *PusherAppender) Rollback() error {
+func (a *pusherAppender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
 	return nil
@@ -58,9 +62,9 @@ type PusherAppendable struct {
 	userID string
 }
 
-// PusherAppender returns a storage.PusherAppender
+// Appender returns a storage.Appender
 func (t *PusherAppendable) Appender() storage.Appender {
-	return &PusherAppender{
+	return &pusherAppender{
 		pusher: t.pusher,
 		userID: t.userID,
 	}
@@ -80,16 +84,50 @@ func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQue
 // takes this delay into account when executing against the queryable.
 type DelayedQueryFunc = func(time.Duration) rules.QueryFunc
 
-// function adapter for StorageLoader ifc
-type StorageLoaderFunc func(userID string) (storage.Appendable, storage.Queryable)
+// TenantOptionsFunc is a function adapter for the TenantOptions interface
+type TenantOptionsFunc func(
+	ctx context.Context,
+	userID string,
+	notifier *notifier.Manager,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) *rules.ManagerOptions
 
-func (fn StorageLoaderFunc) Load(userID string) (storage.Appendable, storage.Queryable) {
-	return fn(userID)
+func (fn TenantOptionsFunc) Options(
+	ctx context.Context,
+	userID string,
+	notifier *notifier.Manager,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) *rules.ManagerOptions {
+	return fn(ctx, userID, notifier, logger, reg)
 }
 
-// PushLoader creates a StorageLoader from a Pusher and Queryable
-func PushLoader(p Pusher, q storage.Queryable) StorageLoaderFunc {
-	return StorageLoaderFunc(func(userID string) (storage.Appendable, storage.Queryable) {
-		return &PusherAppendable{pusher: p, userID: userID}, q
+func DefaultTenantOptions(
+	cfg Config,
+	p Pusher,
+	q storage.Queryable,
+	queryFunc DelayedQueryFunc,
+) TenantOptionsFunc {
+	return TenantOptionsFunc(func(
+		ctx context.Context,
+		userID string,
+		notifier *notifier.Manager,
+		logger log.Logger,
+		reg prometheus.Registerer,
+	) *rules.ManagerOptions {
+		return &rules.ManagerOptions{
+			Appendable:      &PusherAppendable{pusher: p, userID: userID},
+			Queryable:       q,
+			QueryFunc:       queryFunc(cfg.EvaluationDelay),
+			Context:         user.InjectOrgID(ctx, userID),
+			ExternalURL:     cfg.ExternalURL.URL,
+			NotifyFunc:      sendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Logger:          log.With(logger, "user", userID),
+			Registerer:      reg,
+			OutageTolerance: cfg.OutageTolerance,
+			ForGracePeriod:  cfg.ForGracePeriod,
+			ResendDelay:     cfg.ResendDelay,
+		}
 	})
 }

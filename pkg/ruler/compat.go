@@ -66,11 +66,16 @@ func (t *appender) Appender() storage.Appender {
 	}
 }
 
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
-	orig := rules.EngineQueryFunc(engine, q)
-	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		return orig(ctx, qs, t.Add(-delay))
+// PromDelayedQueryFunc returns a DelayedQueryFunc bound to a promql engine.
+func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQueryFunc {
+	return func(delay time.Duration) rules.QueryFunc {
+		orig := rules.EngineQueryFunc(engine, q)
+		return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+			return orig(ctx, qs, t.Add(-delay))
+		}
 	}
 }
+
+// DelayedQueryFunc consumes a queryable and a delay, returning a Queryfunc which
+// takes this delay into account when executing against the queryable.
+type DelayedQueryFunc = func(time.Duration) rules.QueryFunc

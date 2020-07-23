@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -156,7 +155,7 @@ type Ruler struct {
 	services.Service
 
 	cfg         Config
-	engine      *promql.Engine
+	queryFunc   promRules.QueryFunc
 	queryable   promStorage.Queryable
 	pusher      Pusher
 	alertURL    *url.URL
@@ -180,7 +179,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, queryFunc DelayedQueryFunc, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -188,7 +187,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 
 	ruler := &Ruler{
 		cfg:          cfg,
-		engine:       engine,
+		queryFunc:    queryFunc(cfg.EvaluationDelay),
 		queryable:    queryable,
 		alertURL:     cfg.ExternalURL.URL,
 		notifierCfg:  ncfg,
@@ -538,7 +537,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	opts := &promRules.ManagerOptions{
 		Appendable:      &appender{pusher: r.pusher, userID: userID},
 		Queryable:       r.queryable,
-		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
+		QueryFunc:       r.queryFunc,
 		Context:         user.InjectOrgID(ctx, userID),
 		ExternalURL:     r.alertURL,
 		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),

@@ -305,7 +305,7 @@ func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map
 }
 
 func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
-	if field.Type == reflect.TypeOf(logging.Level{}) {
+	if field.Type == reflect.TypeOf(logging.Level{}) || field.Type == reflect.TypeOf(logging.Format{}) {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil {
 			return nil, err

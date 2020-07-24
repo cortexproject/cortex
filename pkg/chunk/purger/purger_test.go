@@ -3,9 +3,6 @@ package purger
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -19,8 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -449,31 +444,17 @@ func TestPurger_Metrics(t *testing.T) {
 }
 
 func TestPurger_retryFailedRequests(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "retry-failed-requests")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
-
-	// setup storage for chunks
-	chunksStorePath := filepath.Join(tempDir, "chunks-store")
-	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: chunksStorePath})
-	require.NoError(t, err)
-
 	// setup chunks store
-	mockStorage := chunk.NewMockStorage()
-	deleteStore := setupTestDeleteStore(t)
-	chunkStore, err := testutils.SetupTestChunkStoreWithClients(mockStorage, objectclient.NewClient(fsObjectClient, objectclient.Base64Encoder), mockStorage)
-	require.NoError(t, err)
+	indexMockStorage := chunk.NewMockStorage()
+	chunksMockStorage := chunk.NewMockStorage()
 
-	// setup storage for purger to store delete plans
-	purgerObjectStorePath := filepath.Join(tempDir, "purger-object-store")
-	purgerObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: purgerObjectStorePath})
+	deleteStore := setupTestDeleteStore(t)
+	chunkStore, err := testutils.SetupTestChunkStoreWithClients(indexMockStorage, chunksMockStorage, indexMockStorage)
 	require.NoError(t, err)
 
 	// create a purger instance
-	purger, _ := setupPurger(t, deleteStore, chunkStore, purgerObjectClient)
+	purgerMockStorage := chunk.NewMockStorage()
+	purger, _ := setupPurger(t, deleteStore, chunkStore, purgerMockStorage)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
 
 	defer func() {
@@ -491,9 +472,8 @@ func TestPurger_retryFailedRequests(t *testing.T) {
 		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
 	require.NoError(t, err)
 
-	// change permission of purge plan storage to not allow any writes. This would fail building of plans.
-	err = os.Chmod(purgerObjectStorePath, 0500)
-	require.NoError(t, err)
+	// change purgerMockStorage to allow only reads. This would fail putting plans to the storage and hence fail build plans operation.
+	purgerMockStorage.SetMode(chunk.MockStorageModeReadOnly)
 
 	// pull requests to process and ensure that it has failed.
 	err = purger.pullDeleteRequestsToPlanDeletes()
@@ -504,14 +484,12 @@ func TestPurger_retryFailedRequests(t *testing.T) {
 	require.NotNil(t, purger.inProcessRequests.get(userID))
 	require.Len(t, purger.inProcessRequests.listUsersWithFailedRequest(), 1)
 
-	// now allow writes to purge plan storage path
-	err = os.Chmod(purgerObjectStorePath, 0700)
-	require.NoError(t, err)
+	// now allow writes to purgerMockStorage to allow building plans to succeed.
+	purgerMockStorage.SetMode(chunk.MockStorageModeReadWrite)
 
-	// but do not allow writes to chunks storage path which would deny permission to delete any chunks and in turn
+	// but change mode of chunksMockStorage to read only which would deny permission to delete any chunks and in turn
 	// fail to execute delete plans.
-	err = os.Chmod(chunksStorePath, 0500)
-	require.NoError(t, err)
+	chunksMockStorage.SetMode(chunk.MockStorageModeReadOnly)
 
 	// retry processing of failed requests
 	purger.retryFailedRequests()
@@ -525,9 +503,8 @@ func TestPurger_retryFailedRequests(t *testing.T) {
 		return len(purger.inProcessRequests.listUsersWithFailedRequest())
 	})
 
-	// now allow writes to chunks storage path so the requests do not fail anymore.
-	err = os.Chmod(chunksStorePath, 0700)
-	require.NoError(t, err)
+	// now allow writes to chunksMockStorage so the requests do not fail anymore.
+	chunksMockStorage.SetMode(chunk.MockStorageModeReadWrite)
 
 	// retry processing of failed requests.
 	purger.retryFailedRequests()

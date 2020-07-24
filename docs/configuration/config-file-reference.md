@@ -277,6 +277,10 @@ grpc_tls_config:
 # CLI flag: -server.grpc.keepalive.timeout
 [grpc_server_keepalive_timeout: <duration> | default = 20s]
 
+# Output log messages in the given format. Valid formats: [logfmt, json]
+# CLI flag: -log.format
+[log_format: <string> | default = "logfmt"]
+
 # Only log messages with the given severity or above. Valid levels: [debug,
 # info, warn, error]
 # CLI flag: -log.level

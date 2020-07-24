@@ -13,6 +13,7 @@
 * [CHANGE] Experimental TSDB: removed support for `-experimental.tsdb.bucket-store.max-sample-count` flag because the implementation was flawed. To limit the number of samples/chunks processed by a single query you can set `-store.query-chunk-limit`, which is now supported by the blocks storage too. #2852
 * [CHANGE] Ingester: Chunks flushed via /flush stay in memory until retention period is reached. This affects `cortex_ingester_memory_chunks` metric. #2778
 * [CHANGE] Querier: the error message returned when the query time range exceeds `-store.max-query-length` has changed from `invalid query, length > limit (X > Y)` to `the query time range exceeds the limit (query length: X, limit: Y)`. #2826
+* [CHANGE] Add `component` label to metrics exposed by chunk, delete and index store clients. #2774
 * [CHANGE] KV: The `role` label which was a label of `multi` KV store client only has been added to metrics of every KV store client. If KV store client is not `multi`, then the value of `role` label is `primary`. #2837
 * [CHANGE] Added the `engine` label to the metrics exposed by the Prometheus query engine, to distinguish between `ruler` and `querier` metrics. #2854
 * [CHANGE] Added ruler to the single binary when started with `-target=all` (default). #2854
@@ -57,7 +58,7 @@
   * `s3.http.idle-conn-timeout`
   * `s3.http.response-header-timeout`
   * `s3.http.insecure-skip-verify`
-* [ENHANCEMENT] Prometheus upgraded. #2798 #2849 #2867 #2902
+* [ENHANCEMENT] Prometheus upgraded. #2798 #2849 #2867 #2902 #2918
   * Optimized labels regex matchers for patterns containing literals (eg. `foo.*`, `.*foo`, `.*foo.*`)
 * [ENHANCEMENT] Add metric `cortex_ruler_config_update_failures_total` to Ruler to track failures of loading rules files. #2857
 * [ENHANCEMENT] Experimental Alertmanager: Alertmanager configuration persisted to object storage using an experimental API that accepts and returns YAML-based Alertmanager configuration. #2768
@@ -65,6 +66,7 @@
 * [ENHANCEMENT] Experimental TSDB: Cortex Flusher now works with blocks engine. Flusher needs to be provided with blocks-engine configuration, existing Flusher flags are not used (they are only relevant for chunks engine). Note that flush errors are only reported via log. #2877
 * [ENHANCEMENT] Flusher: Added `-flusher.exit-after-flush` option (defaults to true) to control whether Cortex should stop completely after Flusher has finished its work. #2877
 * [ENHANCEMENT] Added metrics `cortex_config_hash` and `cortex_runtime_config_hash` to expose hash of the currently active config file. #2874
+* [ENHANCEMENT] Logger: added JSON logging support, configured via the `-log.format=json` CLI flag or its respective YAML config option. #2386
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
@@ -73,6 +75,7 @@
 * [BUGFIX] Ingester: Flushing chunks via `/flush` endpoint could previously lead to panic, if chunks were already flushed before and then removed from memory during the flush caused by `/flush` handler. Immediate flush now doesn't cause chunks to be flushed again. Samples received during flush triggered via `/flush` handler are no longer discarded. #2778
 * [BUGFIX] Prometheus upgraded. #2849
   * Fixed unknown symbol error during head compaction
+* [BUGFIX] Fix panic when using cassandra as store for both index and delete requests. #2774
 * [BUGFIX] Experimental Delete Series: Fixed a data race in Purger. #2817
 * [BUGFIX] KV: Fixed a bug that triggered a panic due to metrics being registered with the same name but different labels when using a `multi` configured KV client. #2837
 * [BUGFIX] Query-frontend: Fix passing HTTP `Host` header if `-frontend.downstream-url` is configured. #2880

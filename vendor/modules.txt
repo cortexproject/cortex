@@ -529,7 +529,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20200720162558-f762a9ec77b3
+# github.com/prometheus/prometheus v1.8.2-0.20200722151933-4a8531a64b32
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -687,7 +687,7 @@ github.com/uber/jaeger-client-go/utils
 # github.com/uber/jaeger-lib v2.2.0+incompatible
 github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
-# github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
+# github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors

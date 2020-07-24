@@ -336,7 +336,9 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	}
 
 	var indexClient chunk.IndexClient
-	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema)
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": DeleteRequestsStore}, prometheus.DefaultRegisterer)
+	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema, reg)
 	if err != nil {
 		return
 	}
@@ -365,11 +367,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		return
 	}
 
-	// Ensure the default evaluation interval is set (promql uses a package-scoped mutable variable).
-	// This is important when `querier.parallelise-shardable-queries` is enabled because the frontend
-	// aggregates the sharded queries.
-	promql.SetDefaultEvaluationInterval(t.Cfg.Querier.DefaultEvaluationInterval)
-
 	tripperware, cache, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util.Logger,
@@ -382,6 +379,9 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 			Reg:        prometheus.DefaultRegisterer,
 			MaxSamples: t.Cfg.Querier.MaxSamples,
 			Timeout:    t.Cfg.Querier.Timeout,
+			NoStepSubqueryIntervalFn: func(int64) int64 {
+				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
+			},
 		},
 		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
@@ -432,7 +432,10 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage)
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
+
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +445,10 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 
 	var extraTables []chunk.ExtraTables
 	if t.Cfg.PurgerConfig.Enable {
-		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage)
+		reg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "table-manager-" + DeleteRequestsStore}, prometheus.DefaultRegisterer)
+
+		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, reg)
 		if err != nil {
 			return nil, err
 		}

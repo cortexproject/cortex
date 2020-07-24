@@ -3,7 +3,11 @@ package purger
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -440,6 +446,97 @@ func TestPurger_Metrics(t *testing.T) {
 	// there must be 0 pending delete requests so the age for oldest pending must be 0
 	require.InDelta(t, float64(0), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(0), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+}
+
+func TestPurger_retryFailedRequests(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "retry-failed-requests")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
+	// setup storage for chunks
+	chunksStorePath := filepath.Join(tempDir, "chunks-store")
+	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: chunksStorePath})
+	require.NoError(t, err)
+
+	// setup chunks store
+	mockStorage := chunk.NewMockStorage()
+	deleteStore := setupTestDeleteStore(t)
+	chunkStore, err := testutils.SetupTestChunkStoreWithClients(mockStorage, objectclient.NewClient(fsObjectClient, objectclient.Base64Encoder), mockStorage)
+	require.NoError(t, err)
+
+	// setup storage for purger to store delete plans
+	purgerObjectStorePath := filepath.Join(tempDir, "purger-object-store")
+	purgerObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: purgerObjectStorePath})
+	require.NoError(t, err)
+
+	// create a purger instance
+	purger, _ := setupPurger(t, deleteStore, chunkStore, purgerObjectClient)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
+
+	defer func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
+	}()
+
+	// add some chunks
+	chunks, err := buildChunks(0, model.Time(0).Add(3*24*time.Hour), 1)
+	require.NoError(t, err)
+
+	require.NoError(t, chunkStore.Put(context.Background(), chunks))
+
+	// add a request to delete some chunks
+	err = deleteStore.addDeleteRequest(context.Background(), userID, model.Now().Add(-25*time.Hour), model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// change permission of purge plan storage to not allow any writes. This would fail building of plans.
+	err = os.Chmod(purgerObjectStorePath, 0500)
+	require.NoError(t, err)
+
+	// pull requests to process and ensure that it has failed.
+	err = purger.pullDeleteRequestsToPlanDeletes()
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "permission denied"))
+
+	// there must be 1 delete request in process and the userID must be in failed requests list.
+	require.NotNil(t, purger.inProcessRequests.get(userID))
+	require.Len(t, purger.inProcessRequests.listUsersWithFailedRequest(), 1)
+
+	// now allow writes to purge plan storage path
+	err = os.Chmod(purgerObjectStorePath, 0700)
+	require.NoError(t, err)
+
+	// but do not allow writes to chunks storage path which would deny permission to delete any chunks and in turn
+	// fail to execute delete plans.
+	err = os.Chmod(chunksStorePath, 0500)
+	require.NoError(t, err)
+
+	// retry processing of failed requests
+	purger.retryFailedRequests()
+
+	// the delete request status should now change to StatusDeleting since the building of plan should have succeeded.
+	test.Poll(t, time.Second, StatusDeleting, func() interface{} {
+		return purger.inProcessRequests.get(userID).Status
+	})
+	// the request should have failed again since we did not give permission to delete chunks.
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return len(purger.inProcessRequests.listUsersWithFailedRequest())
+	})
+
+	// now allow writes to chunks storage path so the requests do not fail anymore.
+	err = os.Chmod(chunksStorePath, 0700)
+	require.NoError(t, err)
+
+	// retry processing of failed requests.
+	purger.retryFailedRequests()
+	// there must be no in process requests anymore.
+	test.Poll(t, time.Second, true, func() interface{} {
+		return purger.inProcessRequests.get(userID) == nil
+	})
+	// there must be no users having failed requests.
+	require.Len(t, purger.inProcessRequests.listUsersWithFailedRequest(), 0)
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {

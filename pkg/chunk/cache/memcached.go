@@ -66,8 +66,9 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		Name:      "memcache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing memcache requests.",
 		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
-		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code", "name"})
+		Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method", "status_code"})
 
 	c := &Memcached{
 		cfg:      cfg,
@@ -75,9 +76,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		name:     name,
 		logger:   logger,
 		requestDuration: observableVecCollector{
-			v: memcacheRequestDuration.MustCurryWith(prometheus.Labels{
-				"name": name,
-			}),
+			v: memcacheRequestDuration,
 		},
 	}
 

@@ -19,15 +19,17 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		// Cached chunks are generally in the KBs, but cached index can
 		// get big.  Histogram goes from 1KB to 4MB.
 		// 1024 * 4^(7-1) = 4MB
-		Buckets: prometheus.ExponentialBuckets(1024, 4, 7),
-	}, []string{"name", "method"})
+		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method"})
 
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "cache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing cache requests.",
 		// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
-		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
+		Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+		ConstLabels: prometheus.Labels{"name": name},
 	}, []string{"method", "status_code"})
 
 	return &instrumentedCache{
@@ -36,20 +38,22 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 
 		requestDuration: instr.NewHistogramCollector(requestDuration),
 
-		fetchedKeys: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "cache_fetched_keys",
-			Help:      "Total count of keys requested from cache.",
-		}, []string{"name"}).WithLabelValues(name),
+		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "cortex",
+			Name:        "cache_fetched_keys",
+			Help:        "Total count of keys requested from cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 
-		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "cache_hits",
-			Help:      "Total count of keys found in cache.",
-		}, []string{"name"}).WithLabelValues(name),
+		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "cortex",
+			Name:        "cache_hits",
+			Help:        "Total count of keys found in cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 
-		storedValueSize:  valueSize.WithLabelValues(name, "store"),
-		fetchedValueSize: valueSize.WithLabelValues(name, "fetch"),
+		storedValueSize:  valueSize.WithLabelValues("store"),
+		fetchedValueSize: valueSize.WithLabelValues("fetch"),
 	}
 }
 

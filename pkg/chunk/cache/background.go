@@ -47,17 +47,19 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 		quit:     make(chan struct{}),
 		bgWrites: make(chan backgroundWrite, cfg.WriteBackBuffer),
 		name:     name,
-		droppedWriteBack: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "cache_dropped_background_writes_total",
-			Help:      "Total count of dropped write backs to cache.",
-		}, []string{"name"}).WithLabelValues(name),
+		droppedWriteBack: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "cortex",
+			Name:        "cache_dropped_background_writes_total",
+			Help:        "Total count of dropped write backs to cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 
-		queueLength: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "cache_background_queue_length",
-			Help:      "Length of the cache background write queue.",
-		}, []string{"name"}).WithLabelValues(name),
+		queueLength: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "cortex",
+			Name:        "cache_background_queue_length",
+			Help:        "Length of the cache background write queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 	}
 
 	c.wg.Add(cfg.WriteBackGoroutines)

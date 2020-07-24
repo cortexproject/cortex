@@ -114,62 +114,69 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 		entries:      make(map[string]*list.Element),
 		lru:          list.New(),
 
-		// TODO(bwplotka): There might be simple cache.Cache wrapper for those.
-		entriesAdded: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "added_total",
-			Help:      "The total number of Put calls on the cache",
-		}, []string{"cache"}).WithLabelValues(name),
+		entriesAdded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "added_total",
+			Help:        "The total number of Put calls on the cache",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		entriesAddedNew: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "added_new_total",
-			Help:      "The total number of new entries added to the cache",
-		}, []string{"cache"}).WithLabelValues(name),
+		entriesAddedNew: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "added_new_total",
+			Help:        "The total number of new entries added to the cache",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "evicted_total",
-			Help:      "The total number of evicted entries",
-		}, []string{"cache"}).WithLabelValues(name),
+		entriesEvicted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "evicted_total",
+			Help:        "The total number of evicted entries",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		entriesCurrent: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "entries",
-			Help:      "The total number of entries",
-		}, []string{"cache"}).WithLabelValues(name),
+		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "entries",
+			Help:        "The total number of entries",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		totalGets: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "gets_total",
-			Help:      "The total number of Get calls",
-		}, []string{"cache"}).WithLabelValues(name),
+		totalGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "gets_total",
+			Help:        "The total number of Get calls",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		totalMisses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "misses_total",
-			Help:      "The total number of Get calls that had no valid entry",
-		}, []string{"cache"}).WithLabelValues(name),
+		totalMisses: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "misses_total",
+			Help:        "The total number of Get calls that had no valid entry",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		staleGets: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "stale_gets_total",
-			Help:      "The total number of Get calls that had an entry which expired",
-		}, []string{"cache"}).WithLabelValues(name),
+		staleGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "stale_gets_total",
+			Help:        "The total number of Get calls that had an entry which expired",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 
-		memoryBytes: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "querier",
-			Subsystem: "cache",
-			Name:      "memory_bytes",
-			Help:      "The current cache size in bytes",
-		}, []string{"cache"}).WithLabelValues(name),
+		memoryBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "querier",
+			Subsystem:   "cache",
+			Name:        "memory_bytes",
+			Help:        "The current cache size in bytes",
+			ConstLabels: prometheus.Labels{"cache": name},
+		}),
 	}
 }
 

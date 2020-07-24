@@ -101,11 +101,12 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		provider:   dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
 		quit:       make(chan struct{}),
 
-		numServers: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "memcache_client_servers",
-			Help:      "The number of memcache servers discovered.",
-		}, []string{"name"}).WithLabelValues(name),
+		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "cortex",
+			Name:        "memcache_client_servers",
+			Help:        "The number of memcache servers discovered.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 	}
 
 	if len(cfg.Addresses) > 0 {

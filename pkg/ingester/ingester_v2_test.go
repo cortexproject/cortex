@@ -1820,11 +1820,11 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 	ts := 100 * time.Hour.Milliseconds()
 	ingestSample(ts, 0, false)
 
-	// 99.5h
+	// 99.5h, to the main TSDB.
 	ts = 99*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()
 	ingestSample(ts, 0, false)
 
-	// 99h
+	// 99h, to the main TSDB.
 	ts = 99 * time.Hour.Milliseconds()
 	ingestSample(ts, 0, false)
 
@@ -1848,16 +1848,43 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 	ts = (100-12)*time.Hour.Milliseconds() + 1*time.Millisecond.Milliseconds()
 	ingestSample(ts, 4, false)
 
-	// 100h-12h, out of bounds even for backfill.
-	ts = (100 - 12) * time.Hour.Milliseconds()
+	// 100h-backfillLimit, out of bounds even for backfill.
+	ts = 100*time.Hour.Milliseconds() - backfillLimit.Milliseconds()
 	ingestSample(ts, 4, true)
 
-	// 100h-13h, out of bounds even for backfill.
-	ts = (100 - 13) * time.Hour.Milliseconds()
+	// 99h-backfillLimit, out of bounds even for backfill.
+	ts = 99*time.Hour.Milliseconds() - backfillLimit.Milliseconds()
 	ingestSample(ts, 4, true)
 
 	// Query back all the samples.
 	res, err := i.v2Query(ctx, &client.QueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, expectedIngested, res.Timeseries)
+
+	// Restart to check if we can still query backfill TSDBs.
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	overrides, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err = NewV2(i.cfg, defaultClientTestConfig(), overrides, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Query back all the samples.
+	res, err = i.v2Query(ctx, &client.QueryRequest{
 		StartTimestampMs: math.MinInt64,
 		EndTimestampMs:   math.MaxInt64,
 		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},

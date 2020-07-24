@@ -1088,8 +1088,15 @@ func (i *Ingester) closeAllTSDB() {
 		}(userDB)
 	}
 
-	// Wait until all Close() completed
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		i.closeAllBackfillTSDBs()
+	}()
+
 	i.userStatesMtx.Unlock()
+
+	// Wait until all Close() completed
 	wg.Wait()
 }
 

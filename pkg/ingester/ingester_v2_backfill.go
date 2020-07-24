@@ -124,7 +124,6 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 	insertIdx := len(userBuckets)
 	for idx, b := range userBuckets {
 		if ts >= b.bucketStart && ts < b.bucketEnd {
-			fmt.Println("bucket found")
 			return b, userBuckets, nil
 		}
 
@@ -201,7 +200,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 		}
 
 		for bucketID, bucketName := range bucketNames {
-			if bucketName.IsDir() {
+			if !bucketName.IsDir() {
 				continue
 			}
 
@@ -229,7 +228,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 			}
 
 			wg.Add(1)
-			go func(bucketID int, userID, bucketName string) {
+			go func(bucketID int, userID, bucketName, dbDir string) {
 				defer wg.Done()
 				defer openGate.Done()
 				defer func(ts time.Time) {
@@ -241,7 +240,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 					level.Error(util.Logger).Log("msg", "unable to get bucket range", "err", err, "user", userID, "bucketName", bucketName)
 					return
 				}
-				db, err := i.createNewTSDB(userID, filepath.Join(userID, bucketName), (end-start)*2, (end-start)*2, prometheus.NewRegistry())
+				db, err := i.createNewTSDB(userID, dbDir, (end-start)*2, (end-start)*2, prometheus.NewRegistry())
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "unable to open user backfill TSDB", "err", err, "user", userID)
 					return
@@ -258,7 +257,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 				// Append at the end, we will sort it at the end.
 				i.TSDBState.backfillDBs.tsdbs[userID] = append(i.TSDBState.backfillDBs.tsdbs[userID], bucket)
 				i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
-			}(bucketID, userID, bucketName.Name())
+			}(bucketID, userID, bucketName.Name(), dbPath)
 		}
 
 		if runErr != nil {
@@ -342,6 +341,30 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 	}
 
 	return result, nil
+}
+
+func (i *Ingester) closeAllBackfillTSDBs() {
+	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
+	defer i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+
+	wg := &sync.WaitGroup{}
+
+	for userID, buckets := range i.TSDBState.backfillDBs.tsdbs {
+		for _, bucket := range buckets {
+			wg.Add(1)
+			go func(uid string, db *userTSDB) {
+				defer wg.Done()
+
+				if err := db.Close(); err != nil {
+					level.Warn(util.Logger).Log("msg", "unable to close backfill TSDB", "user", uid, "bucket_dir", db.Dir(), "err", err)
+				}
+			}(userID, bucket.db)
+		}
+	}
+
+	wg.Wait()
+	// Clear all DBs irrespective of them closing.
+	i.TSDBState.backfillDBs.tsdbs = make(map[string][]*tsdbBucket)
 }
 
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.

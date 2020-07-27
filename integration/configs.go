@@ -21,7 +21,7 @@ const (
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
-	blocksStorageEngine    = "tsdb"
+	blocksStorageEngine    = "blocks"
 	clientCertFile         = "certs/client.crt"
 	clientKeyFile          = "certs/client.key"
 	caCertFile             = "certs/root.crt"
@@ -90,29 +90,31 @@ var (
 	}
 
 	BlocksStorageFlags = map[string]string{
-		"-store.engine":                                 blocksStorageEngine,
-		"-experimental.tsdb.backend":                    "s3",
-		"-experimental.tsdb.block-ranges-period":        "1m",
-		"-experimental.tsdb.bucket-store.sync-interval": "5s",
-		"-experimental.tsdb.retention-period":           "5m",
-		"-experimental.tsdb.ship-interval":              "1m",
-		"-experimental.tsdb.head-compaction-interval":   "1s",
-		"-experimental.tsdb.s3.access-key-id":           e2edb.MinioAccessKey,
-		"-experimental.tsdb.s3.secret-access-key":       e2edb.MinioSecretKey,
-		"-experimental.tsdb.s3.bucket-name":             bucketName,
-		"-experimental.tsdb.s3.endpoint":                fmt.Sprintf("%s-minio-9000:9000", networkName),
-		"-experimental.tsdb.s3.insecure":                "true",
+		"-store.engine":                                              blocksStorageEngine,
+		"-experimental.blocks-storage.backend":                       "s3",
+		"-experimental.blocks-storage.tsdb.block-ranges-period":      "1m",
+		"-experimental.blocks-storage.bucket-store.sync-interval":    "5s",
+		"-experimental.blocks-storage.tsdb.retention-period":         "5m",
+		"-experimental.blocks-storage.tsdb.ship-interval":            "1m",
+		"-experimental.blocks-storage.tsdb.head-compaction-interval": "1s",
+		"-experimental.blocks-storage.s3.access-key-id":              e2edb.MinioAccessKey,
+		"-experimental.blocks-storage.s3.secret-access-key":          e2edb.MinioSecretKey,
+		"-experimental.blocks-storage.s3.bucket-name":                bucketName,
+		"-experimental.blocks-storage.s3.endpoint":                   fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-experimental.blocks-storage.s3.insecure":                   "true",
 	}
 
 	BlocksStorageConfig = buildConfigFromTemplate(`
 storage:
-  engine: tsdb
+  engine: blocks
 
-tsdb:
+blocks_storage:
   backend:             s3
-  block_ranges_period: ["1m"]
-  retention_period:    5m
-  ship_interval:       1m
+
+  tsdb:
+    block_ranges_period: ["1m"]
+    retention_period:    5m
+    ship_interval:       1m
 
   bucket_store:
     sync_interval: 5s

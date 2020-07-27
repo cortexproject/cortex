@@ -35,7 +35,7 @@ import (
 // BucketStores is a multi-tenant wrapper of Thanos BucketStore.
 type BucketStores struct {
 	logger             log.Logger
-	cfg                tsdb.Config
+	cfg                tsdb.BlocksStorageConfig
 	limits             *validation.Overrides
 	bucket             objstore.Bucket
 	logLevel           logging.Level
@@ -59,7 +59,7 @@ type BucketStores struct {
 }
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilter, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")

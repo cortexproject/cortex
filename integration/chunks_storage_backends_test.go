@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -184,7 +185,7 @@ func TestSwiftChunkStorage(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil)
+	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	defer store.Stop()

@@ -2662,7 +2662,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Minimum number of samples in an idle chunk to flush it to the store. Use with
 # care, if chunks are less than this size they will be discarded. This option is
-# ignored when running the Cortex blocks storage.
+# ignored when running the Cortex blocks storage. 0 to disable.
 # CLI flag: -ingester.min-chunk-length
 [min_chunk_length: <int> | default = 0]
 
@@ -2686,7 +2686,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_global_metadata_per_metric: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage.
+# enforced when fetching chunks from the long-term storage. 0 to disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 
@@ -2701,7 +2701,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_query_parallelism: <int> | default = 14]
 
 # Cardinality limit for index queries. This limit is ignored when running the
-# Cortex blocks storage.
+# Cortex blocks storage. 0 to disable.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
 

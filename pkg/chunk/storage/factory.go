@@ -115,10 +115,17 @@ func (cfg *Config) Validate() error {
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
+func NewStore(
+	cfg Config,
+	storeCfg chunk.StoreConfig,
+	schemaCfg chunk.SchemaConfig,
+	limits StoreLimits,
+	reg prometheus.Registerer,
+	cacheGenNumLoader chunk.CacheGenNumLoader,
+	logger log.Logger,
+) (chunk.Store, error) {
 	chunkMetrics := newChunkClientMetrics(reg)
 
-	logger := log.NewNopLogger()
 	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err

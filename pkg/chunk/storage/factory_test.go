@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,7 @@ func TestFactoryStop(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil)
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()
@@ -190,7 +191,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, prometheus.NewRegistry(), nil)
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, prometheus.NewRegistry(), nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()

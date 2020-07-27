@@ -71,7 +71,7 @@ type Frontend struct {
 
 	// Metrics.
 	queueDuration prometheus.Histogram
-	queueLength   prometheus.Gauge
+	queueLength   *prometheus.GaugeVec
 }
 
 type request struct {
@@ -96,11 +96,11 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			Help:      "Time spend by requests queued.",
 			Buckets:   prometheus.DefBuckets,
 		}),
-		queueLength: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
-		}),
+		}, []string{"user"}),
 		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
@@ -363,7 +363,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	select {
 	case queue <- req:
-		f.queueLength.Add(1)
+		f.queueLength.WithLabelValues(userID).Add(1)
 		f.cond.Broadcast()
 		return nil
 	default:

@@ -23,20 +23,18 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		ConstLabels: prometheus.Labels{"name": name},
 	}, []string{"method"})
 
-	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "cache_request_duration_seconds",
-		Help:      "Total time spent in seconds doing cache requests.",
-		// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
-		Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
-		ConstLabels: prometheus.Labels{"name": name},
-	}, []string{"method", "status_code"})
-
 	return &instrumentedCache{
 		name:  name,
 		Cache: cache,
 
-		requestDuration: instr.NewHistogramCollector(requestDuration),
+		requestDuration: instr.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "cache_request_duration_seconds",
+			Help:      "Total time spent in seconds doing cache requests.",
+			// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
+			Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+			ConstLabels: prometheus.Labels{"name": name},
+		}, []string{"method", "status_code"})),
 
 		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "cortex",

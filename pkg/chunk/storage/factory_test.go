@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -191,7 +190,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, prometheus.NewRegistry(), nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -42,9 +41,8 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
-	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, reg, logger)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
 	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
@@ -75,9 +73,8 @@ func TestTempCachingStorageClient(t *testing.T) {
 	}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
-	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, reg, logger)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
 	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
@@ -135,9 +132,8 @@ func TestPermCachingStorageClient(t *testing.T) {
 	}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
-	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, reg, logger)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
 	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", Immutable: true},
@@ -188,9 +184,8 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	store := &mockStore{}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
-	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, reg, logger)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
 	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
@@ -228,9 +223,8 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
-	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, reg, logger)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
 	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},

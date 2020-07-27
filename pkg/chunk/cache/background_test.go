@@ -3,8 +3,6 @@ package cache_test
 import (
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
@@ -12,7 +10,7 @@ func TestBackground(t *testing.T) {
 	c := cache.NewBackground("mock", cache.BackgroundConfig{
 		WriteBackGoroutines: 1,
 		WriteBackBuffer:     100,
-	}, cache.NewMockCache(), prometheus.NewRegistry())
+	}, cache.NewMockCache(), nil)
 
 	keys, chunks := fillCache(t, c)
 	cache.Flush(c)

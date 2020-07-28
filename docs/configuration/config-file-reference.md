@@ -2686,7 +2686,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_global_metadata_per_metric: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage. 0 to disable.
+# enforced when fetching chunks from the long-term storage. When running the
+# Cortex chunks storage, this limit is enforced in the querier, while when
+# running the Cortex blocks storage this limit is both enforced in the querier
+# and store-gateway. 0 to disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
 

@@ -432,11 +432,100 @@ sendLoop:
 	wg.Wait()
 }
 
+func (i *Ingester) closeOldBackfillTSDBsAndShip(gracePeriod int64) error {
+	i.TSDBState.backfillDBs.closeAndShipMtx.Lock()
+	defer i.TSDBState.backfillDBs.closeAndShipMtx.Unlock()
+
+	type tempType struct {
+		userID  string
+		buckets *tsdbBuckets
+	}
+
+	var usersHavingOldTSDBs []tempType
+
+	// Collecting users who have old TSDBs.
+	i.TSDBState.backfillDBs.tsdbsMtx.RLock()
+	for userID, userBuckets := range i.TSDBState.backfillDBs.tsdbs {
+		userBuckets.RLock()
+		for _, bucket := range userBuckets.buckets {
+			if bucket.bucketEnd < bucket.db.Head().MaxTime()-gracePeriod {
+				userBuckets.RUnlock()
+				usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
+					userID:  userID,
+					buckets: userBuckets,
+				})
+				break
+			}
+		}
+		userBuckets.RUnlock()
+	}
+	i.TSDBState.backfillDBs.tsdbsMtx.RUnlock()
+
+	var merr tsdb_errors.MultiError
+	for _, user := range usersHavingOldTSDBs {
+		for {
+			user.buckets.Lock()
+			if len(user.buckets.buckets) == 0 {
+				user.buckets.Unlock()
+				break
+			}
+			bucket := user.buckets.buckets[0]
+			if bucket.bucketEnd >= bucket.db.Head().MaxTime()-gracePeriod {
+				user.buckets.Unlock()
+				break
+			}
+			user.buckets.buckets = user.buckets.buckets[1:]
+			user.buckets.Unlock()
+
+			// Compact the head first.
+			db := bucket.db
+			h := db.Head()
+			if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
+				merr.Add(errors.Wrap(err, "compact head"))
+				// Compaction failed. Restore back the old slice to attempt shipping later.
+				// As the slice would be small and the compaction failure would be rare,
+				// we are not caring about efficient slice management.
+				user.buckets.Lock()
+				user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
+				user.buckets.Unlock()
+				break
+			}
+
+			if db.shipper == nil {
+				continue
+			}
+			// Ship the block.
+			if uploaded, err := db.shipper.Sync(context.Background()); err != nil {
+				merr.Add(errors.Wrap(err, "ship block"))
+				// Shipping failed. Restore back the old slice to attempt shipping later.
+				// As the slice would be small and the compaction failure would be rare,
+				// we are not caring about efficient slice management.
+				user.buckets.Lock()
+				user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
+				user.buckets.Unlock()
+			} else {
+				level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir())
+			}
+		}
+
+		user.buckets.Lock()
+		i.TSDBState.backfillDBs.tsdbsMtx.Lock()
+		if len(user.buckets.buckets) == 0 {
+			// No backfill TSDBs left for the user.
+			delete(i.TSDBState.backfillDBs.tsdbs, user.userID)
+		}
+		i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+		user.buckets.Unlock()
+	}
+
+	return merr.Err()
+}
+
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
-	tsdbsMtx sync.RWMutex
-	// TODO(codesome): have more granular locks.
-	tsdbs map[string]*tsdbBuckets
+	tsdbsMtx        sync.RWMutex
+	closeAndShipMtx sync.Mutex
+	tsdbs           map[string]*tsdbBuckets
 }
 
 func newBackfillTSDBs() *backfillTSDBs {

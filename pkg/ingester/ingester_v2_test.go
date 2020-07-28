@@ -1803,7 +1803,7 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 			nil, client.API),
 		)
 
-		require.Equal(t, numBackfillTSDBs, len(i.TSDBState.backfillDBs.tsdbs[userID]))
+		require.Equal(t, numBackfillTSDBs, len(i.TSDBState.backfillDBs.tsdbs[userID].buckets))
 		if !errExpected {
 			require.NoError(t, err)
 			expectedIngested = append(expectedIngested, client.TimeSeries{

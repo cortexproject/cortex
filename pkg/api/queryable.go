@@ -3,9 +3,57 @@ package api
 import (
 	"context"
 
+	"github.com/gogo/status"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
+
+func translateError(err error) error {
+	if err == nil {
+		return err
+	}
+
+	// vendor/github.com/prometheus/prometheus/web/api/v1/api.go, respondError function only accepts
+	// *apiError types.
+	// Translation of error to *apiError happens in vendor/github.com/prometheus/prometheus/web/api/v1/api.go, returnAPIError method.
+	// It only supports:
+	// promql.ErrQueryCanceled, mapped to 503
+	// promql.ErrQueryTimeout, mapped to 503
+	// promql.ErrStorage mapped to 500
+	// anything else is mapped to 422
+
+	switch errors.Cause(err).(type) {
+	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
+		// Recognized by Prometheus API, vendor/github.com/prometheus/prometheus/promql/engine.go:91.
+		// Don't translate those, just in case we use them internally.
+		return err
+	case chunk.QueryError:
+		// This will be returned with status code 422 by Prometheus API.
+		// vendor/github.com/prometheus/prometheus/web/api/v1/api.go:1393
+		return err
+	default:
+		s, ok := status.FromError(err)
+		if ok {
+			code := s.Code()
+
+			// Treat these as HTTP status codes, even though they are supposed to be grpc codes.
+			if code >= 400 && code < 500 {
+				// Return directly, will be mapped to 422
+				return err
+			} else if code >= 500 && code < 599 {
+				// Wrap into ErrStorage for mapping to 500
+				return promql.ErrStorage{Err: err}
+			}
+		}
+
+		// All other errors will be returned as 500.
+		return promql.ErrStorage{Err: err}
+	}
+}
 
 type errorTranslateQueryable struct {
 	q storage.SampleAndChunkQueryable
@@ -13,20 +61,12 @@ type errorTranslateQueryable struct {
 
 func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	q, err := e.q.Querier(ctx, mint, maxt)
-	return errorTranslateQuerier{q: q}, err
+	return errorTranslateQuerier{q: q}, translateError(err)
 }
 
 func (e errorTranslateQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
 	q, err := e.q.ChunkQuerier(ctx, mint, maxt)
-	return errorTranslateChunkQuerier{q: q}, err
-}
-
-func translateError(err error) error {
-	if err == nil {
-		return err
-	}
-
-	// TODO:...
+	return errorTranslateChunkQuerier{q: q}, translateError(err)
 }
 
 type errorTranslateQuerier struct {

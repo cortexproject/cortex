@@ -5,7 +5,11 @@ RUN apt-get update && apt-get install -y curl python-requests python-yaml file j
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN npm install -g postcss-cli autoprefixer
+
+# Install website builder dependencies. Whenever you change these version, please also change website/package.json
+# and viceversa.
+RUN npm install -g postcss-cli@5.0.1 autoprefixer@9.8.5
+
 ENV HUGO_VERSION=v0.72.0
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \

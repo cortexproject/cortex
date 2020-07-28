@@ -363,7 +363,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	select {
 	case queue <- req:
-		f.queueLength.WithLabelValues(userID).Add(1)
+		f.queueLength.WithLabelValues(userID).Inc()
 		f.cond.Broadcast()
 		return nil
 	default:
@@ -416,7 +416,7 @@ FindQueue:
 			f.cond.Broadcast()
 
 			f.queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
-			f.queueLength.Add(-1)
+			f.queueLength.WithLabelValues(userID).Dec()
 			request.queueSpan.Finish()
 
 			// Ensure the request has not already expired.

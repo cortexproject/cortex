@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -486,10 +487,9 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
 	require.NoError(t, err)
 
-	result := &mockDistributor{
-		m: matrix,
-		r: &client.QueryStreamResponse{Chunkseries: []client.TimeSeriesChunk{tsc}},
-	}
+	result := &mockDistributor{}
+	result.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(matrix, nil)
+	result.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{Chunkseries: []client.TimeSeriesChunk{tsc}}, nil)
 	return result
 }
 

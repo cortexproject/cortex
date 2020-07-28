@@ -73,7 +73,7 @@ func TestNewBucketClient(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Load config
-			cfg := Config{}
+			cfg := BlocksStorageConfig{}
 			flagext.DefaultValues(&cfg)
 
 			err := yaml.Unmarshal([]byte(testData.config), &cfg)

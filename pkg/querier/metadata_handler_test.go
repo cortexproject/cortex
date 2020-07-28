@@ -8,15 +8,17 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/scrape"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMetadataHandler_Success(t *testing.T) {
-	d := &mockDistributor{
-		metadata: []scrape.MetricMetadata{
+	d := &mockDistributor{}
+	d.On("MetricsMetadata", mock.Anything).Return(
+		[]scrape.MetricMetadata{
 			{Metric: "alertmanager_dispatcher_aggregation_groups", Help: "Number of active aggregation groups", Type: "gauge", Unit: ""},
 		},
-	}
+		nil)
 
 	handler := MetadataHandler(d)
 
@@ -49,9 +51,8 @@ func TestMetadataHandler_Success(t *testing.T) {
 }
 
 func TestMetadataHandler_Error(t *testing.T) {
-	d := &mockDistributor{
-		metadataError: fmt.Errorf("no user id"),
-	}
+	d := &mockDistributor{}
+	d.On("MetricsMetadata", mock.Anything).Return([]scrape.MetricMetadata{}, fmt.Errorf("no user id"))
 
 	handler := MetadataHandler(d)
 

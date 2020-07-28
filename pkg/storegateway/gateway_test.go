@@ -709,11 +709,11 @@ func mockGatewayConfig() Config {
 	return cfg
 }
 
-func mockStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
+func mockStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "store-gateway-test-*")
 	require.NoError(t, err)
 
-	cfg := cortex_tsdb.Config{}
+	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 
 	cfg.BucketStore.ConsistencyDelay = 0

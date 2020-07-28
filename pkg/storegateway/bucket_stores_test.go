@@ -201,11 +201,11 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	assert.Equal(t, storesCount, int32(3))
 }
 
-func prepareStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
+func prepareStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "blocks-sync-*")
 	require.NoError(t, err)
 
-	cfg := cortex_tsdb.Config{}
+	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 	cfg.BucketStore.SyncDir = tmpDir
 

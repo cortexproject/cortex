@@ -65,10 +65,12 @@ memberlist:
   abort_if_cluster_join_fails: false
 
 storage:
-  engine: tsdb
+  engine: blocks
 
-tsdb:
-  dir: /tmp/cortex/tsdb-ing1
+blocks_storage:
+  tsdb:
+    dir: /tmp/cortex/tsdb-ing1
+
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync-querier1
 

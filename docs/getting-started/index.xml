@@ -297,9 +297,10 @@ memberlist:
 &lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ bind_port: 7948
 &lt;/span>&lt;span style="color:#00a000">&lt;/span>
 ...
-&lt;span style="color:#00a000">+# Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
+&lt;span style="color:#00a000">+# Directory names in the `blocks_storage` &amp;gt; `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
 &lt;/span>&lt;span style="color:#00a000">+# writing in-progress data to the same directories.
-&lt;/span>&lt;span style="color:#00a000">&lt;/span> tsdb:
+&lt;/span>&lt;span style="color:#00a000">&lt;/span> blocks_storage:
+tsdb:
 &lt;span style="color:#a40000">- dir: /tmp/cortex/tsdb-ing1
 &lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ dir: /tmp/cortex/tsdb-ing3
 &lt;/span>&lt;span style="color:#00a000">&lt;/span> bucket_store:
@@ -310,7 +311,7 @@ memberlist:
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
 will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
 that want to be part of gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
-&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>tsdb.filesystem.dir&lt;/code> field. This is directory where all ingesters will
+&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
 &amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
 and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item></channel></rss>

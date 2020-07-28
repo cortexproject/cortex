@@ -63,9 +63,9 @@ Caching is optional, but **highly recommended** in a production environment. Ple
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-experimental.blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
-Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+Additional options for configuring metadata cache have `-experimental.blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 
 _The same memcached backend cluster should be shared between store-gateways and queriers._
 
@@ -75,4 +75,4 @@ This section described the querier configuration. For the general Cortex configu
 
 {{ .QuerierConfigBlock }}
 
-{{ .TSDBConfigBlock }}
+{{ .BlocksStorageConfigBlock }}

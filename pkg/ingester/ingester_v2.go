@@ -1245,6 +1245,8 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	ticker := time.NewTicker(i.cfg.TSDBConfig.HeadCompactionInterval)
 	defer ticker.Stop()
 
+	// TODO(codesome): check shipping backfill TSDBs here.
+
 	for {
 		select {
 		case <-ticker.C:
@@ -1361,8 +1363,10 @@ func (i *Ingester) v2LifecyclerFlush() {
 	ctx := context.Background()
 
 	i.compactBlocks(ctx, true)
+	i.compactAllBackfillTSDBs(ctx)
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
 		i.shipBlocks(ctx)
+		i.shipAllBackfillTSDBs(ctx)
 	}
 
 	level.Info(util.Logger).Log("msg", "finished flushing and shipping TSDB blocks")

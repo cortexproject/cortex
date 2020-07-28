@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -31,28 +32,30 @@ import (
 type backfillAppender struct {
 	userID    string
 	ingester  *Ingester
-	buckets   []*tsdbBucket
+	buckets   *tsdbBuckets
 	appenders map[int]storage.Appender
 }
 
 func (i *Ingester) newBackfillAppender(userID string) *backfillAppender {
+	buckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
+	if buckets == nil {
+		buckets = i.TSDBState.backfillDBs.getOrCreateNewUser(userID)
+	}
 	return &backfillAppender{
 		userID:    userID,
 		ingester:  i,
-		buckets:   i.TSDBState.backfillDBs.getBucketsForUser(userID),
+		buckets:   buckets,
 		appenders: make(map[int]storage.Appender),
 	}
 }
 
 func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err error) {
-	bucket := getBucketForTimestamp(s.TimestampMs, a.buckets)
+	bucket := getBucketForTimestamp(s.TimestampMs, a.buckets.buckets)
 	if bucket == nil {
-		var userBuckets []*tsdbBucket
-		bucket, userBuckets, err = a.ingester.getOrCreateBackfillTSDB(a.userID, s.TimestampMs)
+		bucket, err = a.ingester.getOrCreateBackfillTSDB(a.buckets, a.userID, s.TimestampMs)
 		if err != nil {
 			return err
 		}
-		a.buckets = userBuckets
 	}
 
 	db := bucket.db
@@ -113,18 +116,16 @@ func getBucketForTimestamp(ts int64, userBuckets []*tsdbBucket) *tsdbBucket {
 	return nil
 }
 
-func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket, []*tsdbBucket, error) {
-	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
-	defer i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
-
-	userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]
+func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID string, ts int64) (*tsdbBucket, error) {
+	//userBuckets := i.TSDBState.backfillDBs.getOrCreateNewUser(userID)
 
 	start, end := getBucketRangesForTimestamp(ts, 1)
 
-	insertIdx := len(userBuckets)
-	for idx, b := range userBuckets {
+	userBuckets.RLock()
+	for _, b := range userBuckets.buckets {
 		if ts >= b.bucketStart && ts < b.bucketEnd {
-			return b, userBuckets, nil
+			defer userBuckets.RUnlock()
+			return b, nil
 		}
 
 		//   Existing: |-----------|
@@ -139,36 +140,45 @@ func (i *Ingester) getOrCreateBackfillTSDB(userID string, ts int64) (*tsdbBucket
 		// Changed to:  |------| (no overlaps)
 		if end > b.bucketStart && end < b.bucketEnd {
 			end = b.bucketStart
-			insertIdx = idx
 			break
 		}
 
 		if b.bucketStart > end {
-			insertIdx = idx
 			break
 		}
 	}
+	userBuckets.RUnlock()
 
-	tsdb, err := i.createNewTSDB(
+	userBuckets.Lock()
+	defer userBuckets.Unlock()
+	// Check again if another goroutine created a bucket for this timestamp between unlocking and locking..
+	for _, b := range userBuckets.buckets {
+		if ts >= b.bucketStart && ts < b.bucketEnd {
+			return b, nil
+		}
+	}
+
+	db, err := i.createNewTSDB(
 		userID, filepath.Join(i.cfg.TSDBConfig.BackfillDir, userID, getBucketName(start, end)),
 		(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	bucket := &tsdbBucket{
-		db:          tsdb,
+		db:          db,
 		bucketStart: start,
 		bucketEnd:   end,
 	}
-	if len(userBuckets) > 0 {
-		bucket.id = userBuckets[len(userBuckets)-1].id + 1
+	if len(userBuckets.buckets) > 0 {
+		bucket.id = userBuckets.buckets[len(userBuckets.buckets)-1].id + 1
 	}
-	userBuckets = append(userBuckets[:insertIdx], append([]*tsdbBucket{bucket}, userBuckets[insertIdx:]...)...)
+	userBuckets.buckets = append(userBuckets.buckets, bucket)
+	sort.Slice(userBuckets.buckets, func(i, j int) bool {
+		return userBuckets.buckets[i].bucketStart < userBuckets.buckets[i].bucketEnd
+	})
 
-	i.TSDBState.backfillDBs.tsdbs[userID] = userBuckets
-
-	return bucket, userBuckets, nil
+	return bucket, nil
 }
 
 func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
@@ -253,10 +263,11 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 					bucketEnd:   end,
 				}
 
-				i.TSDBState.backfillDBs.tsdbsMtx.Lock()
-				// Append at the end, we will sort it at the end.
-				i.TSDBState.backfillDBs.tsdbs[userID] = append(i.TSDBState.backfillDBs.tsdbs[userID], bucket)
-				i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+				buckets := i.TSDBState.backfillDBs.getOrCreateNewUser(userID)
+				buckets.Lock()
+				// We will sort it at the end.
+				buckets.buckets = append(buckets.buckets, bucket)
+				buckets.Unlock()
 			}(bucketID, userID, bucketName.Name(), dbPath)
 		}
 
@@ -272,9 +283,11 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 	// Sort the buckets within the users.
 	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
 	for _, buckets := range i.TSDBState.backfillDBs.tsdbs {
-		sort.Slice(buckets, func(i, j int) bool {
-			return buckets[i].bucketStart < buckets[i].bucketEnd
+		buckets.Lock()
+		sort.Slice(buckets.buckets, func(i, j int) bool {
+			return buckets.buckets[i].bucketStart < buckets.buckets[i].bucketEnd
 		})
+		buckets.Unlock()
 	}
 	i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
 
@@ -290,10 +303,12 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 			q.Close()
 		}
 	}()
-	for _, b := range buckets {
+	buckets.RLock()
+	for _, b := range buckets.buckets {
 		if !b.overlaps(from, through) {
 			mint, err := b.db.DB.StartTime()
 			if err != nil {
+				buckets.RUnlock()
 				return nil, err
 			}
 			maxt := b.db.Head().MaxTime()
@@ -304,11 +319,13 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 
 		q, err := b.db.Querier(ctx, from, through)
 		if err != nil {
+			buckets.RUnlock()
 			return nil, err
 		}
 
 		queriers = append(queriers, q)
 	}
+	buckets.RUnlock()
 
 	if len(queriers) == 0 {
 		return nil, nil
@@ -344,46 +361,110 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 }
 
 func (i *Ingester) closeAllBackfillTSDBs() {
-	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
-	defer i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+	// Snapshotting of in-memory chunks can be considered as a small compaction, hence
+	// using that concurrency.
+	i.runConcurrentBackfillWorkers(context.Background(), i.cfg.TSDBConfig.HeadCompactionConcurrency, func(db *userTSDB) {
+		if err := db.Close(); err != nil {
+			level.Warn(util.Logger).Log("msg", "unable to close backfill TSDB", "user", db.userID, "bucket_dir", db.Dir(), "err", err)
+		}
+	})
+}
+
+func (i *Ingester) compactAllBackfillTSDBs(ctx context.Context) {
+	i.runConcurrentBackfillWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(db *userTSDB) {
+		h := db.Head()
+		if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
+			level.Error(util.Logger).Log("msg", "unable to compact backfill TSDB", "user", db.userID, "bucket_dir", db.Dir(), "err", err)
+		}
+	})
+}
+
+func (i *Ingester) shipAllBackfillTSDBs(ctx context.Context) {
+	i.runConcurrentBackfillWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(db *userTSDB) {
+		if db.shipper == nil {
+			return
+		}
+		if uploaded, err := db.shipper.Sync(context.Background()); err != nil {
+			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize backfill TSDB blocks with the storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir(), "err", err)
+		} else {
+			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir())
+		}
+	})
+}
+
+func (i *Ingester) runConcurrentBackfillWorkers(ctx context.Context, concurrency int, userFunc func(*userTSDB)) {
+	i.TSDBState.backfillDBs.tsdbsMtx.RLock()
+	defer i.TSDBState.backfillDBs.tsdbsMtx.RUnlock()
+
+	// Using head compaction concurrency for both head compaction and shipping.
+	ch := make(chan *userTSDB, concurrency)
 
 	wg := &sync.WaitGroup{}
-
-	for userID, buckets := range i.TSDBState.backfillDBs.tsdbs {
-		for _, bucket := range buckets {
-			wg.Add(1)
-			go func(uid string, db *userTSDB) {
-				defer wg.Done()
-
-				if err := db.Close(); err != nil {
-					level.Warn(util.Logger).Log("msg", "unable to close backfill TSDB", "user", uid, "bucket_dir", db.Dir(), "err", err)
-				}
-			}(userID, bucket.db)
-		}
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for db := range ch {
+				userFunc(db)
+			}
+		}()
 	}
 
+sendLoop:
+	for _, buckets := range i.TSDBState.backfillDBs.tsdbs {
+		buckets.Lock()
+		for _, bucket := range buckets.buckets {
+			select {
+			case ch <- bucket.db:
+				// ok
+			case <-ctx.Done():
+				buckets.Unlock()
+				// don't start new tasks.
+				break sendLoop
+			}
+
+		}
+		buckets.Unlock()
+	}
+	close(ch)
+
 	wg.Wait()
-	// Clear all DBs irrespective of them closing.
-	i.TSDBState.backfillDBs.tsdbs = make(map[string][]*tsdbBucket)
 }
 
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
 	tsdbsMtx sync.RWMutex
 	// TODO(codesome): have more granular locks.
-	tsdbs map[string][]*tsdbBucket
+	tsdbs map[string]*tsdbBuckets
 }
 
 func newBackfillTSDBs() *backfillTSDBs {
 	return &backfillTSDBs{
-		tsdbs: make(map[string][]*tsdbBucket),
+		tsdbs: make(map[string]*tsdbBuckets),
 	}
 }
 
-func (b *backfillTSDBs) getBucketsForUser(userID string) []*tsdbBucket {
+func (b *backfillTSDBs) getBucketsForUser(userID string) *tsdbBuckets {
 	b.tsdbsMtx.RLock()
 	defer b.tsdbsMtx.RUnlock()
 	return b.tsdbs[userID]
+}
+
+func (b *backfillTSDBs) getOrCreateNewUser(userID string) *tsdbBuckets {
+	b.tsdbsMtx.Lock()
+	defer b.tsdbsMtx.Unlock()
+	buckets, ok := b.tsdbs[userID]
+	if !ok {
+		buckets = &tsdbBuckets{}
+		b.tsdbs[userID] = buckets
+	}
+	return buckets
+}
+
+type tsdbBuckets struct {
+	sync.RWMutex
+	buckets []*tsdbBucket
 }
 
 type tsdbBucket struct {

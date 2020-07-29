@@ -40,6 +40,13 @@
     - `-experimental.tsdb.stripe-size` changed to `-experimental.blocks-storage.tsdb.stripe-size`
     - `-experimental.tsdb.wal-compression-enabled` changed to `-experimental.blocks-storage.tsdb.wal-compression-enabled`
     - `-experimental.tsdb.flush-blocks-on-shutdown` changed to `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown`
+* [ENHANCEMENT/CHANGE] Added new flags `-*.grpc-compression` to configure compression used by gRPC. Valid values are "gzip", "snappy", "" (no compression, default). Previous flags (`-*.use-gzip-compression`, enumerate) are now deprecated. #2940
+  * `-bigtable.grpc-compression`
+  * `-ingester.client.grpc-compression`
+  * `-querier.frontend-client.grpc-compression`
+  * Deprecated: `-bigtable.grpc-use-gzip-compression`
+  * Deprecated: `-ingester.client.grpc-use-gzip-compression`
+  * Deprecated: `-querier.frontend-client.grpc-use-gzip-compression`
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783
@@ -87,13 +94,6 @@
 * [ENHANCEMENT] Flusher: Added `-flusher.exit-after-flush` option (defaults to true) to control whether Cortex should stop completely after Flusher has finished its work. #2877
 * [ENHANCEMENT] Added metrics `cortex_config_hash` and `cortex_runtime_config_hash` to expose hash of the currently active config file. #2874
 * [ENHANCEMENT] Logger: added JSON logging support, configured via the `-log.format=json` CLI flag or its respective YAML config option. #2386
-* [ENHANCEMENT] Support Snappy compression for gRPC. #2940
-  * `-bigtable.grpc-use-compression`
-  * `-ingester.client.grpc-use-compression`
-  * `-querier.frontend-client.grpc-use-compression`
-  * Deprecated: `-bigtable.grpc-use-gzip-compression`
-  * Deprecated: `-ingester.client.grpc-use-gzip-compression`
-  * Deprecated: `-querier.frontend-client.grpc-use-gzip-compression`
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762

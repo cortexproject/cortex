@@ -12,17 +12,33 @@ import (
 const Name = "snappy"
 
 func init() {
-	encoding.RegisterCompressor(&compressor{})
+	encoding.RegisterCompressor(newCompressor())
 }
 
-var (
-	// writersPool stores writers
-	writersPool sync.Pool
-	// readersPool stores readers
-	readersPool sync.Pool
-)
-
 type compressor struct {
+	writersPool sync.Pool
+	readersPool sync.Pool
+}
+
+func newCompressor() *compressor {
+	c := &compressor{}
+	c.readersPool = sync.Pool{
+		New: func() interface{} {
+			return &reader{
+				compressor: c,
+				Reader:     snappy.NewReader(nil),
+			}
+		},
+	}
+	c.writersPool = sync.Pool{
+		New: func() interface{} {
+			return &writeCloser{
+				compressor: c,
+				Writer:     snappy.NewBufferedWriter(nil),
+			}
+		},
+	}
+	return c
 }
 
 func (c *compressor) Name() string {
@@ -30,46 +46,36 @@ func (c *compressor) Name() string {
 }
 
 func (c *compressor) Compress(w io.Writer) (io.WriteCloser, error) {
-	wr, inPool := writersPool.Get().(*writeCloser)
-	if !inPool {
-		return &writeCloser{Writer: snappy.NewBufferedWriter(w)}, nil
-	}
+	wr := c.writersPool.Get().(*writeCloser)
 	wr.Reset(w)
-
 	return wr, nil
 }
 
 func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
-	dr, inPool := readersPool.Get().(*reader)
-	if !inPool {
-		return &reader{Reader: snappy.NewReader(r)}, nil
-	}
+	dr := c.readersPool.Get().(*reader)
 	dr.Reset(r)
-
 	return dr, nil
 }
 
 type writeCloser struct {
+	*compressor
 	*snappy.Writer
 }
 
 func (w *writeCloser) Close() error {
-	defer func() {
-		writersPool.Put(w)
-	}()
-
+	defer w.writersPool.Put(w)
 	return w.Writer.Close()
 }
 
 type reader struct {
+	*compressor
 	*snappy.Reader
 }
 
 func (r *reader) Read(p []byte) (n int, err error) {
 	n, err = r.Reader.Read(p)
 	if err == io.EOF {
-		readersPool.Put(r)
+		r.readersPool.Put(r)
 	}
-
 	return n, err
 }

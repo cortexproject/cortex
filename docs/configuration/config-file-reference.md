@@ -1780,8 +1780,8 @@ bigtable:
 
     # Use compression when sending messages. Supported values are: 'gzip',
     # 'snappy' and '' (disable compression)
-    # CLI flag: -bigtable.grpc-use-compression
-    [use_compression: <string> | default = ""]
+    # CLI flag: -bigtable.grpc-compression
+    [compression: <string> | default = ""]
 
     # Rate limit for gRPC client; 0 means disabled.
     # CLI flag: -bigtable.grpc-client-rate-limit
@@ -2276,8 +2276,8 @@ grpc_client_config:
 
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)
-  # CLI flag: -ingester.client.grpc-use-compression
-  [use_compression: <string> | default = ""]
+  # CLI flag: -ingester.client.grpc-compression
+  [compression: <string> | default = ""]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -ingester.client.grpc-client-rate-limit
@@ -2354,8 +2354,8 @@ grpc_client_config:
 
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)
-  # CLI flag: -querier.frontend-client.grpc-use-compression
-  [use_compression: <string> | default = ""]
+  # CLI flag: -querier.frontend-client.grpc-compression
+  [compression: <string> | default = ""]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -querier.frontend-client.grpc-client-rate-limit

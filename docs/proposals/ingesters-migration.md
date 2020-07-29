@@ -31,7 +31,7 @@ How do we handle ingesters with WAL (non-WAL ingesters are discussed below)? The
 Benefit of this approach is that it is trivial to add the flag, and then rollout in both steps can be fully automated.
 In this scenario, we will reconfigure existing statefulset of ingesters to use blocks in step 2.
 
-Notice that querier can ask only ingesters for most recent data and not consult the store, but during the rollout (and some time after), ingesters that are already using blocks will **not** have the most recent chunks in memory. To make sure queries work correctly, `-querier.query-store-after` needs to be set to 0, in order for queriers to not rely on ingesters only for most recent data. After couple of hours after rollout, this value can be increased again, depending on how much data ingesters keep. (`-experimental.tsdb.retention-period` for blocks, `-ingester.retain-period` for chunks)
+Notice that querier can ask only ingesters for most recent data and not consult the store, but during the rollout (and some time after), ingesters that are already using blocks will **not** have the most recent chunks in memory. To make sure queries work correctly, `-querier.query-store-after` needs to be set to 0, in order for queriers to not rely on ingesters only for most recent data. After couple of hours after rollout, this value can be increased again, depending on how much data ingesters keep. (`-experimental.blocks-storage.tsdb.retention-period` for blocks, `-ingester.retain-period` for chunks)
 During the rollout, chunks and blocks ingesters share the ring and use the same statefulset.
 
 Other alternatives considered for flushing chunks / handling WAL:

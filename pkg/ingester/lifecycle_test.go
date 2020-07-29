@@ -37,7 +37,7 @@ func defaultIngesterTestConfig() Config {
 	consul := consul.NewInMemoryClient(ring.GetCodec())
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	flagext.DefaultValues(&cfg.TSDBConfig)
+	flagext.DefaultValues(&cfg.BlocksStorageConfig)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
@@ -432,9 +432,9 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 			// Start the first ingester, and get it into ACTIVE state.
 			cfg1 := defaultIngesterTestConfig()
-			cfg1.TSDBEnabled = true
-			cfg1.TSDBConfig.Dir = dir1
-			cfg1.TSDBConfig.S3 = s3.Config{
+			cfg1.BlocksStorageEnabled = true
+			cfg1.BlocksStorageConfig.TSDB.Dir = dir1
+			cfg1.BlocksStorageConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
 				SecretAccessKey: flagext.Secret{Value: "dummy"},
@@ -460,9 +460,9 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 			// Start a second ingester, but let it go into PENDING
 			cfg2 := defaultIngesterTestConfig()
-			cfg2.TSDBEnabled = true
-			cfg2.TSDBConfig.Dir = dir2
-			cfg2.TSDBConfig.S3 = s3.Config{
+			cfg2.BlocksStorageEnabled = true
+			cfg2.BlocksStorageConfig.TSDB.Dir = dir2
+			cfg2.BlocksStorageConfig.S3 = s3.Config{
 				Endpoint:        "dummy",
 				BucketName:      "dummy",
 				SecretAccessKey: flagext.Secret{Value: "dummy"},

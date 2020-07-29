@@ -160,7 +160,7 @@ func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID stri
 	}
 
 	db, err := i.createNewTSDB(
-		userID, filepath.Join(i.cfg.TSDBConfig.BackfillDir, userID, getBucketName(start, end)),
+		userID, filepath.Join(i.cfg.BlocksStorageConfig.TSDB.BackfillDir, userID, getBucketName(start, end)),
 		(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
 	)
 	if err != nil {
@@ -185,9 +185,9 @@ func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID stri
 func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
 	wg := &sync.WaitGroup{}
-	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
+	openGate := gate.New(i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup)
 
-	users, err := ioutil.ReadDir(i.cfg.TSDBConfig.BackfillDir)
+	users, err := ioutil.ReadDir(i.cfg.BlocksStorageConfig.TSDB.BackfillDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -202,7 +202,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 		}
 
 		userID := u.Name()
-		userPath := filepath.Join(i.cfg.TSDBConfig.BackfillDir, userID)
+		userPath := filepath.Join(i.cfg.BlocksStorageConfig.TSDB.BackfillDir, userID)
 
 		bucketNames, err := ioutil.ReadDir(userPath)
 		if err != nil {
@@ -297,7 +297,9 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 
 func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, through int64, matchers []*labels.Matcher) ([]storage.SeriesSet, error) {
 	buckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
-
+	if buckets == nil {
+		return nil, nil
+	}
 	var queriers []storage.Querier
 	defer func() {
 		for _, q := range queriers {
@@ -364,7 +366,7 @@ func (i *Ingester) backfillSelect(ctx context.Context, userID string, from, thro
 func (i *Ingester) closeAllBackfillTSDBs() {
 	// Snapshotting of in-memory chunks can be considered as a small compaction, hence
 	// using that concurrency.
-	i.runConcurrentBackfillWorkers(context.Background(), i.cfg.TSDBConfig.HeadCompactionConcurrency, func(db *userTSDB) {
+	i.runConcurrentBackfillWorkers(context.Background(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(db *userTSDB) {
 		if err := db.Close(); err != nil {
 			level.Warn(util.Logger).Log("msg", "unable to close backfill TSDB", "user", db.userID, "bucket_dir", db.Dir(), "err", err)
 		}
@@ -372,7 +374,7 @@ func (i *Ingester) closeAllBackfillTSDBs() {
 }
 
 func (i *Ingester) compactAllBackfillTSDBs(ctx context.Context) {
-	i.runConcurrentBackfillWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(db *userTSDB) {
+	i.runConcurrentBackfillWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(db *userTSDB) {
 		h := db.Head()
 		if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
 			level.Error(util.Logger).Log("msg", "unable to compact backfill TSDB", "user", db.userID, "bucket_dir", db.Dir(), "err", err)
@@ -381,7 +383,7 @@ func (i *Ingester) compactAllBackfillTSDBs(ctx context.Context) {
 }
 
 func (i *Ingester) shipAllBackfillTSDBs(ctx context.Context) {
-	i.runConcurrentBackfillWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(db *userTSDB) {
+	i.runConcurrentBackfillWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(db *userTSDB) {
 		if db.shipper == nil {
 			return
 		}

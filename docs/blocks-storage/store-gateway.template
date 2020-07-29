@@ -15,7 +15,7 @@ The store-gateway is **semi-stateful**.
 
 At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
-While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.blocks-storage.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
@@ -62,14 +62,14 @@ The store-gateway can use a cache to speed up lookups of postings and series fro
 
 #### In-memory index cache
 
-The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
+The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
 
 - Pros: zero latency
 - Cons: increased store-gateway memory usage, not shared across multiple store-gateway replicas (when sharding is disabled or replication factor > 1)
 
 #### Memcached index cache
 
-The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.blocks-storage.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.blocks-storage.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
 
 The trade-off of using the Memcached index cache is:
 
@@ -88,9 +88,9 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
-To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached.*` prefix.
+To enable chunks cache, please set `-experimental.blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
 
-There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.tsdb.bucket-store.chunks-cache.*` prefix.
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.blocks-storage.bucket-store.chunks-cache.*` prefix.
 
 ### Metadata cache
 
@@ -103,9 +103,9 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-experimental.blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
-Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+Additional options for configuring metadata cache have `-experimental.blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 
 _The same memcached backend cluster should be shared between store-gateways and queriers._
 
@@ -120,4 +120,4 @@ This section described the store-gateway configuration. For the general Cortex c
 
 {{ .StoreGatewayConfigBlock }}
 
-{{ .TSDBConfigBlock }}
+{{ .BlocksStorageConfigBlock }}

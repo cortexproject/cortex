@@ -50,7 +50,9 @@ func (i *Ingester) newBackfillAppender(userID string) *backfillAppender {
 }
 
 func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err error) {
+	a.buckets.RLock()
 	bucket := getBucketForTimestamp(s.TimestampMs, a.buckets.buckets)
+	a.buckets.RUnlock()
 	if bucket == nil {
 		bucket, err = a.ingester.getOrCreateBackfillTSDB(a.buckets, a.userID, s.TimestampMs)
 		if err != nil {
@@ -117,14 +119,12 @@ func getBucketForTimestamp(ts int64, userBuckets []*tsdbBucket) *tsdbBucket {
 }
 
 func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID string, ts int64) (*tsdbBucket, error) {
-	//userBuckets := i.TSDBState.backfillDBs.getOrCreateNewUser(userID)
-
 	start, end := getBucketRangesForTimestamp(ts, 1)
 
 	userBuckets.RLock()
 	for _, b := range userBuckets.buckets {
 		if ts >= b.bucketStart && ts < b.bucketEnd {
-			defer userBuckets.RUnlock()
+			userBuckets.RUnlock()
 			return b, nil
 		}
 
@@ -149,6 +149,7 @@ func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID stri
 	}
 	userBuckets.RUnlock()
 
+	// No bucket exists for this timestamp, create one.
 	userBuckets.Lock()
 	defer userBuckets.Unlock()
 	// Check again if another goroutine created a bucket for this timestamp between unlocking and locking..
@@ -393,8 +394,8 @@ func (i *Ingester) shipAllBackfillTSDBs(ctx context.Context) {
 }
 
 func (i *Ingester) runConcurrentBackfillWorkers(ctx context.Context, concurrency int, userFunc func(*userTSDB)) {
-	i.TSDBState.backfillDBs.tsdbsMtx.RLock()
-	defer i.TSDBState.backfillDBs.tsdbsMtx.RUnlock()
+	i.TSDBState.backfillDBs.tsdbsMtx.Lock()
+	defer i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
 
 	// Using head compaction concurrency for both head compaction and shipping.
 	ch := make(chan *userTSDB, concurrency)
@@ -402,7 +403,6 @@ func (i *Ingester) runConcurrentBackfillWorkers(ctx context.Context, concurrency
 	wg := &sync.WaitGroup{}
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for db := range ch {
@@ -449,7 +449,6 @@ func (i *Ingester) closeOldBackfillTSDBsAndShip(gracePeriod int64) error {
 		userBuckets.RLock()
 		for _, bucket := range userBuckets.buckets {
 			if bucket.bucketEnd < bucket.db.Head().MaxTime()-gracePeriod {
-				userBuckets.RUnlock()
 				usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
 					userID:  userID,
 					buckets: userBuckets,

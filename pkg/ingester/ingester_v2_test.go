@@ -1795,6 +1795,8 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 	expectedIngested := make([]client.TimeSeries, 0)
 
 	ingestSample := func(ts int64, numBackfillTSDBs int, errExpected bool) {
+		t.Helper()
+
 		metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: fmt.Sprintf("test%d", len(expectedIngested))}}
 		metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
 		_, err = i.v2Push(ctx, client.ToWriteRequest(
@@ -1803,7 +1805,11 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 			nil, client.API),
 		)
 
-		require.Equal(t, numBackfillTSDBs, len(i.TSDBState.backfillDBs.tsdbs[userID].buckets))
+		numBuckets := 0
+		if userBuckets := i.TSDBState.backfillDBs.tsdbs[userID]; userBuckets != nil {
+			numBuckets = len(userBuckets.buckets)
+		}
+		require.Equal(t, numBackfillTSDBs, numBuckets)
 		if !errExpected {
 			require.NoError(t, err)
 			expectedIngested = append(expectedIngested, client.TimeSeries{

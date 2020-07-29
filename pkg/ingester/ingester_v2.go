@@ -1250,8 +1250,12 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			i.compactBlocks(ctx, false)
-			if err := i.closeOldBackfillTSDBsAndShip(i.cfg.BlocksStorageConfig.TSDB.BackfillLimit.Milliseconds()); err != nil {
-				level.Warn(util.Logger).Log("msg", "failed to close old backfill TSDBs", "err", err)
+			if err := i.compactOldBackfillTSDBsAndShip(i.cfg.BlocksStorageConfig.TSDB.BackfillLimit.Milliseconds()); err != nil {
+				level.Warn(util.Logger).Log("msg", "failed to compact and ship old backfill TSDBs", "err", err)
+			}
+
+			if err := i.closeOldBackfillTSDBsAndDelete(i.cfg.MaxChunkAge.Milliseconds()); err != nil {
+				level.Warn(util.Logger).Log("msg", "failed to close and delete old backfill TSDBs", "err", err)
 			}
 
 		case ch := <-i.TSDBState.forceCompactTrigger:

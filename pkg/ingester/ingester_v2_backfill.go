@@ -434,7 +434,53 @@ sendLoop:
 	wg.Wait()
 }
 
-func (i *Ingester) closeOldBackfillTSDBsAndShip(gracePeriod int64) error {
+func (i *Ingester) compactOldBackfillTSDBsAndShip(gracePeriod int64) error {
+	return i.runOnBucketsBefore(false,
+		func(t int64) int64 {
+			return t - gracePeriod
+		},
+		func(db *userTSDB) error {
+			// Compact the head first.
+			h := db.Head()
+			if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
+				return errors.Wrap(err, "compact head")
+			}
+
+			if db.shipper == nil {
+				return nil
+			}
+			// Ship the block.
+			uploaded, err := db.shipper.Sync(context.Background())
+			if err != nil {
+				return errors.Wrap(err, "ship block")
+			}
+			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir())
+			return nil
+		},
+	)
+}
+
+func (i *Ingester) closeOldBackfillTSDBsAndDelete(gracePeriod int64) error {
+	nowTimeMs := time.Now().Unix() * 1000
+	return i.runOnBucketsBefore(true,
+		func(t int64) int64 {
+			return nowTimeMs - gracePeriod
+		},
+		func(db *userTSDB) error {
+			// TODO(codesome): check for double closing.
+			if err := db.Close(); err != nil {
+				return errors.Wrap(err, "close backfill TSDB")
+			}
+			// TODO(codesome): check if the blocks are shipped.
+			if err := os.RemoveAll(db.Dir()); err != nil {
+				return errors.Wrap(err, "delete backfill TSDB dir")
+			}
+			return nil
+		},
+	)
+}
+
+func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t int64) int64, f func(db *userTSDB) error) error {
 	i.TSDBState.backfillDBs.closeAndShipMtx.Lock()
 	defer i.TSDBState.backfillDBs.closeAndShipMtx.Unlock()
 
@@ -450,7 +496,7 @@ func (i *Ingester) closeOldBackfillTSDBsAndShip(gracePeriod int64) error {
 	for userID, userBuckets := range i.TSDBState.backfillDBs.tsdbs {
 		userBuckets.RLock()
 		for _, bucket := range userBuckets.buckets {
-			if bucket.bucketEnd < bucket.db.Head().MaxTime()-gracePeriod {
+			if bucket.bucketEnd < gracePeriodFunc(bucket.db.Head().MaxTime()) {
 				usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
 					userID:  userID,
 					buckets: userBuckets,
@@ -471,52 +517,39 @@ func (i *Ingester) closeOldBackfillTSDBsAndShip(gracePeriod int64) error {
 				break
 			}
 			bucket := user.buckets.buckets[0]
-			if bucket.bucketEnd >= bucket.db.Head().MaxTime()-gracePeriod {
+			if bucket.bucketEnd >= gracePeriodFunc(bucket.db.Head().MaxTime()) {
 				user.buckets.Unlock()
 				break
 			}
-			user.buckets.buckets = user.buckets.buckets[1:]
+			if deleteBucket {
+				user.buckets.buckets = user.buckets.buckets[1:]
+			}
 			user.buckets.Unlock()
 
-			// Compact the head first.
-			db := bucket.db
-			h := db.Head()
-			if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
-				merr.Add(errors.Wrap(err, "compact head"))
-				// Compaction failed. Restore back the old slice to attempt shipping later.
-				// As the slice would be small and the compaction failure would be rare,
-				// we are not caring about efficient slice management.
-				user.buckets.Lock()
-				user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
-				user.buckets.Unlock()
+			if err := f(bucket.db); err != nil {
+				merr.Add(err)
+				if deleteBucket {
+					// Restore back the old slice to attempt running later.
+					// As the slice would be small and the failure would be rare,
+					// we are not caring about efficient slice management.
+					user.buckets.Lock()
+					user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
+					user.buckets.Unlock()
+				}
 				break
 			}
-
-			if db.shipper == nil {
-				continue
-			}
-			// Ship the block.
-			if uploaded, err := db.shipper.Sync(context.Background()); err != nil {
-				merr.Add(errors.Wrap(err, "ship block"))
-				// Shipping failed. Restore back the old slice to attempt shipping later.
-				// As the slice would be small and the compaction failure would be rare,
-				// we are not caring about efficient slice management.
-				user.buckets.Lock()
-				user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
-				user.buckets.Unlock()
-			} else {
-				level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir())
-			}
 		}
 
-		user.buckets.Lock()
-		i.TSDBState.backfillDBs.tsdbsMtx.Lock()
-		if len(user.buckets.buckets) == 0 {
-			// No backfill TSDBs left for the user.
-			delete(i.TSDBState.backfillDBs.tsdbs, user.userID)
+		if deleteBucket {
+			// Check for empty buckets.
+			user.buckets.Lock()
+			i.TSDBState.backfillDBs.tsdbsMtx.Lock()
+			if len(user.buckets.buckets) == 0 {
+				delete(i.TSDBState.backfillDBs.tsdbs, user.userID)
+			}
+			i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
+			user.buckets.Unlock()
 		}
-		i.TSDBState.backfillDBs.tsdbsMtx.Unlock()
-		user.buckets.Unlock()
 	}
 
 	return merr.Err()

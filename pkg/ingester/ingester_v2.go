@@ -983,7 +983,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		blockRanges[len(blockRanges)-1],
 		tsdbPromReg,
 	)
-	if err != nil {
+	if err == nil {
 		// We set the limiter here because we don't want to limit
 		// series during WAL replay.
 		userDB.limiter = i.limiter

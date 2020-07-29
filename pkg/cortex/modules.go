@@ -493,7 +493,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 			t.Cfg.Ruler,
 			t.Distributor,
 			queryable,
-			ruler.PromDelayedQueryFunc(engine, queryable),
+			engine,
 		),
 		prometheus.DefaultRegisterer,
 		util.Logger,

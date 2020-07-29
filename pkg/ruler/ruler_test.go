@@ -86,7 +86,7 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	require.NoError(t, err)
 	ruler, err := NewRuler(
 		cfg,
-		DefaultTenantManager(cfg, pusher, noopQueryable, PromDelayedQueryFunc(engine, noopQueryable)),
+		DefaultTenantManager(cfg, pusher, noopQueryable, engine),
 		prometheus.NewRegistry(),
 		l,
 		storage,

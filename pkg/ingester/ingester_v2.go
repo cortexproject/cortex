@@ -2,8 +2,10 @@ package ingester
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -118,6 +121,38 @@ func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
 
 func (u *userTSDB) setLastUpdate(t time.Time) {
 	u.lastUpdate.Store(t.Unix())
+}
+
+func (u *userTSDB) getShippedBlocksULID() ([]ulid.ULID, error) {
+	b, err := ioutil.ReadFile(filepath.Join(u.Dir(), shipper.MetaFilename))
+	if err != nil {
+		return nil, errors.Wrap(err, "read shipper meta file")
+	}
+	var shipperMeta shipper.Meta
+	if err := json.Unmarshal(b, &shipperMeta); err != nil {
+		return nil, errors.Wrap(err, "unmarshal shipper meta file to json")
+	}
+
+	return shipperMeta.Uploaded, nil
+}
+
+func (u *userTSDB) getUnshippedBlocksULID() (unshipped []ulid.ULID, err error) {
+	shippedBlocks, err := u.getShippedBlocksULID()
+	if err != nil {
+		return nil, errors.Wrap(err, "get shipped blocks")
+	}
+
+Outer:
+	for _, b := range u.Blocks() {
+		for _, uid := range shippedBlocks {
+			if uid == b.Meta().ULID {
+				continue Outer
+			}
+		}
+		unshipped = append(unshipped, b.Meta().ULID)
+	}
+
+	return unshipped, nil
 }
 
 // TSDBState holds data structures used by the TSDB storage engine

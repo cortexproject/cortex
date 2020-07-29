@@ -471,7 +471,20 @@ func (i *Ingester) closeOldBackfillTSDBsAndDelete(gracePeriod int64) error {
 			if err := db.Close(); err != nil {
 				return errors.Wrap(err, "close backfill TSDB")
 			}
-			// TODO(codesome): check if the blocks are shipped.
+
+			unshippedBlocks, err := db.getUnshippedBlocksULID()
+			if err != nil {
+				return errors.Wrap(err, "get unshipped blocks")
+			}
+			if len(unshippedBlocks) > 0 {
+				// Ship the unshipped blocks.
+				uploaded, err := db.shipper.Sync(context.Background())
+				if err != nil {
+					return errors.Wrap(err, "ship block")
+				}
+				level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.userID, "uploaded", uploaded, "bucket_dir", db.Dir())
+			}
+
 			if err := os.RemoveAll(db.Dir()); err != nil {
 				return errors.Wrap(err, "delete backfill TSDB dir")
 			}

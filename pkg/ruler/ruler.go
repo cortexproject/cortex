@@ -191,7 +191,10 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	}
 
 	userManagerMetrics := NewManagerMetrics()
-	reg.MustRegister(userManagerMetrics)
+
+	if reg != nil {
+		reg.MustRegister(userManagerMetrics)
+	}
 
 	ruler := &Ruler{
 		cfg:                cfg,

@@ -266,12 +266,8 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummariesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
-	result := map[string]SummaryData{}
 	for user, userMetrics := range d {
-		result[user] = userMetrics.SumSummaries(summaryName)
-	}
-
-	for user, data := range result {
+		data := userMetrics.SumSummaries(summaryName)
 		out <- data.Metric(desc, user)
 	}
 }

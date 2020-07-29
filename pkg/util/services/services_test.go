@@ -3,11 +3,11 @@ package services
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 func TestIdleService(t *testing.T) {
@@ -41,10 +41,10 @@ func TestIdleService(t *testing.T) {
 func TestTimerService(t *testing.T) {
 	t.Parallel()
 
-	iterations := int64(0)
+	var iterations atomic.Uint64
 
 	s := NewTimerService(100*time.Millisecond, nil, func(ctx context.Context) error {
-		atomic.AddInt64(&iterations, 1)
+		iterations.Inc()
 		return nil
 	}, nil)
 	defer s.StopAsync()
@@ -57,7 +57,7 @@ func TestTimerService(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	val := atomic.LoadInt64(&iterations)
+	val := iterations.Load()
 	require.NotZero(t, val) // we should observe some iterations now
 
 	s.StopAsync()

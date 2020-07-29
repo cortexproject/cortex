@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -20,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
@@ -190,15 +190,15 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Sync user stores and count the number of times the callback is called.
-	storesCount := int32(0)
+	var storesCount atomic.Int32
 	err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
-		atomic.AddInt32(&storesCount, 1)
+		storesCount.Inc()
 		return nil
 	})
 
 	assert.NoError(t, err)
 	bucketClient.AssertNumberOfCalls(t, "Iter", 1)
-	assert.Equal(t, storesCount, int32(3))
+	assert.Equal(t, storesCount.Load(), int32(3))
 }
 
 func prepareStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {

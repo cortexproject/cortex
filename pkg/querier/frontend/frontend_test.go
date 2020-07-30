@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
-	uber_atomic "go.uber.org/atomic"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -172,10 +171,10 @@ func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
 // TestFrontendCancel ensures that when client requests are cancelled,
 // the underlying query is correctly cancelled _and not retried_.
 func TestFrontendCancel(t *testing.T) {
-	var tries int32
+	var tries atomic.Int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
-		atomic.AddInt32(&tries, 1)
+		tries.Inc()
 	})
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
@@ -195,10 +194,10 @@ func TestFrontendCancel(t *testing.T) {
 		require.Error(t, err)
 
 		time.Sleep(100 * time.Millisecond)
-		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
+		assert.Equal(t, int32(1), tries.Load())
 	}
 	testFrontend(t, defaultFrontendConfig(), handler, test, false)
-	tries = 0
+	tries.Store(0)
 	testFrontend(t, defaultFrontendConfig(), handler, test, true)
 }
 
@@ -234,7 +233,7 @@ func TestFrontendCheckReady(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
-				connectedClients: uber_atomic.NewInt32(tt.connectedClients),
+				connectedClients: atomic.NewInt32(tt.connectedClients),
 				log:              log.NewNopLogger(),
 				cfg: Config{
 					DownstreamURL: tt.downstreamURL,

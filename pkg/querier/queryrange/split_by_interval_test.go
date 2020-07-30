@@ -7,13 +7,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 )
 
 const seconds = 1e3 // 1e3 milliseconds per second.
@@ -261,11 +261,11 @@ func TestSplitByDay(t *testing.T) {
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 
-			actualCount := int32(0)
+			var actualCount atomic.Int32
 			s := httptest.NewServer(
 				middleware.AuthenticateUser.Wrap(
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						atomic.AddInt32(&actualCount, 1)
+						actualCount.Inc()
 						_, _ = w.Write([]byte(responseBody))
 					}),
 				),
@@ -293,7 +293,7 @@ func TestSplitByDay(t *testing.T) {
 			bs, err := ioutil.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBody, string(bs))
-			require.Equal(t, tc.expectedQueryCount, actualCount)
+			require.Equal(t, tc.expectedQueryCount, actualCount.Load())
 		})
 	}
 }

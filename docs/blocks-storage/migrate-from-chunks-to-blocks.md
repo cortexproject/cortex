@@ -77,12 +77,12 @@ It's best to start both services before migrating ingesters.
 
 ## Migration
 
-We have developed [bash script](https://gist.github.com/pstibrany/d71e729598849c7fcf96d8f610c035e7) to migrate ingesters between two statefulsets, shutting down ingesters one by one.
+We have developed a script available in Cortex `tools/migrate-ingester-statefulsets.sh` to migrate ingesters between two StatefulSets, shutting down ingesters one by one.
 
 It can be used like this:
 
 ```
-$ ./migrate.sh namespace ingester ingester-blocks 1
+$ tools/migrate-ingester-statefulsets.sh namespace ingester ingester-blocks 1
 ```
 
 Where parameters are:

@@ -176,7 +176,7 @@ func (i *Ingester) getOrCreateBackfillTSDB(userBuckets *tsdbBuckets, userID stri
 	}
 	userBuckets.buckets = append(userBuckets.buckets, bucket)
 	sort.Slice(userBuckets.buckets, func(i, j int) bool {
-		return userBuckets.buckets[i].bucketStart < userBuckets.buckets[i].bucketEnd
+		return userBuckets.buckets[i].bucketStart < userBuckets.buckets[j].bucketStart
 	})
 
 	return bucket, nil
@@ -286,7 +286,7 @@ func (i *Ingester) openExistingBackfillTSDB(ctx context.Context) error {
 	for _, buckets := range i.TSDBState.backfillDBs.tsdbs {
 		buckets.Lock()
 		sort.Slice(buckets.buckets, func(i, j int) bool {
-			return buckets.buckets[i].bucketStart < buckets.buckets[i].bucketEnd
+			return buckets.buckets[i].bucketStart < buckets.buckets[j].bucketStart
 		})
 		buckets.Unlock()
 	}
@@ -494,12 +494,13 @@ func (i *Ingester) closeOldBackfillTSDBsAndDelete(gracePeriod int64) error {
 }
 
 func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t int64) int64, f func(db *userTSDB) error) error {
-	i.TSDBState.backfillDBs.closeAndShipMtx.Lock()
-	defer i.TSDBState.backfillDBs.closeAndShipMtx.Unlock()
+	i.TSDBState.backfillDBs.compactShipDeleteMtx.Lock()
+	defer i.TSDBState.backfillDBs.compactShipDeleteMtx.Unlock()
 
 	type tempType struct {
-		userID  string
-		buckets *tsdbBuckets
+		userID     string
+		cutoffTime int64
+		buckets    *tsdbBuckets
 	}
 
 	var usersHavingOldTSDBs []tempType
@@ -507,15 +508,26 @@ func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t 
 	// Collecting users who have old TSDBs.
 	i.TSDBState.backfillDBs.tsdbsMtx.RLock()
 	for userID, userBuckets := range i.TSDBState.backfillDBs.tsdbs {
+		cutoffTime := int64(0)
+		i.userStatesMtx.RLock()
+		mainDB := i.TSDBState.dbs[userID]
+		i.userStatesMtx.RUnlock()
 		userBuckets.RLock()
+		if mainDB != nil {
+			cutoffTime = gracePeriodFunc(mainDB.Head().MaxTime())
+		} else {
+			// There is no main TSDB. So use the maxt of the last bucket.
+			cutoffTime = gracePeriodFunc(userBuckets.buckets[len(userBuckets.buckets)-1].db.Head().MaxTime())
+		}
 		for _, bucket := range userBuckets.buckets {
-			if bucket.bucketEnd < gracePeriodFunc(bucket.db.Head().MaxTime()) {
-				usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
-					userID:  userID,
-					buckets: userBuckets,
-				})
+			if bucket.bucketEnd >= cutoffTime {
 				break
 			}
+			usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
+				userID:     userID,
+				cutoffTime: cutoffTime,
+				buckets:    userBuckets,
+			})
 		}
 		userBuckets.RUnlock()
 	}
@@ -523,33 +535,30 @@ func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t 
 
 	var merr tsdb_errors.MultiError
 	for _, user := range usersHavingOldTSDBs {
+		idx := 0
 		for {
-			user.buckets.Lock()
-			if len(user.buckets.buckets) == 0 {
-				user.buckets.Unlock()
+			user.buckets.RLock()
+			if len(user.buckets.buckets) == 0 || idx == len(user.buckets.buckets) {
+				user.buckets.RUnlock()
 				break
 			}
-			bucket := user.buckets.buckets[0]
-			if bucket.bucketEnd >= gracePeriodFunc(bucket.db.Head().MaxTime()) {
-				user.buckets.Unlock()
+			bucket := user.buckets.buckets[idx]
+			if bucket.bucketEnd >= user.cutoffTime {
+				user.buckets.RUnlock()
 				break
 			}
-			if deleteBucket {
-				user.buckets.buckets = user.buckets.buckets[1:]
-			}
-			user.buckets.Unlock()
+			user.buckets.RUnlock()
 
 			if err := f(bucket.db); err != nil {
 				merr.Add(err)
-				if deleteBucket {
-					// Restore back the old slice to attempt running later.
-					// As the slice would be small and the failure would be rare,
-					// we are not caring about efficient slice management.
-					user.buckets.Lock()
-					user.buckets.buckets = append([]*tsdbBucket{bucket}, user.buckets.buckets...)
-					user.buckets.Unlock()
-				}
 				break
+			}
+			idx++
+			if deleteBucket {
+				user.buckets.Lock()
+				user.buckets.buckets = user.buckets.buckets[1:]
+				user.buckets.Unlock()
+				idx--
 			}
 		}
 
@@ -570,9 +579,9 @@ func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t 
 
 // Assumes 1h bucket range for . TODO(codesome): protect stuff with locks.
 type backfillTSDBs struct {
-	tsdbsMtx        sync.RWMutex
-	closeAndShipMtx sync.Mutex
-	tsdbs           map[string]*tsdbBuckets
+	tsdbsMtx             sync.RWMutex
+	compactShipDeleteMtx sync.Mutex
+	tsdbs                map[string]*tsdbBuckets
 }
 
 func newBackfillTSDBs() *backfillTSDBs {
@@ -620,8 +629,8 @@ func overlapsOpenInterval(mint1, maxt1, mint2, maxt2 int64) bool {
 // getBucketName returns the string representation of the bucket.
 // YYYY_MM_DD_HH_YYYY_MM_DD_HH
 func getBucketName(start, end int64) string {
-	startTime := model.Time(start).Time()
-	endTime := model.Time(end).Time()
+	startTime := model.Time(start).Time().UTC()
+	endTime := model.Time(end).Time().UTC()
 
 	return fmt.Sprintf(
 		"%04d_%02d_%02d_%02d_%04d_%02d_%02d_%02d",

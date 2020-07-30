@@ -132,7 +132,6 @@ func (u *userTSDB) getShippedBlocksULID() ([]ulid.ULID, error) {
 	if err := json.Unmarshal(b, &shipperMeta); err != nil {
 		return nil, errors.Wrap(err, "unmarshal shipper meta file to json")
 	}
-
 	return shipperMeta.Uploaded, nil
 }
 

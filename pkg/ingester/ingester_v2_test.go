@@ -1821,6 +1821,17 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 		}
 	}
 
+	testQuery := func() {
+		res, err := i.v2Query(ctx, &client.QueryRequest{
+			StartTimestampMs: math.MinInt64,
+			EndTimestampMs:   math.MaxInt64,
+			Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, expectedIngested, res.Timeseries)
+	}
+
 	// Samples for 100h. The main tsdb will be able to handle samples only
 	// upto 99h after this.
 	ts := 100 * time.Hour.Milliseconds()
@@ -1863,14 +1874,7 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 	ingestSample(ts, 4, true)
 
 	// Query back all the samples.
-	res, err := i.v2Query(ctx, &client.QueryRequest{
-		StartTimestampMs: math.MinInt64,
-		EndTimestampMs:   math.MaxInt64,
-		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	assert.Equal(t, expectedIngested, res.Timeseries)
+	testQuery()
 
 	// Restart to check if we can still query backfill TSDBs.
 
@@ -1890,12 +1894,31 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 	})
 
 	// Query back all the samples.
-	res, err = i.v2Query(ctx, &client.QueryRequest{
-		StartTimestampMs: math.MinInt64,
-		EndTimestampMs:   math.MaxInt64,
-		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	assert.Equal(t, expectedIngested, res.Timeseries)
+	testQuery()
+
+	// Compact old blocks partially to check
+	// * Compaction is happening properly.
+	// * We can still query it.
+
+	// Check there are no blocks yet.
+	userBuckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
+	for _, bucket := range userBuckets.buckets {
+		require.Equal(t, 0, len(bucket.db.Blocks()))
+		m := &shipperMock{}
+		m.On("Sync", mock.Anything).Return(0, nil)
+		bucket.db.shipper = m
+	}
+
+	// Compacting the oldest 2 buckets. They are <=97h, so compacting buckets upto 97.5h (current 100h minus 2.5h).
+	require.NoError(t, i.compactOldBackfillTSDBsAndShip(2*time.Hour.Milliseconds()+30*time.Minute.Milliseconds()))
+	for idx, bucket := range userBuckets.buckets {
+		if idx < 2 {
+			require.Equal(t, 1, len(bucket.db.Blocks()), "bucket index %d", idx)
+		} else {
+			require.Equal(t, 0, len(bucket.db.Blocks()), "bucket index %d", idx)
+		}
+	}
+
+	// We can still query compacted blocks.
+	testQuery()
 }

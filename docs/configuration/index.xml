@@ -4095,7 +4095,8 @@ and development.&lt;/p>
 &lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
 &lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
 &lt;ul>
-&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries.&lt;/li>
+&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the chunks storage (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
+&lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters.&lt;/li>
 &lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
 &lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
 &lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>

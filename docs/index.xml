@@ -7779,7 +7779,8 @@ to the string &lt;code>fake&lt;/code> for every request.&lt;/p></description></i
 &lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
 &lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
 &lt;ul>
-&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries.&lt;/li>
+&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the chunks storage (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
+&lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters.&lt;/li>
 &lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
 &lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
 &lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
@@ -7948,6 +7949,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Flusher: Added &lt;code>-flusher.exit-after-flush&lt;/code> option (defaults to true) to control whether Cortex should stop completely after Flusher has finished its work. &lt;a href="https://github.com/cortexproject/cortex/pull/2877">#2877&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Added metrics &lt;code>cortex_config_hash&lt;/code> and &lt;code>cortex_runtime_config_hash&lt;/code> to expose hash of the currently active config file. &lt;a href="https://github.com/cortexproject/cortex/pull/2874">#2874&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Logger: added JSON logging support, configured via the &lt;code>-log.format=json&lt;/code> CLI flag or its respective YAML config option. &lt;a href="https://github.com/cortexproject/cortex/pull/2386">#2386&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Clarify limitations of the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints. &lt;a href="https://github.com/cortexproject/cortex/pull/2953">#2953&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix race in processing of headers in sharded queries. &lt;a href="https://github.com/cortexproject/cortex/pull/2762">#2762&lt;/a>&lt;/li>

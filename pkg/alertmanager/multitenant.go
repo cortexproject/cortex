@@ -333,6 +333,8 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
 			userAM.Pause()
 			delete(am.cfgs, user)
+			am.multitenantMetrics.totalConfigs.DeleteLabelValues(configStatusInvalid, user)
+			am.multitenantMetrics.totalConfigs.DeleteLabelValues(configStatusValid, user)
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}

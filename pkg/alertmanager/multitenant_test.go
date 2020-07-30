@@ -155,10 +155,8 @@ func TestLoadAllConfigs(t *testing.T) {
 		# TYPE cortex_alertmanager_configs gauge
 		cortex_alertmanager_configs{status="valid",user="user1"} 1
 		cortex_alertmanager_configs{status="valid",user="user2"} 1
-		cortex_alertmanager_configs{status="valid",user="user3"} 1
 		cortex_alertmanager_configs{status="invalid",user="user1" } 0
 		cortex_alertmanager_configs{status="invalid",user="user2" } 0
-		cortex_alertmanager_configs{status="invalid",user="user3" } 0
 	`), "cortex_alertmanager_configs"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly

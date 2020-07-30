@@ -138,10 +138,8 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 	m.totalConfigs = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "alertmanager_configs",
-		Help:      "How many configs the multitenant alertmanager knows about.",
-	}, []string{"status"})
-	m.totalConfigs.WithLabelValues(configStatusInvalid).Set(0)
-	m.totalConfigs.WithLabelValues(configStatusValid).Set(0)
+		Help:      "State of configs the multitenant alertmanager knows about a particular user.",
+	}, []string{"status", "user"})
 
 	return m
 }
@@ -311,15 +309,18 @@ func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, er
 }
 
 func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfigDesc) {
-	invalid := 0 // Count the number of invalid configs as we go.
-
 	level.Debug(am.logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
-	for _, cfg := range cfgs {
+	for user, cfg := range cfgs {
 		err := am.setConfig(cfg)
 		if err != nil {
-			invalid++
+			am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid, user).Set(float64(1))
+			am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid, user).Set(float64(0))
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
+			continue
 		}
+
+		am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid, user).Set(float64(0))
+		am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid, user).Set(float64(1))
 	}
 
 	am.alertmanagersMtx.Lock()
@@ -335,8 +336,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
-	am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid).Set(float64(invalid))
-	am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid).Set(float64(len(am.cfgs) - invalid))
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
@@ -407,7 +406,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		if am.fallbackConfig == "" {
 			return fmt.Errorf("blank Alertmanager configuration for %v", cfg.User)
 		}
-		level.Info(am.logger).Log("msg", "blank Alertmanager configuration; using fallback", "user_id", cfg.User)
+		level.Info(am.logger).Log("msg", "blank Alertmanager configuration; using fallback", "user", cfg.User)
 		userAmConfig, err = amconfig.Load(am.fallbackConfig)
 		if err != nil {
 			return fmt.Errorf("unable to load fallback configuration for %v: %v", cfg.User, err)

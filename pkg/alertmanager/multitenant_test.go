@@ -96,10 +96,12 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs How many configs the multitenant alertmanager knows about.
+		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
 		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid"} 2
-		cortex_alertmanager_configs{status="invalid"} 0
+		cortex_alertmanager_configs{status="valid",user="user1"} 1
+		cortex_alertmanager_configs{status="valid",user="user2"} 1
+		cortex_alertmanager_configs{status="invalid",user="user1" } 0
+		cortex_alertmanager_configs{status="invalid",user="user2" } 0
 	`), "cortex_alertmanager_configs"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
@@ -113,10 +115,14 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Len(t, am.alertmanagers, 3)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs How many configs the multitenant alertmanager knows about.
+		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
 		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid"} 3
-		cortex_alertmanager_configs{status="invalid"} 0
+		cortex_alertmanager_configs{status="valid",user="user1"} 1
+		cortex_alertmanager_configs{status="valid",user="user2"} 1
+		cortex_alertmanager_configs{status="valid",user="user3"} 1
+		cortex_alertmanager_configs{status="invalid",user="user1" } 0
+		cortex_alertmanager_configs{status="invalid",user="user2" } 0
+		cortex_alertmanager_configs{status="invalid",user="user3" } 0
 	`), "cortex_alertmanager_configs"))
 
 	// Ensure the config is updated
@@ -145,10 +151,14 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs How many configs the multitenant alertmanager knows about.
+		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
 		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid"} 2
-		cortex_alertmanager_configs{status="invalid"} 0
+		cortex_alertmanager_configs{status="valid",user="user1"} 1
+		cortex_alertmanager_configs{status="valid",user="user2"} 1
+		cortex_alertmanager_configs{status="valid",user="user3"} 1
+		cortex_alertmanager_configs{status="invalid",user="user1" } 0
+		cortex_alertmanager_configs{status="invalid",user="user2" } 0
+		cortex_alertmanager_configs{status="invalid",user="user3" } 0
 	`), "cortex_alertmanager_configs"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
@@ -169,9 +179,13 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs How many configs the multitenant alertmanager knows about.
+		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
 		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid"} 3
-		cortex_alertmanager_configs{status="invalid"} 0
+		cortex_alertmanager_configs{status="valid",user="user1"} 1
+		cortex_alertmanager_configs{status="valid",user="user2"} 1
+		cortex_alertmanager_configs{status="valid",user="user3"} 1
+		cortex_alertmanager_configs{status="invalid",user="user1" } 0
+		cortex_alertmanager_configs{status="invalid",user="user2" } 0
+		cortex_alertmanager_configs{status="invalid",user="user3" } 0
 	`), "cortex_alertmanager_configs"))
 }

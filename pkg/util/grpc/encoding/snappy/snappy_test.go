@@ -2,6 +2,7 @@ package snappy
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -65,5 +66,6 @@ func BenchmarkSnappyDecompress(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		r, _ := c.Decompress(reader)
 		_, _ = ioutil.ReadAll(r)
+		reader.Seek(0, io.SeekStart)
 	}
 }

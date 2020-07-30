@@ -25,16 +25,16 @@ func newCompressor() *compressor {
 	c.readersPool = sync.Pool{
 		New: func() interface{} {
 			return &reader{
-				compressor: c,
-				Reader:     snappy.NewReader(nil),
+				pool:   &c.readersPool,
+				Reader: snappy.NewReader(nil),
 			}
 		},
 	}
 	c.writersPool = sync.Pool{
 		New: func() interface{} {
 			return &writeCloser{
-				compressor: c,
-				Writer:     snappy.NewBufferedWriter(nil),
+				pool:   &c.writersPool,
+				Writer: snappy.NewBufferedWriter(nil),
 			}
 		},
 	}
@@ -58,24 +58,24 @@ func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
 }
 
 type writeCloser struct {
-	*compressor
 	*snappy.Writer
+	pool *sync.Pool
 }
 
 func (w *writeCloser) Close() error {
-	defer w.writersPool.Put(w)
+	defer w.pool.Put(w)
 	return w.Writer.Close()
 }
 
 type reader struct {
-	*compressor
 	*snappy.Reader
+	pool *sync.Pool
 }
 
 func (r *reader) Read(p []byte) (n int, err error) {
 	n, err = r.Reader.Read(p)
 	if err == io.EOF {
-		r.readersPool.Put(r)
+		r.pool.Put(r)
 	}
 	return n, err
 }

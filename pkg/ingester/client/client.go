@@ -7,10 +7,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
-	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	_ "github.com/cortexproject/cortex/pkg/util/grpc/encoding/snappy" // get snappy compressor registered
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 

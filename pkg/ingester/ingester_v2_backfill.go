@@ -467,16 +467,22 @@ func (i *Ingester) closeOldBackfillTSDBsAndDelete(gracePeriod int64) error {
 			return nowTimeMs - gracePeriod
 		},
 		func(db *userTSDB) error {
+			// Compact the head if anything is left. Empty head will create no blocks.
+			h := db.Head()
+			if err := db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
+				return errors.Wrap(err, "compact head")
+			}
+
 			// TODO(codesome): check for double closing.
 			if err := db.Close(); err != nil {
 				return errors.Wrap(err, "close backfill TSDB")
 			}
 
 			unshippedBlocks, err := db.getUnshippedBlocksULID()
-			if err != nil {
+			if err != nil && errors.Cause(err) == os.ErrNotExist {
 				return errors.Wrap(err, "get unshipped blocks")
 			}
-			if len(unshippedBlocks) > 0 {
+			if err != nil || len(unshippedBlocks) > 0 {
 				// Ship the unshipped blocks.
 				uploaded, err := db.shipper.Sync(context.Background())
 				if err != nil {
@@ -519,10 +525,7 @@ func (i *Ingester) runOnBucketsBefore(deleteBucket bool, gracePeriodFunc func(t 
 			// There is no main TSDB. So use the maxt of the last bucket.
 			cutoffTime = gracePeriodFunc(userBuckets.buckets[len(userBuckets.buckets)-1].db.Head().MaxTime())
 		}
-		for _, bucket := range userBuckets.buckets {
-			if bucket.bucketEnd >= cutoffTime {
-				break
-			}
+		if userBuckets.buckets[0].bucketEnd < cutoffTime {
 			usersHavingOldTSDBs = append(usersHavingOldTSDBs, tempType{
 				userID:     userID,
 				cutoffTime: cutoffTime,

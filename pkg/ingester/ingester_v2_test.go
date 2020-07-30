@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -1294,6 +1296,8 @@ func TestIngester_shipBlocks(t *testing.T) {
 }
 
 type shipperMock struct {
+	db       *userTSDB
+	uploaded int
 	mock.Mock
 }
 
@@ -1769,7 +1773,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	require.Nil(t, db)
 }
 
-func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
+func TestIngesterV2BackfillCycle(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
 	backfillLimit := 12 * time.Hour
@@ -1898,18 +1902,36 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 
 	// Compact old blocks partially to check
 	// * Compaction is happening properly.
-	// * We can still query it.
+	// * We can still query it while we have a mix of compacted and uncompacted TSDBs.
 
-	// Check there are no blocks yet.
+	// Check there are no blocks yet and attach and mock shipper.
 	userBuckets := i.TSDBState.backfillDBs.getBucketsForUser(userID)
 	for _, bucket := range userBuckets.buckets {
 		require.Equal(t, 0, len(bucket.db.Blocks()))
-		m := &shipperMock{}
-		m.On("Sync", mock.Anything).Return(0, nil)
+
+		m := &shipperMock{
+			db: bucket.db,
+		}
+		m.On("Sync", mock.Anything).Run(func(args mock.Arguments) {
+			var shipperMeta shipper.Meta
+			shipperMeta.Version = shipper.MetaVersion1
+			for _, block := range m.db.Blocks() {
+				shipperMeta.Uploaded = append(shipperMeta.Uploaded, block.Meta().ULID)
+			}
+
+			b, err := json.Marshal(&shipperMeta)
+			if err != nil {
+				return
+			}
+
+			path := filepath.Join(m.db.Dir(), shipper.MetaFilename)
+			_ = ioutil.WriteFile(path, b, os.ModePerm)
+			m.uploaded = len(shipperMeta.Uploaded)
+		}).Return(1, nil)
 		bucket.db.shipper = m
 	}
 
-	// Compacting the oldest 2 buckets. They are <=97h, so compacting buckets upto 97.5h (current 100h minus 2.5h).
+	// Compacting the oldest 2 buckets. They are <=97h, so compacting buckets upto 97.5h (current 100h minus 97.5h is the grace period).
 	require.NoError(t, i.compactOldBackfillTSDBsAndShip(2*time.Hour.Milliseconds()+30*time.Minute.Milliseconds()))
 	for idx, bucket := range userBuckets.buckets {
 		if idx < 2 {
@@ -1921,4 +1943,30 @@ func TestIngesterV2BackfillPushAndQuery(t *testing.T) {
 
 	// We can still query compacted blocks.
 	testQuery()
+
+	copiedBuckets := append([]*tsdbBucket{}, userBuckets.buckets...)
+
+	// Closing the old TSDBs and deleting them. Starting with the shipped blocks.
+	// Closing is based on current time. Hence grace period is w.r.t. current time.
+	nowTimeMs := time.Now().Unix() * 1000
+	gracePeriod := nowTimeMs - (97*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds())
+	require.NoError(t, i.closeOldBackfillTSDBsAndDelete(gracePeriod))
+	require.Equal(t, 2, len(userBuckets.buckets))
+	for idx, bucket := range userBuckets.buckets {
+		require.Equal(t, 0, len(bucket.db.Blocks()), "bucket index %d", idx)
+	}
+
+	// Delete the pending TSDBs.
+	gracePeriod = nowTimeMs - (100 * time.Hour.Milliseconds())
+	require.NoError(t, i.closeOldBackfillTSDBsAndDelete(gracePeriod))
+	require.Equal(t, 0, len(userBuckets.buckets))
+
+	// Check from the copied buckets if all of them had at 1 shipped block.
+	// The last 2 buckets were not compacted explicitly before.
+	for idx, buk := range copiedBuckets {
+		s, ok := buk.db.shipper.(*shipperMock)
+		require.True(t, ok)
+		require.Equal(t, 1, s.uploaded, "uploaded - bucket index %d", idx)
+		require.Equal(t, 1, len(buk.db.Blocks()), "blocks - bucket index %d", idx)
+	}
 }

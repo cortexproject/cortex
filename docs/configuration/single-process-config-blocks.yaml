@@ -49,10 +49,12 @@ ingester:
       replication_factor: 1
 
 storage:
-  engine: tsdb
+  engine: blocks
 
-tsdb:
-  dir: /tmp/cortex/tsdb
+blocks_storage:
+  tsdb:
+    dir: /tmp/cortex/tsdb
+
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync
 

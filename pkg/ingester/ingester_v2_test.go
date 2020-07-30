@@ -1162,10 +1162,10 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 		return nil, err
 	}
 
-	ingesterCfg.TSDBEnabled = true
-	ingesterCfg.TSDBConfig.Dir = dir
-	ingesterCfg.TSDBConfig.Backend = "s3"
-	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageEnabled = true
+	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dir
+	ingesterCfg.BlocksStorageConfig.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {
@@ -1234,10 +1234,10 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			defer os.RemoveAll(tempDir)
 
 			ingesterCfg := defaultIngesterTestConfig()
-			ingesterCfg.TSDBEnabled = true
-			ingesterCfg.TSDBConfig.Dir = tempDir
-			ingesterCfg.TSDBConfig.Backend = "s3"
-			ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+			ingesterCfg.BlocksStorageEnabled = true
+			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+			ingesterCfg.BlocksStorageConfig.Backend = "s3"
+			ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
 
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
@@ -1256,7 +1256,7 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 func TestIngester_shipBlocks(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.TSDBConfig.ShipConcurrency = 2
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
@@ -1309,8 +1309,8 @@ func TestIngester_flushing(t *testing.T) {
 	}{
 		"ingesterShutdown": {
 			setupIngester: func(cfg *Config) {
-				cfg.TSDBConfig.FlushBlocksOnShutdown = true
-				cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown = true
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = true
+				cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
 			},
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
 				pushSingleSample(t, i)
@@ -1330,8 +1330,8 @@ func TestIngester_flushing(t *testing.T) {
 
 		"shutdownHandler": {
 			setupIngester: func(cfg *Config) {
-				cfg.TSDBConfig.FlushBlocksOnShutdown = false
-				cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown = true
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+				cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
 			},
 
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
@@ -1349,7 +1349,7 @@ func TestIngester_flushing(t *testing.T) {
 
 		"flushHandler": {
 			setupIngester: func(cfg *Config) {
-				cfg.TSDBConfig.FlushBlocksOnShutdown = false
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
 			},
 
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
@@ -1371,8 +1371,8 @@ func TestIngester_flushing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			cfg.TSDBConfig.ShipConcurrency = 1
-			cfg.TSDBConfig.ShipInterval = 1 * time.Minute // Long enough to not be reached during the test.
+			cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+			cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute // Long enough to not be reached during the test.
 
 			if tc.setupIngester != nil {
 				tc.setupIngester(&cfg)
@@ -1405,8 +1405,8 @@ func TestIngester_flushing(t *testing.T) {
 func TestIngester_ForFlush(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.TSDBConfig.ShipConcurrency = 1
-	cfg.TSDBConfig.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
 
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
@@ -1581,9 +1581,9 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 func TestIngesterCompactIdleBlock(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.TSDBConfig.ShipConcurrency = 1
-	cfg.TSDBConfig.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
-	cfg.TSDBConfig.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
 
 	r := prometheus.NewRegistry()
 
@@ -1617,7 +1617,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
 
 	// wait one second -- TSDB is now idle.
-	time.Sleep(cfg.TSDBConfig.HeadCompactionIdleTimeout)
+	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
 
 	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, true)
@@ -1713,11 +1713,11 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	require.NoError(t, err)
 
 	ingesterCfg := defaultIngesterTestConfig()
-	ingesterCfg.TSDBEnabled = true
-	ingesterCfg.TSDBConfig.Dir = tempDir
-	ingesterCfg.TSDBConfig.Backend = "s3"
-	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
-	ingesterCfg.TSDBConfig.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
+	ingesterCfg.BlocksStorageEnabled = true
+	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+	ingesterCfg.BlocksStorageConfig.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 	require.NoError(t, err)

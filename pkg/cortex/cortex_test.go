@@ -24,10 +24,10 @@ func TestCortex(t *testing.T) {
 
 	cfg := Config{
 		Storage: storage.Config{
-			Engine: storage.StorageEngineTSDB, // makes config easier
+			Engine: storage.StorageEngineBlocks, // makes config easier
 		},
 		Ingester: ingester.Config{
-			TSDBConfig: tsdb.Config{
+			BlocksStorageConfig: tsdb.BlocksStorageConfig{
 				Backend: tsdb.BackendS3,
 				S3: s3.Config{
 					Endpoint: "localhost",
@@ -43,7 +43,7 @@ func TestCortex(t *testing.T) {
 				InfNames: []string{"en0", "eth0", "lo0", "lo"},
 			},
 		},
-		TSDB: tsdb.Config{
+		BlocksStorage: tsdb.BlocksStorageConfig{
 			Backend: tsdb.BackendS3,
 			S3: s3.Config{
 				Endpoint: "localhost",

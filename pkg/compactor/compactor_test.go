@@ -859,7 +859,7 @@ func prepareConfig() Config {
 }
 
 func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
-	storageCfg := cortex_tsdb.Config{}
+	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
 	// Create a temporary directory for compactor data.

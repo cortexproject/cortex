@@ -28,12 +28,10 @@ func translateError(err error) error {
 
 	switch errors.Cause(err).(type) {
 	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
-		// Recognized by Prometheus API, vendor/github.com/prometheus/prometheus/promql/engine.go:91.
 		// Don't translate those, just in case we use them internally.
 		return err
 	case chunk.QueryError:
 		// This will be returned with status code 422 by Prometheus API.
-		// vendor/github.com/prometheus/prometheus/web/api/v1/api.go:1393
 		return err
 	default:
 		s, ok := status.FromError(err)

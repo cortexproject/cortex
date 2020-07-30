@@ -281,6 +281,145 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 	}
 }
 
+// TestSumOfCounterPerUserWithLabels tests to ensure multiple metrics for the same user with a matching label are
+// summed correctly
+func TestSumOfCounterPerUserWithLabels(t *testing.T) {
+	user1Metric := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_metric"}, []string{"label_one", "label_two"})
+	user2Metric := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_metric"}, []string{"label_one", "label_two"})
+	user1Metric.WithLabelValues("a", "b").Add(100)
+	user1Metric.WithLabelValues("a", "c").Add(80)
+	user2Metric.WithLabelValues("a", "b").Add(60)
+	user2Metric.WithLabelValues("a", "c").Add(40)
+
+	user1Reg := prometheus.NewRegistry()
+	user2Reg := prometheus.NewRegistry()
+	user1Reg.MustRegister(user1Metric)
+	user2Reg.MustRegister(user2Metric)
+
+	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
+		"user-1": user1Reg,
+		"user-2": user2Reg,
+	})
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_one")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(180)}},
+			{Label: makeLabels("label_one", "a", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(100)}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_two", "b", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(100)}},
+			{Label: makeLabels("label_two", "c", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(80)}},
+			{Label: makeLabels("label_two", "b", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(60)}},
+			{Label: makeLabels("label_two", "c", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(40)}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(100)}},
+			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(80)}},
+			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(60)}},
+			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(40)}},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+}
+
+func TestSendSumOfSummariesPerUser(t *testing.T) {
+	objectives := map[float64]float64{0.25: 25, 0.5: 50, 0.75: 75}
+	user1Metric := prometheus.NewSummary(prometheus.SummaryOpts{Name: "test_metric", Objectives: objectives})
+	user2Metric := prometheus.NewSummary(prometheus.SummaryOpts{Name: "test_metric", Objectives: objectives})
+	user1Metric.Observe(25)
+	user1Metric.Observe(50)
+	user1Metric.Observe(75)
+	user2Metric.Observe(25)
+	user2Metric.Observe(50)
+	user2Metric.Observe(76)
+
+	user1Reg := prometheus.NewRegistry()
+	user2Reg := prometheus.NewRegistry()
+	user1Reg.MustRegister(user1Metric)
+	user2Reg.MustRegister(user2Metric)
+
+	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
+		"user-1": user1Reg,
+		"user-2": user2Reg,
+	})
+
+	{
+		desc := prometheus.NewDesc("test_metric", "", []string{"user"}, nil)
+		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+			mf.SendSumOfSummariesPerUser(out, desc, "test_metric")
+		})
+		require.NoError(t, err)
+		expected := []*dto.Metric{
+			{
+				Label: makeLabels("user", "user-1"),
+				Summary: &dto.Summary{
+					SampleCount: uint64p(3),
+					SampleSum:   float64p(150),
+					Quantile: []*dto.Quantile{
+						{
+							Quantile: proto.Float64(.25),
+							Value:    proto.Float64(25),
+						},
+						{
+							Quantile: proto.Float64(.5),
+							Value:    proto.Float64(50),
+						},
+						{
+							Quantile: proto.Float64(.75),
+							Value:    proto.Float64(75),
+						},
+					},
+				},
+			},
+			{
+				Label: makeLabels("user", "user-2"),
+				Summary: &dto.Summary{
+					SampleCount: uint64p(3),
+					SampleSum:   float64p(151),
+					Quantile: []*dto.Quantile{
+						{
+							Quantile: proto.Float64(.25),
+							Value:    proto.Float64(25),
+						},
+						{
+							Quantile: proto.Float64(.5),
+							Value:    proto.Float64(50),
+						},
+						{
+							Quantile: proto.Float64(.75),
+							Value:    proto.Float64(76),
+						},
+					},
+				},
+			},
+		}
+		require.ElementsMatch(t, expected, actual)
+	}
+}
+
 func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error) {
 	out := make(chan prometheus.Metric)
 

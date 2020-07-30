@@ -166,10 +166,14 @@ type Ruler struct {
 	ring        *ring.Ring
 	subservices *services.Manager
 
-	store          rules.RuleStore
-	mapper         *mapper
-	userManagerMtx sync.Mutex
-	userManagers   map[string]*promRules.Manager
+	store  rules.RuleStore
+	mapper *mapper
+
+	// Structs for holding per-user Prometheus rules Managers
+	// and a corresponding metrics struct
+	userManagerMtx     sync.Mutex
+	userManagers       map[string]*promRules.Manager
+	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -186,19 +190,26 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		return nil, err
 	}
 
+	userManagerMetrics := NewManagerMetrics()
+
+	if reg != nil {
+		reg.MustRegister(userManagerMetrics)
+	}
+
 	ruler := &Ruler{
-		cfg:          cfg,
-		engine:       engine,
-		queryable:    queryable,
-		alertURL:     cfg.ExternalURL.URL,
-		notifierCfg:  ncfg,
-		notifiers:    map[string]*rulerNotifier{},
-		store:        ruleStore,
-		pusher:       pusher,
-		mapper:       newMapper(cfg.RulePath, logger),
-		userManagers: map[string]*promRules.Manager{},
-		registry:     reg,
-		logger:       logger,
+		cfg:                cfg,
+		engine:             engine,
+		queryable:          queryable,
+		alertURL:           cfg.ExternalURL.URL,
+		notifierCfg:        ncfg,
+		notifiers:          map[string]*rulerNotifier{},
+		store:              ruleStore,
+		pusher:             pusher,
+		mapper:             newMapper(cfg.RulePath, logger),
+		userManagers:       map[string]*promRules.Manager{},
+		userManagerMetrics: userManagerMetrics,
+		registry:           reg,
+		logger:             logger,
 	}
 
 	if cfg.EnableSharding {
@@ -531,9 +542,11 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 		return nil, err
 	}
 
-	// Wrap registerer with userID and cortex_ prefix
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
-	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
+	// Create a new Prometheus registry and register it within
+	// our metrics struct for the provided user.
+	reg := prometheus.NewRegistry()
+	r.userManagerMetrics.AddUserRegistry(userID, reg)
+
 	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
 		Appendable:      &appender{pusher: r.pusher, userID: userID},

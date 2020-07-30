@@ -7965,6 +7965,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Query-frontend: Fix passing HTTP &lt;code>Host&lt;/code> header if &lt;code>-frontend.downstream-url&lt;/code> is configured. &lt;a href="https://github.com/cortexproject/cortex/pull/2880">#2880&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Improve time-series distribution when &lt;code>-experimental.distributor.user-subring-size&lt;/code> is enabled. &lt;a href="https://github.com/cortexproject/cortex/pull/2887">#2887&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Set content type to &lt;code>application/x-protobuf&lt;/code> for remote_read responses. &lt;a href="https://github.com/cortexproject/cortex/pull/2915">#2915&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fixed ruler and store-gateway instance registration in the ring (when sharding is enabled) when a new instance replaces abruptly terminated one, and the only difference between the two instances is the address. &lt;a href="https://github.com/cortexproject/cortex/pull/2954">#2954&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

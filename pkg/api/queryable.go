@@ -34,6 +34,10 @@ func translateError(err error) error {
 		// This will be returned with status code 422 by Prometheus API.
 		return err
 	default:
+		if errors.Is(err, context.Canceled) {
+			return err // 422
+		}
+
 		s, ok := status.FromError(err)
 		if ok {
 			code := s.Code()

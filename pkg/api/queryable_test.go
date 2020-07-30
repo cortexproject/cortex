@@ -81,6 +81,12 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedString: "test",
 			expectedCode:   500,
 		},
+
+		{
+			err:            context.Canceled,
+			expectedString: "context canceled",
+			expectedCode:   422,
+		},
 	} {
 		for k, q := range map[string]storage.SampleAndChunkQueryable{
 			"error from queryable": testQueryable{err: tc.err},

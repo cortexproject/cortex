@@ -37,12 +37,14 @@ store_gateway:
       consul:
         host: consul:8500
 
-tsdb:
-  dir: /data/cortex-tsdb-ingester
-  ship_interval: 1m
-  block_ranges_period: [ 2h ]
-  retention_period: 3h
+blocks_storage:
   backend: s3
+
+  tsdb:
+    dir: /data/cortex-tsdb-ingester
+    ship_interval: 1m
+    block_ranges_period: [ 2h ]
+    retention_period: 3h
 
   bucket_store:
     sync_dir: /data/cortex-tsdb-querier
@@ -55,7 +57,7 @@ tsdb:
     insecure:          true
 
 storage:
-  engine: tsdb
+  engine: blocks
 
 ruler:
   enable_api: true

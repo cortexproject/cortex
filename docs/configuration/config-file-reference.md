@@ -2856,6 +2856,10 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 &nbsp;
 
 ```yaml
+# Redis topology. Supported: 'server', 'cluster', 'sentinel'.
+# CLI flag: -<prefix>.redis.topology
+[topology: <string> | default = "server"]
+
 # Redis service endpoint to use when caching chunks. If empty, no redis will be
 # used.
 # CLI flag: -<prefix>.redis.endpoint

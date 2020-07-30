@@ -57,6 +57,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 }
 
 func (cfg *Config) Validate() error {
+	if err := cfg.Redis.Validate(); err != nil {
+		return err
+	}
 	return cfg.Fifocache.Validate()
 }
 
@@ -99,7 +102,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
 		cacheName := cfg.Prefix + "redis"
-		cache := NewRedisCache(cfg.Redis, cacheName, nil, logger)
+		cache := NewRedisCache(cfg.Redis, cacheName, logger, nil)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 

@@ -10,6 +10,8 @@ require (
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
+	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
+	github.com/alicebob/miniredis v2.5.0+incompatible
 	github.com/armon/go-metrics v0.3.3
 	github.com/aws/aws-sdk-go v1.33.12
 	github.com/blang/semver v3.5.0+incompatible
@@ -20,6 +22,7 @@ require (
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.10.0
+	github.com/go-redis/redis/v8 v8.0.0-beta.7
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3

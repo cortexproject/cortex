@@ -140,7 +140,9 @@ lint:
 	golangci-lint run
 
 	# Ensure no blacklisted package is imported.
-	faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,golang.org/x/net/context=context" ./pkg/... ./cmd/... ./tools/... ./integration/...
+	faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+		golang.org/x/net/context=context,\
+		sync/atomic=go.uber.org/atomic" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev

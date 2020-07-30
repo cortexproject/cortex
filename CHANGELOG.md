@@ -101,6 +101,7 @@
 * [BUGFIX] Query-frontend: Fix passing HTTP `Host` header if `-frontend.downstream-url` is configured. #2880
 * [BUGFIX] Ingester: Improve time-series distribution when `-experimental.distributor.user-subring-size` is enabled. #2887
 * [BUGFIX] Set content type to `application/x-protobuf` for remote_read responses. #2915
+* [BUGFIX] Fixed ruler and store-gateway instance registration in the ring (when sharding is enabled) when a new instance replaces abruptly terminated one, and the only difference between the two instances is the address. #2954
 
 ## 1.2.0 / 2020-07-01
 

@@ -110,11 +110,12 @@ is annotated diff:
 
 ...
 
-+# Directory names in `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
++# Directory names in the `blocks_storage` > `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
 +# writing in-progress data to the same directories.
- tsdb:
--   dir: /tmp/cortex/tsdb-ing1
-+   dir: /tmp/cortex/tsdb-ing3
+ blocks_storage:
+   tsdb:
+-    dir: /tmp/cortex/tsdb-ing1
++    dir: /tmp/cortex/tsdb-ing3
     bucket_store:
 -     sync_dir: /tmp/cortex/tsdb-sync-querier1
 +     sync_dir: /tmp/cortex/tsdb-sync-querier3
@@ -126,7 +127,7 @@ We don't need to change or add `memberlist.join_members` list. This new instance
 will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
 that want to be part of gossip cluster, and then point `join_members` to this headless service.
 
-We also don't need to change `/tmp/cortex/storage` directory in `tsdb.filesystem.dir` field. This is directory where all ingesters will
+We also don't need to change `/tmp/cortex/storage` directory in `blocks_storage.filesystem.dir` field. This is directory where all ingesters will
 "upload" finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.
 
 After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring

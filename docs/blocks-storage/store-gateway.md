@@ -15,7 +15,7 @@ The store-gateway is **semi-stateful**.
 
 At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
-While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.tsdb.bucket-store.sync-interval`.
+While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.blocks-storage.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
@@ -62,14 +62,14 @@ The store-gateway can use a cache to speed up lookups of postings and series fro
 
 #### In-memory index cache
 
-The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
+The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
 
 - Pros: zero latency
 - Cons: increased store-gateway memory usage, not shared across multiple store-gateway replicas (when sharding is disabled or replication factor > 1)
 
 #### Memcached index cache
 
-The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.tsdb.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.tsdb.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.blocks-storage.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.blocks-storage.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
 
 The trade-off of using the Memcached index cache is:
 
@@ -88,9 +88,9 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
-To enable chunks cache, please set `-experimental.tsdb.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.tsdb.bucket-store.chunks-cache.memcached.*` prefix.
+To enable chunks cache, please set `-experimental.blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
 
-There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.tsdb.bucket-store.chunks-cache.*` prefix.
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.blocks-storage.bucket-store.chunks-cache.*` prefix.
 
 ### Metadata cache
 
@@ -103,9 +103,9 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-experimental.tsdb.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.tsdb.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-experimental.blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
-Additional options for configuring metadata cache have `-experimental.tsdb.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+Additional options for configuring metadata cache have `-experimental.blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 
 _The same memcached backend cluster should be shared between store-gateways and queriers._
 
@@ -195,87 +195,66 @@ store_gateway:
     [tokens_file_path: <string> | default = ""]
 ```
 
-### `tsdb_config`
+### `blocks_storage_config`
 
-The `tsdb_config` configures the experimental blocks storage.
+The `blocks_storage_config` configures the experimental blocks storage.
 
 ```yaml
-tsdb:
-  # Local directory to store TSDBs in the ingesters.
-  # CLI flag: -experimental.tsdb.dir
-  [dir: <string> | default = "tsdb"]
-
-  # TSDB blocks range period.
-  # CLI flag: -experimental.tsdb.block-ranges-period
-  [block_ranges_period: <list of duration> | default = 2h0m0s]
-
-  # TSDB blocks retention in the ingester before a block is removed. This should
-  # be larger than the block_ranges_period and large enough to give
-  # store-gateways and queriers enough time to discover newly uploaded blocks.
-  # CLI flag: -experimental.tsdb.retention-period
-  [retention_period: <duration> | default = 6h]
-
-  # How frequently the TSDB blocks are scanned and new ones are shipped to the
-  # storage. 0 means shipping is disabled.
-  # CLI flag: -experimental.tsdb.ship-interval
-  [ship_interval: <duration> | default = 1m]
-
-  # Maximum number of tenants concurrently shipping blocks to the storage.
-  # CLI flag: -experimental.tsdb.ship-concurrency
-  [ship_concurrency: <int> | default = 10]
-
+blocks_storage:
   # Backend storage to use. Supported backends are: s3, gcs, azure, filesystem.
-  # CLI flag: -experimental.tsdb.backend
+  # CLI flag: -experimental.blocks-storage.backend
   [backend: <string> | default = "s3"]
 
+  # This configures how the store-gateway synchronizes blocks stored in the
+  # bucket.
   bucket_store:
     # Directory to store synchronized TSDB index headers.
-    # CLI flag: -experimental.tsdb.bucket-store.sync-dir
+    # CLI flag: -experimental.blocks-storage.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
     # How frequently scan the bucket to look for changes (new blocks shipped by
     # ingesters and blocks removed by retention or compaction). 0 disables it.
-    # CLI flag: -experimental.tsdb.bucket-store.sync-interval
+    # CLI flag: -experimental.blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m]
 
     # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
     # allocations.
-    # CLI flag: -experimental.tsdb.bucket-store.max-chunk-pool-bytes
+    # CLI flag: -experimental.blocks-storage.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
 
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
-    # CLI flag: -experimental.tsdb.bucket-store.max-concurrent
+    # CLI flag: -experimental.blocks-storage.bucket-store.max-concurrent
     [max_concurrent: <int> | default = 100]
 
     # Maximum number of concurrent tenants synching blocks.
-    # CLI flag: -experimental.tsdb.bucket-store.tenant-sync-concurrency
+    # CLI flag: -experimental.blocks-storage.bucket-store.tenant-sync-concurrency
     [tenant_sync_concurrency: <int> | default = 10]
 
     # Maximum number of concurrent blocks synching per tenant.
-    # CLI flag: -experimental.tsdb.bucket-store.block-sync-concurrency
+    # CLI flag: -experimental.blocks-storage.bucket-store.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
 
     # Number of Go routines to use when syncing block meta files from object
     # storage per tenant.
-    # CLI flag: -experimental.tsdb.bucket-store.meta-sync-concurrency
+    # CLI flag: -experimental.blocks-storage.bucket-store.meta-sync-concurrency
     [meta_sync_concurrency: <int> | default = 20]
 
     # Minimum age of a block before it's being read. Set it to safe value (e.g
     # 30m) if your object storage is eventually consistent. GCS and S3 are
     # (roughly) strongly consistent.
-    # CLI flag: -experimental.tsdb.bucket-store.consistency-delay
+    # CLI flag: -experimental.blocks-storage.bucket-store.consistency-delay
     [consistency_delay: <duration> | default = 0s]
 
     index_cache:
       # The index cache backend type. Supported values: inmemory, memcached.
-      # CLI flag: -experimental.tsdb.bucket-store.index-cache.backend
+      # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.backend
       [backend: <string> | default = "inmemory"]
 
       inmemory:
         # Maximum size in bytes of in-memory index cache used to speed up blocks
         # index lookups (shared between all tenants).
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.inmemory.max-size-bytes
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
         [max_size_bytes: <int> | default = 1073741824]
 
       memcached:
@@ -283,50 +262,50 @@ tsdb:
         # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
         # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
         # made after that).
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.addresses
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.addresses
         [addresses: <string> | default = ""]
 
         # The socket read/write timeout.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.timeout
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.timeout
         [timeout: <duration> | default = 100ms]
 
         # The maximum number of idle connections that will be maintained per
         # address.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-idle-connections
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-idle-connections
         [max_idle_connections: <int> | default = 16]
 
         # The maximum number of concurrent asynchronous operations can occur.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
         [max_async_concurrency: <int> | default = 50]
 
         # The maximum number of enqueued asynchronous operations allowed.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-async-buffer-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
         [max_async_buffer_size: <int> | default = 10000]
 
         # The maximum number of concurrent connections running get operations.
         # If set to 0, concurrency is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-get-multi-concurrency
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
         # run. If more keys are specified, internally keys are splitted into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-get-multi-batch-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-get-multi-batch-size
         [max_get_multi_batch_size: <int> | default = 0]
 
         # The maximum size of an item stored in memcached. Bigger items are not
         # stored. If set to 0, no maximum size is enforced.
-        # CLI flag: -experimental.tsdb.bucket-store.index-cache.memcached.max-item-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
       # Compress postings before storing them to postings cache.
-      # CLI flag: -experimental.tsdb.bucket-store.index-cache.postings-compression-enabled
+      # CLI flag: -experimental.blocks-storage.bucket-store.index-cache.postings-compression-enabled
       [postings_compression_enabled: <boolean> | default = false]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.backend
+      # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
 
       memcached:
@@ -334,65 +313,65 @@ tsdb:
         # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
         # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
         # made after that).
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.addresses
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.addresses
         [addresses: <string> | default = ""]
 
         # The socket read/write timeout.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.timeout
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.timeout
         [timeout: <duration> | default = 100ms]
 
         # The maximum number of idle connections that will be maintained per
         # address.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-idle-connections
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-idle-connections
         [max_idle_connections: <int> | default = 16]
 
         # The maximum number of concurrent asynchronous operations can occur.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
         [max_async_concurrency: <int> | default = 50]
 
         # The maximum number of enqueued asynchronous operations allowed.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-async-buffer-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
         [max_async_buffer_size: <int> | default = 10000]
 
         # The maximum number of concurrent connections running get operations.
         # If set to 0, concurrency is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
         # run. If more keys are specified, internally keys are splitted into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
         [max_get_multi_batch_size: <int> | default = 0]
 
         # The maximum size of an item stored in memcached. Bigger items are not
         # stored. If set to 0, no maximum size is enforced.
-        # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.memcached.max-item-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
       # Size of each subrange that bucket object is split into for better
       # caching.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-size
+      # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.subrange-size
       [subrange_size: <int> | default = 16000]
 
       # Maximum number of sub-GetRange requests that a single GetRange request
       # can be split into when fetching chunks. Zero or negative value =
       # unlimited number of sub-requests.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.max-get-range-requests
+      # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.max-get-range-requests
       [max_get_range_requests: <int> | default = 3]
 
       # TTL for caching object attributes for chunks.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.attributes-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.attributes-ttl
       [attributes_ttl: <duration> | default = 24h]
 
       # TTL for caching individual chunks subranges.
-      # CLI flag: -experimental.tsdb.bucket-store.chunks-cache.subrange-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.chunks-cache.subrange-ttl
       [subrange_ttl: <duration> | default = 24h]
 
     metadata_cache:
       # Backend for metadata cache, if not empty. Supported values: memcached.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.backend
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.backend
       [backend: <string> | default = ""]
 
       memcached:
@@ -400,69 +379,69 @@ tsdb:
         # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV
         # query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup
         # made after that).
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.addresses
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.addresses
         [addresses: <string> | default = ""]
 
         # The socket read/write timeout.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.timeout
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.timeout
         [timeout: <duration> | default = 100ms]
 
         # The maximum number of idle connections that will be maintained per
         # address.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-idle-connections
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-idle-connections
         [max_idle_connections: <int> | default = 16]
 
         # The maximum number of concurrent asynchronous operations can occur.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-async-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
         [max_async_concurrency: <int> | default = 50]
 
         # The maximum number of enqueued asynchronous operations allowed.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-async-buffer-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
         [max_async_buffer_size: <int> | default = 10000]
 
         # The maximum number of concurrent connections running get operations.
         # If set to 0, concurrency is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-get-multi-concurrency
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-concurrency
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
         # run. If more keys are specified, internally keys are splitted into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-get-multi-batch-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-batch-size
         [max_get_multi_batch_size: <int> | default = 0]
 
         # The maximum size of an item stored in memcached. Bigger items are not
         # stored. If set to 0, no maximum size is enforced.
-        # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.memcached.max-item-size
+        # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
       # How long to cache list of tenants in the bucket.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.tenants-list-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
       [tenants_list_ttl: <duration> | default = 15m]
 
       # How long to cache list of blocks for each tenant.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.tenant-blocks-list-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
       [tenant_blocks_list_ttl: <duration> | default = 15m]
 
       # How long to cache list of chunks for a block.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.chunks-list-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
       [chunks_list_ttl: <duration> | default = 24h]
 
       # How long to cache information that block metafile exists.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-exists-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
       [metafile_exists_ttl: <duration> | default = 2h]
 
       # How long to cache information that block metafile doesn't exist.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
       [metafile_doesnt_exist_ttl: <duration> | default = 15m]
 
       # How long to cache content of the metafile.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-content-ttl
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-content-ttl
       [metafile_content_ttl: <duration> | default = 24h]
 
       # Maximum size of metafile content to cache in bytes.
-      # CLI flag: -experimental.tsdb.bucket-store.metadata-cache.metafile-max-size-bytes
+      # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
       [metafile_max_size_bytes: <int> | default = 1048576]
 
     # Duration after which the blocks marked for deletion will be filtered out
@@ -471,103 +450,128 @@ tsdb:
     # store can still serve blocks that are meant to be deleted but do not have
     # a replacement yet. Default is 6h, half of the default value for
     # -compactor.deletion-delay.
-    # CLI flag: -experimental.tsdb.bucket-store.ignore-deletion-marks-delay
+    # CLI flag: -experimental.blocks-storage.bucket-store.ignore-deletion-marks-delay
     [ignore_deletion_mark_delay: <duration> | default = 6h]
 
-  # How frequently does Cortex try to compact TSDB head. Block is only created
-  # if data covers smallest block range. Must be greater than 0 and max 5
-  # minutes.
-  # CLI flag: -experimental.tsdb.head-compaction-interval
-  [head_compaction_interval: <duration> | default = 1m]
+  tsdb:
+    # Local directory to store TSDBs in the ingesters.
+    # CLI flag: -experimental.blocks-storage.tsdb.dir
+    [dir: <string> | default = "tsdb"]
 
-  # Maximum number of tenants concurrently compacting TSDB head into a new block
-  # CLI flag: -experimental.tsdb.head-compaction-concurrency
-  [head_compaction_concurrency: <int> | default = 5]
+    # TSDB blocks range period.
+    # CLI flag: -experimental.blocks-storage.tsdb.block-ranges-period
+    [block_ranges_period: <list of duration> | default = 2h0m0s]
 
-  # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
-  # CLI flag: -experimental.tsdb.head-compaction-idle-timeout
-  [head_compaction_idle_timeout: <duration> | default = 1h]
+    # TSDB blocks retention in the ingester before a block is removed. This
+    # should be larger than the block_ranges_period and large enough to give
+    # store-gateways and queriers enough time to discover newly uploaded blocks.
+    # CLI flag: -experimental.blocks-storage.tsdb.retention-period
+    [retention_period: <duration> | default = 6h]
 
-  # The number of shards of series to use in TSDB (must be a power of 2).
-  # Reducing this will decrease memory footprint, but can negatively impact
-  # performance.
-  # CLI flag: -experimental.tsdb.stripe-size
-  [stripe_size: <int> | default = 16384]
+    # How frequently the TSDB blocks are scanned and new ones are shipped to the
+    # storage. 0 means shipping is disabled.
+    # CLI flag: -experimental.blocks-storage.tsdb.ship-interval
+    [ship_interval: <duration> | default = 1m]
 
-  # True to enable TSDB WAL compression.
-  # CLI flag: -experimental.tsdb.wal-compression-enabled
-  [wal_compression_enabled: <boolean> | default = false]
+    # Maximum number of tenants concurrently shipping blocks to the storage.
+    # CLI flag: -experimental.blocks-storage.tsdb.ship-concurrency
+    [ship_concurrency: <int> | default = 10]
 
-  # If true, and transfer of blocks on shutdown fails or is disabled, incomplete
-  # blocks are flushed to storage instead. If false, incomplete blocks will be
-  # reused after restart, and uploaded when finished.
-  # CLI flag: -experimental.tsdb.flush-blocks-on-shutdown
-  [flush_blocks_on_shutdown: <boolean> | default = false]
+    # How frequently does Cortex try to compact TSDB head. Block is only created
+    # if data covers smallest block range. Must be greater than 0 and max 5
+    # minutes.
+    # CLI flag: -experimental.blocks-storage.tsdb.head-compaction-interval
+    [head_compaction_interval: <duration> | default = 1m]
 
-  # limit the number of concurrently opening TSDB's on startup
-  # CLI flag: -experimental.tsdb.max-tsdb-opening-concurrency-on-startup
-  [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+    # Maximum number of tenants concurrently compacting TSDB head into a new
+    # block
+    # CLI flag: -experimental.blocks-storage.tsdb.head-compaction-concurrency
+    [head_compaction_concurrency: <int> | default = 5]
+
+    # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+    # CLI flag: -experimental.blocks-storage.tsdb.head-compaction-idle-timeout
+    [head_compaction_idle_timeout: <duration> | default = 1h]
+
+    # The number of shards of series to use in TSDB (must be a power of 2).
+    # Reducing this will decrease memory footprint, but can negatively impact
+    # performance.
+    # CLI flag: -experimental.blocks-storage.tsdb.stripe-size
+    [stripe_size: <int> | default = 16384]
+
+    # True to enable TSDB WAL compression.
+    # CLI flag: -experimental.blocks-storage.tsdb.wal-compression-enabled
+    [wal_compression_enabled: <boolean> | default = false]
+
+    # If true, and transfer of blocks on shutdown fails or is disabled,
+    # incomplete blocks are flushed to storage instead. If false, incomplete
+    # blocks will be reused after restart, and uploaded when finished.
+    # CLI flag: -experimental.blocks-storage.tsdb.flush-blocks-on-shutdown
+    [flush_blocks_on_shutdown: <boolean> | default = false]
+
+    # limit the number of concurrently opening TSDB's on startup
+    # CLI flag: -experimental.blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
+    [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
   s3:
     # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
     # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
     # S3-compatible service in hostname:port format.
-    # CLI flag: -experimental.tsdb.s3.endpoint
+    # CLI flag: -experimental.blocks-storage.s3.endpoint
     [endpoint: <string> | default = ""]
 
     # S3 bucket name
-    # CLI flag: -experimental.tsdb.s3.bucket-name
+    # CLI flag: -experimental.blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]
 
     # S3 secret access key
-    # CLI flag: -experimental.tsdb.s3.secret-access-key
+    # CLI flag: -experimental.blocks-storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
 
     # S3 access key ID
-    # CLI flag: -experimental.tsdb.s3.access-key-id
+    # CLI flag: -experimental.blocks-storage.s3.access-key-id
     [access_key_id: <string> | default = ""]
 
     # If enabled, use http:// for the S3 endpoint instead of https://. This
     # could be useful in local dev/test environments while using an
     # S3-compatible backend storage, like Minio.
-    # CLI flag: -experimental.tsdb.s3.insecure
+    # CLI flag: -experimental.blocks-storage.s3.insecure
     [insecure: <boolean> | default = false]
 
   gcs:
     # GCS bucket name
-    # CLI flag: -experimental.tsdb.gcs.bucket-name
+    # CLI flag: -experimental.blocks-storage.gcs.bucket-name
     [bucket_name: <string> | default = ""]
 
     # JSON representing either a Google Developers Console
     # client_credentials.json file or a Google Developers service account key
     # file. If empty, fallback to Google default logic.
-    # CLI flag: -experimental.tsdb.gcs.service-account
+    # CLI flag: -experimental.blocks-storage.gcs.service-account
     [service_account: <string> | default = ""]
 
   azure:
     # Azure storage account name
-    # CLI flag: -experimental.tsdb.azure.account-name
+    # CLI flag: -experimental.blocks-storage.azure.account-name
     [account_name: <string> | default = ""]
 
     # Azure storage account key
-    # CLI flag: -experimental.tsdb.azure.account-key
+    # CLI flag: -experimental.blocks-storage.azure.account-key
     [account_key: <string> | default = ""]
 
     # Azure storage container name
-    # CLI flag: -experimental.tsdb.azure.container-name
+    # CLI flag: -experimental.blocks-storage.azure.container-name
     [container_name: <string> | default = ""]
 
     # Azure storage endpoint suffix without schema. The account name will be
     # prefixed to this value to create the FQDN
-    # CLI flag: -experimental.tsdb.azure.endpoint-suffix
+    # CLI flag: -experimental.blocks-storage.azure.endpoint-suffix
     [endpoint_suffix: <string> | default = ""]
 
     # Number of retries for recoverable errors
-    # CLI flag: -experimental.tsdb.azure.max-retries
+    # CLI flag: -experimental.blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
 
   filesystem:
     # Local filesystem storage directory.
-    # CLI flag: -experimental.tsdb.filesystem.dir
+    # CLI flag: -experimental.blocks-storage.filesystem.dir
     [dir: <string> | default = ""]
 ```

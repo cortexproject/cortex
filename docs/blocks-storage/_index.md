@@ -36,7 +36,7 @@ Finally, the **table-manager** is not used by the blocks storage.
 
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester appends the received samples to the specific per-tenant TSDB stored on the local disk. The received samples are both kept in-memory and written to a write-ahead log (WAL) and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester as soon as the first samples are received for that tenant.
 
-The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB block is created, which by default occurs every 2 hours. Each newly created block is then uploaded to the long-term storage and kept in the ingester until the configured `-experimental.tsdb.retention-period` expires, in order to give [queriers](./querier.md) and [store-gateways](./store-gateway.md) enough time to discover the new block on the storage and download its index-header.
+The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB block is created, which by default occurs every 2 hours. Each newly created block is then uploaded to the long-term storage and kept in the ingester until the configured `-experimental.blocks-storage.tsdb.retention-period` expires, in order to give [queriers](./querier.md) and [store-gateways](./store-gateway.md) enough time to discover the new block on the storage and download its index-header.
 
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters. The location on the filesystem where the WAL is stored is the same where local TSDB blocks (compacted from head) are stored and cannot be decoupled.
 
@@ -67,13 +67,13 @@ For more information, please refer to the following dedicated sections:
 
 ## Configuration
 
-The general [configuration documentation](../configuration/config-file-reference.md) also applies to a Cortex cluster running the blocks storage. The blocks storage can be enabled switching the storage `engine` to `tsdb`:
+The general [configuration documentation](../configuration/config-file-reference.md) also applies to a Cortex cluster running the blocks storage. The blocks storage can be enabled switching the storage `engine` to `blocks`:
 
 ```yaml
 storage:
-  # The storage engine to use. Use "tsdb" for the blocks storage.
+  # The storage engine to use. Use "blocks" for the blocks storage.
   # CLI flag: -store.engine
-  engine: tsdb
+  engine: blocks
 ```
 
 ## Known issues

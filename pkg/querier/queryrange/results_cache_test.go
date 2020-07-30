@@ -379,6 +379,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -409,7 +410,16 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, constSplitter(day), fakeLimitsHighMaxCacheFreshness{}, PrometheusCodec, PrometheusResponseExtractor{}, nil)
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		constSplitter(day),
+		fakeLimitsHighMaxCacheFreshness{},
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		nil,
+	)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -476,6 +486,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -510,6 +521,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 	)
 	require.NoError(t, err)

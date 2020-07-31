@@ -104,6 +104,7 @@
 * [BUGFIX] Ingester: Improve time-series distribution when `-experimental.distributor.user-subring-size` is enabled. #2887
 * [BUGFIX] Set content type to `application/x-protobuf` for remote_read responses. #2915
 * [BUGFIX] Fixed ruler and store-gateway instance registration in the ring (when sharding is enabled) when a new instance replaces abruptly terminated one, and the only difference between the two instances is the address. #2954
+* [BUGFIX] Fixed `Missing chunks and index config causing silent failure` Absence of chunks and index from schema config is not validated. #2732
 
 ## 1.2.0 / 2020-07-01
 

@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+
 	"github.com/go-redis/redis/v8"
 )
 

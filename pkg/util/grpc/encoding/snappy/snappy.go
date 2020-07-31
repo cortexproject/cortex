@@ -52,18 +52,22 @@ func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
 }
 
 type writeCloser struct {
-	*snappy.Writer
-	pool *sync.Pool
+	writer *snappy.Writer
+	pool   *sync.Pool
+}
+
+func (w writeCloser) Write(p []byte) (n int, err error) {
+	return w.writer.Write(p)
 }
 
 func (w writeCloser) Close() error {
 	defer func() {
-		w.Writer.Reset(nil)
-		w.pool.Put(w.Writer)
+		w.writer.Reset(nil)
+		w.pool.Put(w.writer)
 	}()
 
-	if w.Writer != nil {
-		return w.Writer.Close()
+	if w.writer != nil {
+		return w.writer.Close()
 	}
 	return nil
 }

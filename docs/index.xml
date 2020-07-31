@@ -7893,6 +7893,7 @@ __replica__: replica2
 &lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>[CHANGE] Limit errors reported by ingester during query-time now return HTTP status code 422. &lt;a href="https://github.com/cortexproject/cortex/pull/2941">#2941&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-outage-tolerance&lt;/code>, Max time to tolerate outage for restoring &amp;ldquo;for&amp;rdquo; state of alert. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.for-grace-period&lt;/code>, Minimum duration between alert and restored &amp;ldquo;for&amp;rdquo; state. This is maintained only for alerts with configured &amp;ldquo;for&amp;rdquo; time greater than grace period. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Introduced &lt;code>ruler.resend-delay&lt;/code>, Minimum amount of time to wait before resending an alert to Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2783">#2783&lt;/a>&lt;/li>

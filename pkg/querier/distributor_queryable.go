@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
@@ -120,7 +119,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 
 	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
@@ -130,12 +129,12 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	results, err := q.distributor.QueryStream(q.ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	if len(results.Timeseries) != 0 {
@@ -154,7 +153,7 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
 		if err != nil {
-			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+			return storage.ErrSeriesSet(err)
 		}
 
 		series := &chunkSeries{

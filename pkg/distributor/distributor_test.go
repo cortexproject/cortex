@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -430,7 +429,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 						numIngesters:     numIngesters,
 						happyIngesters:   happyIngesters,
 						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    promql.ErrStorage{Err: errFail},
+						expectedError:    errFail,
 						shardByAllLabels: shardByAllLabels,
 					})
 					continue
@@ -444,7 +443,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 						numIngesters:     numIngesters,
 						happyIngesters:   happyIngesters,
 						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    promql.ErrStorage{Err: errFail},
+						expectedError:    errFail,
 						shardByAllLabels: shardByAllLabels,
 					})
 					continue
@@ -734,7 +733,7 @@ func TestSlowQueries(t *testing.T) {
 			t.Run(fmt.Sprintf("%t/%d", shardByAllLabels, happy), func(t *testing.T) {
 				var expectedErr error
 				if nIngesters-happy > 1 {
-					expectedErr = promql.ErrStorage{Err: errFail}
+					expectedErr = errFail
 				}
 
 				ds, _, r := prepare(t, prepConfig{

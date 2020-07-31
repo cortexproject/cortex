@@ -97,24 +97,25 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
 ```
 -<prefix>.redis.topology
     Redis topology: server (default), cluster, sentinel
--<prefix>.redis.enable-tls
+-<prefix>.redis.enable_tls
     Enables connecting to redis with TLS.
 -<prefix>.redis.endpoint string
     Redis endpoint to use when caching chunks. If empty, no redis will be used.
     For Redis server - Redis service endpoint
     For Redis cluster - comma-separated list of Redis node's endpoints
     For Redis sentinel - Redis Sentinel service endpoint
-
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
--<prefix>.redis.max-active-conns int
-    Maximum number of active connections in pool.
--<prefix>.redis.max-idle-conns int
-    Maximum number of idle connections in pool. (default 80)
+-<prefix>.redis.pool_size int
+    Maximum number of socket connections in pool.
 -<prefix>.redis.password value
     Password to use when connecting to redis.
 -<prefix>.redis.timeout duration
     Maximum time to wait before giving up on redis requests. (default 100ms)
+-<prefix>.redis.idle_timeout duration
+    Amount of time after which client closes idle connections.
+-<prefix>.redis.max_conn_age duration
+    Amount of time after which client closes connections.
 ```
 
 See [`redis_config` documentation](../configuration/config-file-reference.md#redis-config) if you use a config file with Cortex.

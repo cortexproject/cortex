@@ -2856,7 +2856,7 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 &nbsp;
 
 ```yaml
-# Redis topology. Supported: 'server', 'cluster', 'sentinel'.
+# Redis topology. Supported: server, cluster, sentinel.
 # CLI flag: -<prefix>.redis.topology
 [topology: <string> | default = "server"]
 
@@ -2873,13 +2873,9 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.expiration
 [expiration: <duration> | default = 0s]
 
-# Maximum number of idle connections in pool.
-# CLI flag: -<prefix>.redis.max-idle-conns
-[max_idle_conns: <int> | default = 80]
-
-# Maximum number of active connections in pool.
-# CLI flag: -<prefix>.redis.max-active-conns
-[max_active_conns: <int> | default = 0]
+# Maximum number of socket connections in pool.
+# CLI flag: -<prefix>.redis.pool_size
+[pool_size: <int> | default = 0]
 
 # Password to use when connecting to redis.
 # CLI flag: -<prefix>.redis.password
@@ -2894,16 +2890,30 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.idle-timeout
 [idle_timeout: <duration> | default = 0s]
 
-# Enables waiting if there are no idle connections. If the value is false and
-# the pool is at the max_active_conns limit, the pool will return a connection
-# with ErrPoolExhausted error and not wait for idle connections.
-# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
-[wait_on_pool_exhaustion: <boolean> | default = false]
-
 # Close connections older than this duration. If the value is zero, then the
 # pool does not close connections based on age.
+# CLI flag: -<prefix>.redis.max_conn_age
+[max_conn_age: <duration> | default = 0s]
+
+# Deprecated: Maximum number of idle connections in pool.
+# CLI flag: -<prefix>.redis.max-idle-conns
+[max_idle_conns: <int> | default = 0]
+
+# Deprecated (use pool_size instead): Maximum number of active connections in
+# pool.
+# CLI flag: -<prefix>.redis.max-active-conns
+[max_active_conns: <int> | default = 0]
+
+# Deprecated (use max_conn_age instead): Close connections older than this
+# duration.
 # CLI flag: -<prefix>.redis.max-conn-lifetime
 [max_conn_lifetime: <duration> | default = 0s]
+
+# Deprecated: Enables waiting if there are no idle connections. If the value is
+# false and the pool is at the max_active_conns limit, the pool will return a
+# connection with ErrPoolExhausted error and not wait for idle connections.
+# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
+[wait_on_pool_exhaustion: <boolean> | default = false]
 ```
 
 ### `memcached_config`

@@ -487,7 +487,18 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
-	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger, t.RulerStorage)
+	t.Ruler, err = ruler.NewRuler(
+		t.Cfg.Ruler,
+		ruler.DefaultTenantManagerFactory(
+			t.Cfg.Ruler,
+			t.Distributor,
+			queryable,
+			engine,
+		),
+		prometheus.DefaultRegisterer,
+		util.Logger,
+		t.RulerStorage,
+	)
 	if err != nil {
 		return
 	}

@@ -79,8 +79,7 @@ func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Dura
 	}
 }
 
-// TenantManagerFunc is a function adapter for the TenantManager interface
-type TenantManagerFunc func(
+type ManagerFactory = func(
 	ctx context.Context,
 	userID string,
 	notifier *notifier.Manager,
@@ -88,23 +87,13 @@ type TenantManagerFunc func(
 	reg prometheus.Registerer,
 ) *rules.Manager
 
-func (fn TenantManagerFunc) NewManager(
-	ctx context.Context,
-	userID string,
-	notifier *notifier.Manager,
-	logger log.Logger,
-	reg prometheus.Registerer,
-) *rules.Manager {
-	return fn(ctx, userID, notifier, logger, reg)
-}
-
-func DefaultTenantManager(
+func DefaultTenantManagerFactory(
 	cfg Config,
 	p Pusher,
 	q storage.Queryable,
 	engine *promql.Engine,
-) TenantManagerFunc {
-	return TenantManagerFunc(func(
+) ManagerFactory {
+	return func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
@@ -124,5 +113,5 @@ func DefaultTenantManager(
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
 		})
-	})
+	}
 }

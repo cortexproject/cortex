@@ -489,7 +489,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 
 	t.Ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
-		ruler.DefaultTenantManager(
+		ruler.DefaultTenantManagerFactory(
 			t.Cfg.Ruler,
 			t.Distributor,
 			queryable,

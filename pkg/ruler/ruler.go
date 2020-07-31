@@ -20,9 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
-	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -155,12 +153,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Ruler struct {
 	services.Service
 
-	cfg         Config
-	engine      *promql.Engine
-	queryable   promStorage.Queryable
-	pusher      Pusher
-	alertURL    *url.URL
-	notifierCfg *config.Config
+	cfg            Config
+	notifierCfg    *config.Config
+	managerFactory ManagerFactory
 
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
@@ -184,7 +179,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -198,13 +193,10 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 
 	ruler := &Ruler{
 		cfg:                cfg,
-		engine:             engine,
-		queryable:          queryable,
-		alertURL:           cfg.ExternalURL.URL,
 		notifierCfg:        ncfg,
+		managerFactory:     managerFactory,
 		notifiers:          map[string]*rulerNotifier{},
 		store:              ruleStore,
-		pusher:             pusher,
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]*promRules.Manager{},
 		userManagerMetrics: userManagerMetrics,
@@ -303,11 +295,11 @@ func (r *Ruler) stopping(_ error) error {
 	return nil
 }
 
-// sendAlerts implements a rules.NotifyFunc for a Notifier.
+// SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -548,20 +540,7 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
 	logger := log.With(r.logger, "user", userID)
-	opts := &promRules.ManagerOptions{
-		Appendable:      &appender{pusher: r.pusher, userID: userID},
-		Queryable:       r.queryable,
-		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
-		Context:         user.InjectOrgID(ctx, userID),
-		ExternalURL:     r.alertURL,
-		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),
-		Logger:          logger,
-		Registerer:      reg,
-		OutageTolerance: r.cfg.OutageTolerance,
-		ForGracePeriod:  r.cfg.ForGracePeriod,
-		ResendDelay:     r.cfg.ResendDelay,
-	}
-	return promRules.NewManager(opts), nil
+	return r.managerFactory(ctx, userID, notifier, logger, reg), nil
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if

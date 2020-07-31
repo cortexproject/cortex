@@ -84,7 +84,13 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	l = level.NewFilter(l, level.AllowInfo())
 	storage, err := NewRuleStorage(cfg.StoreConfig)
 	require.NoError(t, err)
-	ruler, err := NewRuler(cfg, engine, noopQueryable, pusher, prometheus.NewRegistry(), l, storage)
+	ruler, err := NewRuler(
+		cfg,
+		DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine),
+		prometheus.NewRegistry(),
+		l,
+		storage,
+	)
 	require.NoError(t, err)
 
 	return ruler, cleanup

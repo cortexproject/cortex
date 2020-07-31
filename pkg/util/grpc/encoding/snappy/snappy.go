@@ -24,18 +24,12 @@ func newCompressor() *compressor {
 	c := &compressor{}
 	c.readersPool = sync.Pool{
 		New: func() interface{} {
-			return &reader{
-				pool:   &c.readersPool,
-				Reader: snappy.NewReader(nil),
-			}
+			return snappy.NewReader(nil)
 		},
 	}
 	c.writersPool = sync.Pool{
 		New: func() interface{} {
-			return &writeCloser{
-				pool:   &c.writersPool,
-				Writer: snappy.NewBufferedWriter(nil),
-			}
+			return snappy.NewBufferedWriter(nil)
 		},
 	}
 	return c
@@ -46,15 +40,15 @@ func (c *compressor) Name() string {
 }
 
 func (c *compressor) Compress(w io.Writer) (io.WriteCloser, error) {
-	wr := c.writersPool.Get().(*writeCloser)
+	wr := c.writersPool.Get().(*snappy.Writer)
 	wr.Reset(w)
-	return wr, nil
+	return writeCloser{wr, &c.writersPool}, nil
 }
 
 func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
-	dr := c.readersPool.Get().(*reader)
+	dr := c.readersPool.Get().(*snappy.Reader)
 	dr.Reset(r)
-	return dr, nil
+	return reader{dr, &c.readersPool}, nil
 }
 
 type writeCloser struct {
@@ -62,20 +56,28 @@ type writeCloser struct {
 	pool *sync.Pool
 }
 
-func (w *writeCloser) Close() error {
-	defer w.pool.Put(w)
-	return w.Writer.Close()
+func (w writeCloser) Close() error {
+	defer func() {
+		w.Writer.Reset(nil)
+		w.pool.Put(w.Writer)
+	}()
+
+	if w.Writer != nil {
+		return w.Writer.Close()
+	}
+	return nil
 }
 
 type reader struct {
-	*snappy.Reader
-	pool *sync.Pool
+	reader *snappy.Reader
+	pool   *sync.Pool
 }
 
-func (r *reader) Read(p []byte) (n int, err error) {
-	n, err = r.Reader.Read(p)
+func (r reader) Read(p []byte) (n int, err error) {
+	n, err = r.reader.Read(p)
 	if err == io.EOF {
-		r.pool.Put(r)
+		r.reader.Reset(nil)
+		r.pool.Put(r.reader)
 	}
 	return n, err
 }

@@ -20,7 +20,7 @@ import (
 type Config struct {
 	MaxRecvMsgSize     int     `yaml:"max_recv_msg_size"`
 	MaxSendMsgSize     int     `yaml:"max_send_msg_size"`
-	UseGzipCompression bool    `yaml:"use_gzip_compression"`
+	UseGzipCompression bool    `yaml:"use_gzip_compression"` // TODO: Remove this deprecated option in v1.6.0.
 	GRPCCompression    string  `yaml:"grpc_compression"`
 	RateLimit          float64 `yaml:"rate_limit"`
 	RateLimitBurst     int     `yaml:"rate_limit_burst"`
@@ -68,7 +68,7 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 	opts = append(opts, grpc.MaxCallSendMsgSize(cfg.MaxSendMsgSize))
 	compression := cfg.GRPCCompression
 	if cfg.UseGzipCompression {
-		compression = "gzip"
+		compression = gzip.Name
 	}
 	if compression != "" {
 		opts = append(opts, grpc.UseCompressor(compression))

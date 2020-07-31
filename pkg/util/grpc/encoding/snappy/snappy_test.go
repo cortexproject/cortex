@@ -47,9 +47,9 @@ func TestSnappy(t *testing.T) {
 func BenchmarkSnappyCompress(b *testing.B) {
 	data := []byte(strings.Repeat("123456789", 1024))
 	c := newCompressor()
-	w, _ := c.Compress(ioutil.Discard)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		w, _ := c.Compress(ioutil.Discard)
 		_, _ = w.Write(data)
 		_ = w.Close()
 	}

@@ -43,7 +43,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 			registerState:  ACTIVE,
 			registerTokens: Tokens{1, 2, 3, 4, 5},
 		},
-		"initial ring contains the same instance with a different address and tokens": {
+		"initial ring contains the same instance with different state, tokens and address (new one is 127.0.0.1)": {
 			initialInstanceID: testInstanceID,
 			initialInstanceDesc: &IngesterDesc{
 				Addr:   "1.1.1.1",
@@ -51,6 +51,16 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 				Tokens: Tokens{6, 7, 8, 9, 10},
 			},
 			registerState:  JOINING,
+			registerTokens: Tokens{1, 2, 3, 4, 5},
+		},
+		"initial ring contains the same instance with different address (new one is 127.0.0.1)": {
+			initialInstanceID: testInstanceID,
+			initialInstanceDesc: &IngesterDesc{
+				Addr:   "1.1.1.1",
+				State:  ACTIVE,
+				Tokens: Tokens{1, 2, 3, 4, 5},
+			},
+			registerState:  ACTIVE,
 			registerTokens: Tokens{1, 2, 3, 4, 5},
 		},
 	}

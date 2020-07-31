@@ -987,7 +987,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
-			true, // Allow out of order uploads. It's fine in Cortex's context.
+			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
+			true,  // Allow out of order uploads. It's fine in Cortex's context.
 		)
 	}
 

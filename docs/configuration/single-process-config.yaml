@@ -95,3 +95,14 @@ ruler:
     type: local
     local:
       directory: /tmp/cortex/rules
+
+chunk_store:
+  exclude_labels:
+    12768:
+    - metric_name: go_gc_duration_seconds
+      label_name: instance
+    - metric_name: go_heap_size
+      label_name: job
+    19771:
+    - metric_name: scrape_series_added
+      label_name: job

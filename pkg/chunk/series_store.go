@@ -69,11 +69,12 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	baseStore
+	excludeLabels    util.ExcludeLabels
 	schema           SeriesStoreSchema
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache, excludeLabels util.ExcludeLabels) (Store, error) {
 	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
@@ -88,6 +89,7 @@ func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient
 
 	return &seriesStore{
 		baseStore:        rs,
+		excludeLabels:    excludeLabels,
 		schema:           schema,
 		writeDedupeCache: writeDedupeCache,
 	}, nil
@@ -274,6 +276,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// Just get series for metric if there are no matchers
+	fmt.Printf("%#v", c.excludeLabels)
+	fmt.Println("************************************")
+	fmt.Println(matchers)
+	fmt.Println("*********end matchers***************************")
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)

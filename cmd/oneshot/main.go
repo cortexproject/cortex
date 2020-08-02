@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -59,7 +60,7 @@ func main() {
 		fmt.Printf("error validating config: %v\n", err)
 		os.Exit(1)
 	}
-
+	// fmt.Printf("%#v", cfg.ChunkStore.ExcludeLabels)
 	// 3 levels of stuff to initialize before we can get started
 	overrides, err := validation.NewOverrides(cfg.LimitsConfig, nil)
 	if err != nil {
@@ -67,7 +68,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, overrides, nil, nil)
+	chunkStore, err := storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, overrides, nil, nil, log.NewNopLogger())
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to set up chunk store", "err", err)
 		os.Exit(1)
@@ -76,7 +77,7 @@ func main() {
 
 	storeQueryable := querier.NewChunkStoreQueryable(cfg.Querier, chunkStore)
 	queryables := []querier.QueryableWithFilter{querier.UseAlwaysQueryable(storeQueryable)}
-	_, engine := querier.New(cfg.Querier, noopQuerier{}, queryables, nil, nil)
+	_, engine := querier.New(cfg.Querier, overrides, noopQuerier{}, queryables, nil, nil)
 
 	if flag.NArg() != 1 {
 		level.Error(util.Logger).Log("msg", "usage: oneshot <options> promql-query")

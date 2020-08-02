@@ -64,7 +64,8 @@ type StoreConfig struct {
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 
 	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
-	DisableIndexDeduplication bool `yaml:"-"`
+	DisableIndexDeduplication bool               `yaml:"-"`
+	ExcludeLabels             util.ExcludeLabels `yaml:"exclude_labels"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

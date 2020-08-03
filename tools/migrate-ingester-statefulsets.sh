@@ -41,6 +41,9 @@ while [[ $INSTANCES_TO_DOWNSCALE -gt 0 ]]; do
   # Preferably we would wait for /shutdown to return, but unfortunately that doesn't work (even with big timeout), wget complains with weird error.
   kubectl exec "$POD_TO_SHUTDOWN" --namespace="$NAMESPACE" -- wget -T 5 http://localhost:80/shutdown >/dev/null 2>/dev/null || true
 
+  # While request to /shutdown completes only after flushing has finished, it unfortunately returns 204 status code,
+  # which confuses wget. That is the reason why instead of waiting for /shutdown to complete, this script waits for
+  # specific log messages to appear in the log file that signal start/end of data flushing.
   if kubectl logs -f "$POD_TO_SHUTDOWN" --namespace="$NAMESPACE" | grep -E -q "starting to flush all the chunks|starting to flush and ship TSDB blocks"; then
     echo "$(date): Flushing started"
   else

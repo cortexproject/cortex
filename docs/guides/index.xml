@@ -1,4 +1,40 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>Cortex supports deletion of series using &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a>.
+It however does not support &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">Prometheuses Clean Tombstones&lt;/a> API because Cortex uses a different mechanism to manage deletions.&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>A new service called &lt;code>purger&lt;/code> is added which exposes deletion APIs and does the processing of the requests.
+To store the requests, and some additional information while performing deletions, the purger requires configuring an index and object store respectively for it.
+For more information about the &lt;code>purger&lt;/code> configuration, please refer to the &lt;a href="/docs/configuration/configuration-file/#purger_config">config file reference&lt;/a> documentation.&lt;/p>
+&lt;p>All the requests specified below needs to be sent to &lt;code>purger&lt;/code>.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> If you have enabled multi-tenancy in your Cortex cluster then deletion APIs requests require to have the &lt;code>X-Scope-OrgID&lt;/code> header set like for any other Cortex API.&lt;/p>
+&lt;h4 id="requesting-deletion">Requesting Deletion&lt;/h4>
+&lt;p>By calling the &lt;code>/api/v1/admin/tsdb/delete_series&lt;/code> API like how it is done in &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus&lt;/a>, you can request the deletion of series.
+Delete Series requests are immediately honored by eliminating series requested for deletion from query responses without actually deleting them from storage.
+The actual data is not deleted from storage until period configured for &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option which helps operators take informed decision about continuing with the deletion or cancelling the request.&lt;/p>
+&lt;p>Cortex would keep eliminating series requested for deletion until the &lt;code>purger&lt;/code> is done processing the delete request or the delete request gets cancelled.&lt;/p>
+&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series?match%5B%5D=up&amp;amp;start=1591616227&amp;amp;end=1591619692' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;h4 id="cancellation-of-delete-request">Cancellation of Delete Request&lt;/h4>
+&lt;p>Cortex allows cancellation of delete requests until they are not picked up for processing, which is controlled by the &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option.
+Since Cortex does query time filtering of data request for deletion until it is actually deleted, you can take an informed decision to cancel the delete request by calling the API defined below:&lt;/p>
+&lt;pre>&lt;code>POST /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>You can find the id of the request that you want to cancel by using the GET &lt;code>delete_series&lt;/code> API defined below.&lt;/p>
+&lt;h4 id="listing-delete-requests">Listing Delete Requests&lt;/h4>
+&lt;p>You can list the created delete requests using following API:&lt;/p>
+&lt;pre>&lt;code>GET /api/v1/admin/tsdb/delete_series
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X GET \
+&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
+-H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
 &lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
 &lt;h2 id="config">Config&lt;/h2>

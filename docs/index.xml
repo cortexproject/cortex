@@ -5725,7 +5725,43 @@ older data, which is never written and only read sporadically.&lt;/li>
 &lt;li>If you want to add AWS tags to the created DynamoDB tables you
 can do it by adding a &lt;code>tags&lt;/code> map to your schema definition. See
 &lt;a href="/docs/configuration/schema-configuration/">&lt;code>schema configuration&lt;/code>&lt;/a>&lt;/li>
-&lt;/ul></description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>Cortex supports deletion of series using &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a>.
+It however does not support &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">Prometheuses Clean Tombstones&lt;/a> API because Cortex uses a different mechanism to manage deletions.&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>A new service called &lt;code>purger&lt;/code> is added which exposes deletion APIs and does the processing of the requests.
+To store the requests, and some additional information while performing deletions, the purger requires configuring an index and object store respectively for it.
+For more information about the &lt;code>purger&lt;/code> configuration, please refer to the &lt;a href="/docs/configuration/configuration-file/#purger_config">config file reference&lt;/a> documentation.&lt;/p>
+&lt;p>All the requests specified below needs to be sent to &lt;code>purger&lt;/code>.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> If you have enabled multi-tenancy in your Cortex cluster then deletion APIs requests require to have the &lt;code>X-Scope-OrgID&lt;/code> header set like for any other Cortex API.&lt;/p>
+&lt;h4 id="requesting-deletion">Requesting Deletion&lt;/h4>
+&lt;p>By calling the &lt;code>/api/v1/admin/tsdb/delete_series&lt;/code> API like how it is done in &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus&lt;/a>, you can request the deletion of series.
+Delete Series requests are immediately honored by eliminating series requested for deletion from query responses without actually deleting them from storage.
+The actual data is not deleted from storage until period configured for &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option which helps operators take informed decision about continuing with the deletion or cancelling the request.&lt;/p>
+&lt;p>Cortex would keep eliminating series requested for deletion until the &lt;code>purger&lt;/code> is done processing the delete request or the delete request gets cancelled.&lt;/p>
+&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series?match%5B%5D=up&amp;amp;start=1591616227&amp;amp;end=1591619692' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;h4 id="cancellation-of-delete-request">Cancellation of Delete Request&lt;/h4>
+&lt;p>Cortex allows cancellation of delete requests until they are not picked up for processing, which is controlled by the &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option.
+Since Cortex does query time filtering of data request for deletion until it is actually deleted, you can take an informed decision to cancel the delete request by calling the API defined below:&lt;/p>
+&lt;pre>&lt;code>POST /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>You can find the id of the request that you want to cancel by using the GET &lt;code>delete_series&lt;/code> API defined below.&lt;/p>
+&lt;h4 id="listing-delete-requests">Listing Delete Requests&lt;/h4>
+&lt;p>You can list the created delete requests using following API:&lt;/p>
+&lt;pre>&lt;code>GET /api/v1/admin/tsdb/delete_series
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X GET \
+&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
+-H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
 &lt;p>The Cortex documentation is compiled into a website published at &lt;a href="https://cortexmetrics.io/">cortexmetrics.io&lt;/a>. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p>
 &lt;h2 id="initial-setup">Initial setup&lt;/h2>
 &lt;p>The following initial setup is required only once:&lt;/p>
@@ -7337,7 +7373,29 @@ The HTTP request should contain the header &lt;code>X-Prometheus-Remote-Write-Ve
 &lt;li>Error Response Codes: Unauthorized(401)&lt;/li>
 &lt;/ul>
 &lt;h4 id="testing-apis">Testing APIs&lt;/h4>
-&lt;p>&lt;code>POST /push&lt;/code> - Push samples directly to ingesters. Accepts requests in Prometheus remote write format. Indended for performance testing and debugging.&lt;/p></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
+&lt;p>&lt;code>POST /push&lt;/code> - Push samples directly to ingesters. Accepts requests in Prometheus remote write format. Indended for performance testing and debugging.&lt;/p>
+&lt;h2 id="purger-apis">Purger APIs&lt;/h2>
+&lt;p>The Purger service provides APIs for requesting Deletion of series in Chunks storage and managing Delete Requests.
+Delete Series support is still experimental. Read more about it in &lt;a href="/docs/guides/deleting-series/">Delete Series Guide&lt;/a>&lt;/p>
+&lt;h3 id="endpoints-1">Endpoints&lt;/h3>
+&lt;h4 id="delete-series">Delete Series&lt;/h4>
+&lt;p>&lt;code>POST|PUT /api/v1/admin/tsdb/delete_series?match%5B%5D=&amp;lt;matcher&amp;gt;&amp;amp;start=&amp;lt;start-time&amp;gt;&amp;amp;end=&amp;lt;end-time&amp;gt;&lt;/code> - &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a> for requesting deletion of series.&lt;/p>
+&lt;ul>
+&lt;li>Normal Response Codes Created(204)&lt;/li>
+&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
+&lt;/ul>
+&lt;h4 id="cancel-delete-request">Cancel Delete Request&lt;/h4>
+&lt;p>&lt;code>POST|PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;&lt;/code> - Cancel a Delete Requests before they are picked up for processing.&lt;/p>
+&lt;ul>
+&lt;li>Normal Response Codes OK(204)&lt;/li>
+&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
+&lt;/ul>
+&lt;h4 id="listing-delete-requests">Listing Delete Requests&lt;/h4>
+&lt;p>&lt;code>GET /api/v1/admin/tsdb/delete_series&lt;/code> - List all the delete requests.&lt;/p>
+&lt;ul>
+&lt;li>Normal Response Codes OK(200)&lt;/li>
+&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
+&lt;/ul></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
 &lt;p>Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e">custom framework&lt;/a> running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/">&lt;code>testing&lt;/code>&lt;/a> package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p>
 &lt;h2 id="how-to-run-integration-tests">How to run integration tests&lt;/h2>
 &lt;p>When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong>locally&lt;/strong> you should build the Cortex Docker image first:&lt;/p>
@@ -9352,61 +9410,4 @@ password: basic-auth-password2
 &lt;h2 id="bulk-loading-historical-data">Bulk loading historical data&lt;/h2>
 &lt;p>This is another highly requested features. There is currently no way to backfill the existing data in local Prometheus to Cortex. The plan is to add an API for users to ship the TSDB blocks to Cortex and a side-car / command to do this.&lt;/p>
 &lt;h2 id="scalability">Scalability&lt;/h2>
-&lt;p>Scalability has always been a focus for the project, but there is a lot more work to be done. We can now scale to 100s of Millions of active series but 1 Billion active series is still an unknown. We also need to make the Alertmanager horizontally scalable with the number of users.&lt;/p></description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/kubernetes/</guid><description>
-&lt;p>Because Cortex is designed to run multiple instances of each component
-(ingester, querier, etc.), you probably want to automate the placement
-and shepherding of these instances. Most users choose Kubernetes to do
-this, but this is not mandatory.&lt;/p>
-&lt;h2 id="configuration">Configuration&lt;/h2>
-&lt;h3 id="resource-requests">Resource requests&lt;/h3>
-&lt;p>If using Kubernetes, each container should specify resource requests
-so that the scheduler can place them on a node with sufficient capacity.&lt;/p>
-&lt;p>For example an ingester might request:&lt;/p>
-&lt;pre>&lt;code> resources:
-requests:
-cpu: 4
-memory: 10Gi
-&lt;/code>&lt;/pre>&lt;p>The specific values here should be adjusted based on your own
-experiences running Cortex - they are very dependent on rate of data
-arriving and other factors such as series churn.&lt;/p>
-&lt;h3 id="take-extra-care-with-ingesters">Take extra care with ingesters&lt;/h3>
-&lt;p>Ingesters hold hours of timeseries data in memory; you can configure
-Cortex to replicate the data but you should take steps to avoid losing
-all replicas at once:&lt;/p>
-&lt;ul>
-&lt;li>Don&amp;rsquo;t run multiple ingesters on the same node.&lt;/li>
-&lt;li>Don&amp;rsquo;t run ingesters on preemptible/spot nodes.&lt;/li>
-&lt;li>Spread out ingesters across racks / availability zones / whatever
-applies in your datacenters.&lt;/li>
-&lt;/ul>
-&lt;p>You can ask Kubernetes to avoid running on the same node like this:&lt;/p>
-&lt;pre>&lt;code> affinity:
-podAntiAffinity:
-preferredDuringSchedulingIgnoredDuringExecution:
-- weight: 100
-podAffinityTerm:
-labelSelector:
-matchExpressions:
-- key: name
-operator: In
-values:
-- ingester
-topologyKey: &amp;quot;kubernetes.io/hostname&amp;quot;
-&lt;/code>&lt;/pre>&lt;p>Give plenty of time for an ingester to hand over or flush data to
-store when shutting down; for Kubernetes this looks like:&lt;/p>
-&lt;pre>&lt;code> terminationGracePeriodSeconds: 2400
-&lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time, and
-signal the old one to stop before the new one is ready:&lt;/p>
-&lt;pre>&lt;code> strategy:
-rollingUpdate:
-maxSurge: 0
-maxUnavailable: 1
-&lt;/code>&lt;/pre>&lt;p>Ingesters provide an HTTP hook to signal readiness when all is well;
-this is valuable because it stops a rolling update at the first
-problem:&lt;/p>
-&lt;pre>&lt;code> readinessProbe:
-httpGet:
-path: /ready
-port: 80
-&lt;/code>&lt;/pre>&lt;p>We do not recommend configuring a liveness probe on ingesters -
-killing them is a last resort and should not be left to a machine.&lt;/p></description></item></channel></rss>
+&lt;p>Scalability has always been a focus for the project, but there is a lot more work to be done. We can now scale to 100s of Millions of active series but 1 Billion active series is still an unknown. We also need to make the Alertmanager horizontally scalable with the number of users.&lt;/p></description></item></channel></rss>

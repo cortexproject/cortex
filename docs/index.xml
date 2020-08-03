@@ -8050,6 +8050,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Set content type to &lt;code>application/x-protobuf&lt;/code> for remote_read responses. &lt;a href="https://github.com/cortexproject/cortex/pull/2915">#2915&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed ruler and store-gateway instance registration in the ring (when sharding is enabled) when a new instance replaces abruptly terminated one, and the only difference between the two instances is the address. &lt;a href="https://github.com/cortexproject/cortex/pull/2954">#2954&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed &lt;code>Missing chunks and index config causing silent failure&lt;/code> Absence of chunks and index from schema config is not validated. &lt;a href="https://github.com/cortexproject/cortex/pull/2732">#2732&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. &lt;a href="https://github.com/cortexproject/cortex/pull/2971">#2971&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

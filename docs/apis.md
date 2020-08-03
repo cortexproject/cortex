@@ -428,3 +428,31 @@ Note that setting a new config will effectively "re-enable" the Rules and Alertm
 #### Testing APIs
 
 `POST /push` - Push samples directly to ingesters.  Accepts requests in Prometheus remote write format.  Indended for performance testing and debugging.
+
+## Purger APIs
+
+The Purger service provides APIs for requesting Deletion of series in Chunks storage and managing Delete Requests.
+Delete Series support is still experimental. Read more about it in [Delete Series Guide](./guides/deleting-series.md)
+
+### Endpoints
+
+#### Delete Series
+
+`POST|PUT /api/v1/admin/tsdb/delete_series?match%5B%5D=<matcher>&start=<start-time>&end=<end-time>` - [Prometheus compatible API](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series) for requesting deletion of series.
+
+- Normal Response Codes Created(204)
+- Error Response Codes: Unauthorized(401), NotFound(404)
+
+#### Cancel Delete Request
+
+`POST|PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=<request_id>` - Cancel a Delete Requests before they are picked up for processing.
+
+- Normal Response Codes OK(204)
+- Error Response Codes: Unauthorized(401), NotFound(404)
+
+#### Listing Delete Requests
+
+`GET /api/v1/admin/tsdb/delete_series` - List all the delete requests.
+
+- Normal Response Codes OK(200)
+- Error Response Codes: Unauthorized(401), NotFound(404)

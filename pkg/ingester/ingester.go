@@ -502,6 +502,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 			if ve.noReport {
 				return nil
 			}
+			ipAddress := extractIPAddress(ctx)
+			if ipAddress != "" {
+				ve.AddIPAddress(ipAddress)
+			}
 		}
 		return err
 	}

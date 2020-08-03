@@ -14,6 +14,7 @@ type validationError struct {
 	code      int
 	noReport  bool // if true, error will be counted but not reported to caller
 	labels    labels.Labels
+	ipAddress string
 }
 
 func makeLimitError(errorType string, err error) error {
@@ -49,6 +50,10 @@ func makeMetricLimitError(errorType string, labels labels.Labels, err error) err
 	}
 }
 
+func (e *validationError) AddIPAddress(ipAddress string) {
+	e.ipAddress = ipAddress
+}
+
 func (e *validationError) Error() string {
 	if e.err == nil {
 		return e.errorType
@@ -56,7 +61,11 @@ func (e *validationError) Error() string {
 	if e.labels == nil {
 		return e.err.Error()
 	}
-	return fmt.Sprintf("%s for series %s", e.err.Error(), e.labels.String())
+	ipStr := ""
+	if e.ipAddress != "" {
+		ipStr = fmt.Sprintf(" from IP address %v ", e.ipAddress)
+	}
+	return fmt.Sprintf("%s%s for series %s", e.err.Error(), ipStr, e.labels.String())
 }
 
 // returns a HTTP gRPC error than is correctly forwarded over gRPC, with no reference to `e` retained.

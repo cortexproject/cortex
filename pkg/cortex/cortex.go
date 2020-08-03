@@ -104,7 +104,6 @@ type Config struct {
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
-	ExcludeLabels util.ExcludeLabels                         `yaml:"exclude_labels"`
 }
 
 // RegisterFlags registers flag.

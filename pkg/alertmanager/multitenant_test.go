@@ -96,13 +96,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
-		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid",user="user1"} 1
-		cortex_alertmanager_configs{status="valid",user="user2"} 1
-		cortex_alertmanager_configs{status="invalid",user="user1" } 0
-		cortex_alertmanager_configs{status="invalid",user="user2" } 0
-	`), "cortex_alertmanager_configs"))
+		# HELP cortex_alertmanager_invalid_config Whenever the Alertmanager config is invalid for a user.
+		# TYPE cortex_alertmanager_invalid_config gauge
+		cortex_alertmanager_invalid_config{user="user1"} 0
+		cortex_alertmanager_invalid_config{user="user2"} 0
+	`), "cortex_alertmanager_invalid_config"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -115,15 +113,12 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Len(t, am.alertmanagers, 3)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
-		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid",user="user1"} 1
-		cortex_alertmanager_configs{status="valid",user="user2"} 1
-		cortex_alertmanager_configs{status="valid",user="user3"} 1
-		cortex_alertmanager_configs{status="invalid",user="user1" } 0
-		cortex_alertmanager_configs{status="invalid",user="user2" } 0
-		cortex_alertmanager_configs{status="invalid",user="user3" } 0
-	`), "cortex_alertmanager_configs"))
+		# HELP cortex_alertmanager_invalid_config Whenever the Alertmanager config is invalid for a user.
+		# TYPE cortex_alertmanager_invalid_config gauge
+		cortex_alertmanager_invalid_config{user="user1"} 0
+		cortex_alertmanager_invalid_config{user="user2"} 0
+		cortex_alertmanager_invalid_config{user="user3"} 0
+	`), "cortex_alertmanager_invalid_config"))
 
 	// Ensure the config is updated
 	mockStore.configs["user1"] = alerts.AlertConfigDesc{
@@ -151,13 +146,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
-		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid",user="user1"} 1
-		cortex_alertmanager_configs{status="valid",user="user2"} 1
-		cortex_alertmanager_configs{status="invalid",user="user1" } 0
-		cortex_alertmanager_configs{status="invalid",user="user2" } 0
-	`), "cortex_alertmanager_configs"))
+		# HELP cortex_alertmanager_invalid_config Whenever the Alertmanager config is invalid for a user.
+		# TYPE cortex_alertmanager_invalid_config gauge
+		cortex_alertmanager_invalid_config{user="user1"} 0
+		cortex_alertmanager_invalid_config{user="user2"} 0
+	`), "cortex_alertmanager_invalid_config"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -177,13 +170,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_configs State of configs the multitenant alertmanager knows about a particular user.
-		# TYPE cortex_alertmanager_configs gauge
-		cortex_alertmanager_configs{status="valid",user="user1"} 1
-		cortex_alertmanager_configs{status="valid",user="user2"} 1
-		cortex_alertmanager_configs{status="valid",user="user3"} 1
-		cortex_alertmanager_configs{status="invalid",user="user1" } 0
-		cortex_alertmanager_configs{status="invalid",user="user2" } 0
-		cortex_alertmanager_configs{status="invalid",user="user3" } 0
-	`), "cortex_alertmanager_configs"))
+		# HELP cortex_alertmanager_invalid_config Whenever the Alertmanager config is invalid for a user.
+		# TYPE cortex_alertmanager_invalid_config gauge
+		cortex_alertmanager_invalid_config{user="user1"} 0
+		cortex_alertmanager_invalid_config{user="user2"} 0
+		cortex_alertmanager_invalid_config{user="user3"} 0
+	`), "cortex_alertmanager_invalid_config"))
 }

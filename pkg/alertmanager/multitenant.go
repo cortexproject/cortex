@@ -39,9 +39,6 @@ const (
 	// a URL derived from Config.AutoWebhookRoot
 	autoWebhookURL = "http://internal.monitor"
 
-	configStatusValid   = "valid"
-	configStatusInvalid = "invalid"
-
 	statusPage = `
 <!doctype html>
 <html>
@@ -129,17 +126,17 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type multitenantAlertmanagerMetrics struct {
-	totalConfigs *prometheus.GaugeVec
+	invalidConfig *prometheus.GaugeVec
 }
 
 func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAlertmanagerMetrics {
 	m := &multitenantAlertmanagerMetrics{}
 
-	m.totalConfigs = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+	m.invalidConfig = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "alertmanager_configs",
-		Help:      "State of configs the multitenant alertmanager knows about a particular user.",
-	}, []string{"status", "user"})
+		Name:      "alertmanager_invalid_config",
+		Help:      "Whenever the Alertmanager config is invalid for a user.",
+	}, []string{"user"})
 
 	return m
 }
@@ -313,14 +310,12 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for user, cfg := range cfgs {
 		err := am.setConfig(cfg)
 		if err != nil {
-			am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid, user).Set(float64(1))
-			am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid, user).Set(float64(0))
+			am.multitenantMetrics.invalidConfig.WithLabelValues(user).Set(float64(1))
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
 			continue
 		}
 
-		am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusInvalid, user).Set(float64(0))
-		am.multitenantMetrics.totalConfigs.WithLabelValues(configStatusValid, user).Set(float64(1))
+		am.multitenantMetrics.invalidConfig.WithLabelValues(user).Set(float64(0))
 	}
 
 	am.alertmanagersMtx.Lock()
@@ -333,8 +328,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
 			userAM.Pause()
 			delete(am.cfgs, user)
-			am.multitenantMetrics.totalConfigs.DeleteLabelValues(configStatusInvalid, user)
-			am.multitenantMetrics.totalConfigs.DeleteLabelValues(configStatusValid, user)
+			am.multitenantMetrics.invalidConfig.DeleteLabelValues(user)
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}

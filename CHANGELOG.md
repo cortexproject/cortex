@@ -109,6 +109,7 @@
 * [BUGFIX] Fixed ruler and store-gateway instance registration in the ring (when sharding is enabled) when a new instance replaces abruptly terminated one, and the only difference between the two instances is the address. #2954
 * [BUGFIX] Fixed `Missing chunks and index config causing silent failure` Absence of chunks and index from schema config is not validated. #2732
 * [BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. #2971
+* [BUGFIX] Experimental TSDB: `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` only query the TSDB head regardless of the configured `-experimental.blocks-storage.tsdb.retention-period`. #2974
 
 ## 1.2.0 / 2020-07-01
 

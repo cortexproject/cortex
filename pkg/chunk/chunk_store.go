@@ -541,7 +541,6 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 	}
 
 	matchSet := map[string]struct{}{}
-
 	if matcher != nil && matcher.Type == labels.MatchRegexp {
 		set := FindSetMatches(matcher.Value)
 		for _, v := range set {

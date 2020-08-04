@@ -832,13 +832,13 @@ func TestStoreMaxLookBack(t *testing.T) {
 	require.Equal(t, now, chunks[0].Through)
 }
 
-func benchmarkParseIndexEntries(i int64, b *testing.B) {
+func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {
 	b.ReportAllocs()
 	b.StopTimer()
 	store := &store{}
 	ctx := context.Background()
 	entries := generateIndexEntries(i)
-	matcher, err := labels.NewMatcher(labels.MatchRegexp, "", ".*")
+	matcher, err := labels.NewMatcher(labels.MatchRegexp, "", regex)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -848,16 +848,29 @@ func benchmarkParseIndexEntries(i int64, b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if len(keys) != len(entries)/2 {
+		if regex == ".*" && len(keys) != len(entries)/2 {
 			b.Fatalf("expected keys:%d got:%d", len(entries)/2, len(keys))
 		}
 	}
 }
 
-func BenchmarkParseIndexEntries500(b *testing.B)   { benchmarkParseIndexEntries(500, b) }
-func BenchmarkParseIndexEntries2500(b *testing.B)  { benchmarkParseIndexEntries(2500, b) }
-func BenchmarkParseIndexEntries10000(b *testing.B) { benchmarkParseIndexEntries(10000, b) }
-func BenchmarkParseIndexEntries50000(b *testing.B) { benchmarkParseIndexEntries(50000, b) }
+func BenchmarkParseIndexEntries500(b *testing.B)   { benchmarkParseIndexEntries(500, ".*", b) }
+func BenchmarkParseIndexEntries2500(b *testing.B)  { benchmarkParseIndexEntries(2500, ".*", b) }
+func BenchmarkParseIndexEntries10000(b *testing.B) { benchmarkParseIndexEntries(10000, ".*", b) }
+func BenchmarkParseIndexEntries50000(b *testing.B) { benchmarkParseIndexEntries(50000, ".*", b) }
+
+func BenchmarkParseIndexEntriesRegexSet500(b *testing.B) {
+	benchmarkParseIndexEntries(500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
+}
+func BenchmarkParseIndexEntriesRegexSet2500(b *testing.B) {
+	benchmarkParseIndexEntries(2500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
+}
+func BenchmarkParseIndexEntriesRegexSet10000(b *testing.B) {
+	benchmarkParseIndexEntries(10000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
+}
+func BenchmarkParseIndexEntriesRegexSet50000(b *testing.B) {
+	benchmarkParseIndexEntries(50000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
+}
 
 func generateIndexEntries(n int64) []IndexEntry {
 	res := make([]IndexEntry, 0, n)

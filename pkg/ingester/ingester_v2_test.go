@@ -1042,6 +1042,70 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
+func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
+	const (
+		numSeries    = 100000
+		maxBatchSize = 1000
+	)
+
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push fixtures.
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := util.TimeToMillis(time.Now())
+
+	for o := 0; o < numSeries; o += maxBatchSize {
+		batchSize := util.Min(maxBatchSize, numSeries-o)
+		timestamp := now + int64(o/maxBatchSize)
+
+		// Generate metrics and samples (1 for each series).
+		metrics := make([]labels.Labels, 0, batchSize)
+		samples := make([]client.Sample, 0, batchSize)
+
+		for s := 0; s < batchSize; s++ {
+			metrics = append(metrics, labels.Labels{
+				{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
+			})
+
+			samples = append(samples, client.Sample{
+				TimestampMs: timestamp,
+				Value:       1,
+			})
+		}
+
+		// Send metrics to the ingester.
+		req := client.ToWriteRequest(metrics, samples, nil, client.API)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(b, err)
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		req := &client.MetricsForLabelMatchersRequest{
+			StartTimestampMs: now,
+			EndTimestampMs:   now,
+			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
+			}}},
+		}
+
+		res, err := i.v2MetricsForLabelMatchers(ctx, req)
+		require.NoError(b, err)
+		require.Len(b, res.GetMetric(), numSeries)
+	}
+}
+
 func TestIngester_v2QueryStream(t *testing.T) {
 	// Create ingester.
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)

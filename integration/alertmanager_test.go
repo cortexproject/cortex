@@ -30,7 +30,7 @@ func TestAlertmanager(t *testing.T) {
 		"",
 	)
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
-	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_invalid_config"))
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
 
 	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	time.Sleep(2 * time.Second)
-	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_invalid_config"))
+	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())
 	require.NoError(t, err)

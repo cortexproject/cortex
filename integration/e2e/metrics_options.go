@@ -7,7 +7,8 @@ import (
 
 var (
 	DefaultMetricsOptions = MetricsOptions{
-		GetValue: getMetricValue,
+		GetValue:           getMetricValue,
+		WaitMissingMetrics: false,
 	}
 )
 
@@ -19,8 +20,9 @@ type MetricsOption func(*MetricsOptions)
 
 // MetricsOptions is the structure holding all options.
 type MetricsOptions struct {
-	GetValue      GetMetricValueFunc
-	LabelMatchers []*labels.Matcher
+	GetValue           GetMetricValueFunc
+	LabelMatchers      []*labels.Matcher
+	WaitMissingMetrics bool
 }
 
 // WithMetricCount is an option to get the histogram/summary count as metric value.
@@ -33,6 +35,12 @@ func WithLabelMatchers(matchers ...*labels.Matcher) MetricsOption {
 	return func(opts *MetricsOptions) {
 		opts.LabelMatchers = matchers
 	}
+}
+
+// WithWaitMissingMetrics is an option to wait whenever an expected metric is missing. If this
+// option is not enabled, will return error on missing metrics.
+func WaitMissingMetrics(opts *MetricsOptions) {
+	opts.WaitMissingMetrics = true
 }
 
 func buildMetricsOptions(opts []MetricsOption) MetricsOptions {

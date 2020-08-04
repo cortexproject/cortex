@@ -22,6 +22,7 @@ import (
 
 var (
 	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)$`)
+	errMissingMetric  = errors.New("metric not found")
 )
 
 // ConcreteService represents microservice with optional ports which will be discoverable from docker
@@ -526,12 +527,16 @@ func (s *HTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metr
 
 func (s *HTTPService) WaitSumMetricsWithOptions(isExpected func(sums ...float64) bool, metricNames []string, opts ...MetricsOption) error {
 	var (
-		sums []float64
-		err  error
+		sums    []float64
+		err     error
+		options = buildMetricsOptions(opts)
 	)
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		sums, err = s.SumMetrics(metricNames, opts...)
+		if options.WaitMissingMetrics && errors.Is(err, errMissingMetric) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -543,7 +548,7 @@ func (s *HTTPService) WaitSumMetricsWithOptions(isExpected func(sums ...float64)
 		s.retryBackoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
+	return fmt.Errorf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
@@ -568,13 +573,13 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 		// Get the metric family.
 		mf, ok := families[m]
 		if !ok {
-			return nil, errors.Errorf("metric %s not found in %s metrics page", m, s.name)
+			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
 		// Filter metrics.
 		metrics := filterMetrics(mf.GetMetric(), options)
 		if len(metrics) == 0 {
-			return nil, errors.Errorf("metric %s not found matching the expected labels in %s metrics page", m, s.name)
+			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
 		sums[i] = sumValues(getValues(metrics, options))

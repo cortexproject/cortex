@@ -587,3 +587,37 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 
 	return sums, nil
 }
+
+func (s *HTTPService) WaitMissingMetric(metricName string, opts ...MetricsOption) error {
+	options := buildMetricsOptions(opts)
+
+	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
+		// Fetch metrics.
+		metrics, err := s.Metrics()
+		if err != nil {
+			return err
+		}
+
+		// Parse metrics.
+		var tp expfmt.TextParser
+		families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
+		if err != nil {
+			return err
+		}
+
+		// Get the metric family.
+		mf, ok := families[metricName]
+		if !ok {
+			return nil
+		}
+
+		// Filter metrics.
+		if len(filterMetrics(mf.GetMetric(), options)) == 0 {
+			return nil
+		}
+
+		s.retryBackoff.Wait()
+	}
+
+	return fmt.Errorf("the metric %s is still exported by %s", metricName, s.name)
+}

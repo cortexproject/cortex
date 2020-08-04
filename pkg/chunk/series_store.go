@@ -276,10 +276,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// Just get series for metric if there are no matchers
-	fmt.Printf("%#v", c.excludeLabels)
-	fmt.Println("************************************")
-	fmt.Println(matchers)
-	fmt.Println("*********end matchers***************************")
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
@@ -295,6 +291,16 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	incomingErrors := make(chan error)
 	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
+
+		exUser := c.excludeLabels[userID]
+		if len(exUser) != 0 {
+			for _, lb := range exUser {
+				if lb.MetricName == metricName && lb.LabelName == matcher.Name {
+					continue
+				}
+			}
+		}
+
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {

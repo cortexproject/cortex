@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -608,9 +607,10 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label values without any time range bound.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
@@ -637,9 +637,10 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label names without any time range bound.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
@@ -672,11 +673,10 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since ingester runs with a very limited TSDB retention, we can (and should) query
-	// metrics without any time range bound, otherwise when we receive a request with a time
-	// range older then the ingester's data we return an empty response instead of returning
-	// the currently known series.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
@@ -689,14 +689,20 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	for _, matchers := range matchersSet {
+		// Interrupt if the context has been canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		seriesSet := q.Select(false, nil, matchers...)
 		if seriesSet.Err() != nil {
 			return nil, seriesSet.Err()
 		}
 
 		for seriesSet.Next() {
-			if seriesSet.Err() != nil {
-				break
+			// Interrupt if the context has been canceled.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
 
 			// Given the same series can be matched by multiple matchers and we want to

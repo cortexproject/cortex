@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Replace the metric `cortex_alertmanager_configs` with `cortex_alertmanager_config_invalid` exposed by Alertmanager. #2960
 * [CHANGE] Experimental Delete Series: Change target flag for purger from `data-purger` to `purger`. #2777
 * [CHANGE] Experimental TSDB: The max concurrent queries against the long-term storage, configured via `-experimental.tsdb.bucket-store.max-concurrent`, is now a limit shared across all tenants and not a per-tenant limit anymore. The default value has changed from `20` to `100` and the following new metrics have been added: #2797
   * `cortex_bucket_stores_gate_queries_concurrent_max`

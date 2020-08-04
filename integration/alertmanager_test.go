@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -29,7 +30,7 @@ func TestAlertmanager(t *testing.T) {
 		"",
 	)
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
-	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_configs"))
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
 
 	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
@@ -67,7 +68,7 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	)
 
 	require.NoError(t, s.StartAndWaitReady(am))
-	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_configs"))
+	require.NoError(t, am.WaitSumMetrics(e2e.Equals(1), "alertmanager_cluster_members"))
 
 	c, err := e2ecortex.NewClient("", "", am.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
@@ -79,7 +80,8 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
 	require.NoError(t, err)
 
-	require.NoError(t, am.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_configs"))
+	time.Sleep(2 * time.Second)
+	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
@@ -95,7 +97,8 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.DeleteAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
 
-	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_configs"))
+	time.Sleep(2 * time.Second)
+
 	cfg, err = c.GetAlertmanagerConfig(context.Background())
 	require.Error(t, err)
 	require.Nil(t, cfg)

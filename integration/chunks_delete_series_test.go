@@ -202,6 +202,7 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
 	assertServiceMetricsPrefixes(t, Ingester, ingester)
 	assertServiceMetricsPrefixes(t, Querier, querier)
+	assertServiceMetricsPrefixes(t, Purger, purger)
 }
 
 type interval struct {

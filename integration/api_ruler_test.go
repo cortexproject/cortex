@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -137,6 +138,9 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	require.Equal(t, retrievedNamespace[0].Name, "rule")
 
 	// Check to make sure prometheus engine metrics are available for both engine types
-	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "querier"}))
-	require.NoError(t, cortex.WaitForMetricWithLabels(e2e.EqualsSingle(0), "prometheus_engine_queries", map[string]string{"engine": "ruler"}))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"prometheus_engine_queries"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "engine", "querier"))))
+
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"prometheus_engine_queries"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "engine", "ruler"))))
 }

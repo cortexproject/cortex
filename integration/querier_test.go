@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -338,7 +339,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
 
 			// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-			require.NoError(t, cluster.WaitSumMetricWithLabels(e2e.EqualsSingle(float64(2*cluster.NumInstances()*2)), "cortex_blocks_meta_synced", map[string]string{"component": "querier"}))
+			require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
+				labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 
 			// Wait until the store-gateway has synched the new uploaded blocks.
 			const shippedBlocks = 2

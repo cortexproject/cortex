@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
@@ -566,89 +565,20 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 	for i, m := range metricNames {
 		sums[i] = 0.0
 
-		// Check if the metric is exported.
-		if mf, ok := families[m]; ok {
-			sums[i] = sumValues(getValues(mf, options.GetValue))
-			continue
+		// Get the metric family.
+		mf, ok := families[m]
+		if !ok {
+			return nil, errors.Errorf("metric %s not found in %s metrics page", m, s.name)
 		}
-		return nil, errors.Errorf("metric %s not found in %s metric page", m, s.name)
+
+		// Filter metrics.
+		metrics := filterMetrics(mf.GetMetric(), options)
+		if len(metrics) == 0 {
+			return nil, errors.Errorf("metric %s not found matching the expected labels in %s metrics page", m, s.name)
+		}
+
+		sums[i] = sumValues(getValues(metrics, options))
 	}
 
 	return sums, nil
-}
-
-// WaitForMetricWithLabels waits until given metric with matching labels passes `okFn`. If function returns false,
-// wait continues. If no such matching metric can be found or wait times out, function returns error.
-func (s *HTTPService) WaitForMetricWithLabels(okFn func(v float64) bool, metricName string, expectedLabels map[string]string) error {
-	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		ms, err := s.getMetricsMatchingLabels(metricName, expectedLabels)
-		if err != nil {
-			return err
-		}
-
-		for _, m := range ms {
-			if okFn(getMetricValue(m)) {
-				return nil
-			}
-		}
-
-		s.retryBackoff.Wait()
-	}
-
-	return fmt.Errorf("unable to find metric %s with labels %v with expected value", metricName, expectedLabels)
-}
-
-// Returns sum of all metrics matching given labels.
-func (s *HTTPService) SumMetricWithLabels(metricName string, expectedLabels map[string]string) (float64, error) {
-	sum := 0.0
-	ms, err := s.getMetricsMatchingLabels(metricName, expectedLabels)
-	if err != nil {
-		return 0, err
-	}
-
-	for _, m := range ms {
-		sum += getMetricValue(m)
-	}
-	return sum, nil
-}
-
-func (s *HTTPService) getMetricsMatchingLabels(metricName string, expectedLabels map[string]string) ([]*dto.Metric, error) {
-	metrics, err := s.Metrics()
-	if err != nil {
-		return nil, err
-	}
-
-	var tp expfmt.TextParser
-	families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
-	if err != nil {
-		return nil, err
-	}
-
-	mf, ok := families[metricName]
-	if !ok {
-		return nil, errors.Errorf("metric %s not found in %s metric page", metricName, s.name)
-	}
-
-	result := []*dto.Metric(nil)
-
-	for _, m := range mf.GetMetric() {
-		// check if some metric has all required labels
-		metricLabels := map[string]string{}
-		for _, lp := range m.GetLabel() {
-			metricLabels[lp.GetName()] = lp.GetValue()
-		}
-
-		matches := true
-		for k, v := range expectedLabels {
-			if mv, ok := metricLabels[k]; !ok || mv != v {
-				matches = false
-				break
-			}
-		}
-
-		if matches {
-			result = append(result, m)
-		}
-	}
-	return result, nil
 }

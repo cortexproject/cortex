@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -88,17 +89,30 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 
 	// Wait a bit to make sure that querier is caught up. Otherwise, we may be querying for data,
 	// while querier still knows about old ingester only.
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "PENDING"}))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "PENDING"))))
 
 	// Stop ingester-1. This function will return once the ingester-1 is successfully
 	// stopped, which means the transfer to ingester-2 is completed.
 	require.NoError(t, s.Stop(ingester1))
 
 	// Make sure querier now sees only new ingester. We check that by verifying that there is only one ACTIVE, but no PENDING or JOINING ingester.
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(0), "cortex_ring_members", map[string]string{"name": "ingester", "state": "JOINING"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(0), "cortex_ring_members", map[string]string{"name": "ingester", "state": "PENDING"}))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "JOINING"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "PENDING"))))
 
 	// Query the series again.
 	result, err = c.Query("series_1", now)

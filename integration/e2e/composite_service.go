@@ -39,13 +39,17 @@ func (s *CompositeHTTPService) Instances() []*HTTPService {
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
 // when passed to given isExpected(...).
 func (s *CompositeHTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
+	return s.WaitSumMetricsWithOptions(isExpected, metricNames)
+}
+
+func (s *CompositeHTTPService) WaitSumMetricsWithOptions(isExpected func(sums ...float64) bool, metricNames []string, opts ...MetricsOption) error {
 	var (
 		sums []float64
 		err  error
 	)
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		sums, err = s.SumMetrics(metricNames)
+		sums, err = s.SumMetrics(metricNames, opts...)
 		if err != nil {
 			return err
 		}
@@ -58,25 +62,6 @@ func (s *CompositeHTTPService) WaitSumMetrics(isExpected func(sums ...float64) b
 	}
 
 	return fmt.Errorf("unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
-}
-
-func (s *CompositeHTTPService) WaitSumMetricWithLabels(isExpected func(sums float64) bool, metricName string, expectedLabels map[string]string) error {
-	lastSum := 0.0
-
-	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		lastSum, err := s.SumMetricWithLabels(metricName, expectedLabels)
-		if err != nil {
-			return err
-		}
-
-		if isExpected(lastSum) {
-			return nil
-		}
-
-		s.retryBackoff.Wait()
-	}
-
-	return fmt.Errorf("unable to find metric %s with labels %v with expected value. Last value: %v", metricName, expectedLabels, lastSum)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
@@ -99,20 +84,4 @@ func (s *CompositeHTTPService) SumMetrics(metricNames []string, opts ...MetricsO
 	}
 
 	return sums, nil
-}
-
-// SumMetricWithLabels returns the sum of the values of metric with matching labels across all services.
-func (s *CompositeHTTPService) SumMetricWithLabels(metricName string, expectedLabels map[string]string) (float64, error) {
-	sum := 0.0
-
-	for _, service := range s.services {
-		s, err := service.SumMetricWithLabels(metricName, expectedLabels)
-		if err != nil {
-			return 0, err
-		}
-
-		sum += s
-	}
-
-	return sum, nil
 }

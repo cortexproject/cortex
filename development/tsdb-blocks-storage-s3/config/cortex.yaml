@@ -32,13 +32,15 @@ querier:
   # Used when the blocks sharding is disabled.
   store_gateway_addresses: store-gateway-1:9008,store-gateway-2:9009
 
-tsdb:
-  dir: /tmp/cortex-tsdb-ingester
-  ship_interval: 1m
-  block_ranges_period: [ 2h ]
-  retention_period: 3h
+blocks_storage:
   backend: s3
-  
+
+  tsdb:
+    dir: /tmp/cortex-tsdb-ingester
+    ship_interval: 1m
+    block_ranges_period: [ 2h ]
+    retention_period: 3h
+
   bucket_store:
     sync_dir: /tmp/cortex-tsdb-querier
     consistency_delay: 5s
@@ -82,7 +84,7 @@ alertmanager:
       s3: http://cortex:supersecret@minio.:9000
 
 storage:
-  engine: tsdb
+  engine: blocks
 
 compactor:
   compaction_interval: 30s

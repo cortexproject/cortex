@@ -1774,9 +1774,15 @@ bigtable:
     # CLI flag: -bigtable.grpc-max-send-msg-size
     [max_send_msg_size: <int> | default = 16777216]
 
-    # Use compression when sending messages.
+    # Deprecated: Use gzip compression when sending messages.  If true,
+    # overrides grpc-compression flag.
     # CLI flag: -bigtable.grpc-use-gzip-compression
     [use_gzip_compression: <boolean> | default = false]
+
+    # Use compression when sending messages. Supported values are: 'gzip',
+    # 'snappy' and '' (disable compression)
+    # CLI flag: -bigtable.grpc-compression
+    [grpc_compression: <string> | default = ""]
 
     # Rate limit for gRPC client; 0 means disabled.
     # CLI flag: -bigtable.grpc-client-rate-limit
@@ -2265,9 +2271,15 @@ grpc_client_config:
   # CLI flag: -ingester.client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
 
-  # Use compression when sending messages.
+  # Deprecated: Use gzip compression when sending messages.  If true, overrides
+  # grpc-compression flag.
   # CLI flag: -ingester.client.grpc-use-gzip-compression
   [use_gzip_compression: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -ingester.client.grpc-compression
+  [grpc_compression: <string> | default = ""]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -ingester.client.grpc-client-rate-limit
@@ -2338,9 +2350,15 @@ grpc_client_config:
   # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
 
-  # Use compression when sending messages.
+  # Deprecated: Use gzip compression when sending messages.  If true, overrides
+  # grpc-compression flag.
   # CLI flag: -querier.frontend-client.grpc-use-gzip-compression
   [use_gzip_compression: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -querier.frontend-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -querier.frontend-client.grpc-client-rate-limit

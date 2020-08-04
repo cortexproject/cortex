@@ -13,3 +13,4 @@ New maintainers are proposed by an existing maintainer and are elected by [major
 4. Invite to [Quay.io repository](https://quay.io/organization/cortexproject?tab=teams)
 5. Invite to [Docker Hub organization](https://hub.docker.com/u/cortexproject)
 6. Invite to [CNCF `cncf-cortex-maintainers` mailing list](https://lists.cncf.io/g/cncf-cortex-maintainers) (via [CNCF Service Desk](https://servicedesk.cncf.io))
+7. Add to the Google Analytics property used for the website statistics

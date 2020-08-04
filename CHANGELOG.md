@@ -110,6 +110,7 @@
 * [BUGFIX] Fixed `Missing chunks and index config causing silent failure` Absence of chunks and index from schema config is not validated. #2732
 * [BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. #2971
 * [BUGFIX] Experimental TSDB: `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` only query the TSDB head regardless of the configured `-experimental.blocks-storage.tsdb.retention-period`. #2974
+* [BUGFIX] Ingester: Avoid indefinite checkpointing in case of surge in number of series. #2955
 
 ## 1.2.0 / 2020-07-01
 

@@ -371,8 +371,6 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 }
 
 func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
-	const timeout = 1 * time.Second
-
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
@@ -380,6 +378,6 @@ func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error)
 
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{Timeout: c.timeout}
 	return client.Do(req)
 }

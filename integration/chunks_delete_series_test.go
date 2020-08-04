@@ -42,8 +42,6 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 		storeConfigs[i] = storeConfig{From: oldestStoreStartTime.Add(time.Duration(i) * perStoreDuration).UTC().Format("2006-01-02"), IndexStore: store}
 	}
 
-	fmt.Println(storeConfigs)
-
 	flags := mergeFlags(ChunksStorageFlags, map[string]string{
 		"-cassandra.addresses": cassandra.NetworkHTTPEndpoint(),
 		"-cassandra.keyspace":  "tests", // keyspace gets created on startup if it does not exist
@@ -117,7 +115,6 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 	for ts := oldestStoreStartTime; ts.Before(now); ts = ts.Add(24 * time.Hour) {
 		for i, s := range seriesToPush {
 			series, expectedVector := generateSeries(s.name, ts, s.lables...)
-			fmt.Println(series)
 
 			res, err := client.Push(series)
 			require.NoError(t, err)

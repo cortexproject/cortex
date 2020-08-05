@@ -7922,7 +7922,7 @@ __replica__: replica2
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
-&lt;h2 id="130-in-progress">1.3.0 in progress&lt;/h2>
+&lt;h2 id="130-rc0--2020-08-05">1.3.0-rc.0 / 2020-08-05&lt;/h2>
 &lt;ul>
 &lt;li>[CHANGE] Replace the metric &lt;code>cortex_alertmanager_configs&lt;/code> with &lt;code>cortex_alertmanager_config_invalid&lt;/code> exposed by Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2960">#2960&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Delete Series: Change target flag for purger from &lt;code>data-purger&lt;/code> to &lt;code>purger&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2777">#2777&lt;/a>&lt;/li>

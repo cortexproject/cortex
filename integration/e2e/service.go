@@ -588,7 +588,8 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 	return sums, nil
 }
 
-func (s *HTTPService) WaitMissingMetric(metricName string, opts ...MetricsOption) error {
+// WaitRemovedMetric waits until a metric disappear from the list of metrics exported by the service.
+func (s *HTTPService) WaitRemovedMetric(metricName string, opts ...MetricsOption) error {
 	options := buildMetricsOptions(opts)
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {

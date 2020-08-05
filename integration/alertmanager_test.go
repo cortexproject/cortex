@@ -100,7 +100,7 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 
 	// The deleted config is applied asynchronously, so we should wait until the metric
 	// disappear for the specific user.
-	require.NoError(t, am.WaitMissingMetric("cortex_alertmanager_config_invalid", e2e.WithLabelMatchers(
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_invalid", e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
 
 	cfg, err = c.GetAlertmanagerConfig(context.Background())

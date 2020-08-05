@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,7 +60,7 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 
 		tableManager := e2ecortex.NewTableManager("table-manager", mergeFlags(flags, map[string]string{
 			"-table-manager.retention-period": "2520h", // setting retention high enough
-			"-log.level":                      "debug",
+			"-log.level":                      "warn",
 		}), "")
 		tableManager.HTTPService.SetEnvVars(bigtableFlag)
 		require.NoError(t, s.StartAndWaitReady(tableManager))
@@ -75,7 +76,7 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 
 	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.retain-period": "0s", // we want to make ingester not retain any chunks in memory after they are flushed so that queries get data only from the store
-		"-log.level":              "debug",
+		"-log.level":              "warn",
 	}), "")
 	ingester.HTTPService.SetEnvVars(bigtableFlag)
 
@@ -173,15 +174,13 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 	purger.HTTPService.SetEnvVars(bigtableFlag)
 	require.NoError(t, s.StartAndWaitReady(purger))
 
-	time.Sleep(time.Second)
-	require.NoError(t, purger.WaitForMetricWithLabels(func(v float64) bool {
-		return v > 0
-	}, "cortex_purger_load_pending_requests_attempts_total", map[string]string{
-		"status": "success",
-	}))
-	require.NoError(t, purger.WaitForMetricWithLabels(e2e.EqualsSingle(float64(len(deletedIntervals))), "cortex_purger_delete_requests_processed_total", map[string]string{
-		"user": "user-1",
-	}))
+	require.NoError(t, purger.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_purger_load_pending_requests_attempts_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "status", "success")),
+		e2e.WaitMissingMetrics))
+
+	require.NoError(t, purger.WaitSumMetricsWithOptions(e2e.Equals(float64(len(deletedIntervals))), []string{"cortex_purger_delete_requests_processed_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
 
 	// query and verify that only delete series for delete interval are gone.
 	for _, s := range seriesToPush {

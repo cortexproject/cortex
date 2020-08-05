@@ -321,7 +321,7 @@ func NewPurgerWithConfigFile(name, configFile string, flags map[string]string, i
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":                   "purger",
-			"-log.level":                "debug",
+			"-log.level":                "warn",
 			"-purger.object-store-type": "filesystem",
 			"-local.chunk-directory":    e2e.ContainerSharedDir,
 		}, flags))...),

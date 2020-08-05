@@ -3,7 +3,7 @@
 ## master / unreleased
 
 
-## 1.3.0-rc.0 / 2020-08-05
+## 1.3.0 in progress
 
 * [CHANGE] Replace the metric `cortex_alertmanager_configs` with `cortex_alertmanager_config_invalid` exposed by Alertmanager. #2960
 * [CHANGE] Experimental Delete Series: Change target flag for purger from `data-purger` to `purger`. #2777

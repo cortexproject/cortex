@@ -27,7 +27,7 @@
 * [CHANGE] HipChat support has been removed from the alertmanager (because removed from the Prometheus upstream too). #2902
 * [CHANGE] Add constant label `name` to metric `cortex_cache_request_duration_seconds`. #2903
 * [CHANGE] Add `user` label to metric `cortex_query_frontend_queue_length`. #2939
-* [CHANGE] Experimental blocks storage: cleaned up the config and renamed "TSDB" to "blocks storage".
+* [CHANGE] Experimental blocks storage: cleaned up the config and renamed "TSDB" to "blocks storage". #2937
   - The storage engine setting value has been changed from `tsdb` to `blocks`; this affects `-store.engine` CLI flag and its respective YAML option.
   - The root level YAML config has changed from `tsdb` to `blocks_storage`
   - The prefix of all CLI flags has changed from `-experimental.tsdb.` to `-experimental.blocks-storage.`

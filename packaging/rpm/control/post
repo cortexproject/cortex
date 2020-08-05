@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -e
+
+[ -f /etc/sysconfig/cortex ] && . /etc/sysconfig/cortex
+
+ # Initial installation: $1 == 1
+ # Upgrade: $1 == 2, and configured to restart on upgrade
+ if [ $1 -eq 1 ] ; then
+     [ -z "$CORTEX_USER" ] && CORTEX_USER="cortex"
+     [ -z "$CORTEX_GROUP" ] && CORTEX_GROUP="cortex"
+     if ! getent group "$CORTEX_GROUP" > /dev/null 2>&1 ; then
+	 groupadd -r "$CORTEX_GROUP"
+     fi
+     if ! getent passwd "$CORTEX_USER" > /dev/null 2>&1 ; then
+	 useradd -m -r -g cortex -d /var/lib/cortex -s /sbin/nologin -c "cortex user" cortex
+     fi
+
+     chmod 640 /etc/cortex/single-process-config.yaml
+     chown root:$CORTEX_GROUP /etc/cortex/single-process-config.yaml
+
+ elif [ $1 -ge 2 ] ; then
+     if [ "$RESTART_ON_UPGRADE" == "true" ]; then
+	 if command -v systemctl 2>/dev/null; then
+	     systemctl daemon-reload
+	 fi
+     fi
+ fi

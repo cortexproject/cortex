@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+[ -f /etc/sysconfig/cortex ] && . /etc/sysconfig/cortex
+
+# Final uninstallation $1=0
+# If other copies of this RPM are installed, then $1>0
+if [ $1 -eq 0 ] ; then
+    if command -v systemctl 2>/dev/null; then
+	systemctl stop cortex.service > /dev/null 2>&1 || :
+    fi
+fi

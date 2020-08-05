@@ -190,7 +190,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) .cache
+	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache $(PACKAGES) dist/*
 	go clean ./...
 
 clean-protos:
@@ -232,7 +232,7 @@ web-serve:
 	cd website && hugo --config config.toml -v server
 
 # Generate binaries for a Cortex release
-dist:
+dist dist/cortex-linux-amd64 dist/cortex-darwin-amd64 dist/query-tee-linux-amd64 dist/query-tee-darwin-amd64 dist/cortex-linux-amd64-sha-256 dist/cortex-darwin-amd64-sha-256 dist/query-tee-linux-amd64-sha-256 dist/query-tee-darwin-amd64-sha-256:
 	rm -fr ./dist
 	mkdir -p ./dist
 	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
@@ -243,3 +243,50 @@ dist:
 	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
 	shasum -a 256 ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
 	shasum -a 256 ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256
+
+# Generate packages for a Cortex release.
+FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
+	--license "Apache 2.0" \
+	--url "https://github.com/cortexproject/cortex"
+
+FPM_ARGS := dist/cortex-linux-amd64=/usr/local/bin/cortex \
+	docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml\
+
+PACKAGES := dist/cortex-$(VERSION).rpm dist/cortex-$(VERSION).deb
+PACKAGE_IN_CONTAINER := true
+PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
+ifeq ($(PACKAGE_IN_CONTAINER), true)
+
+.PHONY: packages
+packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) time docker run $(RM) $(TTY) \
+		-v  $(shell pwd):/src/github.com/cortexproject/cortex:delegated \
+		-i $(PACKAGE_IMAGE) $@;
+
+else
+
+packages: $(PACKAGES)
+
+dist/%.deb: dist/cortex-linux-amd64 $(wildcard packaging/deb/**)
+	$(FPM_OPTS) -t deb \
+		--after-install packaging/deb/control/postinst \
+		--before-remove packaging/deb/control/prerm \
+		--package $@ $(FPM_ARGS) \
+		packaging/deb/default/cortex=/etc/default/cortex \
+		packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service
+
+dist/%.rpm: dist/cortex-linux-amd64 $(wildcard packaging/rpm/**)
+	$(FPM_OPTS) -t rpm  \
+		--after-install packaging/rpm/control/post \
+		--before-remove packaging/rpm/control/preun \
+		--package $@ $(FPM_ARGS) \
+		packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
+		packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service
+endif
+
+.PHONY: test-packages
+test-packages: packages packaging/rpm/centos-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
+	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION)

@@ -15,10 +15,19 @@ import (
 // Handler is a http.Handler which accepts WriteRequests.
 func Handler(cfg distributor.Config, push func(context.Context, *client.WriteRequest) (*client.WriteResponse, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract X-Forwarder-For header
+		ctx := r.Context()
+		source := util.GetSource(r)
+		logger := util.WithContext(ctx, util.Logger)
+		// TODO: remove logging statement
+		level.Info(logger).Log("source", source)
+		if source != "" {
+			ctx = util.NewSourceContext(ctx, source)
+		}
+
 		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 		var req client.PreallocWriteRequest
-		_, err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), cfg.MaxRecvMsgSize, &req, compressionType)
-		logger := util.WithContext(r.Context(), util.Logger)
+		_, err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), cfg.MaxRecvMsgSize, &req, compressionType)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -28,7 +37,7 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 			req.Source = client.API
 		}
 
-		if _, err := push(r.Context(), &req.WriteRequest); err != nil {
+		if _, err := push(ctx, &req.WriteRequest); err != nil {
 			resp, ok := httpgrpc.HTTPResponseFromError(err)
 			if !ok {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

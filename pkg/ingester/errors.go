@@ -63,7 +63,7 @@ func (e *validationError) Error() string {
 	}
 	ipStr := ""
 	if e.ipAddress != "" {
-		ipStr = fmt.Sprintf(" from IP address %v ", e.ipAddress)
+		ipStr = fmt.Sprintf(" from IP address %v", e.ipAddress)
 	}
 	return fmt.Sprintf("%s%s for series %s", e.err.Error(), ipStr, e.labels.String())
 }

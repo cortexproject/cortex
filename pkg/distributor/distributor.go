@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -537,7 +538,12 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+
+		// Get clientIP(s) from Context and add it to localCtx
+		source := util.GetSourceFromCtx(ctx)
+		sourceCtx := util.NewSourceContext(localCtx, source)
+
+		return d.send(sourceCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
@@ -568,6 +574,10 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 }
 
 func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata, source client.WriteRequest_SourceEnum) error {
+	// TODO: remove
+	ipAddresses := util.GetSourceFromCtx(ctx)
+	level.Info(util.Logger).Log("distributor IP addresses received", ipAddresses)
+
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err

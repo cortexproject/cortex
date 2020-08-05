@@ -102,7 +102,7 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 	return &new
 }
 
-// WithQuery clones the current `PrometheusRequest` with a new query.
+// LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
 func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", q.GetQuery()),

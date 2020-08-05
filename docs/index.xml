@@ -7923,6 +7923,7 @@ __replica__: replica2
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
 &lt;ul>
+&lt;li>[CHANGE] Replace the metric &lt;code>cortex_alertmanager_configs&lt;/code> with &lt;code>cortex_alertmanager_config_invalid&lt;/code> exposed by Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2960">#2960&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Delete Series: Change target flag for purger from &lt;code>data-purger&lt;/code> to &lt;code>purger&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2777">#2777&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental TSDB: The max concurrent queries against the long-term storage, configured via &lt;code>-experimental.tsdb.bucket-store.max-concurrent&lt;/code>, is now a limit shared across all tenants and not a per-tenant limit anymore. The default value has changed from &lt;code>20&lt;/code> to &lt;code>100&lt;/code> and the following new metrics have been added: &lt;a href="https://github.com/cortexproject/cortex/pull/2797">#2797&lt;/a>
 &lt;ul>
@@ -8052,6 +8053,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Fixed &lt;code>Missing chunks and index config causing silent failure&lt;/code> Absence of chunks and index from schema config is not validated. &lt;a href="https://github.com/cortexproject/cortex/pull/2732">#2732&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. &lt;a href="https://github.com/cortexproject/cortex/pull/2971">#2971&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental TSDB: &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> only query the TSDB head regardless of the configured &lt;code>-experimental.blocks-storage.tsdb.retention-period&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2974">#2974&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ingester: Avoid indefinite checkpointing in case of surge in number of series. &lt;a href="https://github.com/cortexproject/cortex/pull/2955">#2955&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

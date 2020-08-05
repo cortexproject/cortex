@@ -5,8 +5,8 @@ package main
 import (
 	"context"
 	"testing"
-	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -80,8 +80,9 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
 	require.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
-	require.NoError(t, am.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_alertmanager_config_invalid"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
@@ -97,7 +98,10 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.DeleteAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
+	// The deleted config is applied asynchronously, so we should wait until the metric
+	// disappear for the specific user.
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_invalid", e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
 
 	cfg, err = c.GetAlertmanagerConfig(context.Background())
 	require.Error(t, err)

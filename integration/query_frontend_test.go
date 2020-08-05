@@ -203,6 +203,11 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	}
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 
+	// The number of received request is greater then the query requests because include
+	// requests to /metrics and /ready.
+	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
+
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
 	assertServiceMetricsPrefixes(t, Ingester, ingester)

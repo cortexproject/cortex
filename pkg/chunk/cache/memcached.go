@@ -146,7 +146,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	method := "Memcache.GetMulti"
+	const method = "Memcache.GetMulti"
 	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
 		log, _ := spanlogger.New(innerCtx, method)
 		log.LogFields(otlog.Int("keys requested", len(keys)))

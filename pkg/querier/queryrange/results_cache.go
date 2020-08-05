@@ -450,7 +450,7 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	log, ctx := spanlogger.New(ctx, "unmarshal-extent")
+	log, _ := spanlogger.New(ctx, "unmarshal-extent")
 	defer log.Finish()
 
 	log.LogFields(otlog.Int("bytes", len(bufs[0])))

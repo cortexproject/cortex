@@ -73,7 +73,7 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
      * `[ENHANCEMENT]`
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
-3. For a major or minor release, update the Cortex version in the following locations:
+3. For a major or minor **stable** release, update the Cortex version in the following locations:
    - Kubernetes manifests located at `k8s/`
    - Documentation located at `docs/`
 

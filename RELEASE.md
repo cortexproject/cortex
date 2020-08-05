@@ -55,6 +55,7 @@ This helps ongoing PRs to get their changes in the right place, and to consider 
    - Add a new section for the new release so that "## master / unreleased" is blank and at the top.
    - New section should say "## x.y.0 in progress".
 2. Get this PR reviewed and merged.
+3. Comment on open PRs with a CHANGELOG entry to rebase `master` and move the CHANGELOG entry to the top under `## master / unreleased`
 
 ### Prepare your release
 

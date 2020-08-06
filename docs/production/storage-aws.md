@@ -18,8 +18,10 @@ if you use MFA), or use a short-term token solution such as
 
 ## Should I use S3 or DynamoDB ?
 
-Note that the choices are: "chunks" of timeseries data in S3 and index
-in DynamoDB, or everything in DynamoDB. Using just S3 is not an option.
+Note that the choices for the chunks stoage backend are: "chunks" of 
+timeseries data in S3 and index in DynamoDB, or everything in DynamoDB. 
+Using just S3 is not an option, unless you use the experimental "blocks"
+storage engine.
 
 Broadly S3 is much more expensive to read and write, while DynamoDB is
 much more expensive to store over months.  S3 charges differently, so

@@ -123,8 +123,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(nil))
 	defer cleanup()
 
-	err := cfg.AlertmanagerURL.Set(ts.URL)
-	require.NoError(t, err)
+	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
 
 	r, rcleanup := newTestRuler(t, cfg)

@@ -17,13 +17,13 @@ func TestGetSourceFromOutgoingCtx(t *testing.T) {
 	}{
 		{
 			name:  "No value in key",
-			key:   IPAddressesKey,
+			key:   ipAddressesKey,
 			value: "",
 			want:  "",
 		},
 		{
 			name:  "Value in key",
-			key:   IPAddressesKey,
+			key:   ipAddressesKey,
 			value: "172.16.1.1",
 			want:  "172.16.1.1",
 		},

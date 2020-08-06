@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	grpc_metadata "google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -361,6 +361,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if err != nil {
 		return nil, err
 	}
+	source := util.GetSourceFromOutgoingCtx(ctx)
 
 	var firstPartialErr error
 	removeReplica := false
@@ -540,10 +541,9 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		// Get clientIP(s) from Context and add it to localCtx
-		source := util.GetSourceFromCtx(ctx)
-		sourceCtx := util.NewSourceContext(localCtx, source)
+		localCtx = grpc_metadata.AppendToOutgoingContext(localCtx, util.IPAddressesKey, source)
 
-		return d.send(sourceCtx, ingester, timeseries, metadata, req.Source)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
@@ -574,10 +574,6 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 }
 
 func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata, source client.WriteRequest_SourceEnum) error {
-	// TODO: remove
-	ipAddresses := util.GetSourceFromCtx(ctx)
-	level.Info(util.Logger).Log("distributor IP addresses received", ipAddresses)
-
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err

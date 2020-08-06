@@ -3,13 +3,29 @@ package util
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
-	"strings"
+
+	"google.golang.org/grpc/metadata"
 )
 
-type source string
+// IPAddressesKey is key for the GRPC metadata where the IP addresses are stored
+const IPAddressesKey = "ipaddresseskey"
 
-var sourceKey source
+// extractHost returns the Host IP address without any port information
+func extractHost(address string) string {
+	hostIP := net.ParseIP(address)
+	if hostIP != nil {
+		return hostIP.String()
+	}
+	var err error
+	hostStr, _, err := net.SplitHostPort(address)
+	if err != nil {
+		// Invalid IP address, just return it so it shows up in the logs
+		return address
+	}
+	return hostStr
+}
 
 // GetSource extracts the X-FORWARDED-FOR header from the given HTTP request
 // and returns a string with it and the remote address
@@ -21,30 +37,38 @@ func GetSource(req *http.Request) string {
 			// Might as well just use the empty string set in req.RemoteAddr
 			return req.RemoteAddr
 		}
-		// We don't care what port the request came on and typically the go http server will include
-		// this in the format of 192.168.1.1:13435 so we split and return just the IP
-		// If not port is present the split will fail to match and it is safe to still access the 0th
-		// element per the Split docs
-		return strings.Split(req.RemoteAddr, ":")[0]
+		return extractHost(req.RemoteAddr)
 	}
 	// If RemoteAddr is empty just return the header
 	if req.RemoteAddr == "" {
 		return fwd
 	}
 	// If both a header and RemoteAddr are present return them both, stripping off any port info from the RemoteAddr
-	return fmt.Sprintf("%v, %v", fwd, strings.Split(req.RemoteAddr, ":")[0])
+	return fmt.Sprintf("%v, %v", fwd, extractHost(req.RemoteAddr))
 }
 
-// NewSourceContext creates a new Context from the existing one with the source added
-func NewSourceContext(ctx context.Context, source string) context.Context {
-	return context.WithValue(ctx, sourceKey, source)
-}
-
-// GetSourceFromCtx extracts the source field from the context
-func GetSourceFromCtx(ctx context.Context) string {
-	fwd, ok := ctx.Value(sourceKey).(string)
+// GetSourceFromOutgoingCtx extracts the source field from the GRPC context
+func GetSourceFromOutgoingCtx(ctx context.Context) string {
+	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
 		return ""
 	}
-	return fwd
+	ipAddresses, ok := md[IPAddressesKey]
+	if !ok {
+		return ""
+	}
+	return ipAddresses[0]
+}
+
+// GetSourceFromIncomingCtx extracts the source field from the GRPC context
+func GetSourceFromIncomingCtx(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	ipAddresses, ok := md[IPAddressesKey]
+	if !ok {
+		return ""
+	}
+	return ipAddresses[0]
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	"google.golang.org/grpc/metadata"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -19,10 +21,8 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 		ctx := r.Context()
 		source := util.GetSource(r)
 		logger := util.WithContext(ctx, util.Logger)
-		// TODO: remove logging statement
-		level.Info(logger).Log("source", source)
 		if source != "" {
-			ctx = util.NewSourceContext(ctx, source)
+			ctx = metadata.AppendToOutgoingContext(ctx, util.IPAddressesKey, source)
 		}
 
 		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))

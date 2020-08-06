@@ -376,7 +376,7 @@ func (i *Ingester) checkRunningOrStopping() error {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	ipAddresses := util.GetSourceFromCtx(ctx)
+	ipAddresses := util.GetSourceFromIncomingCtx(ctx)
 	// TODO: remove
 	level.Info(util.Logger).Log("ingestor Push IP addresses received", ipAddresses)
 
@@ -506,7 +506,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 			if ve.noReport {
 				return nil
 			}
-			ipAddresses := util.GetSourceFromCtx(ctx)
+			ipAddresses := util.GetSourceFromIncomingCtx(ctx)
 			// TODO: remove
 			level.Info(util.Logger).Log("ingestor IP addresses received", ipAddresses)
 			if ipAddresses != "" {

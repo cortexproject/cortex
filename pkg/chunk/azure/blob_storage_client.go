@@ -17,11 +17,25 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
+//blob service endpoint of AzureGlobal
 const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
 const containerURLFmt = "https://%s.blob.core.windows.net/%s"
 
+// blob service endpoint of AzureChinaCloud
+const chinaBlobURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s/%s"
+const chinaContainerURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s"
+
+// blob service endpoint of AzureGermanCloud
+const germanyBlobURLFmt = "https://%s.blob.core.cloudapi.de/%s/%s"
+const germanyContainerURLFmt = "https://%s.blob.core.cloudapi.de/%s"
+
+// blob service endpoint of AzureUSGovernment
+const govBlobURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s/%s"
+const govContainerURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s"
+
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
+	CloudEnvironment   string         `yaml:"cloud_environment"`
 	ContainerName      string         `yaml:"container_name"`
 	AccountName        string         `yaml:"account_name"`
 	AccountKey         flagext.Secret `yaml:"account_key"`
@@ -41,6 +55,7 @@ func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.CloudEnvironment, prefix+"azure.cloud_environment", "AzureGlobal", "Environment of Azure Cloud. This value can be AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.")
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "cortex", "Name of the blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
 	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
@@ -123,7 +138,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 	blobID = strings.Replace(blobID, ":", "-", -1)
 
 	//generate url for new chunk blob
-	u, err := url.Parse(fmt.Sprintf(blobURLFmt, b.cfg.AccountName, b.cfg.ContainerName, blobID))
+	u, err := url.Parse(fmt.Sprintf(b.selectBlobUrlFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -137,7 +152,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 }
 
 func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
-	u, err := url.Parse(fmt.Sprintf(containerURLFmt, b.cfg.AccountName, b.cfg.ContainerName))
+	u, err := url.Parse(fmt.Sprintf(b.selectContainerURLFmt(), b.cfg.AccountName, b.cfg.ContainerName))
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -213,4 +228,34 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 
 func (b *BlobStorage) PathSeparator() string {
 	return b.delimiter
+}
+
+func (b *BlobStorage) selectBlobUrlFmt() string {
+	switch b.cfg.CloudEnvironment {
+	case "AzureGlobal":
+		return blobURLFmt
+	case "AzureChinaCloud":
+		return chinaBlobURLFmt
+	case "AzureGermanCloud":
+		return germanyBlobURLFmt
+	case "AzureUSGovernment":
+		return govBlobURLFmt
+	default:
+		return blobURLFmt
+	}
+}
+
+func (b *BlobStorage) selectContainerURLFmt() string {
+	switch b.cfg.CloudEnvironment {
+	case "AzureGlobal":
+		return containerURLFmt
+	case "AzureChinaCloud":
+		return chinaContainerURLFmt
+	case "AzureGermanCloud":
+		return germanyContainerURLFmt
+	case "AzureUSGovernment":
+		return govContainerURLFmt
+	default:
+		return containerURLFmt
+	}
 }

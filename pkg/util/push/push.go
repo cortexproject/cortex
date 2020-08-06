@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"google.golang.org/grpc/metadata"
-
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -20,11 +18,9 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 		// Extract X-Forwarder-For header
 		ctx := r.Context()
 		source := util.GetSource(r)
-		logger := util.WithContext(ctx, util.Logger)
-		if source != "" {
-			ctx = metadata.AppendToOutgoingContext(ctx, util.IPAddressesKey, source)
-		}
+		ctx = util.AddSourceToOutgoingContext(ctx, source)
 
+		logger := util.WithContext(ctx, util.Logger)
 		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 		var req client.PreallocWriteRequest
 		_, err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), cfg.MaxRecvMsgSize, &req, compressionType)

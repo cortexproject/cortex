@@ -18,7 +18,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	grpc_metadata "google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -541,7 +540,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		// Get clientIP(s) from Context and add it to localCtx
-		localCtx = grpc_metadata.AppendToOutgoingContext(localCtx, util.IPAddressesKey, source)
+		localCtx = util.AddSourceToOutgoingContext(localCtx, source)
 
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })

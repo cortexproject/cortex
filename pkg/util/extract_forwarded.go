@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// IPAddressesKey is key for the GRPC metadata where the IP addresses are stored
-const IPAddressesKey = "ipaddresseskey"
+// ipAddressesKey is key for the GRPC metadata where the IP addresses are stored
+const ipAddressesKey = "ipaddresseskey"
 
 // extractHost returns the Host IP address without any port information
 func extractHost(address string) string {
@@ -53,7 +53,7 @@ func GetSourceFromOutgoingCtx(ctx context.Context) string {
 	if !ok {
 		return ""
 	}
-	ipAddresses, ok := md[IPAddressesKey]
+	ipAddresses, ok := md[ipAddressesKey]
 	if !ok {
 		return ""
 	}
@@ -66,9 +66,26 @@ func GetSourceFromIncomingCtx(ctx context.Context) string {
 	if !ok {
 		return ""
 	}
-	ipAddresses, ok := md[IPAddressesKey]
+	ipAddresses, ok := md[ipAddressesKey]
 	if !ok {
 		return ""
 	}
 	return ipAddresses[0]
+}
+
+// AddSourceToOutgoingContext adds the given source to the GRPC context
+func AddSourceToOutgoingContext(ctx context.Context, source string) context.Context {
+	if source != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, ipAddressesKey, source)
+	}
+	return ctx
+}
+
+// AddSourceToIncomingContext adds the given source to the GRPC context
+func AddSourceToIncomingContext(ctx context.Context, source string) context.Context {
+	if source != "" {
+		md := metadata.Pairs(ipAddressesKey, source)
+		ctx = metadata.NewIncomingContext(ctx, md)
+	}
+	return ctx
 }

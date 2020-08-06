@@ -38,3 +38,52 @@ func TestDurationWithJitter(t *testing.T) {
 func TestDurationWithJitter_ZeroInputDuration(t *testing.T) {
 	assert.Equal(t, time.Duration(0), DurationWithJitter(time.Duration(0), 0.5))
 }
+
+func TestParseTime(t *testing.T) {
+	ts, err := time.Parse(time.RFC3339Nano, "2015-06-03T13:21:58.555Z")
+	require.NoError(t, err)
+
+	var tests = []struct {
+		input  string
+		fail   bool
+		result time.Time
+	}{
+		{
+			input: "",
+			fail:  true,
+		}, {
+			input: "abc",
+			fail:  true,
+		}, {
+			input: "30s",
+			fail:  true,
+		}, {
+			input:  "123",
+			result: time.Unix(123, 0),
+		}, {
+			input:  "123.123",
+			result: time.Unix(123, 123000000),
+		}, {
+			input:  "2015-06-03T13:21:58.555Z",
+			result: ts,
+		}, {
+			input:  "2015-06-03T14:21:58.555+01:00",
+			result: ts,
+		}, {
+			// Test float rounding.
+			input:  "1543578564.705",
+			result: time.Unix(1543578564, 705*1e6),
+		},
+	}
+
+	for _, test := range tests {
+		ts, err := ParseTime(test.input)
+		if test.fail {
+			require.Error(t, err)
+			continue
+		}
+
+		require.NoError(t, err)
+		assert.Equal(t, TimeToMillis(test.result), ts)
+	}
+}

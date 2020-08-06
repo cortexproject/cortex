@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 
 ## 1.3.0 in progress
 

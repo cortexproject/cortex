@@ -22,6 +22,13 @@
 * [FEATURE] Experimental blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`
+* [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
+  - The following changes have been made in Redis configuration:
+   - `-redis.topology` added
+   - `-redis.max-active-conns` changed to `-redis.pool-size`
+   - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
+   - `-redis.max-idle-conns` deprecated
+   - `-redis.wait-on-pool-exhaustion` deprecated
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018
@@ -95,13 +102,6 @@
     - `-experimental.tsdb.flush-blocks-on-shutdown` changed to `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown`
 * [CHANGE] Flags `-bigtable.grpc-use-gzip-compression`, `-ingester.client.grpc-use-gzip-compression`, `-querier.frontend-client.grpc-use-gzip-compression` are now deprecated. #2940
 * [CHANGE] Limit errors reported by ingester during query-time now return HTTP status code 422. #2941
-* [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
-  - The following changes have been made in Redis configuration:
-   - `-redis.topology` added
-   - `-redis.max-active-conns` changed to `-redis.pool_size`
-   - `-redis.max-conn-lifetime` changed to `-redis.max_conn_age`
-   - `-redis.max_idle_conns` deprecated
-   - `-redis.wait-on-pool-exhaustion` deprecated
 * [FEATURE] Introduced `ruler.for-outage-tolerance`, Max time to tolerate outage for restoring "for" state of alert. #2783
 * [FEATURE] Introduced `ruler.for-grace-period`, Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period. #2783
 * [FEATURE] Introduced `ruler.resend-delay`, Minimum amount of time to wait before resending an alert to Alertmanager. #2783

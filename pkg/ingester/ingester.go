@@ -376,10 +376,6 @@ func (i *Ingester) checkRunningOrStopping() error {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	ipAddresses := util.GetSourceFromIncomingCtx(ctx)
-	// TODO: remove
-	level.Info(util.Logger).Log("ingestor Push IP addresses received", ipAddresses)
-
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
 	}
@@ -507,10 +503,8 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 				return nil
 			}
 			ipAddresses := util.GetSourceFromIncomingCtx(ctx)
-			// TODO: remove
-			level.Info(util.Logger).Log("ingestor IP addresses received", ipAddresses)
 			if ipAddresses != "" {
-				ve.AddIPAddress(ipAddresses)
+				ve.AddForwardIPAddresses(ipAddresses)
 			}
 		}
 		return err

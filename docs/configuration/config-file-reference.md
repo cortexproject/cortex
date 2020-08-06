@@ -1016,7 +1016,7 @@ storage:
 # Multiple Alertmanagers in HA per group can be supported by using DNS
 # resolution via -ruler.alertmanager-discovery.
 # CLI flag: -ruler.alertmanager-url
-[alertmanager_url: <list of string> | default = ]
+[alertmanager_url: <string> | default = ""]
 
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -1152,7 +1152,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 # Initial peers (may be repeated).
 # CLI flag: -cluster.peer
-[peers: <list of string> | default = ]
+[peers: <list of string> | default = []]
 
 # Time to wait between peers to send notifications.
 # CLI flag: -cluster.peer-timeout

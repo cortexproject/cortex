@@ -301,7 +301,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			}
 		}
 		counter++
-		indexLookupsPerQuery.Observe(float64(counter))
+
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {
@@ -311,7 +311,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			incomingIDs <- ids
 		}(matcher)
 	}
-
+	indexLookupsPerQuery.Observe(float64(counter))
 	// Receive series IDs from all matchers, intersect as we go.
 	var ids []string
 	var preIntersectionCount int

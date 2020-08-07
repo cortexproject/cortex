@@ -206,9 +206,14 @@ func compareSamplePair(expected, actual model.SamplePair, tolerance float64) err
 }
 
 func compareSampleValue(first, second model.SampleValue, tolerance float64) bool {
-	if tolerance <= 0 {
-		return first == second
-	} else {
-		return math.Abs(float64(first)-float64(second)) <= tolerance
+	f := float64(first)
+	s := float64(second)
+
+	if math.IsNaN(f) && math.IsNaN(s) {
+		return true
+	} else if tolerance <= 0 {
+		return math.Float64bits(f) == math.Float64bits(s)
 	}
+
+	return math.Abs(f-s) <= tolerance
 }

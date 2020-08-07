@@ -289,6 +289,30 @@ func TestCompareSamplesResponse(t *testing.T) {
 						}`),
 		},
 		{
+			name:      "should correctly compare NaN values with tolerance is disabled",
+			tolerance: 0,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+		},
+		{
+			name:      "should correctly compare NaN values with tolerance is enabled",
+			tolerance: 0.000001,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+		},
+		{
 			name:      "should fail if values are significantly different, over the tolerance",
 			tolerance: 0.000001,
 			expected: json.RawMessage(`{

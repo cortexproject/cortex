@@ -2,7 +2,11 @@
 
 ## master / unreleased
 
-* [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. #2996
+* [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
+  * `cortex_ingester_sent_files`
+  * `cortex_ingester_received_files`
+  * `cortex_ingester_received_bytes_total`
+  * `cortex_ingester_sent_bytes_total`
 
 ## 1.3.0 in progress
 

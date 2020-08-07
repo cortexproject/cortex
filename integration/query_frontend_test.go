@@ -196,7 +196,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 			require.Len(t, matrix, 1)
 			require.Len(t, matrix[0].Values, 3)
 			assert.Equal(t, model.Time(1595846748806), matrix[0].Values[0].Timestamp)
-			assert.Equal(t, model.Time(1595846750806), matrix[2].Values[0].Timestamp)
+			assert.Equal(t, model.Time(1595846750806), matrix[0].Values[2].Timestamp)
 		}
 
 		for q := 0; q < numQueriesPerUser; q++ {

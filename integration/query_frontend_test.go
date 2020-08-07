@@ -215,7 +215,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 
 	extra := float64(1)
 	if testMissingMetricName {
-		extra += 1
+		extra++
 	}
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 

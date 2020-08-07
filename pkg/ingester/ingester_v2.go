@@ -126,13 +126,6 @@ type TSDBState struct {
 	// Value used by shipper as external label.
 	shipperIngesterID string
 
-	// Keeps count of in-flight requests
-	inflightWriteReqs sync.WaitGroup
-
-	// Used to run only once operations at shutdown, during the blocks/wal
-	// transferring to a joining ingester
-	transferOnce sync.Once
-
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
@@ -391,21 +384,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 
 	// Ensure the ingester shutdown procedure hasn't started
 	i.userStatesMtx.RLock()
-
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
 		return nil, fmt.Errorf("ingester stopping")
 	}
-
-	// Keep track of in-flight requests, in order to safely start blocks transfer
-	// (at shutdown) only once all in-flight write requests have completed.
-	// It's important to increase the number of in-flight requests within the lock
-	// (even if sync.WaitGroup is thread-safe), otherwise there's a race condition
-	// with the TSDB transfer, which - after the stopped flag is set to true - waits
-	// until all in-flight requests to reach zero.
-	i.TSDBState.inflightWriteReqs.Add(1)
 	i.userStatesMtx.RUnlock()
-	defer i.TSDBState.inflightWriteReqs.Done()
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.

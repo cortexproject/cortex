@@ -37,7 +37,7 @@ ingester_client:
     tls_ca_path: "root.crt"
 
 ingester:
-  # Disable blocks transfers on ingesters shutdown or rollout.
+  # Blocks storage doesn't support blocks transfer between ingesters on shutdown or rollout.
   max_transfer_retries: 0
 
   lifecycler:

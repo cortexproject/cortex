@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -897,22 +896,4 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		})
 	}
 
-}
-
-func TestRemoveEmptyDir(t *testing.T) {
-
-	// remove dir that dne
-	require.NoError(t, removeEmptyDir(fmt.Sprintf("%v", rand.Int63())))
-
-	// remove empty dir
-	dir, err := ioutil.TempDir("", "TestRemoveEmptyDir")
-	require.NoError(t, err)
-	require.NoError(t, removeEmptyDir(dir))
-
-	// remove non-empty dir
-	dir, err = ioutil.TempDir("", "TestRemoveEmptyDir")
-	require.NoError(t, err)
-
-	ioutil.WriteFile(filepath.Join(dir, "tempfile"), []byte("hello world"), 0777)
-	require.NotNil(t, removeEmptyDir(dir))
 }

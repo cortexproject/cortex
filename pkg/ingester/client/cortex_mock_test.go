@@ -59,8 +59,3 @@ func (m *IngesterServerMock) TransferChunks(s Ingester_TransferChunksServer) err
 	args := m.Called(s)
 	return args.Error(0)
 }
-
-func (m *IngesterServerMock) TransferTSDB(s Ingester_TransferTSDBServer) error {
-	args := m.Called(s)
-	return args.Error(0)
-}

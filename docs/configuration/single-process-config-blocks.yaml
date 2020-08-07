@@ -28,7 +28,7 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
-  # Disable blocks transfers on ingesters shutdown or rollout.
+  # Blocks storage doesn't support blocks transfer between ingesters on shutdown or rollout.
   max_transfer_retries: 0
 
   lifecycler:

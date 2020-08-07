@@ -274,7 +274,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	if shard != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
 	}
-
+	counter := 0
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
@@ -289,7 +289,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
 	incomingErrors := make(chan error)
-	indexLookupsPerQuery.Observe(float64(len(matchers)))
+
 	for _, matcher := range matchers {
 
 		exUser := c.excludeLabels[userID]
@@ -300,7 +300,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				}
 			}
 		}
-
+		counter++
+		indexLookupsPerQuery.Observe(float64(counter))
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {

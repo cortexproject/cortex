@@ -241,7 +241,7 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 
 	series := labels.Labels{labels.Label{Name: labels.MetricName, Value: metricName}}
 
-	app := db.Appender()
+	app := db.Appender(context.Background())
 	for ts := minT; ts < maxT; ts += step {
 		_, err = app.Add(series, ts, 1)
 		require.NoError(t, err)

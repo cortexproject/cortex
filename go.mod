@@ -11,7 +11,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/armon/go-metrics v0.3.3
-	github.com/aws/aws-sdk-go v1.33.5
+	github.com/aws/aws-sdk-go v1.33.12
 	github.com/blang/semver v3.5.0+incompatible
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
@@ -44,19 +44,18 @@ require (
 	github.com/prometheus/alertmanager v0.21.0
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200722151933-4a8531a64b32
+	github.com/prometheus/common v0.11.1
+	github.com/prometheus/prometheus v1.8.2-0.20200811193703-869f1bc587e6
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.5.1
-	github.com/thanos-io/thanos v0.13.1-0.20200731083140-69b87607decf
-	github.com/uber/jaeger-client-go v2.24.0+incompatible
+	github.com/thanos-io/thanos v0.13.1-0.20200807203500-9b578afb4763
+	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.6.0
-	go.uber.org/zap v1.14.1 // indirect
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e

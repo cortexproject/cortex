@@ -401,7 +401,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	startAppend := time.Now()
 
 	// Walk the samples, appending them to the users database
-	app := db.Appender()
+	app := db.Appender(ctx)
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.

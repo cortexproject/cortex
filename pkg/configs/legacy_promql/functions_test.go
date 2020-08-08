@@ -31,7 +31,7 @@ func TestDeriv(t *testing.T) {
 	defer storage.Close()
 	engine := NewEngine(nil, nil, 10, 10*time.Second)
 
-	a := storage.Appender()
+	a := storage.Appender(context.Background())
 
 	metric := labels.FromStrings("__name__", "foo")
 	_, err := a.Add(metric, 1493712816939, 1.0)

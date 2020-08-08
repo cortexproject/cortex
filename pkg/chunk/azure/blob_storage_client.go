@@ -17,25 +17,37 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-//blob service endpoint of AzureGlobal
-const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
-const containerURLFmt = "https://%s.blob.core.windows.net/%s"
+const (
+	//Blob service endpoint of AzureGlobal
+	globalBlobURLFmt      = "https://%s.blob.core.windows.net/%s/%s"
+	globalContainerURLFmt = "https://%s.blob.core.windows.net/%s"
 
-// blob service endpoint of AzureChinaCloud
-const chinaBlobURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s/%s"
-const chinaContainerURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s"
+	// Blob service endpoint of AzureChinaCloud
+	chinaBlobURLFmt      = "https://%s.blob.core.chinacloudapi.cn/%s/%s"
+	chinaContainerURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s"
 
-// blob service endpoint of AzureGermanCloud
-const germanyBlobURLFmt = "https://%s.blob.core.cloudapi.de/%s/%s"
-const germanyContainerURLFmt = "https://%s.blob.core.cloudapi.de/%s"
+	// Blob service endpoint of AzureGermanCloud
+	germanyBlobURLFmt      = "https://%s.blob.core.cloudapi.de/%s/%s"
+	germanyContainerURLFmt = "https://%s.blob.core.cloudapi.de/%s"
 
-// blob service endpoint of AzureUSGovernment
-const govBlobURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s/%s"
-const govContainerURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s"
+	// Blob service endpoint of AzureUSGovernment
+	govBlobURLFmt      = "https://%s.blob.core.usgovcloudapi.net/%s/%s"
+	govContainerURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s"
+
+	// Environment
+	azureGlobal       = "AzureGlobal"
+	azureChinaCloud   = "AzureChinaCloud"
+	azureGermanCloud  = "AzureGermanCloud"
+	azureUSGovernment = "AzureUSGovernment"
+)
+
+var (
+	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
+)
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	CloudEnvironment   string         `yaml:"cloud_environment"`
+	Environment        string         `yaml:"environment"`
 	ContainerName      string         `yaml:"container_name"`
 	AccountName        string         `yaml:"account_name"`
 	AccountKey         flagext.Secret `yaml:"account_key"`
@@ -55,7 +67,7 @@ func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&c.CloudEnvironment, prefix+"azure.cloud_environment", "AzureGlobal", "Environment of Azure Cloud. This value can be AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.")
+	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "cortex", "Name of the blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
 	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
@@ -138,7 +150,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 	blobID = strings.Replace(blobID, ":", "-", -1)
 
 	//generate url for new chunk blob
-	u, err := url.Parse(fmt.Sprintf(b.selectBlobUrlFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))
+	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -230,32 +242,40 @@ func (b *BlobStorage) PathSeparator() string {
 	return b.delimiter
 }
 
-func (b *BlobStorage) selectBlobUrlFmt() string {
-	switch b.cfg.CloudEnvironment {
-	case "AzureGlobal":
-		return blobURLFmt
-	case "AzureChinaCloud":
+// Validate the config.
+func (c *BlobStorageConfig) Validate() error {
+	if !util.StringsContain(supportedEnvironments, c.Environment) {
+		return fmt.Errorf("unsupported Azure blob storage environment: %s, please select one of: %s ", c.Environment, strings.Join(supportedEnvironments, ", "))
+	}
+	return nil
+}
+
+func (b *BlobStorage) selectBlobURLFmt() string {
+	switch b.cfg.Environment {
+	case azureGlobal:
+		return globalBlobURLFmt
+	case azureChinaCloud:
 		return chinaBlobURLFmt
-	case "AzureGermanCloud":
+	case azureGermanCloud:
 		return germanyBlobURLFmt
-	case "AzureUSGovernment":
+	case azureUSGovernment:
 		return govBlobURLFmt
 	default:
-		return blobURLFmt
+		return globalBlobURLFmt
 	}
 }
 
 func (b *BlobStorage) selectContainerURLFmt() string {
-	switch b.cfg.CloudEnvironment {
-	case "AzureGlobal":
-		return containerURLFmt
-	case "AzureChinaCloud":
+	switch b.cfg.Environment {
+	case azureGlobal:
+		return globalContainerURLFmt
+	case azureChinaCloud:
 		return chinaContainerURLFmt
-	case "AzureGermanCloud":
+	case azureGermanCloud:
 		return germanyContainerURLFmt
-	case "AzureUSGovernment":
+	case azureUSGovernment:
 		return govContainerURLFmt
 	default:
-		return containerURLFmt
+		return globalContainerURLFmt
 	}
 }

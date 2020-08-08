@@ -1011,12 +1011,12 @@ storage:
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
-# Space-separated list of URL(s) of the Alertmanager(s) to send notifications
+# Comma-separated list of URL(s) of the Alertmanager(s) to send notifications
 # to. Each Alertmanager URL is treated as a separate group in the configuration.
 # Multiple Alertmanagers in HA per group can be supported by using DNS
 # resolution via -ruler.alertmanager-discovery.
 # CLI flag: -ruler.alertmanager-url
-[alertmanager_url: <list of string> | default = ]
+[alertmanager_url: <string> | default = ""]
 
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -1152,7 +1152,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 
 # Initial peers (may be repeated).
 # CLI flag: -cluster.peer
-[peers: <list of string> | default = ]
+[peers: <list of string> | default = []]
 
 # Time to wait between peers to send notifications.
 # CLI flag: -cluster.peer-timeout
@@ -1888,7 +1888,7 @@ cassandra:
   # If set, when authenticating with cassandra a custom authenticator will be
   # expected during the handshake. This flag can be set multiple times.
   # CLI flag: -cassandra.custom-authenticator
-  [custom_authenticators: <list of string> | default = ]
+  [custom_authenticators: <list of string> | default = []]
 
   # Timeout when connecting to cassandra.
   # CLI flag: -cassandra.timeout
@@ -2514,7 +2514,7 @@ The `memberlist_config` configures the Gossip memberlist.
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
 # for more details).
 # CLI flag: -memberlist.join
-[join_members: <list of string> | default = ]
+[join_members: <list of string> | default = []]
 
 # Min backoff duration to join other cluster members.
 # CLI flag: -memberlist.min-join-backoff
@@ -2552,7 +2552,7 @@ The `memberlist_config` configures the Gossip memberlist.
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
-[bind_addr: <list of string> | default = ]
+[bind_addr: <list of string> | default = []]
 
 # Port to listen on for gossip messages.
 # CLI flag: -memberlist.bind-port
@@ -2602,7 +2602,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # ingestion within the distributor and can be repeated in order to drop multiple
 # labels.
 # CLI flag: -distributor.drop-label
-[drop_labels: <list of string> | default = ]
+[drop_labels: <list of string> | default = []]
 
 # Maximum length accepted for label names
 # CLI flag: -validation.max-length-label-name

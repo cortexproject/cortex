@@ -29,7 +29,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with a single URL and no service discovery",
 			cfg: &Config{
-				AlertmanagerURL: []string{"http://alertmanager.default.svc.cluster.local/alertmanager"},
+				AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",
 			},
 			ncfg: &config.Config{
 				AlertingConfig: config.AlertingConfig{
@@ -49,7 +49,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with a single URL and service discovery",
 			cfg: &Config{
-				AlertmanagerURL:             []string{"http://_http._tcp.alertmanager.default.svc.cluster.local/alertmanager"},
+				AlertmanagerURL:             "http://_http._tcp.alertmanager.default.svc.cluster.local/alertmanager",
 				AlertmanagerDiscovery:       true,
 				AlertmanagerRefreshInterval: time.Duration(60),
 			},
@@ -74,7 +74,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with service discovery and an invalid URL",
 			cfg: &Config{
-				AlertmanagerURL:       []string{"http://_http.default.svc.cluster.local/alertmanager"},
+				AlertmanagerURL:       "http://_http.default.svc.cluster.local/alertmanager",
 				AlertmanagerDiscovery: true,
 			},
 			err: fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is \"alertmanager.default.svc.cluster.local\")"),
@@ -82,10 +82,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with multiple URLs and no service discovery",
 			cfg: &Config{
-				AlertmanagerURL: []string{
-					"http://alertmanager-0.default.svc.cluster.local/alertmanager",
-					"http://alertmanager-1.default.svc.cluster.local/alertmanager",
-				},
+				AlertmanagerURL: "http://alertmanager-0.default.svc.cluster.local/alertmanager,http://alertmanager-1.default.svc.cluster.local/alertmanager",
 			},
 			ncfg: &config.Config{
 				AlertingConfig: config.AlertingConfig{
@@ -113,10 +110,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with multiple URLs and service discovery",
 			cfg: &Config{
-				AlertmanagerURL: []string{
-					"http://_http._tcp.alertmanager-0.default.svc.cluster.local/alertmanager",
-					"http://_http._tcp.alertmanager-1.default.svc.cluster.local/alertmanager",
-				},
+				AlertmanagerURL:             "http://_http._tcp.alertmanager-0.default.svc.cluster.local/alertmanager,http://_http._tcp.alertmanager-1.default.svc.cluster.local/alertmanager",
 				AlertmanagerDiscovery:       true,
 				AlertmanagerRefreshInterval: time.Duration(60),
 			},
@@ -152,9 +146,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 		{
 			name: "with Basic Authentication",
 			cfg: &Config{
-				AlertmanagerURL: []string{
-					"http://marco:hunter2@alertmanager-0.default.svc.cluster.local/alertmanager",
-				},
+				AlertmanagerURL: "http://marco:hunter2@alertmanager-0.default.svc.cluster.local/alertmanager",
 			},
 			ncfg: &config.Config{
 				AlertingConfig: config.AlertingConfig{

@@ -91,7 +91,7 @@ func TestCompareMatrix(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareMatrix(tc.expected, tc.actual)
+			err := compareMatrix(tc.expected, tc.actual, 0)
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -174,7 +174,7 @@ func TestCompareVector(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareVector(tc.expected, tc.actual)
+			err := compareVector(tc.expected, tc.actual, 0)
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -211,7 +211,7 @@ func TestCompareScalar(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareScalar(tc.expected, tc.actual)
+			err := compareScalar(tc.expected, tc.actual, 0)
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -223,13 +223,12 @@ func TestCompareScalar(t *testing.T) {
 }
 
 func TestCompareSamplesResponse(t *testing.T) {
-	samplesComparator := NewSamplesComparator()
-
 	for _, tc := range []struct {
-		name     string
-		expected json.RawMessage
-		actual   json.RawMessage
-		err      error
+		name      string
+		tolerance float64
+		expected  json.RawMessage
+		actual    json.RawMessage
+		err       error
 	}{
 		{
 			name: "difference in response status",
@@ -250,7 +249,7 @@ func TestCompareSamplesResponse(t *testing.T) {
 						}`),
 			actual: json.RawMessage(`{
 							"status": "success",
-							"data": {"resultType":"vector","result":{"metric":{"foo":"bar"},"value":[1,"1"]}}
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"1"]}]}
 						}`),
 			err: errors.New("expected resultType scalar but got vector"),
 		},
@@ -277,8 +276,58 @@ func TestCompareSamplesResponse(t *testing.T) {
 							"data": {"resultType":"scalar","result":[1,"1"]}
 						}`),
 		},
+		{
+			name:      "should pass if values are slightly different but within the tolerance",
+			tolerance: 0.000001,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"773054.5916666666"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"773054.59166667"]}]}
+						}`),
+		},
+		{
+			name:      "should correctly compare NaN values with tolerance is disabled",
+			tolerance: 0,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+		},
+		{
+			name:      "should correctly compare NaN values with tolerance is enabled",
+			tolerance: 0.000001,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"NaN"]}]}
+						}`),
+		},
+		{
+			name:      "should fail if values are significantly different, over the tolerance",
+			tolerance: 0.000001,
+			expected: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"773054.5916666666"]}]}
+						}`),
+			actual: json.RawMessage(`{
+							"status": "success",
+							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"773054.789"]}]}
+						}`),
+			err: errors.New(`sample pair not matching for metric {foo="bar"}: expected value 773054.5916666666 for timestamp 1 but got 773054.789`),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			samplesComparator := NewSamplesComparator(tc.tolerance)
 			err := samplesComparator.Compare(tc.expected, tc.actual)
 			if tc.err == nil {
 				require.NoError(t, err)

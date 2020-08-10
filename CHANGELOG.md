@@ -7,6 +7,7 @@
   * `cortex_ingester_received_files`
   * `cortex_ingester_received_bytes_total`
   * `cortex_ingester_sent_bytes_total`
+* [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 
 ## 1.3.0 in progress
 

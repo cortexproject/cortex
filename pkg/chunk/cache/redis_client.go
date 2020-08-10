@@ -21,6 +21,8 @@ const (
 	redisTopologySentinel string = "sentinel"
 )
 
+var ErrNoMasters = errors.New("redis: no masters")
+
 // RedisConfig defines how a RedisCache should be constructed.
 type RedisConfig struct {
 	Topology    string         `yaml:"topology"`
@@ -31,7 +33,7 @@ type RedisConfig struct {
 	Password    flagext.Secret `yaml:"password"`
 	EnableTLS   bool           `yaml:"enable_tls"`
 	IdleTimeout time.Duration  `yaml:"idle_timeout"`
-	MaxConnAge  time.Duration  `yaml:"max_conn_age"`
+	MaxConnAge  time.Duration  `yaml:"max_connection_age"`
 
 	DeprecatedMaxIdleConns         int           `yaml:"max_idle_conns"`
 	DeprecatedMaxActiveConns       int           `yaml:"max_active_conns"`
@@ -45,16 +47,16 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis service endpoint to use when caching chunks. If empty, no redis will be used.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
-	f.IntVar(&cfg.PoolSize, prefix+"redis.pool_size", 0, description+"Maximum number of socket connections in pool.")
+	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
 	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
-	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max_conn_age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
+	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
 
 	f.IntVar(&cfg.DeprecatedMaxIdleConns, prefix+"redis.max-idle-conns", 0, "Deprecated: "+description+"Maximum number of idle connections in pool.")
-	f.IntVar(&cfg.DeprecatedMaxActiveConns, prefix+"redis.max-active-conns", 0, "Deprecated (use pool_size instead): "+description+"Maximum number of active connections in pool.")
-	f.DurationVar(&cfg.DeprecatedMaxConnLifetime, prefix+"redis.max-conn-lifetime", 0, "Deprecated (use max_conn_age instead): "+description+"Close connections older than this duration.")
-	f.BoolVar(&cfg.DeprecatedWaitOnPoolExhaustion, prefix+"redis.wait-on-pool-exhaustion", false, "Deprecated: "+description+"Enables waiting if there are no idle connections. If the value is false and the pool is at the max_active_conns limit, the pool will return a connection with ErrPoolExhausted error and not wait for idle connections.")
+	f.IntVar(&cfg.DeprecatedMaxActiveConns, prefix+"redis.max-active-conns", 0, "Deprecated (use pool-size instead): "+description+"Maximum number of active connections in pool.")
+	f.DurationVar(&cfg.DeprecatedMaxConnLifetime, prefix+"redis.max-conn-lifetime", 0, "Deprecated (use max-connection-age instead): "+description+"Close connections older than this duration.")
+	f.BoolVar(&cfg.DeprecatedWaitOnPoolExhaustion, prefix+"redis.wait-on-pool-exhaustion", false, "Deprecated: "+description+"Enables waiting if there are no idle connections. If the value is false and the pool is at the max-active-conns limit, the pool will return a connection with ErrPoolExhausted error and not wait for idle connections.")
 }
 
 // Validate Redis configuration
@@ -81,13 +83,6 @@ type redisCommander interface {
 	MGet(ctx context.Context, keys ...string) *redis.SliceCmd
 	Close() error
 }
-
-var (
-	_ RedisClient = (*redisBasicClient)(nil)
-	_ RedisClient = (*redisSentinelClient)(nil)
-
-	ErrNoMasters = errors.New("redis: no masters")
-)
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) RedisClient {

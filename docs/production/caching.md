@@ -97,7 +97,7 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
 ```
 -<prefix>.redis.topology
     Redis topology: server (default), cluster, sentinel
--<prefix>.redis.enable_tls
+-<prefix>.redis.enable-tls
     Enables connecting to redis with TLS.
 -<prefix>.redis.endpoint string
     Redis endpoint to use when caching chunks. If empty, no redis will be used.
@@ -106,15 +106,15 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
     For Redis sentinel - Redis Sentinel service endpoint
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
--<prefix>.redis.pool_size int
+-<prefix>.redis.pool-size int
     Maximum number of socket connections in pool.
 -<prefix>.redis.password value
     Password to use when connecting to redis.
 -<prefix>.redis.timeout duration
     Maximum time to wait before giving up on redis requests. (default 100ms)
--<prefix>.redis.idle_timeout duration
+-<prefix>.redis.idle-timeout duration
     Amount of time after which client closes idle connections.
--<prefix>.redis.max_conn_age duration
+-<prefix>.redis.max-connection-age duration
     Amount of time after which client closes connections.
 ```
 

@@ -44,7 +44,7 @@ func main() {
 	}
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, cortexReadRoutes(cfg.PathPrefix), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, cortexReadRoutes(cfg), registry)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
@@ -58,13 +58,15 @@ func main() {
 	proxy.Await()
 }
 
-func cortexReadRoutes(prefix string) []querytee.Route {
+func cortexReadRoutes(cfg Config) []querytee.Route {
+	prefix := cfg.PathPrefix
+
 	// Strip trailing slashes.
 	for len(prefix) > 0 && prefix[len(prefix)-1] == '/' {
 		prefix = prefix[:len(prefix)-1]
 	}
 
-	samplesComparator := querytee.NewSamplesComparator()
+	samplesComparator := querytee.NewSamplesComparator(cfg.ProxyConfig.ValueComparisonTolerance)
 	return []querytee.Route{
 		{Path: prefix + "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: samplesComparator},
 		{Path: prefix + "/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},

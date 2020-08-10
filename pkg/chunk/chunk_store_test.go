@@ -552,6 +552,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					}
 				})
 			}
+
 		}
 	}
 }

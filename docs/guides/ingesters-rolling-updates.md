@@ -34,7 +34,7 @@ The rolling update procedure for a Cortex cluster running the chunks storage dep
 Similarly to the blocks storage, when Cortex is running the chunks storage with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).
 
 During a rolling update, the leaving ingester closes the WAL, synchronize the data to disk (`fsync`) and releases the disk resources.
-The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series that have not been flushed to the storage yet.
+The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series ingested since the last checkpoint.
 
 _For more information about the WAL, please refer to [Ingesters with WAL](../production/ingesters-with-wal.md)._
 

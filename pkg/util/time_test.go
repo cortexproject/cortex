@@ -40,9 +40,6 @@ func TestDurationWithJitter_ZeroInputDuration(t *testing.T) {
 }
 
 func TestParseTime(t *testing.T) {
-	ts, err := time.Parse(time.RFC3339Nano, "2015-06-03T13:21:58.555Z")
-	require.NoError(t, err)
-
 	var tests = []struct {
 		input  string
 		fail   bool
@@ -65,10 +62,14 @@ func TestParseTime(t *testing.T) {
 			result: time.Unix(123, 123000000),
 		}, {
 			input:  "2015-06-03T13:21:58.555Z",
-			result: ts,
+			result: time.Unix(1433337718, 555*time.Millisecond.Nanoseconds()),
 		}, {
 			input:  "2015-06-03T14:21:58.555+01:00",
-			result: ts,
+			result: time.Unix(1433337718, 555*time.Millisecond.Nanoseconds()),
+		}, {
+			// Test nanosecond rounding.
+			input:  "2015-06-03T13:21:58.56789Z",
+			result: time.Unix(1433337718, 567*1e6),
 		}, {
 			// Test float rounding.
 			input:  "1543578564.705",

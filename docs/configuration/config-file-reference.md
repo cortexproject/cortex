@@ -543,7 +543,8 @@ lifecycler:
   [availability_zone: <string> | default = ""]
 
 # Number of times to try and transfer chunks before falling back to flushing.
-# Negative value or zero disables hand-over.
+# Negative value or zero disables hand-over. This feature is supported only by
+# the chunks storage.
 # CLI flag: -ingester.max-transfer-retries
 [max_transfer_retries: <int> | default = 10]
 
@@ -3263,9 +3264,8 @@ tsdb:
   # CLI flag: -experimental.blocks-storage.tsdb.wal-compression-enabled
   [wal_compression_enabled: <boolean> | default = false]
 
-  # If true, and transfer of blocks on shutdown fails or is disabled, incomplete
-  # blocks are flushed to storage instead. If false, incomplete blocks will be
-  # reused after restart, and uploaded when finished.
+  # True to flush blocks to storage on shutdown. If false, incomplete blocks
+  # will be reused after restart.
   # CLI flag: -experimental.blocks-storage.tsdb.flush-blocks-on-shutdown
   [flush_blocks_on_shutdown: <boolean> | default = false]
 

@@ -2,6 +2,11 @@
 
 ## master / unreleased
 
+* [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
+  * `cortex_ingester_sent_files`
+  * `cortex_ingester_received_files`
+  * `cortex_ingester_received_bytes_total`
+  * `cortex_ingester_sent_bytes_total`
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 

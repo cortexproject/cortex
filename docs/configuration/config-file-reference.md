@@ -3265,7 +3265,7 @@ tsdb:
   [wal_compression_enabled: <boolean> | default = false]
 
   # True to flush blocks to storage on shutdown. If false, incomplete blocks
-  # will be reused after restart, and uploaded when finished.
+  # will be reused after restart.
   # CLI flag: -experimental.blocks-storage.tsdb.flush-blocks-on-shutdown
   [flush_blocks_on_shutdown: <boolean> | default = false]
 

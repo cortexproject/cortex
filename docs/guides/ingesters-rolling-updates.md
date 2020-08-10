@@ -53,8 +53,7 @@ On startup, an ingester goes into the **`PENDING`** state.
 In this state, the ingester is waiting for a hand-over from another ingester that is `LEAVING`.
 If no hand-over occurs within the configured timeout period ("auto-join timeout", configurable via `-ingester.join-after` option), the ingester will join the ring with a new set of random tokens (eg. during a scale up) and will switch its state to `ACTIVE`.
 
-A running ingester, in the **`ACTIVE`** state, is notified to shutdown via the Unix signal `SIGINT`.
-On receipt of this signal, the ingester switches to `LEAVING`: in this state it cannot receive write requests anymore, while it could still receive read requests for series it has in memory.
+When a running ingester in the **`ACTIVE`** state is notified to shutdown via `SIGINT` or `SIGTERM` Unix signal, the ingester switches to `LEAVING` state. In this state it cannot receive write requests anymore, but it can still receive read requests for series it has in memory.
 
 A **`LEAVING`** ingester looks for a `PENDING` ingester to start a hand-over process with.
 If it finds one, that ingester goes into the `JOINING` state and the leaver transfers all its in-memory data over to the joiner.

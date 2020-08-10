@@ -239,7 +239,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
-	log, _ := spanlogger.New(ctx, "ParseQueryRangeResponse")
+	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse")
 	defer log.Finish()
 
 	buf, err := ioutil.ReadAll(r.Body)

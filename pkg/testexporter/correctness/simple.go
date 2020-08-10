@@ -170,14 +170,14 @@ func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair
 		expectedNumSamples := int(duration / cfg.ScrapeInterval)
 		if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), cfg.samplesEpsilon) {
 			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-			log.Error(fmt.Errorf("wrong value")) //nolint:errcheck
+			log.Error(fmt.Errorf("wrong number of samples")) //nolint:errcheck
 			return false
 		}
 	} else {
 		expectedNumSamples := int(duration / cfg.ScrapeInterval)
 		if math.Abs(float64(expectedNumSamples-len(pairs))) > 2 {
 			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-			log.Error(fmt.Errorf("wrong value")) //nolint:errcheck
+			log.Error(fmt.Errorf("wrong number of samples")) //nolint:errcheck
 			return false
 		}
 	}

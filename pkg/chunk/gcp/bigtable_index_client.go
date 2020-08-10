@@ -324,7 +324,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
-	log, _ := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer log.Finish()
 
 	table := s.client.Open(query.TableName)

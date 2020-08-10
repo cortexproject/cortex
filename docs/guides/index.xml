@@ -154,40 +154,67 @@ documentation&lt;/a>
 for the full list of environment variables you can configure.&lt;/p>
 &lt;p>Note that you must specify one of &lt;code>JAEGER_AGENT_HOST&lt;/code> or
 &lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p></description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
-&lt;p>The &lt;a href="/docs/architecture/#ingester">ingester&lt;/a> holds several hours of sample
-data in memory. When we want to shut down an ingester, either for
-software version update or to drain a node for maintenance, this data
-must not be discarded.&lt;/p>
-&lt;p>Each ingester goes through different states in its lifecycle. When
-working normally, the state is &lt;code>ACTIVE&lt;/code>.&lt;/p>
-&lt;p>On start-up, an ingester first goes into state &lt;code>PENDING&lt;/code>. After a
-&lt;a href="/docs/configuration/arguments/#ingester">short time&lt;/a>, if nothing happens, it adds
-itself to the ring and goes into state ACTIVE.&lt;/p>
-&lt;p>A running ingester is notified to shut down by Unix signal
-&lt;code>SIGINT&lt;/code>. On receipt of this signal it goes into state &lt;code>LEAVING&lt;/code> and
-looks for an ingester in state &lt;code>PENDING&lt;/code>. If it finds one, that
-ingester goes into state &lt;code>JOINING&lt;/code> and the leaver transfers all its
-in-memory data over to the joiner. On successful transfer the leaver
-removes itself from the ring and exits and the joiner changes to
-&lt;code>ACTIVE&lt;/code>, taking over ownership of the leaver&amp;rsquo;s
-&lt;a href="/docs/architecture/#hashing">ring tokens&lt;/a>.&lt;/p>
-&lt;p>If a leaving ingester does not find a pending ingester after &lt;a href="/docs/configuration/arguments/#ingester">several attempts&lt;/a>, it will flush all of its chunks to
-the backing database, then remove itself from the ring and exit. This
-may take tens of minutes to complete.&lt;/p>
+even if you plan to use the default values.&lt;/p></description></item><item><title>Docs: Ingesters rolling updates</title><link>/docs/guides/ingesters-rolling-updates/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-rolling-updates/</guid><description>
+&lt;p>Cortex &lt;a href="/docs/architecture/#ingester">ingesters&lt;/a> are semi-stateful.
+A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage.
+When an ingester shutdowns, because of a rolling update or maintenance, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+&lt;p>In this document we describe the techniques employed to safely handle rolling updates, based on different setups:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#blocks-storage">Blocks storage&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
+&lt;p>The Cortex &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> requires ingesters to run with a persistent disk where the TSDB WAL and blocks are stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
+&lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
+The new ingester, which is expected to reuse the same disk of the leaving one, will replay the TSDB WAL on startup in order to load back in memory the time series that have not been compacted into a block yet.&lt;/p>
+&lt;p>&lt;em>The blocks storage doesn&amp;rsquo;t support the series &lt;a href="#chunks-storage-with-wal-disabled-hand-over">hand-over&lt;/a>.&lt;/em>&lt;/p>
+&lt;h2 id="chunks-storage">Chunks storage&lt;/h2>
+&lt;p>The Cortex chunks storage optionally supports a write-ahead log (WAL).
+The rolling update procedure for a Cortex cluster running the chunks storage depends whether the WAL is enabled or not.&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
+&lt;p>Similarly to the blocks storage, when Cortex is running the chunks storage with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
+&lt;p>During a rolling update, the leaving ingester closes the WAL, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
+The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series data.&lt;/p>
+&lt;p>&lt;em>For more information about the WAL, please refer to &lt;a href="/docs/production/ingesters-with-wal/">Ingesters with WAL&lt;/a>.&lt;/em>&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled (hand-over)&lt;/h3>
+&lt;p>When Cortex is running the chunks storage with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.&lt;/p>
+&lt;p>The hand-over is based on the ingesters state stored in the ring. Each ingester could be in one of the following &lt;strong>states&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>PENDING&lt;/code>&lt;/li>
+&lt;li>&lt;code>JOINING&lt;/code>&lt;/li>
+&lt;li>&lt;code>ACTIVE&lt;/code>&lt;/li>
+&lt;li>&lt;code>LEAVING&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>On startup, an ingester goes into the &lt;strong>&lt;code>PENDING&lt;/code>&lt;/strong> state.
+In this state, the ingester is waiting for a hand-over from another ingester that is &lt;code>LEAVING&lt;/code>.
+If no hand-over occurs within the configured timeout period (&amp;ldquo;auto-join timeout&amp;rdquo;, configurable via &lt;code>-ingester.join-after&lt;/code> option), the ingester will join the ring with a new set of random tokens (eg. during a scale up) and will switch its state to &lt;code>ACTIVE&lt;/code>.&lt;/p>
+&lt;p>When a running ingester in the &lt;strong>&lt;code>ACTIVE&lt;/code>&lt;/strong> state is notified to shutdown via &lt;code>SIGINT&lt;/code> or &lt;code>SIGTERM&lt;/code> Unix signal, the ingester switches to &lt;code>LEAVING&lt;/code> state. In this state it cannot receive write requests anymore, but it can still receive read requests for series it has in memory.&lt;/p>
+&lt;p>A &lt;strong>&lt;code>LEAVING&lt;/code>&lt;/strong> ingester looks for a &lt;code>PENDING&lt;/code> ingester to start a hand-over process with.
+If it finds one, that ingester goes into the &lt;code>JOINING&lt;/code> state and the leaver transfers all its in-memory data over to the joiner.
+On successful transfer the leaver removes itself from the ring and exits, while the joiner changes its state to &lt;code>ACTIVE&lt;/code>, taking over ownership of the leaver&amp;rsquo;s &lt;a href="/docs/architecture/#hashing">ring tokens&lt;/a>. As soon as the joiner switches it state to &lt;code>ACTIVE&lt;/code>, it will start receive both write requests from distributors and queries from queriers.&lt;/p>
+&lt;p>If the &lt;code>LEAVING&lt;/code> ingester does not find a &lt;code>PENDING&lt;/code> ingester after &lt;code>-ingester.max-transfer-retries&lt;/code> retries, it will flush all of its chunks to the long-term storage, then removes itself from the ring and exits. The chunks flushing to the storage may take several minutes to complete.&lt;/p>
+&lt;h4 id="higher-number-of-series--chunks-during-rolling-updates">Higher number of series / chunks during rolling updates&lt;/h4>
 &lt;p>During hand-over, neither the leaving nor joining ingesters will
 accept new samples. Distributors are aware of this, and &amp;ldquo;spill&amp;rdquo; the
 samples to the next ingester in the ring. This creates a set of extra
-&amp;ldquo;spilled&amp;rdquo; chunks which will idle out and flush after hand-over is
-complete. The sudden increase in flush queue can be alarming!&lt;/p>
+&amp;ldquo;spilled&amp;rdquo; series and chunks which will idle out and flush after hand-over is
+complete.&lt;/p>
+&lt;h4 id="observability">Observability&lt;/h4>
 &lt;p>The following metrics can be used to observe this process:&lt;/p>
 &lt;ul>
-&lt;li>&lt;code>cortex_member_ring_tokens_owned&lt;/code> - how many tokens each ingester thinks it owns&lt;/li>
-&lt;li>&lt;code>cortex_ring_tokens_owned&lt;/code> - how many tokens each ingester is seen to own by other components&lt;/li>
-&lt;li>&lt;code>cortex_ring_member_ownership_percent&lt;/code> same as &lt;code>cortex_ring_tokens_owned&lt;/code> but expressed as a percentage&lt;/li>
-&lt;li>&lt;code>cortex_ring_members&lt;/code> - how many ingesters can be seen in each state, by other components&lt;/li>
-&lt;li>&lt;code>cortex_ingester_sent_chunks&lt;/code> - number of chunks sent by leaving ingester&lt;/li>
-&lt;li>&lt;code>cortex_ingester_received_chunks&lt;/code> - number of chunks received by joining ingester&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_member_ring_tokens_owned&lt;/code>&lt;/strong>&lt;br />
+How many tokens each ingester thinks it owns.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_tokens_owned&lt;/code>&lt;/strong>&lt;br />
+How many tokens each ingester is seen to own by other components.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_member_ownership_percent&lt;/code>&lt;/strong>&lt;br />
+Same as &lt;code>cortex_ring_tokens_owned&lt;/code> but expressed as a percentage.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_members&lt;/code>&lt;/strong>&lt;br />
+How many ingesters can be seen in each state, by other components.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ingester_sent_chunks&lt;/code>&lt;/strong>&lt;br />
+Number of chunks sent by leaving ingester.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ingester_received_chunks&lt;/code>&lt;/strong>&lt;br />
+Number of chunks received by joining ingester.&lt;/li>
 &lt;/ul>
 &lt;p>You can see the current state of the ring via http browser request to
 &lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>

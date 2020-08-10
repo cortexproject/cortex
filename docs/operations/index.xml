@@ -164,6 +164,7 @@ step: 5m0s
 &lt;h3 id="backend-results-comparison">Backend results comparison&lt;/h3>
 &lt;p>&lt;code>query-tee&lt;/code> allows to optionally enable the query results comparison between two backends. The results comparison can be enabled via the CLI flag &lt;code>-proxy.compare-responses=true&lt;/code> and requires exactly two configured backends with a preferred one.&lt;/p>
 &lt;p>When the comparison is enabled, the &lt;code>query-tee&lt;/code> compares the response received from the two configured backends and logs a message for each query whose results don&amp;rsquo;t match, as well as keeps track of the number of successful and failed comparison through the metric &lt;code>cortex_querytee_responses_compared_total&lt;/code>.&lt;/p>
+&lt;p>Floating point sample values are compared with a small tolerance that can be configured via &lt;code>-proxy.value-comparison-tolerance&lt;/code>. This prevents false positives due to differences in floating point values &lt;em>rounding&lt;/em> introduced by the non deterministic series ordering within the Prometheus PromQL engine.&lt;/p>
 &lt;h3 id="slow-backends">Slow backends&lt;/h3>
 &lt;p>&lt;code>query-tee&lt;/code> sends back to the client the first viable response as soon as available, without waiting to receive a response from all backends.&lt;/p>
 &lt;h3 id="exported-metrics">Exported metrics&lt;/h3>

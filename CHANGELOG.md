@@ -3,6 +3,11 @@
 ## master / unreleased
 
 
+## 1.3.0-rc.1 / 2020-08-10
+
+* [ENHANCEMENT] Ingester: added `Dropped` outcome to metric `cortex_ingester_flushing_dequeued_series_total`. #2998
+* [BUGFIX] Ruler: fixed an unintentional breaking change introduced in the ruler's `alertmanager_url` YAML config option, which changed the value from a string to a list of strings. #2989
+
 ## 1.3.0-rc.0 / 2020-08-05
 
 * [CHANGE] Replace the metric `cortex_alertmanager_configs` with `cortex_alertmanager_config_invalid` exposed by Alertmanager. #2960

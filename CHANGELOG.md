@@ -2,6 +2,7 @@
 
 ## master / unreleased
 * [ENHANCEMENT] Add support for azure storage of AzureChinaCloud,AzureGermanCloud,AzureUSGovernment. #2988
+* [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 
 ## 1.3.0 in progress
 

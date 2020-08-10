@@ -72,6 +72,8 @@ _Note: from the `query-tee` perspective, a backend request is considered success
 
 When the comparison is enabled, the `query-tee` compares the response received from the two configured backends and logs a message for each query whose results don't match, as well as keeps track of the number of successful and failed comparison through the metric `cortex_querytee_responses_compared_total`.
 
+Floating point sample values are compared with a small tolerance that can be configured via `-proxy.value-comparison-tolerance`. This prevents false positives due to differences in floating point values _rounding_ introduced by the non deterministic series ordering within the Prometheus PromQL engine.
+
 ### Slow backends
 
 `query-tee` sends back to the client the first viable response as soon as available, without waiting to receive a response from all backends.

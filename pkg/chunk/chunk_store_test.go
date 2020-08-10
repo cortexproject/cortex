@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -628,6 +629,9 @@ func TestChunkStoreRandom(t *testing.T) {
 				assert.Equal(t, int(numChunks), len(chunks))
 			}
 		})
+	}
+	if got, want := testutil.CollectAndCount(indexLookupsPerQuery, "chunk_store_index_lookups_per_query"), 0; got != want {
+		t.Errorf("unexpected metric count, got %d, want %d", got, want)
 	}
 }
 

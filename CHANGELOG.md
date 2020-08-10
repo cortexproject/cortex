@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
+* [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 
 ## 1.3.0 in progress
 

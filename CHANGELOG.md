@@ -10,7 +10,7 @@
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
-* [BUGFIX] Querier: Merge results from chunks and blocks ingesters. #3013
+* [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013
 
 ## 1.3.0 in progress
 

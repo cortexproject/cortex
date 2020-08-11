@@ -187,7 +187,7 @@ To configure querier to use secondary store for querying, we need to add:
 
 ```
     querier_second_storage_engine: 'blocks',
-    storage_tsdb_bucket_name: 'bucket-for-storing-blocks',
+    blocks_storage_bucket_name: 'bucket-for-storing-blocks',
 ```
 
 to the `_config` object in main.jsonnet.
@@ -272,4 +272,3 @@ Most important thing is generating resources with blocks configuration, and expo
   ruler_args+:: self.tsdb_config.blocks_metadata_caching_config + self.query_config_during_migration,  // + self.query_config_after_migration,
 }
 ```
-

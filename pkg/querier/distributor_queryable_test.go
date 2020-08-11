@@ -203,7 +203,6 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		mint = 0
 		maxt = 10000
 	)
-	// Returned as chunk
 	s1 := []client.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2, TimestampMs: 2000},
@@ -211,7 +210,6 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		{Value: 4, TimestampMs: 4000},
 		{Value: 5, TimestampMs: 5000},
 	}
-	// Returned as time-series
 	s2 := []client.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2.5, TimestampMs: 2500},

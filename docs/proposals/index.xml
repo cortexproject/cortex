@@ -279,9 +279,13 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;li>Author: @pstibrany&lt;/li>
 &lt;li>Reviewers:&lt;/li>
 &lt;li>Date: June 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Replaced with &lt;a href="/docs/blocks-storage/migrate-cortex-cluster-from-chunks-to-blocks/">migration guide&lt;/a>.&lt;/li>
 &lt;/ul>
-&lt;h1 id="migrating-ingesters-from-chunks-to-blocks">Migrating ingesters from chunks to blocks&lt;/h1>
+&lt;h2 id="warning">Warning&lt;/h2>
+&lt;p>Suggestions from this proposal were implemented, but general procedure outlined here doesn&amp;rsquo;t quite work in
+Kubernetes environment. Please see &lt;a href="/docs/blocks-storage/migrate-cortex-cluster-from-chunks-to-blocks/">chunks to blocks migration guide&lt;/a>
+instead.&lt;/p>
+&lt;h2 id="introduction">Introduction&lt;/h2>
 &lt;p>This short document describes the first step in full migration of the Cortex cluster from using chunks storage to using blocks storage, specifically switching ingesters to using blocks, and modification of queriers to query both chunks and blocks storage.&lt;/p>
 &lt;h2 id="ingesters">Ingesters&lt;/h2>
 &lt;p>When switching ingesters from chunks to blocks, we need to consider the following:&lt;/p>

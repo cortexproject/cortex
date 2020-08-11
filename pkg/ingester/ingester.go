@@ -502,10 +502,6 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 			if ve.noReport {
 				return nil
 			}
-			ipAddresses := util.GetSourceFromIncomingCtx(ctx)
-			if ipAddresses != "" {
-				ve.AddForwardIPAddresses(ipAddresses)
-			}
 		}
 		return err
 	}

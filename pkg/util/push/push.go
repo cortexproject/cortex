@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -17,10 +18,11 @@ func Handler(cfg distributor.Config, push func(context.Context, *client.WriteReq
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract X-Forwarder-For header
 		ctx := r.Context()
-		source := util.GetSource(r)
-		ctx = util.AddSourceToOutgoingContext(ctx, source)
+		sourceIPs := middleware.GetSource(r)
+		ctx = util.AddSourceToOutgoingContext(ctx, sourceIPs)
 
 		logger := util.WithContext(ctx, util.Logger)
+		logger = util.WithSourceIPs(sourceIPs, logger)
 		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 		var req client.PreallocWriteRequest
 		_, err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), cfg.MaxRecvMsgSize, &req, compressionType)

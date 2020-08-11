@@ -9,12 +9,11 @@ import (
 )
 
 type validationError struct {
-	err                error // underlying error
-	errorType          string
-	code               int
-	noReport           bool // if true, error will be counted but not reported to caller
-	labels             labels.Labels
-	forwardIPAddresses string
+	err       error // underlying error
+	errorType string
+	code      int
+	noReport  bool // if true, error will be counted but not reported to caller
+	labels    labels.Labels
 }
 
 func makeLimitError(errorType string, err error) error {
@@ -50,11 +49,6 @@ func makeMetricLimitError(errorType string, labels labels.Labels, err error) err
 	}
 }
 
-// AddForwardIPAddresses adds the string containing the addresses to the error
-func (e *validationError) AddForwardIPAddresses(ipAddresses string) {
-	e.forwardIPAddresses = ipAddresses
-}
-
 func (e *validationError) Error() string {
 	if e.err == nil {
 		return e.errorType
@@ -62,11 +56,7 @@ func (e *validationError) Error() string {
 	if e.labels == nil {
 		return e.err.Error()
 	}
-	ipStr := ""
-	if e.forwardIPAddresses != "" {
-		ipStr = fmt.Sprintf(" from IP address %v", e.forwardIPAddresses)
-	}
-	return fmt.Sprintf("%s%s for series %s", e.err.Error(), ipStr, e.labels.String())
+	return fmt.Sprintf("%s for series %s", e.err.Error(), e.labels.String())
 }
 
 // returns a HTTP gRPC error than is correctly forwarded over gRPC, with no reference to `e` retained.

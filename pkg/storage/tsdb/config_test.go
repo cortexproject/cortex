@@ -250,6 +250,43 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errEmptyBlockranges,
 		},
+		"should pass on non empty backfill dir": {
+			config: BlocksStorageConfig{
+				Backend: "s3",
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                1 << 14,
+					BlockRanges:               DurationList{1 * time.Minute},
+					BackfillMaxAge:            6 * time.Hour,
+					BackfillDir:               "somedir",
+				},
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
+			},
+			expectedErr: nil,
+		},
+		"should fail on empty backfill dir": {
+			config: BlocksStorageConfig{
+				Backend: "s3",
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                1 << 14,
+					BlockRanges:               DurationList{1 * time.Minute},
+					BackfillMaxAge:            6 * time.Hour,
+				},
+				BucketStore: BucketStoreConfig{
+					IndexCache: IndexCacheConfig{
+						Backend: "inmemory",
+					},
+				},
+			},
+			expectedErr: errEmptyBackfillDir,
+		},
 	}
 
 	for testName, testData := range tests {

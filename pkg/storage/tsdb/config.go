@@ -54,6 +54,7 @@ var (
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
+	errEmptyBackfillDir             = errors.New("empty backfill directory")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -146,6 +147,8 @@ type TSDBConfig struct {
 	StripeSize                int           `yaml:"stripe_size"`
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
+	BackfillDir               string        `yaml:"backfill_dir"`
+	BackfillMaxAge            time.Duration `yaml:"backfill_max_age"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup.
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -173,6 +176,8 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.StripeSize, "experimental.blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
+	f.StringVar(&cfg.BackfillDir, "experimental.blocks-storage.tsdb.backfill-dir", "backfill_tsdb", "Local directory to store backfill TSDBs in the ingesters.")
+	f.DurationVar(&cfg.BackfillMaxAge, "experimental.blocks-storage.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling. 0 disables it.")
 }
 
 // Validate the config.
@@ -197,6 +202,10 @@ func (cfg *TSDBConfig) Validate() error {
 		return errEmptyBlockranges
 	}
 
+	if cfg.BackfillMaxAge > 0 && cfg.BackfillDir == "" {
+		return errEmptyBackfillDir
+	}
+
 	return nil
 }
 
@@ -204,6 +213,12 @@ func (cfg *TSDBConfig) Validate() error {
 // stored by the ingester
 func (cfg *TSDBConfig) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
+}
+
+// BackfillBlocksDir returns the directory path where TSDB blocks and wal used for
+// backfilling should be stored by the ingester
+func (cfg *TSDBConfig) BackfillBlocksDir(userID string) string {
+	return filepath.Join(cfg.BackfillDir, userID)
 }
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier

@@ -480,6 +480,14 @@ blocks_storage:
     # CLI flag: -experimental.blocks-storage.tsdb.flush-blocks-on-shutdown
     [flush_blocks_on_shutdown: <boolean> | default = false]
 
+    # Local directory to store backfill TSDBs in the ingesters.
+    # CLI flag: -experimental.blocks-storage.tsdb.backfill-dir
+    [backfill_dir: <string> | default = "backfill_tsdb"]
+
+    # Maximum accepted sample age by backfilling. 0 disables it.
+    # CLI flag: -experimental.blocks-storage.tsdb.backfill-max-age
+    [backfill_max_age: <duration> | default = 0s]
+
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -experimental.blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]

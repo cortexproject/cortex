@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -47,6 +48,7 @@ type Shipper interface {
 
 type userTSDB struct {
 	*tsdb.DB
+	backfillTSDB   *backfillTSDB
 	userID         string
 	refCache       *cortex_tsdb.RefCache
 	seriesInMetric *metricCounter
@@ -402,6 +404,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
+	var backfillApp *backfillAppender
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
@@ -442,13 +445,28 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				}
 			}
 
+			cause := errors.Cause(err)
+			if cause == storage.ErrOutOfBounds &&
+				i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge > 0 &&
+				s.TimestampMs > db.Head().MaxTime()-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge.Milliseconds() {
+
+				if backfillApp == nil {
+					backfillApp = db.backfillTSDB.appender(i)
+				}
+				err := backfillApp.add(ts.Labels, s)
+				if err == nil {
+					succeededSamplesCount++
+					continue
+				}
+				cause = errors.Cause(err)
+			}
+
 			failedSamplesCount++
 
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
 					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().UTC().Format(time.RFC3339Nano))
@@ -477,8 +495,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			}
 
 			// The error looks an issue on our side, so we should rollback
-			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+			var merr tsdb_errors.MultiError
+			merr.Add(errors.Wrap(app.Rollback(), "main appender"))
+			if backfillApp != nil {
+				merr.Add(errors.Wrap(backfillApp.rollback(), "backfill appender"))
+			}
+			if merr.Err() != nil {
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", merr.Err())
 			}
 
 			return nil, wrapWithUser(err, userID)
@@ -489,8 +512,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
 
 	startCommit := time.Now()
-	if err := app.Commit(); err != nil {
-		return nil, wrapWithUser(err, userID)
+	var merr tsdb_errors.MultiError
+	merr.Add(errors.Wrap(app.Commit(), "main appender"))
+	if backfillApp != nil {
+		merr.Add(errors.Wrap(backfillApp.commit(), "backfill appender"))
+	}
+	if merr.Err() != nil {
+		return nil, wrapWithUser(merr.Err(), userID)
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
@@ -551,6 +579,16 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	ss := q.Select(false, nil, matchers...)
 	if ss.Err() != nil {
 		return nil, ss.Err()
+	}
+
+	backfillSSs, err := db.backfillSelect(ctx, int64(from), int64(through), matchers)
+	if err != nil {
+		return nil, err
+	}
+	if len(backfillSSs) > 0 {
+		// TODO(codesome): If any TSDB in backfill buckets were overlapping
+		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
+		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
 	}
 
 	numSamples := 0
@@ -791,6 +829,16 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return ss.Err()
 	}
 
+	backfillSSs, err := db.backfillSelect(ctx, int64(from), int64(through), matchers)
+	if err != nil {
+		return err
+	}
+	if len(backfillSSs) > 0 {
+		// TODO(codesome): If any TSDB in backfill buckets were overlapping
+		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
+		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
+	}
+
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
 	batchSize := 0
 	numSamples := 0
@@ -910,10 +958,29 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
-	udir := i.cfg.BlocksStorageConfig.TSDB.BlocksDir(userID)
-	userLogger := util.WithUserID(userID, util.Logger)
 
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
+
+	userDB, err := i.createNewTSDB(
+		userID,
+		i.cfg.BlocksStorageConfig.TSDB.BlocksDir(userID),
+		blockRanges[0],
+		blockRanges[len(blockRanges)-1],
+		tsdbPromReg,
+	)
+	if err == nil {
+		// We set the limiter here because we don't want to limit
+		// series during WAL replay.
+		userDB.limiter = i.limiter
+		i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
+	}
+
+	return userDB, err
+}
+
+// createNewTSDB creates a TSDB for a given userID and data directory.
+func (i *Ingester) createNewTSDB(userID, dbDir string, minBlockDuration, maxBlockDuration int64, reg *prometheus.Registry) (*userTSDB, error) {
+	userLogger := util.WithUserID(userID, util.Logger)
 
 	userDB := &userTSDB{
 		userID:              userID,
@@ -922,20 +989,21 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		lastUpdate:          atomic.NewInt64(0),
+		backfillTSDB:        newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge),
 	}
 
 	// Create a new user database
-	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
+	db, err := tsdb.Open(dbDir, userLogger, reg, &tsdb.Options{
 		RetentionDuration:       i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
-		MinBlockDuration:        blockRanges[0],
-		MaxBlockDuration:        blockRanges[len(blockRanges)-1],
+		MinBlockDuration:        minBlockDuration,
+		MaxBlockDuration:        maxBlockDuration,
 		NoLockfile:              true,
 		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
 		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
+		return nil, errors.Wrapf(err, "failed to open TSDB: %s", dbDir)
 	}
 	db.DisableCompactions() // we will compact on our own schedule
 
@@ -945,13 +1013,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
 	err = db.Compact()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
+		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", dbDir)
 	}
 
 	userDB.DB = db
-	// We set the limiter here because we don't want to limit
-	// series during WAL replay.
-	userDB.limiter = i.limiter
 	userDB.setLastUpdate(time.Now()) // After WAL replay.
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
@@ -971,8 +1036,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 		userDB.shipper = shipper.New(
 			userLogger,
-			tsdbPromReg,
-			udir,
+			reg,
+			dbDir,
 			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
@@ -981,7 +1046,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		)
 	}
 
-	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
 	return userDB, nil
 }
 

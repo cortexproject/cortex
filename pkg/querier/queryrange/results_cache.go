@@ -457,7 +457,7 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
 		level.Error(log).Log("msg", "error unmarshalling cached value", "err", err)
-		log.Error(err) //nolint:errcheck
+		log.Error(err)
 		return nil, false
 	}
 

@@ -64,7 +64,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 
 	log.LogFields(otlog.Int("chunks fetched", len(result)))
 	if lastErr != nil {
-		log.Error(lastErr) //nolint:errcheck
+		log.Error(lastErr)
 	}
 
 	// Return any chunks we did receive: a partial result may be useful

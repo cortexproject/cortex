@@ -92,7 +92,7 @@ Where parameters are:
 - `<namespace>`: Kubernetes namespace where the Cortex cluster is running
 - `<ingester-old>`: name of the ingesters StatefulSet to scale down (running chunks storage)
 - `<ingester-new>`: name of the ingesters StatefulSet to scale up (running blocks storage)
-- `<num-instances>`: number of instances to scale down (in `ingester` statefulset) and scale up (in `ingester-blocks`), or "all" – which will scale down all remaining instances in `ingester` statefulset
+- `<num-instances>`: number of instances to scale down (in `ingester-old` statefulset) and scale up (in `ingester-new`), or "all" – which will scale down all remaining instances in `ingester-old` statefulset
 
 After starting new pod in `ingester-new` statefulset, script then triggers `/shutdown` endpoint on the old ingester. When the flushing on the old ingester is complete, scale down of statefulset continues, and process repeats.
 

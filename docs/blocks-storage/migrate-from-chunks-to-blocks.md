@@ -78,6 +78,11 @@ During and after the migration to blocks (and also after possible rollback), thi
 
 [Compactor](./compactor.md) and [store-gateway](./store-gateway.md) services should be deployed and successfully up and running before migrating ingesters.
 
+### Ingester – blocks
+
+Migration script presented in Step 2 assumes that there are two StatefulSets of ingesters: existing one configured with chunks, and the new one with blocks.
+New StatefulSet with blocks ingesters should have 0 replicas at the beginning of migration.
+
 ## Step 2: Ingesters migration
 
 We have developed a script available in Cortex [`tools/migrate-ingester-statefulsets.sh`](https://github.com/cortexproject/cortex/blob/master/tools/migrate-ingester-statefulsets.sh) to migrate ingesters between two StatefulSets, shutting down ingesters one by one.

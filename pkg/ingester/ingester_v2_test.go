@@ -1105,6 +1105,114 @@ func TestIngester_v2QueryStream(t *testing.T) {
 	require.Equal(t, expectedResponse, lastResp)
 }
 
+func TestIngester_v2QueryStreamManySamples(t *testing.T) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	const samplesCount = 100000
+	samples := make([]client.Sample, 0, samplesCount)
+
+	for i := 0; i < samplesCount; i++ {
+		samples = append(samples, client.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
+		})
+	}
+
+	buildReq := func(lbls labels.Labels, samples []client.Sample) *client.WriteRequest {
+		req := &client.WriteRequest{
+			Source: client.API,
+		}
+
+		ts := client.TimeSeries{}
+		ts.Labels = client.FromLabelsToLabelAdapters(lbls)
+		ts.Samples = samples
+		req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{TimeSeries: &ts})
+
+		return req
+	}
+
+	// 10k samples encode to around 140 KiB,
+	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:10000]))
+	require.NoError(t, err)
+
+	// 100k samples encode to around 1.4 MiB,
+	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
+	require.NoError(t, err)
+
+	// 50k samples encode to around 716 KiB,
+	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:50000]))
+	require.NoError(t, err)
+
+	// Create a GRPC server used to query back the data.
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, i)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	go func() {
+		require.NoError(t, serv.Serve(listener))
+	}()
+
+	// Query back the series using GRPC streaming.
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(t, err)
+	defer c.Close()
+
+	s, err := c.QueryStream(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   samplesCount + 1,
+
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	})
+	require.NoError(t, err)
+
+	recvMsgs := 0
+	series := 0
+	totalSamples := 0
+
+	for {
+		resp, err := s.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		require.True(t, len(resp.Timeseries) > 0) // No empty messages.
+
+		recvMsgs++
+		series += len(resp.Timeseries)
+
+		for _, ts := range resp.Timeseries {
+			totalSamples += len(ts.Samples)
+		}
+	}
+
+	// As ingester doesn't guarantee sorting of series, we can get 2 (10k + 50k in first, 100k in second)
+	// or 3 messages (small series first, 100k second, small series last).
+
+	require.True(t, 2 <= recvMsgs && recvMsgs <= 3)
+	require.Equal(t, 3, series)
+	require.Equal(t, 10000+50000+samplesCount, totalSamples)
+}
+
 func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {
 	samples := []client.Sample{
 		{

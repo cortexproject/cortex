@@ -18,6 +18,7 @@ This article **assumes** that:
 - Cortex cluster is managed by Kubernetes
 - Cortex is using chunks storage
 - Ingesters are using WAL
+- Cortex version 1.3.0 or later.
 
 _If your ingesters are not using WAL, the documented procedure will still apply, but the presented migration script will not work properly without changes, as it assumes that ingesters are managed via StatefulSet._
 
@@ -59,9 +60,9 @@ and need to use storage instead.
 
 #### `-querier.ingester-streaming=false`
 
-Querier (and ruler) has a [bug](https://github.com/cortexproject/cortex/issues/2935) and doesn't properly
-merge streamed results from chunks and blocks-based ingesters. Instead it only returns data from blocks- instesters.
-To avoid this problem, we need to temporarily disable this feature by setting `-querier.ingester-streaming=false`.
+Querier (and ruler) in Cortex version 1.3.0 has a [bug](https://github.com/cortexproject/cortex/issues/2935) and doesn't properly
+merge streamed results from chunks and blocks-based ingesters. Instead it only returns data from blocks instesters.
+To avoid this problem we can use newer Cortex release, or temporarily disable this feature by setting `-querier.ingester-streaming=false`.
 After migration is complete (i.e. all ingesters are running blocks only), this can be turned back to true, which is the default value.
 
 ### Query-frontend
@@ -132,7 +133,7 @@ This flag can be set to a timestamp when migration has finished, and it avoids q
 
 #### `-querier.ingester-streaming=true`
 
-Querier can be configured to make use of streamed responses from ingester at this point (`-querier.ingester-streaming=true`).
+If querier was configured to disable ingester streaming during migration (required for Cortex 1.3.0), Querier can be configured to make use of streamed responses from ingester at this point (`-querier.ingester-streaming=true`).
 
 ## Rollback
 

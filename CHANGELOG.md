@@ -7,6 +7,7 @@
   * `cortex_ingester_received_files`
   * `cortex_ingester_received_bytes_total`
   * `cortex_ingester_sent_bytes_total`
+* [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 

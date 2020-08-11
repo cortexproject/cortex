@@ -834,6 +834,11 @@ storage:
   [configdb: <configstore_config>]
 
   azure:
+    # Azure Cloud environment. Supported values are: AzureGlobal,
+    # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
+    # CLI flag: -ruler.storage.azure.environment
+    [environment: <string> | default = "AzureGlobal"]
+
     # Name of the blob container used to store chunks. This container must be
     # created before running cortex.
     # CLI flag: -ruler.storage.azure.container-name
@@ -1716,6 +1721,11 @@ aws:
     [insecure_skip_verify: <boolean> | default = false]
 
 azure:
+  # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
+  # AzureGermanCloud, AzureUSGovernment.
+  # CLI flag: -azure.environment
+  [environment: <string> | default = "AzureGlobal"]
+
   # Name of the blob container used to store chunks. This container must be
   # created before running cortex.
   # CLI flag: -azure.container-name

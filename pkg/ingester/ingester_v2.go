@@ -794,7 +794,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
-	batchBytesSize := 0 // In bytes
+	batchSizeBytes := 0
 	numSamples := 0
 	numSeries := 0
 	for ss.Next() {
@@ -814,7 +814,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		numSeries++
 		tsSize := ts.Size()
 
-		if (batchBytesSize > 0 && batchBytesSize+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
+		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
 			// Adding this series to the batch would make it too big,
 			// flush the data and add it to new batch instead.
 			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
@@ -824,12 +824,12 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 				return err
 			}
 
-			batchBytesSize = 0
+			batchSizeBytes = 0
 			timeseries = timeseries[:0]
 		}
 
 		timeseries = append(timeseries, ts)
-		batchBytesSize += tsSize
+		batchSizeBytes += tsSize
 	}
 
 	// Ensure no error occurred while iterating the series set.
@@ -838,7 +838,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	// Final flush any existing metrics
-	if batchBytesSize != 0 {
+	if batchSizeBytes != 0 {
 		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 			Timeseries: timeseries,
 		})

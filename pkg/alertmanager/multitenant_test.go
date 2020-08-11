@@ -177,3 +177,17 @@ func TestLoadAllConfigs(t *testing.T) {
 		cortex_alertmanager_config_invalid{user="user3"} 0
 	`), "cortex_alertmanager_config_invalid"))
 }
+
+func TestAlertmanager_NoExternalURL(t *testing.T) {
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create the Multitenant Alertmanager.
+	reg := prometheus.NewPedanticRegistry()
+	_, err = NewMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		DataDir: tempDir,
+	}, log.NewNopLogger(), reg)
+
+	require.EqualError(t, err, "unable to create Alertmanager, no 'web.external-url' configured")
+}

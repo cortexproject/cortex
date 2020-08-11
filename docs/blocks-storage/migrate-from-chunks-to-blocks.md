@@ -35,7 +35,7 @@ Before starting the migration of ingesters, we need to prepare other services.
 
 ### Querier and Ruler
 
-_Everything discussed for querier applies to ruler as well, since it shares querier configuration – options prefix is `querier` even when used by ruler._
+_Everything discussed for querier applies to ruler as well, since it shares querier configuration – CLI flags prefix is `-querier` even when used by ruler._
 
 Querier and ruler need to be reconfigured as follow:
 
@@ -53,7 +53,9 @@ This is achieved by using `-querier.second-store-engine=blocks` option, and prov
 Querier (and ruler) has an option `-querier.query-store-after` to query store only if query hits data older than some period of time.
 For example, if ingesters keep 12h of data in memory, there is no need to hit the store for queries that only need last 1h of data.
 During the migration, this flag needs to be set to 0, to make queriers always consult the store when handling queries.
-The reason is that after chunks ingesters shutdown, they can no longer return chunks from memory.
+As chunks ingesters shut down, they flush chunks to the storage. They are then replaced with new ingesters configured
+to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don't reload chunks),
+and need to use storage instead.
 
 #### `-querier.ingester-streaming=false`
 
@@ -72,7 +74,7 @@ Query-frontend needs to be reconfigured as follow:
 
 Query frontend has an option `-querier.parallelise-shardable-queries` to split some incoming queries into multiple queries based on sharding factor used in v11 schema of chunk storage.
 As the description implies, it only works when using chunks storage.
-During and after the migration to blocks (and also after possible rollback), this option needs to be disabled otherwise query-frontend will generate queries that cannot be satisfied by blocks.
+During and after the migration to blocks (and also after possible rollback), this option needs to be disabled otherwise query-frontend will generate queries that cannot be satisfied by blocks storage.
 
 ### Compactor and Store-gateway
 
@@ -158,9 +160,9 @@ Kubernetes resources related to the ingesters running the blocks storage may be 
 
 ### Known issues
 
-After rollback, chunk-ingesters replayed their old Write-Ahead-Log, thus loading old chunks into memory.
-WAL doesn't remember whether these old chunks were already flushed or not, so they are flushed again.
-Until that flush happens, Cortex reports those chunks as unflushed, which may trigger some alerts (via `cortex_oldest_unflushed_chunk_timestamp_seconds` metric).
+After rollback, chunks ingesters will replay their old Write-Ahead-Log, thus loading old chunks into memory.
+WAL doesn't remember whether these old chunks were already flushed or not, so they will be flushed again to the storage.
+Until that flush happens, Cortex reports those chunks as unflushed, which may trigger some alerts based on `cortex_oldest_unflushed_chunk_timestamp_seconds` metric.
 
 ## Appendix
 

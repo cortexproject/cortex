@@ -502,9 +502,8 @@ blocks_storage:
     # CLI flag: -experimental.blocks-storage.tsdb.wal-compression-enabled
     [wal_compression_enabled: <boolean> | default = false]
 
-    # If true, and transfer of blocks on shutdown fails or is disabled,
-    # incomplete blocks are flushed to storage instead. If false, incomplete
-    # blocks will be reused after restart, and uploaded when finished.
+    # True to flush blocks to storage on shutdown. If false, incomplete blocks
+    # will be reused after restart.
     # CLI flag: -experimental.blocks-storage.tsdb.flush-blocks-on-shutdown
     [flush_blocks_on_shutdown: <boolean> | default = false]
 

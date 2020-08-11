@@ -175,12 +175,28 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
 		require.NoError(t, err)
 
-		// No need to repeat this test for each user.
+		// No need to repeat the test on missing metric name for each user.
 		if userID == 0 && testMissingMetricName {
 			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
 			require.NoError(t, err)
 			require.Equal(t, 422, res.StatusCode)
 			require.Contains(t, string(body), "query must contain metric name")
+		}
+
+		// No need to repeat the test on start/end time rounding for each user.
+		if userID == 0 {
+			start := time.Unix(1595846748, 806*1e6)
+			end := time.Unix(1595846750, 806*1e6)
+
+			result, err := c.QueryRange("time()", start, end, time.Second)
+			require.NoError(t, err)
+			require.Equal(t, model.ValMatrix, result.Type())
+
+			matrix := result.(model.Matrix)
+			require.Len(t, matrix, 1)
+			require.Len(t, matrix[0].Values, 3)
+			assert.Equal(t, model.Time(1595846748806), matrix[0].Values[0].Timestamp)
+			assert.Equal(t, model.Time(1595846750806), matrix[0].Values[2].Timestamp)
 		}
 
 		for q := 0; q < numQueriesPerUser; q++ {
@@ -197,9 +213,9 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 
 	wg.Wait()
 
-	extra := float64(0)
+	extra := float64(1)
 	if testMissingMetricName {
-		extra = 1
+		extra++
 	}
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 

@@ -18,22 +18,6 @@ import (
 )
 
 const (
-	//Blob service endpoint of AzureGlobal
-	globalBlobURLFmt      = "https://%s.blob.core.windows.net/%s/%s"
-	globalContainerURLFmt = "https://%s.blob.core.windows.net/%s"
-
-	// Blob service endpoint of AzureChinaCloud
-	chinaBlobURLFmt      = "https://%s.blob.core.chinacloudapi.cn/%s/%s"
-	chinaContainerURLFmt = "https://%s.blob.core.chinacloudapi.cn/%s"
-
-	// Blob service endpoint of AzureGermanCloud
-	germanyBlobURLFmt      = "https://%s.blob.core.cloudapi.de/%s/%s"
-	germanyContainerURLFmt = "https://%s.blob.core.cloudapi.de/%s"
-
-	// Blob service endpoint of AzureUSGovernment
-	govBlobURLFmt      = "https://%s.blob.core.usgovcloudapi.net/%s/%s"
-	govContainerURLFmt = "https://%s.blob.core.usgovcloudapi.net/%s"
-
 	// Environment
 	azureGlobal       = "AzureGlobal"
 	azureChinaCloud   = "AzureChinaCloud"
@@ -43,6 +27,24 @@ const (
 
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
+	endpoints             = map[string]struct{ blobURLFmt, containerURLFmt string }{
+		azureGlobal: {
+			"https://%s.blob.core.windows.net/%s/%s",
+			"https://%s.blob.core.windows.net/%s",
+		},
+		azureChinaCloud: {
+			"https://%s.blob.core.chinacloudapi.cn/%s/%s",
+			"https://%s.blob.core.chinacloudapi.cn/%s",
+		},
+		azureGermanCloud: {
+			"https://%s.blob.core.cloudapi.de/%s/%s",
+			"https://%s.blob.core.cloudapi.de/%s",
+		},
+		azureUSGovernment: {
+			"https://%s.blob.core.usgovcloudapi.net/%s/%s",
+			"https://%s.blob.core.usgovcloudapi.net/%s",
+		},
+	}
 )
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
@@ -251,31 +253,9 @@ func (c *BlobStorageConfig) Validate() error {
 }
 
 func (b *BlobStorage) selectBlobURLFmt() string {
-	switch b.cfg.Environment {
-	case azureGlobal:
-		return globalBlobURLFmt
-	case azureChinaCloud:
-		return chinaBlobURLFmt
-	case azureGermanCloud:
-		return germanyBlobURLFmt
-	case azureUSGovernment:
-		return govBlobURLFmt
-	default:
-		return globalBlobURLFmt
-	}
+	return endpoints[b.cfg.Environment].blobURLFmt
 }
 
 func (b *BlobStorage) selectContainerURLFmt() string {
-	switch b.cfg.Environment {
-	case azureGlobal:
-		return globalContainerURLFmt
-	case azureChinaCloud:
-		return chinaContainerURLFmt
-	case azureGermanCloud:
-		return germanyContainerURLFmt
-	case azureUSGovernment:
-		return govContainerURLFmt
-	default:
-		return globalContainerURLFmt
-	}
+	return endpoints[b.cfg.Environment].containerURLFmt
 }

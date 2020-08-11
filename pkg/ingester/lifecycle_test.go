@@ -2,12 +2,8 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"io"
-	"io/ioutil"
 	"math"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -95,7 +90,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 }
 
-func TestIngesterTransfer(t *testing.T) {
+func TestIngesterChunksTransfer(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
@@ -267,76 +262,6 @@ func (i ingesterClientAdapater) TransferChunks(ctx context.Context, _ ...grpc.Ca
 	return stream, nil
 }
 
-type ingesterTransferTSDBStreamMock struct {
-	ctx  context.Context
-	reqs chan *client.TimeSeriesFile
-	resp chan *client.TransferTSDBResponse
-	err  chan error
-
-	grpc.ServerStream
-	grpc.ClientStream
-}
-
-func (s *ingesterTransferTSDBStreamMock) Send(tsc *client.TimeSeriesFile) error {
-	s.reqs <- tsc
-	return nil
-}
-
-func (s *ingesterTransferTSDBStreamMock) CloseAndRecv() (*client.TransferTSDBResponse, error) {
-	close(s.reqs)
-	select {
-	case resp := <-s.resp:
-		return resp, nil
-	case err := <-s.err:
-		return nil, err
-	}
-}
-
-func (s *ingesterTransferTSDBStreamMock) SendAndClose(resp *client.TransferTSDBResponse) error {
-	s.resp <- resp
-	return nil
-}
-
-func (s *ingesterTransferTSDBStreamMock) ErrorAndClose(err error) {
-	s.err <- err
-}
-
-func (s *ingesterTransferTSDBStreamMock) Recv() (*client.TimeSeriesFile, error) {
-	req, ok := <-s.reqs
-	if !ok {
-		return nil, io.EOF
-	}
-	return req, nil
-}
-
-func (s *ingesterTransferTSDBStreamMock) Context() context.Context {
-	return s.ctx
-}
-
-func (*ingesterTransferTSDBStreamMock) SendMsg(m interface{}) error {
-	return nil
-}
-
-func (*ingesterTransferTSDBStreamMock) RecvMsg(m interface{}) error {
-	return nil
-}
-
-func (i ingesterClientAdapater) TransferTSDB(ctx context.Context, _ ...grpc.CallOption) (client.Ingester_TransferTSDBClient, error) {
-	stream := &ingesterTransferTSDBStreamMock{
-		ctx:  ctx,
-		reqs: make(chan *client.TimeSeriesFile),
-		resp: make(chan *client.TransferTSDBResponse),
-		err:  make(chan error),
-	}
-	go func() {
-		err := i.ingester.TransferTSDB(stream)
-		if err != nil {
-			stream.ErrorAndClose(err)
-		}
-	}()
-	return stream, nil
-}
-
 func (i ingesterClientAdapater) Close() error {
 	return nil
 }
@@ -400,125 +325,4 @@ func TestIngesterFlush(t *testing.T) {
 			},
 		},
 	}, res)
-}
-
-func TestV2IngesterTransfer(t *testing.T) {
-	scenarios := map[string]struct {
-		failedTransfers int
-	}{
-		"transfer succeeded at first attempt": {
-			failedTransfers: 0,
-		},
-		"transfer failed at first attempt, then succeeded": {
-			failedTransfers: 1,
-		},
-	}
-
-	// We run the same under different scenarios
-	for name, scenario := range scenarios {
-		t.Run(name, func(t *testing.T) {
-			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-			require.NoError(t, err)
-
-			dir1, err := ioutil.TempDir("", "tsdb")
-			require.NoError(t, err)
-			dir2, err := ioutil.TempDir("", "tsdb")
-			require.NoError(t, err)
-			require.NoError(t, os.Remove(dir2)) // remove the destination dir so there isn't a move conflict
-
-			// Add a spurious file to the ing1 TSDB directory, in order to ensure
-			// the transfer successfully work anyway.
-			ioutil.WriteFile(filepath.Join(dir1, ".DS_Store"), []byte("{}"), 0644)
-
-			// Start the first ingester, and get it into ACTIVE state.
-			cfg1 := defaultIngesterTestConfig()
-			cfg1.BlocksStorageEnabled = true
-			cfg1.BlocksStorageConfig.TSDB.Dir = dir1
-			cfg1.BlocksStorageConfig.S3 = s3.Config{
-				Endpoint:        "dummy",
-				BucketName:      "dummy",
-				SecretAccessKey: flagext.Secret{Value: "dummy"},
-				AccessKeyID:     "dummy",
-			}
-			cfg1.LifecyclerConfig.ID = "ingester1"
-			cfg1.LifecyclerConfig.Addr = "ingester1"
-			cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
-			cfg1.MaxTransferRetries = 10
-			ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
-			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing1))
-
-			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-				return ing1.lifecycler.GetState()
-			})
-
-			// Now write a sample to this ingester
-			req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
-			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err = ing1.Push(ctx, req)
-			require.NoError(t, err)
-
-			// Start a second ingester, but let it go into PENDING
-			cfg2 := defaultIngesterTestConfig()
-			cfg2.BlocksStorageEnabled = true
-			cfg2.BlocksStorageConfig.TSDB.Dir = dir2
-			cfg2.BlocksStorageConfig.S3 = s3.Config{
-				Endpoint:        "dummy",
-				BucketName:      "dummy",
-				SecretAccessKey: flagext.Secret{Value: "dummy"},
-				AccessKeyID:     "dummy",
-			}
-			cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
-			cfg2.LifecyclerConfig.ID = "ingester2"
-			cfg2.LifecyclerConfig.Addr = "ingester2"
-			cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-			ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
-			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing2))
-
-			// Let ing1 send blocks/wal to ing2
-			ingesterClientFactoryCount := 0
-
-			ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
-				if ingesterClientFactoryCount++; ingesterClientFactoryCount <= scenario.failedTransfers {
-					return nil, errors.New("mocked error simulating the case the leaving ingester is unable to connect to the joining ingester")
-				}
-
-				return ingesterClientAdapater{
-					ingester: ing2,
-				}, nil
-			}
-
-			// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
-			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing1))
-			test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
-				return ing2.lifecycler.GetState()
-			})
-
-			// And check the second ingester has the sample
-			matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
-			require.NoError(t, err)
-
-			request, err := client.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
-			require.NoError(t, err)
-
-			response, err := ing2.Query(ctx, request)
-			require.NoError(t, err)
-			assert.Equal(t, expectedResponse, response)
-
-			// Check we can send the same sample again to the new ingester and get the same result
-			req, _, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
-			_, err = ing2.Push(ctx, req)
-			require.NoError(t, err)
-			response, err = ing2.Query(ctx, request)
-			require.NoError(t, err)
-			assert.Equal(t, expectedResponse, response)
-
-			// Assert the data is in the expected location of dir2
-			files, err := ioutil.ReadDir(dir2)
-			require.NoError(t, err)
-			require.Equal(t, 1, len(files))
-			require.Equal(t, "1", files[0].Name())
-		})
-	}
 }

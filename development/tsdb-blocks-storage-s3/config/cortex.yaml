@@ -13,8 +13,6 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
-  max_transfer_retries: 1
-
   lifecycler:
     # We want to start immediately.
     join_after: 0

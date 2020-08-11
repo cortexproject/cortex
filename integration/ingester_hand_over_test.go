@@ -16,13 +16,6 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, BlocksStorageFlags, func(t *testing.T, s *e2e.Scenario) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
-		require.NoError(t, s.StartAndWaitReady(minio))
-	})
-}
-
 func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 	runIngesterHandOverTest(t, ChunksStorageFlags, func(t *testing.T, s *e2e.Scenario) {
 		dynamo := e2edb.NewDynamoDB()
@@ -77,9 +70,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
 	// Ensure 1st ingester metrics are tracked correctly.
-	if flags["-store.engine"] != blocksStorageEngine {
-		require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
-	}
+	require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
 
 	// Start ingester-2.
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{

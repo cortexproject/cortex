@@ -112,9 +112,19 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	return res, nil
 }
 
-// Query runs a query
+// Query runs an instant query.
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	value, _, err := c.querierClient.Query(context.Background(), query, ts)
+	return value, err
+}
+
+// Query runs a query range.
+func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
+	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
+		Start: start,
+		End:   end,
+		Step:  step,
+	})
 	return value, err
 }
 

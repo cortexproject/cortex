@@ -8,7 +8,13 @@ slug: ingesters-migration
 - Author: @pstibrany
 - Reviewers:
 - Date: June 2020
-- Status: Proposed
+- Status: Replaced with [migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md).
+
+# Warning
+
+Suggestions from this proposal were implemented, but general procedure outlined here doesn't quite work in
+Kubernetes environment. Please see [chunks to blocks migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md)
+instead.
 
 # Migrating ingesters from chunks to blocks
 

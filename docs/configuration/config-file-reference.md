@@ -1667,6 +1667,19 @@ aws:
     # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
+    backoff_config:
+      # Minimum backoff time
+      # CLI flag: -dynamodb.min-backoff
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum backoff time
+      # CLI flag: -dynamodb.max-backoff
+      [max_period: <duration> | default = 50s]
+
+      # Maximum number of times to retry an operation
+      # CLI flag: -dynamodb.max-retries
+      [max_retries: <int> | default = 20]
+
   # S3 endpoint URL with escaped Key and Secret encoded. If only region is
   # specified as a host, proper endpoint will be deduced. Use
   # inmemory:///<bucket-name> to use a mock in-memory implementation.

@@ -43,7 +43,7 @@ The following Prometheus API endpoints are supported by `query-tee`:
 
 `query-tee` supports acting as a transparent proxy for requests to routes not matching any of the documented API endpoints above.
 When enabled, those requests are passed on to just the configured preferred backend.
-To activate this feature it requires setting `-proxy.passthrough-non-registered-routes` flag to `true` and configuring a preferred backend.
+To activate this feature it requires setting `-proxy.passthrough-non-registered-routes=true` flag and configuring a preferred backend.
 
 ### Authentication
 

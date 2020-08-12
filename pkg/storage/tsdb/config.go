@@ -55,6 +55,7 @@ var (
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 	errEmptyBackfillDir             = errors.New("empty backfill directory")
+	errInvalidBackfillMaxAge        = errors.New("invalid backfill max age")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -177,7 +178,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 	f.StringVar(&cfg.BackfillDir, "experimental.blocks-storage.tsdb.backfill-dir", "backfill_tsdb", "Local directory to store backfill TSDBs in the ingesters.")
-	f.DurationVar(&cfg.BackfillMaxAge, "experimental.blocks-storage.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling. 0 disables it.")
+	f.DurationVar(&cfg.BackfillMaxAge, "experimental.blocks-storage.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling. 0 disables it. It should be in hours and align with 24h.")
 }
 
 // Validate the config.
@@ -204,6 +205,10 @@ func (cfg *TSDBConfig) Validate() error {
 
 	if cfg.BackfillMaxAge > 0 && cfg.BackfillDir == "" {
 		return errEmptyBackfillDir
+	}
+
+	if cfg.BackfillMaxAge > 0 && (cfg.BackfillMaxAge > 24*time.Hour || cfg.BackfillMaxAge%time.Hour != 0 || (24*time.Hour)%cfg.BackfillMaxAge != 0) {
+		return errInvalidBackfillMaxAge
 	}
 
 	return nil

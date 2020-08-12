@@ -24,6 +24,11 @@ type backfillTSDB struct {
 	mtx sync.RWMutex
 	// firstTSDB is the one which would be overlapping with the main TSDB.
 	// secondTSDB is the older TSDB among the two here.
+	// If the secondTSDB goes beyond the backfill age, it will be compacted
+	// and shipped and firstTSDB is moved to secondTSDB. During this process,
+	// there is only 1 TSDB ingesting old data, so there can be gaps till the compaction
+	// and shipping is going on.
+	// TODO(codesome): Avoid gaps by using a separate queue to compact and ship blocks.
 	firstTSDB, secondTSDB *backfillTSDBWrapper
 }
 
@@ -102,6 +107,12 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		app = a.secondAppender
 		db = a.backfillTSDB.secondTSDB.db
 	} else if s.TimestampMs >= time.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
+		// The sample is in the backfill range.
+		if a.backfillTSDB.firstTSDB != nil && a.backfillTSDB.secondTSDB != nil {
+			// This can happen if the secondTSDB is running compaction/shipping.
+			return nil, nil, errors.New("cannot find backfill TSDB")
+		}
+
 		var err error
 		start, end := a.timeRangesForTimestamp(s.TimestampMs)
 		db, err = a.ingester.createNewTSDB(

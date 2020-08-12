@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -449,7 +451,6 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			if cause == storage.ErrOutOfBounds &&
 				i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge > 0 &&
 				s.TimestampMs > db.Head().MaxTime()-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge.Milliseconds() {
-
 				if backfillApp == nil {
 					backfillApp = db.backfillTSDB.appender(i)
 				}
@@ -1136,11 +1137,14 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 				return
 			}
 
+			i.openExistingBackfillTSDBFor(userID, db)
+
 			// Add the database to the map of user databases
 			i.userStatesMtx.Lock()
 			i.TSDBState.dbs[userID] = db
 			i.userStatesMtx.Unlock()
 			i.metrics.memUsers.Inc()
+
 		}(userID)
 
 		return filepath.SkipDir // Don't descend into directories
@@ -1154,6 +1158,62 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
 	}
 	return err
+}
+
+func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
+	userPath := i.cfg.BlocksStorageConfig.TSDB.BackfillBlocksDir(userID)
+	backfillTSDBDirs, err := ioutil.ReadDir(userPath)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "unable to open user TSDB dir for backfill", "err", err, "user", userID, "path", userPath)
+		return
+	}
+
+	// There can be upto 2 TSDBs and anything old will be shipped and deleted.
+	// TODO(codesome): Handle changing of the backfill age and just compact and ship old TSDBs in that case.
+	if len(backfillTSDBDirs) > 2 {
+		// TODO(codesome): This should not happen. If it did for some reason, we should compact and ship the older TSDBs.
+		level.Warn(util.Logger).Log("msg", "found more than two backfill TSDBs", "user", userID, "path", userPath, "dirs", backfillTSDBDirs)
+	}
+
+	openBackfillTSDB := func(name string) (int64, int64, *userTSDB, error) {
+		start, end, err := getBackfillTSDBRanges(name)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to get bucket range", "err", err, "user", userID, "tsdb_name", name)
+			return 0, 0, nil, err
+		}
+		dbDir := filepath.Join(userPath, name)
+		userDB, err := i.createNewTSDB(userID, dbDir, (end-start)*2, (end-start)*2, prometheus.NewRegistry())
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to open user backfill TSDB", "err", err, "user", userID)
+			return 0, 0, nil, err
+		}
+
+		return start, end, userDB, nil
+	}
+
+	db.backfillTSDB.mtx.Lock()
+	// TODO(codesome): Dont load TSDB if the block range is not same as current configured. Compact and ship them instead.
+	if len(backfillTSDBDirs) > 0 {
+		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-1].Name())
+		if err == nil {
+			db.backfillTSDB.firstTSDB = &backfillTSDBWrapper{
+				db:    userDB,
+				start: start,
+				end:   end,
+			}
+		}
+	}
+	if len(backfillTSDBDirs) > 1 {
+		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-2].Name())
+		if err == nil {
+			db.backfillTSDB.secondTSDB = &backfillTSDBWrapper{
+				db:    userDB,
+				start: start,
+				end:   end,
+			}
+		}
+	}
+	db.backfillTSDB.mtx.Unlock()
 }
 
 // numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.
@@ -1404,4 +1464,56 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	}()
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func getBackfillTSDBRanges(tsdbName string) (int64, int64, error) {
+	// TODO(codesome) use time.Parse.
+
+	// YYYY_MM_DD_HH_YYYY_MM_DD_HH
+	// 012345678901234567890123456
+	if len(tsdbName) != 27 {
+		return 0, 0, errors.New("Invalid bucket name")
+	}
+
+	startYYYY, err := strconv.Atoi(tsdbName[0:4])
+	if err != nil {
+		return 0, 0, err
+	}
+	startMM, err := strconv.Atoi(tsdbName[5:7])
+	if err != nil {
+		return 0, 0, err
+	}
+	startDD, err := strconv.Atoi(tsdbName[8:10])
+	if err != nil {
+		return 0, 0, err
+	}
+	startHH, err := strconv.Atoi(tsdbName[11:13])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	endYYYY, err := strconv.Atoi(tsdbName[14:18])
+	if err != nil {
+		return 0, 0, err
+	}
+	endMM, err := strconv.Atoi(tsdbName[19:21])
+	if err != nil {
+		return 0, 0, err
+	}
+	endDD, err := strconv.Atoi(tsdbName[22:24])
+	if err != nil {
+		return 0, 0, err
+	}
+	endHH, err := strconv.Atoi(tsdbName[25:27])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	startTime := time.Date(startYYYY, time.Month(startMM), startDD, startHH, 0, 0, 0, time.UTC)
+	endTime := time.Date(endYYYY, time.Month(endMM), endDD, endHH, 0, 0, 0, time.UTC)
+
+	start := startTime.Unix() * 1000
+	end := endTime.Unix() * 1000
+
+	return start, end, nil
 }

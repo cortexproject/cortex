@@ -183,8 +183,7 @@ func TestProxy_Passthrough(t *testing.T) {
 	}
 
 	type mockedBackend struct {
-		pathPrefix string
-		routes     []route
+		routes []route
 	}
 
 	type query struct {

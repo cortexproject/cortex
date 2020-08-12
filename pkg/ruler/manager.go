@@ -2,7 +2,9 @@ package ruler
 
 import (
 	"context"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"net/http"
+	"sync"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -13,9 +15,8 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
-	"net/http"
-	"sync"
 
+	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -34,7 +35,7 @@ type MultiTenantManager interface {
 }
 
 type DefaultMultiTenantManager struct {
-	cfg Config
+	cfg            Config
 	notifierCfg    *config.Config
 	managerFactory ManagerFactory
 
@@ -51,7 +52,31 @@ type DefaultMultiTenantManager struct {
 	notifiers    map[string]*rulerNotifier
 
 	registry prometheus.Registerer
-	logger log.Logger
+	logger   log.Logger
+}
+
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+	ncfg, err := buildNotifierConfig(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	userManagerMetrics := NewManagerMetrics()
+	if reg != nil {
+		reg.MustRegister(userManagerMetrics)
+	}
+
+	return &DefaultMultiTenantManager{
+		cfg:                cfg,
+		notifierCfg:        ncfg,
+		managerFactory:     managerFactory,
+		notifiers:          map[string]*rulerNotifier{},
+		mapper:             newMapper(cfg.RulePath, logger),
+		userManagers:       map[string]*promRules.Manager{},
+		userManagerMetrics: userManagerMetrics,
+		registry:           reg,
+		logger:             logger,
+	}, nil
 }
 
 func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList) {

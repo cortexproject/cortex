@@ -181,33 +181,16 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
-	ncfg, err := buildNotifierConfig(&cfg)
+	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, logger)
 	if err != nil {
 		return nil, err
 	}
-
-	userManagerMetrics := NewManagerMetrics()
-
-	if reg != nil {
-		reg.MustRegister(userManagerMetrics)
-	}
-
 	ruler := &Ruler{
-		cfg:                cfg,
-		store:              ruleStore,
-		manager: &DefaultMultiTenantManager{
-			cfg: cfg,
-			notifierCfg: ncfg,
-			managerFactory: managerFactory,
-			notifiers: map[string]*rulerNotifier{},
-			mapper: newMapper(cfg.RulePath, logger),
-			userManagers: map[string]*promRules.Manager{},
-			userManagerMetrics: userManagerMetrics,
-			registry: reg,
-			logger: logger,
-		},
-		registry:           reg,
-		logger:             logger,
+		cfg:      cfg,
+		store:    ruleStore,
+		manager:  manager,
+		registry: reg,
+		logger:   logger,
 	}
 
 	if cfg.EnableSharding {

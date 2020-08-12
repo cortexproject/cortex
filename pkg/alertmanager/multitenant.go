@@ -484,7 +484,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if !ok {
-		http.Error(w, "no Alertmanager for this user ID, Alertmanager not configured", http.StatusNotFound)
+		http.Error(w, "the Alertmanager has not been configured", http.StatusNotFound)
 		return
 	}
 

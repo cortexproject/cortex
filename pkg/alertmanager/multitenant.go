@@ -176,7 +176,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	}
 
 	if cfg.ExternalURL.URL == nil {
-		return nil, fmt.Errorf("unable to create Alertmanager, no 'web.external-url' configured")
+		return nil, fmt.Errorf("unable to create Alertmanager because the external URL has not been configured")
 	}
 
 	var fallbackConfig []byte

@@ -2860,8 +2860,8 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.topology
 [topology: <string> | default = "server"]
 
-# Redis service endpoint to use when caching chunks. If empty, no redis will be
-# used.
+# Redis service endpoint to use for caching. A comma-separated list of endpoints
+# when the topology is cluster. If empty, no redis will be used.
 # CLI flag: -<prefix>.redis.endpoint
 [endpoint: <string> | default = ""]
 
@@ -2894,26 +2894,6 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # pool does not close connections based on age.
 # CLI flag: -<prefix>.redis.max-connection-age
 [max_connection_age: <duration> | default = 0s]
-
-# Deprecated: Maximum number of idle connections in pool.
-# CLI flag: -<prefix>.redis.max-idle-conns
-[max_idle_conns: <int> | default = 0]
-
-# Deprecated (use pool-size instead): Maximum number of active connections in
-# pool.
-# CLI flag: -<prefix>.redis.max-active-conns
-[max_active_conns: <int> | default = 0]
-
-# Deprecated (use max-connection-age instead): Close connections older than this
-# duration.
-# CLI flag: -<prefix>.redis.max-conn-lifetime
-[max_conn_lifetime: <duration> | default = 0s]
-
-# Deprecated: Enables waiting if there are no idle connections. If the value is
-# false and the pool is at the max-active-conns limit, the pool will return a
-# connection with ErrPoolExhausted error and not wait for idle connections.
-# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
-[wait_on_pool_exhaustion: <boolean> | default = false]
 ```
 
 ### `memcached_config`

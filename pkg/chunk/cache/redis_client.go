@@ -34,17 +34,12 @@ type RedisConfig struct {
 	EnableTLS   bool           `yaml:"enable_tls"`
 	IdleTimeout time.Duration  `yaml:"idle_timeout"`
 	MaxConnAge  time.Duration  `yaml:"max_connection_age"`
-
-	DeprecatedMaxIdleConns         int           `yaml:"max_idle_conns"`
-	DeprecatedMaxActiveConns       int           `yaml:"max_active_conns"`
-	DeprecatedMaxConnLifetime      time.Duration `yaml:"max_conn_lifetime"`
-	DeprecatedWaitOnPoolExhaustion bool          `yaml:"wait_on_pool_exhaustion"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Topology, prefix+"redis.topology", redisTopologyServer, description+"Redis topology. Supported: "+redisTopologyServer+", "+redisTopologyCluster+", "+redisTopologySentinel+".")
-	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis service endpoint to use when caching chunks. If empty, no redis will be used.")
+	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis service endpoint to use for caching. A comma-separated list of endpoints when the topology is cluster. If empty, no redis will be used.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
@@ -52,11 +47,6 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
-
-	f.IntVar(&cfg.DeprecatedMaxIdleConns, prefix+"redis.max-idle-conns", 0, "Deprecated: "+description+"Maximum number of idle connections in pool.")
-	f.IntVar(&cfg.DeprecatedMaxActiveConns, prefix+"redis.max-active-conns", 0, "Deprecated (use pool-size instead): "+description+"Maximum number of active connections in pool.")
-	f.DurationVar(&cfg.DeprecatedMaxConnLifetime, prefix+"redis.max-conn-lifetime", 0, "Deprecated (use max-connection-age instead): "+description+"Close connections older than this duration.")
-	f.BoolVar(&cfg.DeprecatedWaitOnPoolExhaustion, prefix+"redis.wait-on-pool-exhaustion", false, "Deprecated: "+description+"Enables waiting if there are no idle connections. If the value is false and the pool is at the max-active-conns limit, the pool will return a connection with ErrPoolExhausted error and not wait for idle connections.")
 }
 
 // Validate Redis configuration
@@ -86,12 +76,6 @@ type redisCommander interface {
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) RedisClient {
-	if cfg.DeprecatedMaxActiveConns > 0 && cfg.PoolSize == 0 {
-		cfg.PoolSize = cfg.DeprecatedMaxActiveConns
-	}
-	if cfg.DeprecatedMaxConnLifetime != 0 && cfg.MaxConnAge == 0 {
-		cfg.MaxConnAge = cfg.DeprecatedMaxConnLifetime
-	}
 	switch cfg.Topology {
 	case redisTopologyCluster:
 		return newRedisClusterClient(cfg)
@@ -232,8 +216,9 @@ func (c *redisSentinelClient) getMaster(ctx context.Context) (*redisBasicClient,
 	if err != nil {
 		return nil, err
 	}
+	err = ErrNoMasters
 	if len(masters) == 0 {
-		return nil, ErrNoMasters
+		return nil, err
 	}
 	for _, master := range masters {
 		// expected: master = []interface {}{"name", "<master name>", "ip", "<IP>", "port", "<port>", ... }
@@ -251,9 +236,12 @@ func (c *redisSentinelClient) getMaster(ctx context.Context) (*redisBasicClient,
 					}),
 				}, nil
 			}
+			err = fmt.Errorf("redis: unexpected master info format %v", info)
+		} else {
+			err = fmt.Errorf("redis: unexpected master info type %#v", master)
 		}
 	}
-	return nil, ErrNoMasters
+	return nil, err
 }
 
 func (c *redisSentinelClient) Ping(ctx context.Context) error {

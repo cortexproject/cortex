@@ -59,7 +59,7 @@ func mockRedisCache() (*RedisCache, error) {
 
 	redisClient := &redisBasicClient{
 		expiration: time.Minute,
-		timeout:    10 * time.Millisecond,
+		timeout:    100 * time.Millisecond,
 		rdb: redis.NewClient(&redis.Options{
 			Addr: redisServer.Addr(),
 		}),

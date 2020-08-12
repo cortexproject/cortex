@@ -82,8 +82,8 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 
 		_, err = ingesterChunksClient.Push(user.InjectOrgID(context.Background(), "user"), &client2.WriteRequest{
 			Timeseries: []client2.PreallocTimeseries{
-				{&client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "1"}}, Samples: s1}},
-				{&client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s1}}},
+				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "1"}}, Samples: s1}},
+				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s1}}},
 			Source: client2.API,
 		})
 		require.NoError(t, err)
@@ -97,8 +97,8 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 
 		_, err = ingesterBlocksClient.Push(user.InjectOrgID(context.Background(), "user"), &client2.WriteRequest{
 			Timeseries: []client2.PreallocTimeseries{
-				{&client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s2}},
-				{&client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "3"}}, Samples: s1}}},
+				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s2}},
+				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "3"}}, Samples: s1}}},
 			Source: client2.API,
 		})
 		require.NoError(t, err)

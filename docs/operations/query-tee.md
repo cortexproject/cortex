@@ -39,7 +39,7 @@ The following Prometheus API endpoints are supported by `query-tee`:
 - `/api/v1/alerts` (GET)
 - `/api/v1/rules` (GET)
 
-#### PassThrough requests
+#### Pass-through requests
 
 `query-tee` supports acting as a PassThrough for requests to routes not matching any of the documented `API endpoints above`.
 When enabled, those requests are passed on to just the configured preferred backend.

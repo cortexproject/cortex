@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	promRules "github.com/prometheus/prometheus/rules"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -58,8 +57,7 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-// TODO: newRuler and newManager have lot of common code, refactor
-func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
+func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, func()) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	cleanup := func() {
@@ -85,52 +83,26 @@ func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	ncfg, err := buildNotifierConfig(&cfg)
-	assert.NoError(t, err)
+	return engine, noopQueryable, pusher, l, cleanup
+}
 
-	return &DefaultMultiTenantManager{
-		cfg: cfg,
-		notifierCfg: ncfg,
-		managerFactory: DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine),
-		userManagers: map[string]*promRules.Manager{},
-		notifiers: map[string]*rulerNotifier{},
-		registry: prometheus.NewRegistry(),
-		logger: l,
-	}, cleanup
+func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
+	engine, noopQueryable, pusher, logger, cleanup := testSetup(t, cfg)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine), prometheus.NewRegistry(), logger)
+	require.NoError(t, err)
+
+	return manager, cleanup
 }
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
-	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
-
-	tracker := promql.NewActiveQueryTracker(dir, 20, util.Logger)
-
-	engine := promql.NewEngine(promql.EngineOpts{
-		MaxSamples:         1e6,
-		ActiveQueryTracker: tracker,
-		Timeout:            2 * time.Minute,
-	})
-
-	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return storage.NoopQuerier(), nil
-	})
-
-	// Mock the pusher
-	pusher := newPusherMock()
-	pusher.MockPush(&client.WriteResponse{}, nil)
-
-	l := log.NewLogfmtLogger(os.Stdout)
-	l = level.NewFilter(l, level.AllowInfo())
+	engine, noopQueryable, pusher, logger, cleanup := testSetup(t, cfg)
 	storage, err := NewRuleStorage(cfg.StoreConfig)
 	require.NoError(t, err)
 	ruler, err := NewRuler(
 		cfg,
 		DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine),
 		prometheus.NewRegistry(),
-		l,
+		logger,
 		storage,
 	)
 	require.NoError(t, err)

@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	promRules "github.com/prometheus/prometheus/rules"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -55,6 +56,47 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	}
 
 	return cfg, cleanup
+}
+
+// TODO: newRuler and newManager have lot of common code, refactor
+func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
+	dir, err := ioutil.TempDir("", t.Name())
+	testutil.Ok(t, err)
+	cleanup := func() {
+		os.RemoveAll(dir)
+	}
+
+	tracker := promql.NewActiveQueryTracker(dir, 20, util.Logger)
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		MaxSamples:         1e6,
+		ActiveQueryTracker: tracker,
+		Timeout:            2 * time.Minute,
+	})
+
+	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return storage.NoopQuerier(), nil
+	})
+
+	// Mock the pusher
+	pusher := newPusherMock()
+	pusher.MockPush(&client.WriteResponse{}, nil)
+
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+
+	ncfg, err := buildNotifierConfig(&cfg)
+	assert.NoError(t, err)
+
+	return &DefaultMultiTenantManager{
+		cfg: cfg,
+		notifierCfg: ncfg,
+		managerFactory: DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine),
+		userManagers: map[string]*promRules.Manager{},
+		notifiers: map[string]*rulerNotifier{},
+		registry: prometheus.NewRegistry(),
+		logger: l,
+	}, cleanup
 }
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
@@ -126,12 +168,12 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
 
-	r, rcleanup := newTestRuler(t, cfg)
+	manager, rcleanup := newManager(t, cfg)
 	defer rcleanup()
-	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
-	defer r.manager.Stop()
+	//defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+	defer manager.Stop()
 
-	n, err := r.getOrCreateNotifier("1")
+	n, err := manager.getOrCreateNotifier("1")
 	require.NoError(t, err)
 
 	// Loop until notifier discovery syncs up
@@ -145,7 +187,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	wg.Wait()
 
 	// Ensure we have metrics in the notifier.
-	assert.NoError(t, prom_testutil.GatherAndCompare(r.registry.(*prometheus.Registry), strings.NewReader(`
+	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
 		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
 		# TYPE cortex_prometheus_notifications_dropped_total counter
 		cortex_prometheus_notifications_dropped_total{user="1"} 0

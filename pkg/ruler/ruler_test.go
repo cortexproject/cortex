@@ -129,13 +129,11 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+	defer r.manager.Stop()
 
 	n, err := r.getOrCreateNotifier("1")
 	require.NoError(t, err)
 
-	for _, not := range r.notifiers {
-		defer not.stop()
-	}
 	// Loop until notifier discovery syncs up
 	for len(n.Alertmanagers()) == 0 {
 		time.Sleep(10 * time.Millisecond)

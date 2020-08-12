@@ -3,3 +3,4 @@ io/ioutil.ReadFile
 (github.com/go-kit/kit/log.Logger).Log
 io.Copy
 (github.com/opentracing/opentracing-go.Tracer).Inject
+(*github.com/cortexproject/cortex/pkg/util/spanlogger.SpanLogger).Error

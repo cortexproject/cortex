@@ -1196,7 +1196,7 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 	if len(backfillTSDBDirs) > 0 {
 		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-1].Name())
 		if err == nil {
-			db.backfillTSDB.firstTSDB = &backfillTSDBWrapper{
+			db.backfillTSDB.dbs[0] = &backfillTSDBWrapper{
 				db:    userDB,
 				start: start,
 				end:   end,
@@ -1206,7 +1206,7 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 	if len(backfillTSDBDirs) > 1 {
 		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-2].Name())
 		if err == nil {
-			db.backfillTSDB.secondTSDB = &backfillTSDBWrapper{
+			db.backfillTSDB.dbs[1] = &backfillTSDBWrapper{
 				db:    userDB,
 				start: start,
 				end:   end,
@@ -1269,6 +1269,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 	// of tenants in a large cluster.
 	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(userID string) {
 		// Get the user's DB. If the user doesn't exist, we skip it.
+		// We don't check for backfill TSDBs because we ship them as soon as they are compacted.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
 			return
@@ -1330,7 +1331,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 			return
 		}
 
-		var err error
+		var merr tsdb_errors.MultiError
 
 		i.TSDBState.compactionsTriggered.Inc()
 
@@ -1338,19 +1339,26 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			merr.Add(userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())))
+			merr.Add(userDB.backfillTSDB.compactAndShipAndDelete(true))
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			merr.Add(userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())))
+
+		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.backfillTSDB.isIdle(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
+			reason = "idle"
+			level.Info(util.Logger).Log("msg", "backfill TSDB is idle, forcing compaction and shipping", "user", userID)
+			merr.Add(userDB.backfillTSDB.compactAndShipIdleTSDBs(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout))
 
 		default:
 			reason = "regular"
-			err = userDB.Compact()
+			merr.Add(userDB.Compact())
+			merr.Add(userDB.backfillTSDB.compactAndShipAndDelete(false))
 		}
 
-		if err != nil {
+		if err := merr.Err(); err != nil {
 			i.TSDBState.compactionsFailed.Inc()
 			level.Warn(util.Logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
 		} else {

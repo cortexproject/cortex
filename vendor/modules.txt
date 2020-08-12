@@ -156,6 +156,8 @@ github.com/coreos/pkg/capnslog
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
+# github.com/dgryski/go-rendezvous v0.0.0-20200624174652-8d2f3be8b2d9
+github.com/dgryski/go-rendezvous
 # github.com/digitalocean/godo v1.42.0
 github.com/digitalocean/godo
 # github.com/docker/distribution v2.7.1+incompatible

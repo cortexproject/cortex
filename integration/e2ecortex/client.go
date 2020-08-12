@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -367,4 +368,16 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	client := &http.Client{Timeout: c.timeout}
+	return client.Do(req)
 }

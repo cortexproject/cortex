@@ -259,7 +259,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt}, labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*"))
 	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())

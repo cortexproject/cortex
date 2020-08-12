@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+<<<<<<< HEAD
+=======
+	"sort"
+	"strings"
+	"sync"
+>>>>>>> Using observability tests correctly
 	"testing"
 	"time"
 
@@ -630,7 +636,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			}
 		})
 	}
-	if got, want := testutil.CollectAndCount(indexLookupsPerQuery, "cortex_chunk_store_index_lookups_per_query_bucket"), 0; got != want {
+	if got, want := testutil.CollectAndCount(indexLookupsPerQuery, "cortex_chunk_store_index_lookups_per_query_count"), 0; got != want {
 		t.Errorf("unexpected metric count, got %d, want %d", got, want)
 	}
 }

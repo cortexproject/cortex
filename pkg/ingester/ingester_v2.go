@@ -3,13 +3,11 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/weaveworks/common/mtime"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -27,6 +25,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
@@ -1473,56 +1472,4 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	}()
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func getBackfillTSDBRanges(tsdbName string) (int64, int64, error) {
-	// TODO(codesome) use time.Parse.
-
-	// YYYY_MM_DD_HH_YYYY_MM_DD_HH
-	// 012345678901234567890123456
-	if len(tsdbName) != 27 {
-		return 0, 0, errors.New("Invalid bucket name")
-	}
-
-	startYYYY, err := strconv.Atoi(tsdbName[0:4])
-	if err != nil {
-		return 0, 0, err
-	}
-	startMM, err := strconv.Atoi(tsdbName[5:7])
-	if err != nil {
-		return 0, 0, err
-	}
-	startDD, err := strconv.Atoi(tsdbName[8:10])
-	if err != nil {
-		return 0, 0, err
-	}
-	startHH, err := strconv.Atoi(tsdbName[11:13])
-	if err != nil {
-		return 0, 0, err
-	}
-
-	endYYYY, err := strconv.Atoi(tsdbName[14:18])
-	if err != nil {
-		return 0, 0, err
-	}
-	endMM, err := strconv.Atoi(tsdbName[19:21])
-	if err != nil {
-		return 0, 0, err
-	}
-	endDD, err := strconv.Atoi(tsdbName[22:24])
-	if err != nil {
-		return 0, 0, err
-	}
-	endHH, err := strconv.Atoi(tsdbName[25:27])
-	if err != nil {
-		return 0, 0, err
-	}
-
-	startTime := time.Date(startYYYY, time.Month(startMM), startDD, startHH, 0, 0, 0, time.UTC)
-	endTime := time.Date(endYYYY, time.Month(endMM), endDD, endHH, 0, 0, 0, time.UTC)
-
-	start := startTime.Unix() * 1000
-	end := endTime.Unix() * 1000
-
-	return start, end, nil
 }

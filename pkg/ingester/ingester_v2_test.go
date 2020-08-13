@@ -3,7 +3,6 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/weaveworks/common/mtime"
 	"io"
 	"io/ioutil"
 	"math"
@@ -29,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 

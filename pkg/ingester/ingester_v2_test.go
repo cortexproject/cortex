@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1131,29 +1132,16 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 		})
 	}
 
-	buildReq := func(lbls labels.Labels, samples []client.Sample) *client.WriteRequest {
-		req := &client.WriteRequest{
-			Source: client.API,
-		}
-
-		ts := client.TimeSeries{}
-		ts.Labels = client.FromLabelsToLabelAdapters(lbls)
-		ts.Samples = samples
-		req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{TimeSeries: &ts})
-
-		return req
-	}
-
 	// 10k samples encode to around 140 KiB,
-	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:10000]))
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:10000]))
 	require.NoError(t, err)
 
 	// 100k samples encode to around 1.4 MiB,
-	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
 	require.NoError(t, err)
 
 	// 50k samples encode to around 716 KiB,
-	_, err = i.v2Push(ctx, buildReq(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:50000]))
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:50000]))
 	require.NoError(t, err)
 
 	// Create a GRPC server used to query back the data.
@@ -1211,6 +1199,95 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	require.True(t, 2 <= recvMsgs && recvMsgs <= 3)
 	require.Equal(t, 3, series)
 	require.Equal(t, 10000+50000+samplesCount, totalSamples)
+}
+
+func writeRequestSingleSeries(lbls labels.Labels, samples []client.Sample) *client.WriteRequest {
+	req := &client.WriteRequest{
+		Source: client.API,
+	}
+
+	ts := client.TimeSeries{}
+	ts.Labels = client.FromLabelsToLabelAdapters(lbls)
+	ts.Samples = samples
+	req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{TimeSeries: &ts})
+
+	return req
+}
+
+func BenchmarkIngester_v2QueryStream(b *testing.B) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	const samplesCount = 1000
+	samples := make([]client.Sample, 0, samplesCount)
+
+	for i := 0; i < samplesCount; i++ {
+		samples = append(samples, client.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
+		})
+	}
+
+	const seriesCount = 100
+	for s := 0; s < seriesCount; s++ {
+		_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
+		require.NoError(b, err)
+	}
+
+	// Create a GRPC server used to query back the data.
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, i)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(b, err)
+
+	go func() {
+		require.NoError(b, serv.Serve(listener))
+	}()
+
+	// Query back the series using GRPC streaming.
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(b, err)
+	defer c.Close()
+
+	req := &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   samplesCount + 1,
+
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		s, err := c.QueryStream(ctx, req)
+		require.NoError(b, err)
+
+		for {
+			_, err := s.Recv()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(b, err)
+		}
+	}
 }
 
 func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {

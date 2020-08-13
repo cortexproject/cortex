@@ -1214,6 +1214,19 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []client.Sample) *clie
 	return req
 }
 
+type mockQueryStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (m *mockQueryStreamServer) Send(response *client.QueryStreamResponse) error {
+	return nil
+}
+
+func (m *mockQueryStreamServer) Context() context.Context {
+	return m.ctx
+}
+
 func BenchmarkIngester_v2QueryStream(b *testing.B) {
 	// Create ingester.
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
@@ -1246,23 +1259,6 @@ func BenchmarkIngester_v2QueryStream(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
-	defer serv.GracefulStop()
-	client.RegisterIngesterServer(serv, i)
-
-	listener, err := net.Listen("tcp", "localhost:0")
-	require.NoError(b, err)
-
-	go func() {
-		require.NoError(b, serv.Serve(listener))
-	}()
-
-	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
-	require.NoError(b, err)
-	defer c.Close()
-
 	req := &client.QueryRequest{
 		StartTimestampMs: 0,
 		EndTimestampMs:   samplesCount + 1,
@@ -1274,19 +1270,13 @@ func BenchmarkIngester_v2QueryStream(b *testing.B) {
 		}},
 	}
 
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		s, err := c.QueryStream(ctx, req)
+	for ix := 0; ix < b.N; ix++ {
+		err := i.v2QueryStream(req, mockStream)
 		require.NoError(b, err)
-
-		for {
-			_, err := s.Recv()
-			if err == io.EOF {
-				break
-			}
-			require.NoError(b, err)
-		}
 	}
 }
 

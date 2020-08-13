@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // BlocksStoreSet implementation used when the blocks are sharded and replicated across
@@ -37,7 +36,7 @@ func newBlocksStoreReplicationSet(
 	storesRing *ring.Ring,
 	shardingStrategy string,
 	limits BlocksStoreLimits,
-	tlsCfg tls.ClientConfig,
+	tlsCfg ClientConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*blocksStoreReplicationSet, error) {

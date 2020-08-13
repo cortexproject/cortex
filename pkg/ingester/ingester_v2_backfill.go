@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/weaveworks/common/mtime"
 	"os"
 	"path/filepath"
 	"sync"
@@ -62,7 +63,6 @@ func (b *backfillTSDB) appender(i *Ingester) *backfillAppender {
 func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	b.compactMtx.Lock()
 	defer b.compactMtx.Unlock()
-
 	b.mtx.RLock()
 	// There is no second TSDB. Try compaction for first TSDB.
 	if b.dbs[1] == nil {
@@ -114,10 +114,17 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 // compactAndShipDB compacts and ships the backfill TSDB if it is beyond the backfill age.
 // If there was an error, the boolean is always false.
 func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (shipped bool, err error) {
-	b.mtx.RLock()
+	b.mtx.Lock()
 	db := b.dbs[idx]
+	if db == nil || (!force && db.end > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
+		// Still inside backfill age (or nil).
+		b.mtx.Unlock()
+		return false, nil
+	}
+
+	// So that we don't get any samples after compaction.
+	b.dbs[idx] = nil
 	defer func() {
-		b.mtx.RUnlock()
 		if err != nil || !shipped {
 			b.mtx.Lock()
 			b.dbs[idx] = db
@@ -133,14 +140,6 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (shipped bo
 		}
 	}()
 
-	if db == nil || (!force && db.end > time.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
-		// Still inside backfill age (or nil).
-		return false, nil
-	}
-
-	b.mtx.Lock()
-	// So that we don't get any samples after compaction.
-	b.dbs[idx] = nil
 	b.mtx.Unlock()
 
 	h := db.db.Head()
@@ -149,11 +148,11 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (shipped bo
 	}
 
 	if db.db.shipper != nil {
-		if uploaded, err := db.db.shipper.Sync(context.Background()); err != nil {
+		uploaded, err := db.db.shipper.Sync(context.Background())
+		if err != nil {
 			return false, errors.Wrapf(err, "ship backfill TSDB, uploaded:%d, dir:%s", uploaded, db.db.Dir())
-		} else {
-			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.db.userID, "uploaded", uploaded, "backfill_dir", db.db.Dir())
 		}
+		level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.db.userID, "uploaded", uploaded, "backfill_dir", db.db.Dir())
 	}
 
 	return true, nil
@@ -166,7 +165,7 @@ func (b *backfillTSDB) isIdle(timeout time.Duration) bool {
 	idle := false
 	for i := 0; i < 2; i++ {
 		if b.dbs[i] != nil {
-			idle = idle || b.dbs[i].db.isIdle(time.Now(), timeout)
+			idle = idle || b.dbs[i].db.isIdle(mtime.Now(), timeout)
 		}
 	}
 	return idle
@@ -182,7 +181,7 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 	var merr tsdb_errors.MultiError
 	for i := 0; i < 2; i++ {
 		b.mtx.RLock()
-		if b.dbs[i] == nil || !b.dbs[i].db.isIdle(time.Now(), timeout) {
+		if b.dbs[i] == nil || !b.dbs[i].db.isIdle(mtime.Now(), timeout) {
 			b.mtx.RUnlock()
 			continue
 		}
@@ -197,7 +196,7 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compactAndShipIdleTSDBs", "user", db.db.userID, "dir", db.db.Dir())
 		}
 	}
-	if b.dbs[0] != nil && b.dbs[0].db.isIdle(time.Now(), timeout) {
+	if b.dbs[0] != nil && b.dbs[0].db.isIdle(mtime.Now(), timeout) {
 		_, err := b.compactAndShipAndCloseDB(0, true)
 		merr.Add(err)
 	}
@@ -220,7 +219,6 @@ func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err e
 	if err != nil {
 		return err
 	}
-
 	startAppend := time.Now()
 	cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(la))
 	// If the cached reference exists, we try to use it.
@@ -255,18 +253,18 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	defer a.backfillTSDB.mtx.Unlock()
 	// Check if we already have TSDB created and use it.
 	if a.backfillTSDB.dbs[0] != nil && s.TimestampMs >= a.backfillTSDB.dbs[0].start && s.TimestampMs < a.backfillTSDB.dbs[0].end {
-		if a.firstAppender != nil {
+		if a.firstAppender == nil {
 			a.firstAppender = a.backfillTSDB.dbs[0].db.Appender()
 		}
 		app = a.firstAppender
 		db = a.backfillTSDB.dbs[0].db
 	} else if a.backfillTSDB.dbs[1] != nil && s.TimestampMs >= a.backfillTSDB.dbs[1].start && s.TimestampMs < a.backfillTSDB.dbs[1].end {
-		if a.secondAppender != nil {
+		if a.secondAppender == nil {
 			a.secondAppender = a.backfillTSDB.dbs[1].db.Appender()
 		}
 		app = a.secondAppender
 		db = a.backfillTSDB.dbs[1].db
-	} else if s.TimestampMs >= time.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
+	} else if s.TimestampMs > mtime.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
 		// The sample is in the backfill range.
 		if a.backfillTSDB.dbs[0] != nil && a.backfillTSDB.dbs[1] != nil {
 			// This can happen if the dbs[1] is running compaction/shipping.
@@ -292,11 +290,11 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			start: start,
 			end:   end,
 		}
-		if end >= time.Now().Add(-time.Hour).Unix()*1000 {
+		if end >= mtime.Now().Add(-time.Hour).Unix()*1000 {
 			// The TSDB would touch the main TSDB. Hence this is the first TSDB.
 			if a.backfillTSDB.dbs[0] != nil {
 				// Check if we have to move this TSDB to the next position.
-				if a.backfillTSDB.dbs[0].start <= time.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
+				if a.backfillTSDB.dbs[0].start <= mtime.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
 					a.backfillTSDB.dbs[1] = a.backfillTSDB.dbs[0]
 					a.backfillTSDB.dbs[0] = nil
 				} else {
@@ -305,16 +303,18 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 				}
 			}
 			a.backfillTSDB.dbs[0] = newDB
+			app = db.Appender()
+			a.firstAppender = app
 		} else {
 			if a.backfillTSDB.dbs[1] != nil {
 				// This should not happen.
 				return nil, nil, errors.New("cannot create another backfill TSDB, older TSDB already exists")
 			}
 			a.backfillTSDB.dbs[1] = newDB
+			app = db.Appender()
+			a.secondAppender = app
 		}
-		app = db.Appender()
 	}
-
 	if app == nil {
 		return nil, nil, storage.ErrOutOfBounds
 	}
@@ -377,7 +377,7 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 	}()
 
 	u.backfillTSDB.mtx.RLock()
-	for _, db := range []*backfillTSDBWrapper{u.backfillTSDB.dbs[0], u.backfillTSDB.dbs[1]} {
+	for _, db := range u.backfillTSDB.dbs {
 		if db != nil && overlapsOpenInterval(db.start, db.end, from, through) {
 			mint := db.db.Head().MinTime()
 			maxt := db.db.Head().MaxTime()

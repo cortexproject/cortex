@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/weaveworks/common/mtime"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -450,7 +451,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds &&
 				i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge > 0 &&
-				s.TimestampMs > db.Head().MaxTime()-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge.Milliseconds() {
+				s.TimestampMs > mtime.Now().Add(-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge-time.Hour).Unix()*1000 {
 				if backfillApp == nil {
 					backfillApp = db.backfillTSDB.appender(i)
 				}

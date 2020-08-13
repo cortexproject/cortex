@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/weaveworks/common/mtime"
 	"io"
 	"io/ioutil"
 	"math"
@@ -1166,6 +1167,7 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dir
 	ingesterCfg.BlocksStorageConfig.Backend = "s3"
 	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageConfig.TSDB.BackfillDir = filepath.Join(dir, "backfill_tsdb")
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {
@@ -1766,4 +1768,221 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	// Verify that DB is no longer in memory, but was closed
 	db = i.getTSDB(userID)
 	require.Nil(t, db)
+}
+
+func TestIngesterV2BackfillCycle(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	backfillLimit := 6 * time.Hour
+	cfg.BlocksStorageConfig.TSDB.BackfillMaxAge = backfillLimit
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Hour
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	userID := "testuser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	expectedIngested := make([]client.TimeSeries, 0)
+	nowTimeDuration := 2401 * time.Hour
+	mtime.NowForce(time.Unix(int64(nowTimeDuration/time.Second), 0))
+
+	ingestSample := func(ts int64, numBackfillTSDBs int, errExpected bool) {
+		t.Helper()
+
+		metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: fmt.Sprintf("test%d", len(expectedIngested))}}
+		metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+		_, pushErr := i.v2Push(ctx, client.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]client.Sample{{TimestampMs: ts}},
+			nil, client.API),
+		)
+
+		numBuckets := 0
+		db, err := i.getOrCreateTSDB(userID, false)
+		require.NoError(t, err)
+		if db.backfillTSDB.dbs[0] != nil {
+			numBuckets++
+		}
+		if db.backfillTSDB.dbs[1] != nil {
+			numBuckets++
+		}
+		require.Equal(t, numBackfillTSDBs, numBuckets)
+		if !errExpected {
+			require.NoError(t, pushErr)
+			expectedIngested = append(expectedIngested, client.TimeSeries{
+				Labels:  metricLabelAdapters,
+				Samples: []client.Sample{{TimestampMs: ts}},
+			})
+		} else {
+			require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(storage.ErrOutOfBounds, "series=%s, timestamp=%s", metricLabels.String(), model.Time(ts).Time().UTC().Format(time.RFC3339Nano)), userID).Error()), pushErr)
+		}
+	}
+
+	testQuery := func() {
+		res, err := i.v2Query(ctx, &client.QueryRequest{
+			StartTimestampMs: math.MinInt64,
+			EndTimestampMs:   math.MaxInt64,
+			Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, expectedIngested, res.Timeseries)
+	}
+
+	// Samples for nowTime. The main tsdb will be able to handle samples only
+	// upto nowTime-1h after this.
+	ts := nowTimeDuration.Milliseconds()
+	ingestSample(ts, 0, false)
+	testQuery()
+
+	// nowTime-0.5h, to the main TSDB.
+	ts = nowTimeDuration.Milliseconds() - 30*time.Minute.Milliseconds()
+	ingestSample(ts, 0, false)
+	testQuery()
+
+	// nowTime-1h, to the main TSDB.
+	ts = nowTimeDuration.Milliseconds() - 1*time.Hour.Milliseconds()
+	ingestSample(ts, 0, false)
+	testQuery()
+
+	// Now we are creating this state
+	//                |            |---|
+	//                |            | M |
+	//                |            |---|
+	//                |------------|
+	//                |      X     |
+	//                |------------|
+
+	// nowTime-1h-1s for a backfill TSDB.
+	ts = nowTimeDuration.Milliseconds() - 1*time.Hour.Milliseconds() - 1*time.Second.Milliseconds()
+	ingestSample(ts, 1, false)
+	testQuery()
+
+	// nowTime-3.5h.
+	ts = nowTimeDuration.Milliseconds() - 3*time.Hour.Milliseconds() - 30*time.Minute.Milliseconds()
+	ingestSample(ts, 1, false)
+	testQuery()
+
+	// nowTime-backfillLimit-1h+1ms, testing near the edge. 1h is for the main TSDB.
+	ts = nowTimeDuration.Milliseconds() - backfillLimit.Milliseconds() - 1*time.Hour.Milliseconds() + 1*time.Millisecond.Milliseconds()
+	ingestSample(ts, 1, false)
+	testQuery()
+
+	// nowTime-backfillLimit-1h, out of bounds even for backfill. 1h is for the main TSDB.
+	ts = nowTimeDuration.Milliseconds() - backfillLimit.Milliseconds() - 1*time.Hour.Milliseconds()
+	ingestSample(ts, 1, true)
+	testQuery()
+
+	// Move the time by 3hr and add a sample.
+	nowTimeDuration = nowTimeDuration + 3*time.Hour
+	mtime.NowForce(time.Unix(int64(nowTimeDuration/time.Second), 0))
+	ts = nowTimeDuration.Milliseconds()
+	ingestSample(ts, 1, false)
+	testQuery()
+
+	// After moving the current time we have this
+	//                |            |---|
+	//                |            | M |
+	//                |            |---|
+	//         |------------|
+	//         |      X     |
+	//         |------------|
+
+	// Add a sample for that gap to create another TSDB.
+
+	// nowTime-2h.
+	ts = nowTimeDuration.Milliseconds() - 2*time.Hour.Milliseconds()
+	ingestSample(ts, 2, false)
+	testQuery()
+
+	// Now we have this
+	//                |            |---|
+	//                |            | M |
+	//                |            |---|
+	//         |------------|------------|
+	//         |      X     |      Y     |
+	//         |------------|------------|
+
+	// Restart to check if we can still query backfill TSDBs.
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	overrides, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err = NewV2(i.cfg, defaultClientTestConfig(), overrides, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Query back all the samples.
+	testQuery()
+
+	// Move the time by 3hr and add a sample.
+	nowTimeDuration = nowTimeDuration + 3*time.Hour
+	mtime.NowForce(time.Unix(int64(nowTimeDuration/time.Second), 0))
+	ts = nowTimeDuration.Milliseconds()
+	ingestSample(ts, 2, false)
+	testQuery()
+
+	// Now we have this
+	//                |            |---|
+	//                |            | M |
+	//                |            |---|
+	//   |------------|------------|
+	//   |      X     |      Y     |
+	//   |------------|------------|
+
+	userDB, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	for _, backfillDB := range userDB.backfillTSDB.dbs {
+		m := &shipperMock{}
+		m.On("Sync", mock.Anything).Return(0, nil)
+		backfillDB.db.shipper = m
+	}
+
+	dbX, dbY := userDB.backfillTSDB.dbs[1], userDB.backfillTSDB.dbs[0]
+
+	// Compact,ship,delete old TSDB, which is X here.
+	require.Equal(t, 0, len(dbX.db.Blocks()))
+	require.Equal(t, 0, len(dbY.db.Blocks()))
+	require.NoError(t, userDB.backfillTSDB.compactAndShipAndDelete(false))
+	require.Nil(t, userDB.backfillTSDB.dbs[0])
+	require.Equal(t, 1, len(dbX.db.Blocks()))
+	require.Equal(t, 0, len(dbY.db.Blocks()))
+
+	// Force compact,ship,delete TSDBs. Y should go away.
+	require.NoError(t, userDB.backfillTSDB.compactAndShipAndDelete(true))
+	require.Nil(t, userDB.backfillTSDB.dbs[0])
+	require.Nil(t, userDB.backfillTSDB.dbs[1])
+	require.Equal(t, 1, len(dbX.db.Blocks()))
+	require.Equal(t, 1, len(dbY.db.Blocks()))
+
+	// Appending a sample should create a new TSDB again.
+
+	// nowTime-2h.
+	ts = nowTimeDuration.Milliseconds() - 2*time.Hour.Milliseconds()
+	ingestSample(ts, 1, false)
+	require.NotNil(t, userDB.backfillTSDB.dbs[0])
+	require.Nil(t, userDB.backfillTSDB.dbs[1])
+
+	// The earlier TSDB was deleted from disk. So this new TSDB for same time range should be fresh with no blocks.
+	require.Equal(t, 0, len(userDB.backfillTSDB.dbs[0].db.Blocks()))
 }

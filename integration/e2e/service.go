@@ -285,7 +285,7 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 	args := []string{"run", "--rm", "--net=" + networkName, "--name=" + networkName + "-" + s.name, "--hostname=" + s.name}
 
 	// Mount the shared/ directory into the container
-	args = append(args, "-v", fmt.Sprintf("%s:%s:Z", sharedDir, ContainerSharedDir))
+	args = append(args, "-v", fmt.Sprintf("%s:%s:z", sharedDir, ContainerSharedDir))
 
 	// Environment variables
 	for name, value := range s.env {

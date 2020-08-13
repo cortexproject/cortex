@@ -39,8 +39,6 @@ var seriesStoreSchemas = []string{"v9", "v10", "v11"}
 
 var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
 
-// var schemas = append([]string{"v1"}, seriesStoreSchemas...)
-
 //using metric name 'job' as this field has only 1 value i.e 'prometheus'
 var excludeLblCfg = util.ExcludeLabels{
 	"fake": []util.Metric{{LabelName: "go_gc_duration_seconds",

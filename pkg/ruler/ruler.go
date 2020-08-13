@@ -365,7 +365,7 @@ func (r *Ruler) loadRules(ctx context.Context) {
 
 	// Iterate through each users configuration and determine if the on-disk
 	// configurations need to be updated
-	filteredConfigs := make(map[string]rules.RuleGroupList, 0)
+	filteredConfigs := make(map[string]rules.RuleGroupList)
 	for userID, cfg := range configs {
 		filteredConfigs[userID] = store.RuleGroupList{}
 

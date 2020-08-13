@@ -212,7 +212,6 @@ func (r *DefaultMultiTenantManager) Stop() {
 		n.stop()
 	}
 	r.notifiersMtx.Unlock()
-	level.Info(r.logger).Log("msg", "all notifiers stopped")
 
 	level.Info(r.logger).Log("msg", "stopping user managers")
 	wg := sync.WaitGroup{}

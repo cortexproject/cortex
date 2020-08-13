@@ -19,8 +19,6 @@ by this CA will have permissions to communicate with the cluster.
 We will use the following script to generate self signed certs for the cluster:
 
 ```
-# Refer: github.com/cortexproject/cortex/integration/certs/genCerts.sh
-
 # keys
 openssl genrsa -out root.key
 openssl genrsa -out client.key

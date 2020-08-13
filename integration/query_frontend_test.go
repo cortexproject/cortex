@@ -3,8 +3,11 @@
 package main
 
 import (
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
-	"os/exec"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -15,14 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-)
-
-const (
-	integrationHomeFolder = "integration/"
 )
 
 type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
@@ -89,21 +89,38 @@ func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
-		// setup tls
-		cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
-		require.NoError(t, cmd.Run())
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
+		// set the ca
+		ca := ca.New("Cortex Test")
+
+		// Ensure the entire path of directories exist.
+		require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
+
+		require.NoError(t, ca.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
+
+		// server certificate
+		require.NoError(t, ca.WriteCertificate(
+			&x509.Certificate{
+				Subject:     pkix.Name{CommonName: "client"},
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			},
+			filepath.Join(s.SharedDir(), clientCertFile),
+			filepath.Join(s.SharedDir(), clientKeyFile),
+		))
+		require.NoError(t, ca.WriteCertificate(
+			&x509.Certificate{
+				Subject:     pkix.Name{CommonName: "server"},
+				DNSNames:    []string{"querier.frontend-client", "ingester.client"},
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			},
+			filepath.Join(s.SharedDir(), serverCertFile),
+			filepath.Join(s.SharedDir(), serverKeyFile),
+		))
 
 		return "", mergeFlags(
 			BlocksStorageFlags,
 			getServerTLSFlags(),
 			getClientTLSFlagsWithPrefix("ingester.client"),
 			getClientTLSFlagsWithPrefix("querier.frontend-client"),
-			getClientTLSFlagsWithPrefix("ingester.client"),
 		)
 	})
 }

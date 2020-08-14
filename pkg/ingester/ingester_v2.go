@@ -674,7 +674,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 			return nil, ctx.Err()
 		}
 
-		seriesSet := q.Select(false, nil, matchers...)
+		seriesSet := q.Select(true, nil, matchers...)
 		sets = append(sets, seriesSet)
 	}
 

@@ -1042,31 +1042,86 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
+func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
+	const (
+		userID    = "test"
+		numSeries = 100000
+	)
+
+	now := util.TimeToMillis(time.Now())
+	i := createIngesterWithSeries(t, userID, numSeries, now)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	req := &client.MetricsForLabelMatchersRequest{
+		StartTimestampMs: now,
+		EndTimestampMs:   now,
+		// Overlapping matchers to make sure series are correctly deduplicated.
+		MatchersSet: []*client.LabelMatchers{
+			{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
+			}},
+			{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*0"},
+			}},
+		},
+	}
+
+	res, err := i.v2MetricsForLabelMatchers(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, res.GetMetric(), numSeries)
+}
+
 func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
 	const (
-		numSeries    = 100000
-		maxBatchSize = 1000
+		userID    = "test"
+		numSeries = 100000
 	)
+
+	now := util.TimeToMillis(time.Now())
+	i := createIngesterWithSeries(b, userID, numSeries, now)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		req := &client.MetricsForLabelMatchersRequest{
+			StartTimestampMs: now,
+			EndTimestampMs:   now,
+			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
+			}}},
+		}
+
+		res, err := i.v2MetricsForLabelMatchers(ctx, req)
+		require.NoError(b, err)
+		require.Len(b, res.GetMetric(), numSeries)
+	}
+}
+
+// createIngesterWithSeries creates an ingester and push numSeries with 1 sample
+// per series.
+func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timestamp int64) *Ingester {
+	const maxBatchSize = 1000
 
 	// Create ingester.
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
-	require.NoError(b, err)
-	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-	defer cleanup()
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+		cleanup()
+	})
 
 	// Wait until it's ACTIVE.
-	test.Poll(b, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
 	// Push fixtures.
-	ctx := user.InjectOrgID(context.Background(), "test")
-	now := util.TimeToMillis(time.Now())
+	ctx := user.InjectOrgID(context.Background(), userID)
 
 	for o := 0; o < numSeries; o += maxBatchSize {
 		batchSize := util.Min(maxBatchSize, numSeries-o)
-		timestamp := now + int64(o/maxBatchSize)
 
 		// Generate metrics and samples (1 for each series).
 		metrics := make([]labels.Labels, 0, batchSize)
@@ -1086,24 +1141,10 @@ func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
 		// Send metrics to the ingester.
 		req := client.ToWriteRequest(metrics, samples, nil, client.API)
 		_, err := i.v2Push(ctx, req)
-		require.NoError(b, err)
+		require.NoError(t, err)
 	}
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		req := &client.MetricsForLabelMatchersRequest{
-			StartTimestampMs: now,
-			EndTimestampMs:   now,
-			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
-				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
-			}}},
-		}
-
-		res, err := i.v2MetricsForLabelMatchers(ctx, req)
-		require.NoError(b, err)
-		require.Len(b, res.GetMetric(), numSeries)
-	}
+	return i
 }
 
 func TestIngester_v2QueryStream(t *testing.T) {

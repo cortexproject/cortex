@@ -5888,6 +5888,10 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>&lt;code>/api/v1/alerts&lt;/code> (GET)&lt;/li>
 &lt;li>&lt;code>/api/v1/rules&lt;/code> (GET)&lt;/li>
 &lt;/ul>
+&lt;h4 id="pass-through-requests">Pass-through requests&lt;/h4>
+&lt;p>&lt;code>query-tee&lt;/code> supports acting as a transparent proxy for requests to routes not matching any of the documented API endpoints above.
+When enabled, those requests are passed on to just the configured preferred backend.
+To activate this feature it requires setting &lt;code>-proxy.passthrough-non-registered-routes=true&lt;/code> flag and configuring a preferred backend.&lt;/p>
 &lt;h3 id="authentication">Authentication&lt;/h3>
 &lt;p>&lt;code>query-tee&lt;/code> supports &lt;a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication">HTTP basic authentication&lt;/a>. It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.&lt;/p>
 &lt;p>The request sent from the &lt;code>query-tee&lt;/code> to the backend includes HTTP basic authentication when one of the following conditions are met:&lt;/p>
@@ -8154,7 +8158,8 @@ __replica__: replica2
 &lt;li>[CHANGE] Experimental Delete Series: &lt;code>/api/v1/admin/tsdb/delete_series&lt;/code> and &lt;code>/api/v1/admin/tsdb/cancel_delete_request&lt;/code> purger APIs to return status code &lt;code>204&lt;/code> instead of &lt;code>200&lt;/code> for success. &lt;a href="https://github.com/cortexproject/cortex/pull/2946">#2946&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add support for azure storage in China, German and US Government environments. &lt;a href="https://github.com/cortexproject/cortex/pull/2988">#2988&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. &lt;a href="https://github.com/cortexproject/cortex/pull/2994">#2994&lt;/a>&lt;/li>
-&lt;li>[ENHANCMENT] Expose &lt;code>storage.aws.dynamodb.backoff_config&lt;/code> configuration file field. &lt;a href="https://github.com/cortexproject/cortex/pull/3026">#3026&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes &lt;a href="https://github.com/cortexproject/cortex/pull/3018">#3018&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Expose &lt;code>storage.aws.dynamodb.backoff_config&lt;/code> configuration file field. &lt;a href="https://github.com/cortexproject/cortex/pull/3026">#3026&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
 &lt;/ul>

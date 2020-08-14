@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestGrpcStats(t *testing.T) {
@@ -59,55 +60,55 @@ func TestGrpcStats(t *testing.T) {
 	require.EqualError(t, err, "rpc error: code = NotFound desc = unknown service")
 
 	err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-        	            	# HELP cortex_grpc_connected_clients Number of clients connected to gRPC server
-        	            	# TYPE cortex_grpc_connected_clients gauge
-        	            	cortex_grpc_connected_clients 1
+			# HELP cortex_grpc_connected_clients Number of clients connected to gRPC server.
+			# TYPE cortex_grpc_connected_clients gauge
+			cortex_grpc_connected_clients 1
 
-        	            	# HELP cortex_grpc_method_errors_total Number of clients connected to gRPC server
-        	            	# TYPE cortex_grpc_method_errors_total counter
-        	            	cortex_grpc_method_errors_total{method="/grpc.health.v1.Health/Check"} 1
+			# HELP cortex_grpc_method_errors_total Number of errors returned by method.
+			# TYPE cortex_grpc_method_errors_total counter
+			cortex_grpc_method_errors_total{method="/grpc.health.v1.Health/Check"} 1
 
-        	            	# HELP cortex_grpc_request_size_bytes Size of gRPC requests.
-        	            	# TYPE cortex_grpc_request_size_bytes histogram
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+06"} 1
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+06"} 1
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+06"} 1
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+07"} 2
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+07"} 2
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+07"} 2
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+08"} 2
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+08"} 2
-        	            	cortex_grpc_request_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="+Inf"} 2
-        	            	cortex_grpc_request_size_bytes_sum{method="/grpc.health.v1.Health/Check"} 8.388613e+06
-        	            	cortex_grpc_request_size_bytes_count{method="/grpc.health.v1.Health/Check"} 2
+			# HELP cortex_grpc_received_payload_size_bytes Size of received gRPC messages as seen on the wire (eg. compressed, signed, encrypted).
+			# TYPE cortex_grpc_received_payload_size_bytes histogram
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+06"} 1
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+06"} 1
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+06"} 1
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+07"} 2
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+07"} 2
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+07"} 2
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+08"} 2
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+08"} 2
+			cortex_grpc_received_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="+Inf"} 2
+			cortex_grpc_received_payload_size_bytes_sum{method="/grpc.health.v1.Health/Check"} 8.388613e+06
+			cortex_grpc_received_payload_size_bytes_count{method="/grpc.health.v1.Health/Check"} 2
 
-        	            	# HELP cortex_grpc_response_size_bytes Size of gRPC responses.
-        	            	# TYPE cortex_grpc_response_size_bytes histogram
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+06"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+06"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+06"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+07"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+07"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+07"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+08"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+08"} 1
-        	            	cortex_grpc_response_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="+Inf"} 1
-        	            	cortex_grpc_response_size_bytes_sum{method="/grpc.health.v1.Health/Check"} 7
-        	            	cortex_grpc_response_size_bytes_count{method="/grpc.health.v1.Health/Check"} 1
-	`), "cortex_grpc_connected_clients", "cortex_grpc_request_size_bytes", "cortex_grpc_response_size_bytes", "cortex_grpc_method_errors_total")
+			# HELP cortex_grpc_sent_payload_size_bytes Size of sent gRPC messages as seen on the wire (eg. compressed, signed, encrypted).
+			# TYPE cortex_grpc_sent_payload_size_bytes histogram
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+06"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+06"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+06"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+07"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+07"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="5.24288e+07"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="1.048576e+08"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="2.62144e+08"} 1
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/grpc.health.v1.Health/Check",le="+Inf"} 1
+			cortex_grpc_sent_payload_size_bytes_sum{method="/grpc.health.v1.Health/Check"} 7
+			cortex_grpc_sent_payload_size_bytes_count{method="/grpc.health.v1.Health/Check"} 1
+	`), "cortex_grpc_connected_clients", "cortex_grpc_received_payload_size_bytes", "cortex_grpc_sent_payload_size_bytes", "cortex_grpc_method_errors_total")
 	require.NoError(t, err)
 
 	closed = true
 	require.NoError(t, conn.Close())
 
 	// Give server little time to update connected clients metric.
-	time.Sleep(1 * time.Second)
-	err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-        	            	# HELP cortex_grpc_connected_clients Number of clients connected to gRPC server
-        	            	# TYPE cortex_grpc_connected_clients gauge
-        	            	cortex_grpc_connected_clients 0
-	`), "cortex_grpc_connected_clients")
-	require.NoError(t, err)
+	test.Poll(t, 1*time.Second, nil, func() interface{} {
+		return testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_grpc_connected_clients Number of clients connected to gRPC server.
+			# TYPE cortex_grpc_connected_clients gauge
+			cortex_grpc_connected_clients 0
+		`), "cortex_grpc_connected_clients")
+	})
 }
 
 func TestGrpcStatsStreaming(t *testing.T) {
@@ -150,7 +151,7 @@ func TestGrpcStatsStreaming(t *testing.T) {
 		require.NoError(t, err)
 
 		err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP cortex_grpc_inflight_requests Number of inflight RPC calls
+			# HELP cortex_grpc_inflight_requests Number of inflight gRPC calls.
 			# TYPE cortex_grpc_inflight_requests gauge
 			cortex_grpc_inflight_requests{method="/frontend.Frontend/Process"} 1
 		`), "cortex_grpc_inflight_requests")
@@ -158,44 +159,43 @@ func TestGrpcStatsStreaming(t *testing.T) {
 	}
 	require.NoError(t, s.CloseSend())
 
-	// Wait a second to make sure server notices close.
-	time.Sleep(1 * time.Second)
-	err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP cortex_grpc_inflight_requests Number of inflight RPC calls
+	// Wait until server notices.
+	test.Poll(t, 1*time.Second, nil, func() interface{} {
+		return testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_grpc_inflight_requests Number of inflight gRPC calls.
 			# TYPE cortex_grpc_inflight_requests gauge
 			cortex_grpc_inflight_requests{method="/frontend.Frontend/Process"} 0
 		`), "cortex_grpc_inflight_requests")
-	require.NoError(t, err)
+	})
 
 	err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-        	            	# HELP cortex_grpc_request_size_bytes Size of gRPC requests.
-        	            	# TYPE cortex_grpc_request_size_bytes histogram
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+06"} 1
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+06"} 4
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+06"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+07"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+07"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+07"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+08"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+08"} 5
-        	            	cortex_grpc_request_size_bytes_bucket{method="/frontend.Frontend/Process",le="+Inf"} 5
-        	            	cortex_grpc_request_size_bytes_sum{method="/frontend.Frontend/Process"} 8.017448e+06
-        	            	cortex_grpc_request_size_bytes_count{method="/frontend.Frontend/Process"} 5
-
-        	            	# HELP cortex_grpc_response_size_bytes Size of gRPC responses.
-        	            	# TYPE cortex_grpc_response_size_bytes histogram
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+06"} 0
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+06"} 2
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+06"} 4
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+07"} 6
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+07"} 6
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+07"} 6
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+08"} 6
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+08"} 6
-        	            	cortex_grpc_response_size_bytes_bucket{method="/frontend.Frontend/Process",le="+Inf"} 6
-        	            	cortex_grpc_response_size_bytes_sum{method="/frontend.Frontend/Process"} 2.2234511e+07
-        	            	cortex_grpc_response_size_bytes_count{method="/frontend.Frontend/Process"} 6
-	`), "cortex_grpc_request_size_bytes", "cortex_grpc_response_size_bytes")
+			# HELP cortex_grpc_received_payload_size_bytes Size of received gRPC messages as seen on the wire (eg. compressed, signed, encrypted).
+			# TYPE cortex_grpc_received_payload_size_bytes histogram
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+06"} 1
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+06"} 4
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+06"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+07"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+07"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+07"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+08"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+08"} 5
+			cortex_grpc_received_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="+Inf"} 5
+			cortex_grpc_received_payload_size_bytes_sum{method="/frontend.Frontend/Process"} 8.017448e+06
+			cortex_grpc_received_payload_size_bytes_count{method="/frontend.Frontend/Process"} 5
+			# HELP cortex_grpc_sent_payload_size_bytes Size of sent gRPC messages as seen on the wire (eg. compressed, signed, encrypted).
+			# TYPE cortex_grpc_sent_payload_size_bytes histogram
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+06"} 0
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+06"} 2
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+06"} 4
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+07"} 6
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+07"} 6
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="5.24288e+07"} 6
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="1.048576e+08"} 6
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="2.62144e+08"} 6
+			cortex_grpc_sent_payload_size_bytes_bucket{method="/frontend.Frontend/Process",le="+Inf"} 6
+			cortex_grpc_sent_payload_size_bytes_sum{method="/frontend.Frontend/Process"} 2.2234511e+07
+			cortex_grpc_sent_payload_size_bytes_count{method="/frontend.Frontend/Process"} 6
+	`), "cortex_grpc_received_payload_size_bytes", "cortex_grpc_sent_payload_size_bytes")
 
 	require.NoError(t, err)
 }

@@ -15,28 +15,28 @@ func NewStatsHandler(r prometheus.Registerer) stats.Handler {
 	return &grpcStatsHandler{
 		connectedClients: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_grpc_connected_clients",
-			Help: "Number of clients connected to gRPC server",
+			Help: "Number of clients connected to gRPC server.",
 		}),
 
 		inflightRPC: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_grpc_inflight_requests",
-			Help: "Number of inflight RPC calls",
+			Help: "Number of inflight gRPC calls.",
 		}, []string{"method"}),
 
 		methodErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_grpc_method_errors_total",
-			Help: "Number of clients connected to gRPC server",
+			Help: "Number of errors returned by method.",
 		}, []string{"method"}),
 
-		receivedMessageSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_grpc_request_size_bytes",
-			Help:    "Size of gRPC requests.",
+		receivedPayloadSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "cortex_grpc_received_payload_size_bytes",
+			Help:    "Size of received gRPC messages as seen on the wire (eg. compressed, signed, encrypted).",
 			Buckets: messageSizeBuckets,
 		}, []string{"method"}),
 
-		sentMessageSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_grpc_response_size_bytes",
-			Help:    "Size of gRPC responses.",
+		sentPayloadSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "cortex_grpc_sent_payload_size_bytes",
+			Help:    "Size of sent gRPC messages as seen on the wire (eg. compressed, signed, encrypted).",
 			Buckets: messageSizeBuckets,
 		}, []string{"method"}),
 	}
@@ -45,8 +45,8 @@ func NewStatsHandler(r prometheus.Registerer) stats.Handler {
 type grpcStatsHandler struct {
 	connectedClients    prometheus.Gauge
 	inflightRPC         *prometheus.GaugeVec
-	receivedMessageSize *prometheus.HistogramVec
-	sentMessageSize     *prometheus.HistogramVec
+	receivedPayloadSize *prometheus.HistogramVec
+	sentPayloadSize     *prometheus.HistogramVec
 	methodErrors        *prometheus.CounterVec
 }
 
@@ -81,14 +81,14 @@ func (g *grpcStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCStat
 		// Ignored. Cortex doesn't use headers. Furthermore WireLength seems to be incorrect for large headers -- it uses
 		// length of last frame (16K) even for headers in megabytes.
 	case *stats.InPayload:
-		g.receivedMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
+		g.receivedPayloadSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
 	case *stats.InTrailer:
 		// Ignored. Cortex doesn't use trailers.
 
 	case *stats.OutHeader:
 		// Ignored. Cortex doesn't send headers, and since OutHeader doesn't have WireLength, we could only estimate it.
 	case *stats.OutPayload:
-		g.sentMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
+		g.sentPayloadSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
 	case *stats.OutTrailer:
 		// Ignored, Cortex doesn't use trailers. OutTrailer doesn't have valid WireLength (there is deperecated field, always set to 0).
 	}

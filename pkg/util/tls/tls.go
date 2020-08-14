@@ -19,6 +19,11 @@ type ClientConfig struct {
 	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
 }
 
+var (
+	errKeyMissing  = errors.New("certificate given but no key configured")
+	errCertMissing = errors.New("key given but no certificate configured")
+)
+
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.CertPath, prefix+".tls-cert-path", "", "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.")
@@ -53,6 +58,12 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 
 	// read client certificate
 	if cfg.CertPath != "" || cfg.KeyPath != "" {
+		if cfg.CertPath == "" {
+			return nil, errCertMissing
+		}
+		if cfg.KeyPath == "" {
+			return nil, errKeyMissing
+		}
 		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load TLS certificate %s,%s", cfg.CertPath, cfg.KeyPath)

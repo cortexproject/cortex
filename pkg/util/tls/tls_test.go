@@ -121,6 +121,20 @@ func TestGetTLSConfig_ClientCerts(t *testing.T) {
 	_, err = c.GetTLSConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to find certificate PEM data in certificate input, but did find a private key")
+
+	// expect error with only key passed along
+	c = &ClientConfig{
+		KeyPath: paths.key,
+	}
+	_, err = c.GetTLSConfig()
+	assert.EqualError(t, err, errCertMissing.Error())
+
+	// expect error with only cert passed along
+	c = &ClientConfig{
+		CertPath: paths.cert,
+	}
+	_, err = c.GetTLSConfig()
+	assert.EqualError(t, err, errKeyMissing.Error())
 }
 
 func TestGetTLSConfig_CA(t *testing.T) {

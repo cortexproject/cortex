@@ -13,6 +13,7 @@
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCMENT] Expose `storage.aws.dynamodb.backoff_config` configuration file field. #3026
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
+* [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
 
 ## 1.3.0 in progress
 

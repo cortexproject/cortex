@@ -155,18 +155,24 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 	return res, body, nil
 }
 
+// Series finds series by label matchers.
+func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSet, error) {
+	result, _, err := c.querierClient.Series(context.Background(), matches, start, end)
+	return result, err
+}
+
 // LabelValues gets label values
 func (c *Client) LabelValues(label string) (model.LabelValues, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
+	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames() ([]string, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
+	return result, err
 }
 
 type addOrgIDRoundTripper struct {

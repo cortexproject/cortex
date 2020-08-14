@@ -11,9 +11,9 @@ import (
 	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
 	"github.com/go-redis/redis/v8"
 )
 

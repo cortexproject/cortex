@@ -29,6 +29,8 @@ ingester:
       replication_factor: 1
 
 querier:
+  query_ingesters_within: 3h
+
   # Used when the blocks sharding is disabled.
   store_gateway_addresses: store-gateway-1:9008,store-gateway-2:9009
 

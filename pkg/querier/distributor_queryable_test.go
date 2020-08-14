@@ -68,6 +68,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 	now := time.Now()
 
 	tests := map[string]struct {
+		querySeries          bool
 		queryIngestersWithin time.Duration
 		queryMinT            int64
 		queryMaxT            int64
@@ -102,6 +103,14 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 			expectedMinT:         0,
 			expectedMaxT:         0,
 		},
+		"should not manipulate query time range if queryIngestersWithin is enabled and query max time is older, but the query is for /series": {
+			querySeries:          true,
+			queryIngestersWithin: time.Hour,
+			queryMinT:            util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-90 * time.Minute)),
+			expectedMinT:         util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:         util.TimeToMillis(now.Add(-90 * time.Minute)),
+		},
 	}
 
 	for _, streamingEnabled := range []bool{false, true} {
@@ -110,13 +119,20 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor := &mockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
 				queryable := newDistributorQueryable(distributor, streamingEnabled, nil, testData.queryIngestersWithin)
 				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
-				seriesSet := querier.Select(true, &storage.SelectHints{Start: testData.queryMinT, End: testData.queryMaxT})
+				// Select hints are not passed by Prometheus when querying /series.
+				var hints *storage.SelectHints
+				if !testData.querySeries {
+					hints = &storage.SelectHints{Start: testData.queryMinT, End: testData.queryMaxT}
+				}
+
+				seriesSet := querier.Select(true, hints)
 				require.NoError(t, seriesSet.Err())
 
 				if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
@@ -216,8 +232,9 @@ func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelNa
 func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
 	return nil, nil
 }
-func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return nil, nil
+func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).([]metric.Metric), args.Error(1)
 }
 
 func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {

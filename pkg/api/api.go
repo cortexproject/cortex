@@ -153,29 +153,29 @@ func (a *API) RegisterAPI(cfg interface{}) {
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.
-func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
-	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, d.Push), true)
+func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config, serverConfig server.Config) {
+	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, serverConfig, d.Push), true)
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false)
 
 	// Legacy Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, d.Push), true)
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, serverConfig, d.Push), true)
 	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/ha-tracker", d.HATracker, false)
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service
-func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
+func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config, serverConfig server.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 
 	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.RegisterRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, serverConfig, i.Push), true) // For testing and debugging.
 
 	// Legacy Routes
 	a.RegisterRoute("/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.RegisterRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/push", push.Handler(pushConfig, serverConfig, i.Push), true) // For testing and debugging.
 }
 
 // RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly

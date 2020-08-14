@@ -72,7 +72,10 @@ Local storage is explicitly not production ready at this time.
 Cortex can also make use of external memcacheds for caching and although these are not mandatory, they should be used in production.&lt;/p>
 &lt;h2 id="single-instance-single-process">Single instance, single process&lt;/h2>
 &lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href="/docs/configuration/single-process-config/">single process&lt;/a> with no dependencies:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ go build ./cmd/cortex
+&lt;p>Clone and build prometheus&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ git clone https://github.com/cortexproject/cortex.git
+$ &lt;span style="color:#204a87">cd&lt;/span> cortex
+$ go build ./cmd/cortex
 $ ./cortex -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./docs/configuration/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code>/tmp/cortex&lt;/code>.
 It is not intended for production use.&lt;/p>

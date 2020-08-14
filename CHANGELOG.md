@@ -11,7 +11,8 @@
 * [CHANGE] Experimental Delete Series: `/api/v1/admin/tsdb/delete_series` and `/api/v1/admin/tsdb/cancel_delete_request` purger APIs to return status code `204` instead of `200` for success. #2946
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
-* [ENHANCMENT] Expose `storage.aws.dynamodb.backoff_config` configuration file field. #3026
+* [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018
+* [ENHANCEMENT] Expose `storage.aws.dynamodb.backoff_config` configuration file field. #3026
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
 

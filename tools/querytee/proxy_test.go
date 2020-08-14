@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -172,6 +173,158 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
 			assert.Equal(t, testData.expectedRes, string(body))
+		})
+	}
+}
+
+func TestProxy_Passthrough(t *testing.T) {
+	type route struct {
+		path, response string
+	}
+
+	type mockedBackend struct {
+		routes []route
+	}
+
+	type query struct {
+		path               string
+		expectedRes        string
+		expectedStatusCode int
+	}
+
+	const (
+		pathCommon = "/common" // common path implemented by both backends
+
+		pathZero = "/zero" // only implemented by backend at index 0
+		pathOne  = "/one"  // only implemented by backend at index 1
+
+		// responses by backend at index 0
+		responseCommon0 = "common-0"
+		responseZero    = "zero"
+
+		// responses by backend at index 1
+		responseCommon1 = "common-1"
+		responseOne     = "one"
+	)
+
+	backends := []mockedBackend{
+		{
+			routes: []route{
+				{
+					path:     pathCommon,
+					response: responseCommon0,
+				},
+				{
+					path:     pathZero,
+					response: responseZero,
+				},
+			},
+		},
+		{
+			routes: []route{
+				{
+					path:     pathCommon,
+					response: responseCommon1,
+				},
+				{
+					path:     pathOne,
+					response: responseOne,
+				},
+			},
+		},
+	}
+
+	tests := map[string]struct {
+		preferredBackendIdx int
+		queries             []query
+	}{
+		"first backend preferred": {
+			preferredBackendIdx: 0,
+			queries: []query{
+				{
+					path:               pathCommon,
+					expectedRes:        responseCommon0,
+					expectedStatusCode: 200,
+				},
+				{
+					path:               pathZero,
+					expectedRes:        responseZero,
+					expectedStatusCode: 200,
+				},
+				{
+					path:               pathOne,
+					expectedRes:        "404 page not found\n",
+					expectedStatusCode: 404,
+				},
+			},
+		},
+		"second backend preferred": {
+			preferredBackendIdx: 1,
+			queries: []query{
+				{
+					path:               pathCommon,
+					expectedRes:        responseCommon1,
+					expectedStatusCode: 200,
+				},
+				{
+					path:               pathOne,
+					expectedRes:        responseOne,
+					expectedStatusCode: 200,
+				},
+				{
+					path:               pathZero,
+					expectedRes:        "404 page not found\n",
+					expectedStatusCode: 404,
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			backendURLs := []string{}
+
+			// Start backend servers.
+			for _, b := range backends {
+				router := mux.NewRouter()
+				for _, route := range b.routes {
+					router.Handle(route.path, mockQueryResponse(route.path, 200, route.response))
+				}
+				s := httptest.NewServer(router)
+				defer s.Close()
+
+				backendURLs = append(backendURLs, s.URL)
+			}
+
+			// Start the proxy.
+			cfg := ProxyConfig{
+				BackendEndpoints:               strings.Join(backendURLs, ","),
+				PreferredBackend:               strconv.Itoa(testData.preferredBackendIdx),
+				ServerServicePort:              0,
+				BackendReadTimeout:             time.Second,
+				PassThroughNonRegisteredRoutes: true,
+			}
+
+			p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
+			require.NoError(t, err)
+			require.NotNil(t, p)
+			defer p.Stop() //nolint:errcheck
+
+			require.NoError(t, p.Start())
+
+			for _, query := range testData.queries {
+
+				// Send a query request to the proxy.
+				res, err := http.Get(fmt.Sprintf("http://%s%s", p.Endpoint(), query.path))
+				require.NoError(t, err)
+
+				defer res.Body.Close()
+				body, err := ioutil.ReadAll(res.Body)
+				require.NoError(t, err)
+
+				assert.Equal(t, query.expectedStatusCode, res.StatusCode)
+				assert.Equal(t, query.expectedRes, string(body))
+			}
 		})
 	}
 }

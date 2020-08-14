@@ -2,7 +2,6 @@ package stats
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,7 +18,7 @@ func NewStatsHandler(r prometheus.Registerer) stats.Handler {
 			Help: "Number of clients connected to gRPC server",
 		}),
 
-		inflightRpc: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+		inflightRPC: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_grpc_inflight_requests",
 			Help: "Number of inflight RPC calls",
 		}, []string{"method"}),
@@ -45,7 +44,7 @@ func NewStatsHandler(r prometheus.Registerer) stats.Handler {
 
 type grpcStatsHandler struct {
 	connectedClients    prometheus.Gauge
-	inflightRpc         *prometheus.GaugeVec
+	inflightRPC         *prometheus.GaugeVec
 	receivedMessageSize *prometheus.HistogramVec
 	sentMessageSize     *prometheus.HistogramVec
 	methodErrors        *prometheus.CounterVec
@@ -71,9 +70,9 @@ func (g *grpcStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCStat
 
 	switch s := rpcStats.(type) {
 	case *stats.Begin:
-		g.inflightRpc.WithLabelValues(fullMethodName).Inc()
+		g.inflightRPC.WithLabelValues(fullMethodName).Inc()
 	case *stats.End:
-		g.inflightRpc.WithLabelValues(fullMethodName).Dec()
+		g.inflightRPC.WithLabelValues(fullMethodName).Dec()
 		if s.Error != nil {
 			g.methodErrors.WithLabelValues(fullMethodName).Inc()
 		}
@@ -92,8 +91,6 @@ func (g *grpcStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCStat
 		g.sentMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
 	case *stats.OutTrailer:
 		// Ignored, Cortex doesn't use trailers. OutTrailer doesn't have valid WireLength (there is deperecated field, always set to 0).
-	default:
-		panic(fmt.Sprintf("Unknown type: %T", rpcStats))
 	}
 }
 
@@ -107,6 +104,6 @@ func (g *grpcStatsHandler) HandleConn(_ context.Context, connStats stats.ConnSta
 		g.connectedClients.Inc()
 
 	case *stats.ConnEnd:
-		g.connectedClients.Inc()
+		g.connectedClients.Dec()
 	}
 }

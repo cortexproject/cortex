@@ -99,11 +99,15 @@ func TestGrpcStats(t *testing.T) {
 
 	closed = true
 	require.NoError(t, conn.Close())
+
+	// Give server little time to update connected clients metric.
+	time.Sleep(1 * time.Second)
 	err = testutil.GatherAndCompare(reg, bytes.NewBufferString(`
         	            	# HELP cortex_grpc_connected_clients Number of clients connected to gRPC server
         	            	# TYPE cortex_grpc_connected_clients gauge
         	            	cortex_grpc_connected_clients 0
 	`), "cortex_grpc_connected_clients")
+	require.NoError(t, err)
 }
 
 func TestGrpcStatsStreaming(t *testing.T) {

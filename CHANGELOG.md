@@ -27,8 +27,8 @@
    - `-redis.topology` added
    - `-redis.max-active-conns` changed to `-redis.pool-size`
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
-   - `-redis.max-idle-conns` deprecated
-   - `-redis.wait-on-pool-exhaustion` deprecated
+   - `-redis.max-idle-conns` removed
+   - `-redis.wait-on-pool-exhaustion` removed
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018

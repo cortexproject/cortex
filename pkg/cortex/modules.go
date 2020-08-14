@@ -13,6 +13,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
@@ -34,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpc/stats"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -86,6 +88,8 @@ func (t *Cortex) initAPI() (services.Service, error) {
 func (t *Cortex) initServer() (services.Service, error) {
 	// Cortex handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
+
+	t.Cfg.Server.GRPCOptions = append(t.Cfg.Server.GRPCOptions, grpc.StatsHandler(stats.NewStatsHandler(prometheus.DefaultRegisterer)))
 	serv, err := server.New(t.Cfg.Server)
 	if err != nil {
 		return nil, err

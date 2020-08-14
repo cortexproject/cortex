@@ -20,7 +20,7 @@ Cortex can also make use of external memcacheds for caching and although these a
 
 For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config.md) with no dependencies:
 
-Clone and build prometheus
+Clone and build Cortex
 ```sh
 $ git clone https://github.com/cortexproject/cortex.git
 $ cd cortex

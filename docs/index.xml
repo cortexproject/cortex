@@ -8156,6 +8156,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. &lt;a href="https://github.com/cortexproject/cortex/pull/2994">#2994&lt;/a>&lt;/li>
 &lt;li>[ENHANCMENT] Expose &lt;code>storage.aws.dynamodb.backoff_config&lt;/code> configuration file field. &lt;a href="https://github.com/cortexproject/cortex/pull/3026">#3026&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130-in-progress">1.3.0 in progress&lt;/h2>
 &lt;ul>

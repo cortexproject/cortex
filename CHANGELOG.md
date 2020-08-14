@@ -11,7 +11,12 @@
 * [CHANGE] Experimental Delete Series: `/api/v1/admin/tsdb/delete_series` and `/api/v1/admin/tsdb/cancel_delete_request` purger APIs to return status code `204` instead of `200` for success. #2946
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
-* [ENHANCEMENT] Added metrics for tracking some gRPC stats (most importantly message size histograms). #3036
+* [ENHANCEMENT] Added metrics for tracking some gRPC stats (most importantly message size histograms): #3036
+  * `cortex_grpc_connected_clients`
+  * `cortex_grpc_inflight_requests`
+  * `cortex_grpc_method_errors_total`
+  * `cortex_grpc_received_payload_size_bytes`
+  * `cortex_grpc_sent_payload_size_bytes`
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 
 ## 1.3.0 in progress

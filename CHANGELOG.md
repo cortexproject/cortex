@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+## 1.3.0-rc.2 / 2020-08-14
+
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
 
 ## 1.3.0-rc.1 / 2020-08-10

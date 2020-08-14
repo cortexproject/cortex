@@ -352,7 +352,7 @@ func (g *Group) run(ctx context.Context) {
 			select {
 			case <-g.managerDone:
 			case <-time.After(2 * g.interval):
-				g.cleanupStaleSeries(now)
+				g.cleanupStaleSeries(ctx, now)
 			}
 		}(time.Now())
 	}()
@@ -576,6 +576,8 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				if _, ok := err.(promql.ErrQueryCanceled); !ok {
 					level.Warn(g.logger).Log("msg", "Evaluating rule failed", "rule", rule, "err", err)
 				}
+				sp.SetTag("error", true)
+				sp.LogKV("error", err)
 				g.metrics.evalFailures.WithLabelValues(groupKey(g.File(), g.Name())).Inc()
 				return
 			}
@@ -588,7 +590,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				numDuplicates = 0
 			)
 
-			app := g.opts.Appendable.Appender()
+			app := g.opts.Appendable.Appender(ctx)
 			seriesReturned := make(map[string]labels.Labels, len(g.seriesInPreviousEval[i]))
 			defer func() {
 				if err := app.Commit(); err != nil {
@@ -636,14 +638,14 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			}
 		}(i, rule)
 	}
-	g.cleanupStaleSeries(ts)
+	g.cleanupStaleSeries(ctx, ts)
 }
 
-func (g *Group) cleanupStaleSeries(ts time.Time) {
+func (g *Group) cleanupStaleSeries(ctx context.Context, ts time.Time) {
 	if len(g.staleSeries) == 0 {
 		return
 	}
-	app := g.opts.Appendable.Appender()
+	app := g.opts.Appendable.Appender(ctx)
 	for _, s := range g.staleSeries {
 		// Rule that produced series no longer configured, mark it stale.
 		_, err := app.Add(s, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))

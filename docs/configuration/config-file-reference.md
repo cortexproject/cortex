@@ -1667,6 +1667,19 @@ aws:
     # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
+    backoff_config:
+      # Minimum backoff time
+      # CLI flag: -dynamodb.min-backoff
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum backoff time
+      # CLI flag: -dynamodb.max-backoff
+      [max_period: <duration> | default = 50s]
+
+      # Maximum number of times to retry an operation
+      # CLI flag: -dynamodb.max-retries
+      [max_retries: <int> | default = 20]
+
   # S3 endpoint URL with escaped Key and Secret encoded. If only region is
   # specified as a host, proper endpoint will be deduced. Use
   # inmemory:///<bucket-name> to use a mock in-memory implementation.
@@ -3195,7 +3208,7 @@ bucket_store:
 
     # How long to cache list of blocks for each tenant.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
-    [tenant_blocks_list_ttl: <duration> | default = 15m]
+    [tenant_blocks_list_ttl: <duration> | default = 5m]
 
     # How long to cache list of chunks for a block.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
@@ -3207,7 +3220,7 @@ bucket_store:
 
     # How long to cache information that block metafile doesn't exist.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
-    [metafile_doesnt_exist_ttl: <duration> | default = 15m]
+    [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 
     # How long to cache content of the metafile.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-content-ttl

@@ -1692,7 +1692,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		l := labels.Labels{{Name: "n", Value: "v"}}
 		for i := 0; i < numFullChunks; i++ {
 			// Not using db.Appender() as it checks for compaction.
-			app := head.Appender()
+			app := head.Appender(context.Background())
 			_, err := app.Add(l, int64(i)*chunkRange+1, 9.99)
 			require.NoError(t, err)
 			_, err = app.Add(l, int64(i+1)*chunkRange, 9.99)

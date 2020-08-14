@@ -422,7 +422,7 @@ blocks_storage:
 
       # How long to cache list of blocks for each tenant.
       # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
-      [tenant_blocks_list_ttl: <duration> | default = 15m]
+      [tenant_blocks_list_ttl: <duration> | default = 5m]
 
       # How long to cache list of chunks for a block.
       # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
@@ -434,7 +434,7 @@ blocks_storage:
 
       # How long to cache information that block metafile doesn't exist.
       # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
-      [metafile_doesnt_exist_ttl: <duration> | default = 15m]
+      [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 
       # How long to cache content of the metafile.
       # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-content-ttl

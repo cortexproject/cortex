@@ -26,6 +26,7 @@ import (
 type backfillTSDB struct {
 	userID      string
 	backfillAge time.Duration
+	metrics     *ingesterMetrics
 
 	// dbs[0] is the one which would be overlapping with the main TSDB.
 	// dbs[1] is the older TSDB among the two here.
@@ -47,8 +48,12 @@ type backfillTSDBWrapper struct {
 	start, end int64
 }
 
-func newBackfillTSDB(userID string, backfillAge time.Duration) *backfillTSDB {
-	return &backfillTSDB{userID: userID, backfillAge: backfillAge}
+func newBackfillTSDB(userID string, backfillAge time.Duration, metrics *ingesterMetrics) *backfillTSDB {
+	return &backfillTSDB{
+		userID:      userID,
+		backfillAge: backfillAge,
+		metrics:     metrics,
+	}
 }
 
 func (b *backfillTSDB) appender(i *Ingester) *backfillAppender {
@@ -139,6 +144,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			return nil, nil, err
 		}
 
+		// TODO(codesome): close db after an error below.
 		newDB := &backfillTSDBWrapper{
 			db:    db,
 			start: start,
@@ -167,6 +173,12 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			a.backfillTSDB.dbs[1] = newDB
 			app = db.Appender()
 			a.secondAppender = app
+		}
+
+		a.ingester.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
+		if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
+			// This user did not have a backfill TSDB before.
+			a.ingester.metrics.numUsersWithBackfillTSDBs.Inc()
 		}
 	}
 	if app == nil {
@@ -252,8 +264,8 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		firstDB := b.dbs[0]
 		b.mtx.RUnlock()
 
-		shipped, err := b.compactAndShipAndCloseDB(0, force)
-		if err != nil || !shipped {
+		err := b.compactAndShipAndCloseDB(0, force)
+		if err != nil {
 			return err
 		}
 
@@ -273,8 +285,8 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		secondDB := b.dbs[1]
 		b.mtx.RUnlock()
 
-		shipped, err := b.compactAndShipAndCloseDB(1, force)
-		if err != nil || !shipped {
+		err := b.compactAndShipAndCloseDB(1, force)
+		if err != nil {
 			return err
 		}
 
@@ -297,49 +309,54 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 // compactAndShipDB compacts and ships the backfill TSDB if it is beyond the backfill age.
 // If there was an error, the boolean is always false.
 // NOTE: This is intended to be used by member functions of backfillTSDB only.
-func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (shipped bool, err error) {
+func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (err error) {
 	b.mtx.Lock()
 	db := b.dbs[idx]
 	if db == nil || (!force && db.end > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
 		// Still inside backfill age (or nil).
 		b.mtx.Unlock()
-		return false, nil
+		return nil
 	}
 
 	// So that we don't get any samples after compaction.
 	b.dbs[idx] = nil
-	defer func() {
-		if err != nil || !shipped {
-			b.mtx.Lock()
-			b.dbs[idx] = db
-			b.mtx.Unlock()
-			return
-		}
-
-		if cerr := db.db.Close(); cerr != nil {
-			b.mtx.Lock()
-			b.dbs[idx] = db
-			b.mtx.Unlock()
-			err = cerr
-		}
-	}()
-
 	b.mtx.Unlock()
+
+	defer func() {
+		if err == nil {
+			if cerr := db.db.Close(); cerr != nil {
+				err = cerr
+			}
+		}
+
+		b.mtx.Lock()
+		if err != nil {
+			b.dbs[idx] = db
+		} else {
+			if b.dbs[0] == nil && b.dbs[1] == nil {
+				b.metrics.numBackfillTSDBsPerUser.DeleteLabelValues(b.userID)
+				b.metrics.numUsersWithBackfillTSDBs.Dec()
+			} else {
+				b.metrics.numBackfillTSDBsPerUser.WithLabelValues(b.userID).Dec()
+			}
+		}
+		b.mtx.Unlock()
+	}()
 
 	h := db.db.Head()
 	if err := db.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
-		return false, errors.Wrapf(err, "compact backfill TSDB, dir:%s", db.db.Dir())
+		return errors.Wrapf(err, "compact backfill TSDB, dir:%s", db.db.Dir())
 	}
 
 	if db.db.shipper != nil {
 		uploaded, err := db.db.shipper.Sync(context.Background())
 		if err != nil {
-			return false, errors.Wrapf(err, "ship backfill TSDB, uploaded:%d, dir:%s", uploaded, db.db.Dir())
+			return errors.Wrapf(err, "ship backfill TSDB, uploaded:%d, dir:%s", uploaded, db.db.Dir())
 		}
 		level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.db.userID, "uploaded", uploaded, "backfill_dir", db.db.Dir())
 	}
 
-	return true, nil
+	return nil
 }
 
 func (b *backfillTSDB) isIdle(timeout time.Duration) bool {
@@ -372,17 +389,16 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 		db := b.dbs[i]
 		b.mtx.RUnlock()
 
-		_, err := b.compactAndShipAndCloseDB(i, true)
-		merr.Add(err)
+		err := b.compactAndShipAndCloseDB(i, true)
+		if err != nil {
+			merr.Add(err)
+			continue
+		}
 
 		if err := os.RemoveAll(db.db.Dir()); err != nil {
 			// TODO(codesome): Add a metric for this to alert on.
 			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compactAndShipIdleTSDBs", "user", db.db.userID, "dir", db.db.Dir())
 		}
-	}
-	if b.dbs[0] != nil && b.dbs[0].db.isIdle(mtime.Now(), timeout) {
-		_, err := b.compactAndShipAndCloseDB(0, true)
-		merr.Add(err)
 	}
 
 	return merr.Err()

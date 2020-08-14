@@ -53,6 +53,10 @@ type ingesterMetrics struct {
 	seriesDequeuedOutcome         *prometheus.CounterVec
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
+
+	// Metrics for TSDB blocks.
+	numUsersWithBackfillTSDBs prometheus.Gauge
+	numBackfillTSDBsPerUser   *prometheus.GaugeVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -200,6 +204,17 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		m.memSeriesRemovedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: memSeriesRemovedTotalName,
 			Help: memSeriesRemovedTotalHelp,
+		}, []string{"user"})
+	}
+
+	if !createMetricsConflictingWithTSDB {
+		m.numUsersWithBackfillTSDBs = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_tsdb_users_with_backfill_tsdb",
+			Help: "Total number of users with backfill TSDBs",
+		})
+		m.numBackfillTSDBsPerUser = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_tsdb_backfill_tsdb_per_user",
+			Help: "Total number of backfill TSDBs per user",
 		}, []string{"user"})
 	}
 

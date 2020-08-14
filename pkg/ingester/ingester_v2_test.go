@@ -1771,6 +1771,8 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 }
 
 func TestIngesterV2BackfillCycle(t *testing.T) {
+	t.Cleanup(mtime.NowReset)
+
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
 	backfillLimit := 6 * time.Hour

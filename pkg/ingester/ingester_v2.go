@@ -990,7 +990,7 @@ func (i *Ingester) createNewTSDB(userID, dbDir string, minBlockDuration, maxBloc
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		lastUpdate:          atomic.NewInt64(0),
-		backfillTSDB:        newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge),
+		backfillTSDB:        newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge, i.metrics),
 	}
 
 	// Create a new user database

@@ -180,7 +180,6 @@ func (r *Runner) runRandomTest() {
 
 	ctx := context.Background()
 	log, ctx := spanlogger.New(ctx, "runRandomTest")
-	defer log.Finish()
 	span, trace := opentracing.SpanFromContext(ctx), "<none>"
 	if span != nil {
 		trace = fmt.Sprintf("%s", span.Context())

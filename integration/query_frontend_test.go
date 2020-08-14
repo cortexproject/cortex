@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,6 +125,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
+		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 	})
 
@@ -199,6 +201,18 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 			assert.Equal(t, model.Time(1595846750806), matrix[0].Values[2].Timestamp)
 		}
 
+		// In this test we do ensure that the /series start/end time is ignored and Cortex
+		// always returns series in ingesters memory. No need to repeat it for each user.
+		if userID == 0 {
+			start := now.Add(-1000 * time.Hour)
+			end := now.Add(-999 * time.Hour)
+
+			result, err := c.Series([]string{"series_1"}, start, end)
+			require.NoError(t, err)
+			require.Len(t, result, 1)
+			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()
@@ -213,7 +227,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 
 	wg.Wait()
 
-	extra := float64(1)
+	extra := float64(2)
 	if testMissingMetricName {
 		extra++
 	}

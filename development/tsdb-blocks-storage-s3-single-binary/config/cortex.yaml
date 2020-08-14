@@ -26,6 +26,9 @@ ingester:
           host: consul:8500
       replication_factor: 1
 
+querier:
+  query_ingesters_within: 3h
+
 store_gateway:
   sharding_enabled: true
   sharding_ring:

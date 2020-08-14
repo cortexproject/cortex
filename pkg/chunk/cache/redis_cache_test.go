@@ -56,13 +56,14 @@ func mockRedisCache() (*RedisCache, error) {
 		return nil, err
 
 	}
-
+	logger := log.NewNopLogger()
 	redisClient := &redisBasicClient{
+		logger:     logger,
 		expiration: time.Minute,
 		timeout:    100 * time.Millisecond,
 		rdb: redis.NewClient(&redis.Options{
 			Addr: redisServer.Addr(),
 		}),
 	}
-	return NewRedisCache("mock", redisClient, log.NewNopLogger()), nil
+	return NewRedisCache("mock", redisClient, logger), nil
 }

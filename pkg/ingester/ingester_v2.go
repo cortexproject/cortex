@@ -665,11 +665,8 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 	defer q.Close()
 
-	// Run a query for each matchers set and collect all the results
-	added := map[string]struct{}{}
-	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0),
-	}
+	// Run a query for each matchers set and collect all the results.
+	var sets []storage.SeriesSet
 
 	for _, matchers := range matchersSet {
 		// Interrupt if the context has been canceled.
@@ -677,38 +674,25 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 			return nil, ctx.Err()
 		}
 
-		seriesSet := q.Select(false, nil, matchers...)
-		if seriesSet.Err() != nil {
-			return nil, seriesSet.Err()
+		seriesSet := q.Select(true, nil, matchers...)
+		sets = append(sets, seriesSet)
+	}
+
+	// Generate the response merging all series sets.
+	result := &client.MetricsForLabelMatchersResponse{
+		Metric: make([]*client.Metric, 0),
+	}
+
+	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	for mergedSet.Next() {
+		// Interrupt if the context has been canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
-		for seriesSet.Next() {
-			// Interrupt if the context has been canceled.
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-
-			// Given the same series can be matched by multiple matchers and we want to
-			// return the unique set of matching series, we do check if the series has
-			// already been added to the result
-			ls := seriesSet.At().Labels()
-			key := ls.String()
-			if _, ok := added[key]; ok {
-				continue
-			}
-
-			result.Metric = append(result.Metric, &client.Metric{
-				Labels: client.FromLabelsToLabelAdapters(ls),
-			})
-
-			added[key] = struct{}{}
-		}
-
-		// In case of any error while iterating the series, we break
-		// the execution and return it
-		if err := seriesSet.Err(); err != nil {
-			return nil, err
-		}
+		result.Metric = append(result.Metric, &client.Metric{
+			Labels: client.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
+		})
 	}
 
 	return result, nil

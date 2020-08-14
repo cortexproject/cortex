@@ -2,18 +2,16 @@ package stats
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 )
 
 func NewStatsHandler(r prometheus.Registerer) stats.Handler {
-	// We don’t particularly care about small requests / responses,
-	// we want to know more about the big ones.
-	// Histogram goes linearly from 30MB to 210MB in 8 buckets.
-	messageSizeBuckets := prometheus.LinearBuckets(30_000_000, 30_000_000, 8)
+	const MiB = 1024 * 1024
+	messageSizeBuckets := []float64{1 * MiB, 2.5 * MiB, 5 * MiB, 10 * MiB, 25 * MiB, 50 * MiB, 100 * MiB, 250 * MiB}
 
 	return &grpcStatsHandler{
 		connectedClients: promauto.With(r).NewGauge(prometheus.GaugeOpts{
@@ -24,6 +22,11 @@ func NewStatsHandler(r prometheus.Registerer) stats.Handler {
 		inflightRpc: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_grpc_inflight_requests",
 			Help: "Number of inflight RPC calls",
+		}, []string{"method"}),
+
+		methodErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_grpc_method_errors_total",
+			Help: "Number of clients connected to gRPC server",
 		}, []string{"method"}),
 
 		receivedMessageSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
@@ -45,6 +48,7 @@ type grpcStatsHandler struct {
 	inflightRpc         *prometheus.GaugeVec
 	receivedMessageSize *prometheus.HistogramVec
 	sentMessageSize     *prometheus.HistogramVec
+	methodErrors        *prometheus.CounterVec
 }
 
 // Custom type to hide it from other packages.
@@ -70,36 +74,27 @@ func (g *grpcStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCStat
 		g.inflightRpc.WithLabelValues(fullMethodName).Inc()
 	case *stats.End:
 		g.inflightRpc.WithLabelValues(fullMethodName).Dec()
+		if s.Error != nil {
+			g.methodErrors.WithLabelValues(fullMethodName).Inc()
+		}
 
 	case *stats.InHeader:
-		g.receivedMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
+		// Ignored. Cortex doesn't use headers. Furthermore WireLength seems to be incorrect for large headers -- it uses
+		// length of last frame (16K) even for headers in megabytes.
 	case *stats.InPayload:
 		g.receivedMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
 	case *stats.InTrailer:
-		g.receivedMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
+		// Ignored. Cortex doesn't use trailers.
 
 	case *stats.OutHeader:
-		// OutHeader doesn't have WireLength.
-		g.sentMessageSize.WithLabelValues(fullMethodName).Observe(estimateSize(s.Header))
+		// Ignored. Cortex doesn't send headers, and since OutHeader doesn't have WireLength, we could only estimate it.
 	case *stats.OutPayload:
 		g.sentMessageSize.WithLabelValues(fullMethodName).Observe(float64(s.WireLength))
 	case *stats.OutTrailer:
-		// OutTrailer doesn't have valid WireLength (there is deperecated field, always set to 0).
-		g.sentMessageSize.WithLabelValues(fullMethodName).Observe(estimateSize(s.Trailer))
+		// Ignored, Cortex doesn't use trailers. OutTrailer doesn't have valid WireLength (there is deperecated field, always set to 0).
+	default:
+		panic(fmt.Sprintf("Unknown type: %T", rpcStats))
 	}
-}
-
-// This returns estimate for message size for encoding metadata.
-// Doesn't take any possible compression into account.
-func estimateSize(md metadata.MD) float64 {
-	result := 0
-	for k, vs := range md {
-		result += len(k)
-		for _, v := range vs {
-			result += len(v)
-		}
-	}
-	return float64(result)
 }
 
 func (g *grpcStatsHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {

@@ -124,7 +124,7 @@ func TestGrpcStatsStreaming(t *testing.T) {
 		require.NoError(t, serv.Serve(listener))
 	}()
 
-	frontend.RegisterFrontendServer(serv, &frontendServer{t: t})
+	frontend.RegisterFrontendServer(serv, &frontendServer{log: t.Log})
 
 	conn, err := grpc.Dial(listener.Addr().String(), grpc.WithInsecure(), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(10e6), grpc.MaxCallSendMsgSize(10e6)))
 	require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestGrpcStatsStreaming(t *testing.T) {
 			Code:    200,
 			Headers: req.HttpRequest.Headers,
 		}}
-		fmt.Println("Client sending:", msg.Size())
+		t.Log("Client sending:", msg.Size())
 		err = s.Send(msg)
 		require.NoError(t, err)
 
@@ -201,7 +201,7 @@ func TestGrpcStatsStreaming(t *testing.T) {
 }
 
 type frontendServer struct {
-	t *testing.T
+	log func(args ...interface{})
 }
 
 func (f frontendServer) Process(server frontend.Frontend_ProcessServer) error {
@@ -220,7 +220,7 @@ func (f frontendServer) Process(server frontend.Frontend_ProcessServer) error {
 			},
 		}}
 
-		fmt.Println("Server sending:", msg.Size())
+		f.log("Server sending:", msg.Size())
 		err := server.Send(msg)
 
 		if err != nil {

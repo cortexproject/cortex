@@ -13,6 +13,7 @@
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018
 * [ENHANCEMENT] Expose `storage.aws.dynamodb.backoff_config` configuration file field. #3026
+* [ENHANCEMENT] Memcached calls now have a circuit-breaker to avoid hammering a broken cache #3045
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
 * [BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. #3015

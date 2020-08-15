@@ -48,6 +48,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20200811193703-869f1bc587e6
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
+	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.5.1
 	github.com/thanos-io/thanos v0.13.1-0.20200807203500-9b578afb4763

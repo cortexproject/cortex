@@ -621,6 +621,9 @@ github.com/shurcooL/vfsgen
 github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.4
 github.com/soheilhy/cmux
+# github.com/sony/gobreaker v0.4.1
+## explicit
+github.com/sony/gobreaker
 # github.com/spf13/afero v1.2.2
 ## explicit
 github.com/spf13/afero

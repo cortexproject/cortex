@@ -14,6 +14,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sony/gobreaker"
 	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -49,6 +50,7 @@ func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, 
 type Memcached struct {
 	cfg      MemcachedConfig
 	memcache MemcachedClient
+	cb       *gobreaker.TwoStepCircuitBreaker
 	name     string
 
 	requestDuration observableVecCollector
@@ -77,6 +79,12 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 			}, []string{"method", "status_code"}),
 		},
 	}
+	c.cb = gobreaker.NewTwoStepCircuitBreaker(gobreaker.Settings{
+		Name:          name,
+		Interval:      10 * time.Second, // reset error count after this long
+		Timeout:       10 * time.Second, // remain closed for this long after N errors
+		OnStateChange: c.circuitBreakerStateChange,
+	})
 
 	if cfg.BatchSize == 0 || cfg.Parallelism == 0 {
 		return c
@@ -100,6 +108,10 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 	}
 
 	return c
+}
+
+func (c *Memcached) circuitBreakerStateChange(name string, from gobreaker.State, to gobreaker.State) {
+	level.Info(c.logger).Log("msg", "circuit-breaker state change", "from-state", from, "to-state", to)
 }
 
 type work struct {
@@ -152,8 +164,13 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		defer log.Finish()
 		log.LogFields(otlog.Int("keys requested", len(keys)))
 
-		var err error
+		done, err := c.cb.Allow()
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 		items, err = c.memcache.GetMulti(keys)
+		done(err == nil)
 
 		log.LogFields(otlog.Int("keys found", len(items)))
 
@@ -224,17 +241,23 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 // Store stores the key in the cache.
 func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	for i := range keys {
-		err := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
+		_ = instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
+			done, err := c.cb.Allow()
+			if err != nil {
+				return err
+			}
 			item := memcache.Item{
 				Key:        keys[i],
 				Value:      bufs[i],
 				Expiration: int32(c.cfg.Expiration.Seconds()),
 			}
-			return c.memcache.Set(&item)
+			err = c.memcache.Set(&item)
+			done(err == nil)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
+			}
+			return err
 		})
-		if err != nil {
-			level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
-		}
 	}
 }
 

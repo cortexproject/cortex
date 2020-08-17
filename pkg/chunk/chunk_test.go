@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const userID = "fake"
+const userID = "userID"
 
 func init() {
 	encoding.DefaultEncoding = encoding.Varbit

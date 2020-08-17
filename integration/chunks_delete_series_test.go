@@ -44,10 +44,11 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 	}
 
 	flags := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-cassandra.addresses": cassandra.NetworkHTTPEndpoint(),
-		"-cassandra.keyspace":  "tests", // keyspace gets created on startup if it does not exist
-		"-purger.enable":       "true",
-		"-deletes.store":       "bigtable",
+		"-cassandra.addresses":          cassandra.NetworkHTTPEndpoint(),
+		"-cassandra.keyspace":           "tests", // keyspace gets created on startup if it does not exist
+		"-cassandra.replication-factor": "1",
+		"-purger.enable":                "true",
+		"-deletes.store":                "bigtable",
 	})
 
 	// bigtable client needs to set an environment variable when connecting to an emulator.

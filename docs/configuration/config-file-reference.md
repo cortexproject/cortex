@@ -1874,7 +1874,7 @@ cassandra:
 
   # Replication factor to use in Cassandra.
   # CLI flag: -cassandra.replication-factor
-  [replication_factor: <int> | default = 1]
+  [replication_factor: <int> | default = 3]
 
   # Instruct the cassandra driver to not attempt to get host info from the
   # system.peers table.

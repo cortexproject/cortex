@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Increase the default Cassandra client replication factor to 3. #3007
 * [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
   * `cortex_ingester_sent_files`
   * `cortex_ingester_received_files`

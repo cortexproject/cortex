@@ -255,12 +255,12 @@ func (r *Ruler) starting(ctx context.Context) error {
 // Stop stops the Ruler.
 // Each function of the ruler is terminated before leaving the ring
 func (r *Ruler) stopping(_ error) error {
+	r.manager.Stop()
+
 	if r.subservices != nil {
 		// subservices manages ring and lifecycler, if sharding was enabled.
 		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
-
-	r.manager.Stop()
 	return nil
 }
 

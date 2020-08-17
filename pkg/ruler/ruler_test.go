@@ -142,7 +142,6 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	manager, rcleanup := newManager(t, cfg)
 	defer rcleanup()
-	//defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 	defer manager.Stop()
 
 	n, err := manager.getOrCreateNotifier("1")

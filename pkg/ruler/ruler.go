@@ -180,11 +180,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, logger)
-	if err != nil {
-		return nil, err
-	}
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ruler := &Ruler{
 		cfg:      cfg,
 		store:    ruleStore,

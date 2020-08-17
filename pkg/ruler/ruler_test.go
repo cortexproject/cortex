@@ -98,10 +98,16 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	engine, noopQueryable, pusher, logger, cleanup := testSetup(t, cfg)
 	storage, err := NewRuleStorage(cfg.StoreConfig)
 	require.NoError(t, err)
+
+	reg := prometheus.NewRegistry()
+	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine)
+	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, util.Logger)
+	require.NoError(t, err)
+
 	ruler, err := NewRuler(
 		cfg,
-		DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine),
-		prometheus.NewRegistry(),
+		manager,
+		reg,
 		logger,
 		storage,
 	)

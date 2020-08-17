@@ -288,7 +288,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
 	incomingErrors := make(chan error)
-
+	fmt.Printf("*********matcher len**** ***  %#v", len(matchers))
 	for _, matcher := range matchers {
 		//variable to determine if matcher exists in exclude labels
 		//and should be skipped while lookup.
@@ -313,6 +313,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			incomingIDs <- ids
 		}(matcher)
 	}
+	fmt.Printf("*********counter**** ***  %#v", counter)
+
 	indexLookupsPerQuery.Observe(float64(counter))
 	// Receive series IDs from all matchers, intersect as we go.
 	var ids []string
@@ -321,7 +323,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	var cardinalityExceededErrors int
 	var cardinalityExceededError CardinalityExceededError
 	var initialized bool
-	for i := 0; i < len(matchers); i++ {
+	for i := 0; i < counter; i++ {
 		select {
 		case incoming := <-incomingIDs:
 			preIntersectionCount += len(incoming)
@@ -346,7 +348,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
-	if cardinalityExceededErrors == len(matchers) {
+	if cardinalityExceededErrors == counter {
 		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr

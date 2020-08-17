@@ -13,7 +13,11 @@ import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-// RuleGroupDesc is a proto representation of a cortex rule group
+// RuleGroupDesc is a proto representation of a cortex rule group.
+// The options field in the RuleGroupDesc can be used to extend Cortex Ruler
+// functionality without having to repeatedly redefine the proto description.
+// It can also be leveraged to create custom `ManagerOpts` based on rule configs
+// which can then be passed to the Prometheus Manager.
 message RuleGroupDesc {
   reserved 5, 7, 8;
   string name = 1;

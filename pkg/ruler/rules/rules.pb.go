@@ -32,7 +32,11 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// RuleGroupDesc is a proto representation of a cortex rule group
+// RuleGroupDesc is a proto representation of a cortex rule group.
+// The options field in the RuleGroupDesc can be used to extend Cortex Ruler
+// functionality without having to repeatedly redefine the proto description.
+// It can also be leveraged to create custom `ManagerOpts` based on rule configs
+// which can then be passed to the Prometheus Manager.
 type RuleGroupDesc struct {
 	Name      string        `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Namespace string        `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`

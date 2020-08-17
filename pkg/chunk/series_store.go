@@ -273,16 +273,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
 	}
 	counter := 0
-	// Just get series for metric if there are no matchers
-	if len(matchers) == 0 {
-		indexLookupsPerQuery.Observe(1)
-		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
-		if err != nil {
-			preIntersectionPerQuery.Observe(float64(len(series)))
-			postIntersectionPerQuery.Observe(float64(len(series)))
-		}
-		return series, err
-	}
 
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
@@ -311,6 +301,17 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			}
 			incomingIDs <- ids
 		}(matcher)
+	}
+	// Just get series for metric if there are no matchers
+	//or count of matchers after exlusion is 0
+	if len(matchers) == 0 || counter == 0 {
+		indexLookupsPerQuery.Observe(1)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
+		if err != nil {
+			preIntersectionPerQuery.Observe(float64(len(series)))
+			postIntersectionPerQuery.Observe(float64(len(series)))
+		}
+		return series, err
 	}
 	indexLookupsPerQuery.Observe(float64(counter))
 	// Receive series IDs from all matchers, intersect as we go.
@@ -345,7 +346,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
-	if cardinalityExceededErrors == counter && counter!=0 {
+	if cardinalityExceededErrors == counter && counter != 0 {
 		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr

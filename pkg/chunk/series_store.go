@@ -276,7 +276,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
-		fmt.Printf("%#v", matchers)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))
@@ -346,7 +345,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
-	if cardinalityExceededErrors == counter {
+	if cardinalityExceededErrors == counter && counter!=0 {
 		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr

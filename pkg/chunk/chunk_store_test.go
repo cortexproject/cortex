@@ -32,7 +32,8 @@ type configFactory func() StoreConfig
 
 var seriesStoreSchemas = []string{"v9", "v10", "v11"}
 
-var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
+// var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
+var schemas = append([]string{}, seriesStoreSchemas...)
 
 //using metric name 'job' as this field has only 1 value i.e 'prometheus'
 var excludeLblCfg = util.ExcludeLabels{
@@ -58,7 +59,6 @@ var stores = []struct {
 		configFn: func() StoreConfig {
 			var storeCfg StoreConfig
 			flagext.DefaultValues(&storeCfg)
-			storeCfg.ExcludeLabels = excludeLblCfg
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				MaxSizeItems: 500,
 			}, prometheus.NewRegistry(), log.NewNopLogger())
@@ -212,7 +212,6 @@ func TestChunkStore_Get(t *testing.T) {
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
-			storeCfg.ExcludeLabels = excludeLblCfg
 			store := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 

@@ -69,12 +69,11 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	baseStore
-	excludeLabels    util.ExcludeLabels
 	schema           SeriesStoreSchema
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache, excludeLabels util.ExcludeLabels) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
 	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
@@ -89,7 +88,6 @@ func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient
 
 	return &seriesStore{
 		baseStore:        rs,
-		excludeLabels:    excludeLabels,
 		schema:           schema,
 		writeDedupeCache: writeDedupeCache,
 	}, nil
@@ -278,6 +276,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
+		fmt.Printf("%#v", matchers)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))
@@ -291,14 +290,17 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	incomingErrors := make(chan error)
 
 	for _, matcher := range matchers {
-
-		exUser := c.excludeLabels[userID]
-		if len(exUser) != 0 {
-			for _, lb := range exUser {
-				if lb.MetricName == metricName && lb.LabelName == matcher.Name {
-					continue
-				}
+		//variable to determine if matcher exists in exclude labels
+		//and should be skipped while lookup.
+		exUser := c.cfg.ExcludeLabels[userID]
+		shouldSkip := false
+		for _, lb := range exUser {
+			if lb.MetricName == metricName && lb.LabelName == matcher.Name {
+				shouldSkip = true
 			}
+		}
+		if shouldSkip {
+			continue
 		}
 		counter++
 

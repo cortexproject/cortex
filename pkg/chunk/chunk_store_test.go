@@ -41,8 +41,8 @@ var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSc
 
 //using metric name 'job' as this field has only 1 value i.e 'prometheus'
 var excludeLblCfg = util.ExcludeLabels{
-	"fake": []util.Metric{{LabelName: "go_gc_duration_seconds",
-		MetricName: "job"},
+	userID: []util.Metric{{LabelName: "bar",
+		MetricName: "foo"},
 	},
 }
 var stores = []struct {
@@ -53,8 +53,8 @@ var stores = []struct {
 		name: "store",
 		configFn: func() StoreConfig {
 			var storeCfg StoreConfig
-			storeCfg.ExcludeLabels = excludeLblCfg
 			flagext.DefaultValues(&storeCfg)
+			storeCfg.ExcludeLabels = excludeLblCfg
 			return storeCfg
 		},
 	},
@@ -113,7 +113,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
 	require.NoError(t, err)
 
-	store := NewCompositeStore(nil, excludeLblCfg)
+	store := NewCompositeStore(nil)
 	err = store.addSchema(storeCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store

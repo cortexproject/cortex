@@ -165,7 +165,7 @@ func NewStore(
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := chunk.NewCompositeStore(cacheGenNumLoader, storeCfg.ExcludeLabels)
+	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
 		indexClientReg := prometheus.WrapRegistererWith(

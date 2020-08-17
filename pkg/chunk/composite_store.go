@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -51,7 +50,6 @@ type CompositeStore struct {
 
 type compositeStore struct {
 	cacheGenNumLoader CacheGenNumLoader
-	excludeLabels     util.ExcludeLabels
 	stores            []compositeStoreEntry
 }
 
@@ -62,8 +60,8 @@ type compositeStoreEntry struct {
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.
-func NewCompositeStore(cacheGenNumLoader CacheGenNumLoader, excludeLabels util.ExcludeLabels) CompositeStore {
-	return CompositeStore{compositeStore{cacheGenNumLoader: cacheGenNumLoader, excludeLabels: excludeLabels}}
+func NewCompositeStore(cacheGenNumLoader CacheGenNumLoader) CompositeStore {
+	return CompositeStore{compositeStore{cacheGenNumLoader: cacheGenNumLoader}}
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
@@ -84,7 +82,7 @@ func (c *CompositeStore) addSchema(storeCfg StoreConfig, schema BaseSchema, star
 
 	switch s := schema.(type) {
 	case SeriesStoreSchema:
-		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache, c.excludeLabels)
+		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 	case StoreSchema:
 		store, err = newStore(storeCfg, s, index, chunks, limits, chunksCache)
 	default:

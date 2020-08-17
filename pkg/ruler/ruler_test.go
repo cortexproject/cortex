@@ -126,6 +126,8 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	return ruler, cleanup
 }
 
+var _ MultiTenantManager = &DefaultMultiTenantManager{}
+
 func TestNotifierSendsUserIDHeader(t *testing.T) {
 	var wg sync.WaitGroup
 

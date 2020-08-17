@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -18,12 +19,6 @@ import (
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-type MultiTenantManager interface {
-	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
-	GetRules(userID string) []*promRules.Group
-	Stop()
-}
 
 type DefaultMultiTenantManager struct {
 	cfg            Config
@@ -58,13 +53,6 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		reg.MustRegister(userManagerMetrics)
 	}
 
-	managersTotal := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "ruler_managers_total",
-		Help:      "Total number of managers registered and running in the ruler",
-	})
-	reg.MustRegister(managersTotal)
-
 	return &DefaultMultiTenantManager{
 		cfg:                cfg,
 		notifierCfg:        ncfg,
@@ -73,9 +61,13 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]*promRules.Manager{},
 		userManagerMetrics: userManagerMetrics,
-		managersTotal:      managersTotal,
-		registry:           reg,
-		logger:             logger,
+		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "ruler_managers_total",
+			Help:      "Total number of managers registered and running in the ruler",
+		}),
+		registry: reg,
+		logger:   logger,
 	}, nil
 }
 

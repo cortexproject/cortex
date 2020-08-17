@@ -139,32 +139,42 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 }
 
+// MultiTenantManager is the interface of interaction with a Manager that is tenant aware.
+type MultiTenantManager interface {
+	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
+	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
+	// GetRules fetches rules for a particular tenant (userID).
+	GetRules(userID string) []*promRules.Group
+	// Stop stops all Manager components.
+	Stop()
+}
+
 // Ruler evaluates rules.
-//+---------------------------------------------------------------+
-//|                                                               |
-//|                   Query       +-------------+                 |
-//|            +------------------>             |                 |
-//|            |                  |    Store    |                 |
-//|            | +----------------+             |                 |
-//|            | |     Rules      +-------------+                 |
-//|            | |                                                |
-//|            | |                                                |
-//|            | |                                                |
-//|       +----+-v----+   Filter  +------------+                  |
-//|       |           +----------->            |                  |
-//|       |   Ruler   |           |    Ring    |                  |
-//|       |           <-----------+            |                  |
-//|       +-------+---+   Rules   +------------+                  |
-//|               |                                               |
-//|               |                                               |
-//|               |                                               |
-//|               |    Load      +-----------------+              |
-//|               +-------------->                 |              |
-//|                              |     Manager     |              |
-//|                              |                 |              |
-//|                              +-----------------+              |
-//|                                                               |
-//+---------------------------------------------------------------+
+//	+---------------------------------------------------------------+
+//	|                                                               |
+//	|                   Query       +-------------+                 |
+//	|            +------------------>             |                 |
+//	|            |                  |    Store    |                 |
+//	|            | +----------------+             |                 |
+//	|            | |     Rules      +-------------+                 |
+//	|            | |                                                |
+//	|            | |                                                |
+//	|            | |                                                |
+//	|       +----+-v----+   Filter  +------------+                  |
+//	|       |           +----------->            |                  |
+//	|       |   Ruler   |           |    Ring    |                  |
+//	|       |           <-----------+            |                  |
+//	|       +-------+---+   Rules   +------------+                  |
+//	|               |                                               |
+//	|               |                                               |
+//	|               |                                               |
+//	|               |    Load      +-----------------+              |
+//	|               +-------------->                 |              |
+//	|                              |     Manager     |              |
+//	|                              |                 |              |
+//	|                              +-----------------+              |
+//	|                                                               |
+//	+---------------------------------------------------------------+
 type Ruler struct {
 	services.Service
 

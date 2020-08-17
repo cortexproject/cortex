@@ -288,7 +288,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
 	incomingErrors := make(chan error)
-	fmt.Printf("*********matcher len**** ***  %#v", len(matchers))
+
 	for _, matcher := range matchers {
 		//variable to determine if matcher exists in exclude labels
 		//and should be skipped while lookup.
@@ -313,8 +313,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			incomingIDs <- ids
 		}(matcher)
 	}
-	fmt.Printf("*********counter**** ***  %#v", counter)
-
 	indexLookupsPerQuery.Observe(float64(counter))
 	// Receive series IDs from all matchers, intersect as we go.
 	var ids []string

@@ -5,12 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-<<<<<<< HEAD
-=======
-	"sort"
 	"strings"
-	"sync"
->>>>>>> Using observability tests correctly
 	"testing"
 	"time"
 
@@ -123,7 +118,18 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 func TestChunkStore_Get(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()
-
+	const observableMetadata = `
+	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
+	# TYPE cortex_chunk_store_index_lookups_per_query histogram
+	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 24
+	cortex_chunk_store	_index_lookups_per_query_bucket{le="2"} 24
+	cortex_chunk_store_index_lookups_per_query_bucket{le="4"} 24
+	cortex_chunk_store_index_lookups_per_query_bucket{le="8"} 24
+	cortex_chunk_store_index_lookups_per_query_bucket{le="16"} 24
+	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 24
+	cortex_chunk_store_index_lookups_per_query_sum 12
+	cortex_chunk_store_index_lookups_per_query_count 24
+	`
 	fooMetric1 := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -206,6 +212,7 @@ func TestChunkStore_Get(t *testing.T) {
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
+			storeCfg.ExcludeLabels = excludeLblCfg
 			store := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
@@ -256,6 +263,7 @@ func TestChunkStore_Get(t *testing.T) {
 			}
 		}
 	}
+	assert.NoError(t, testutil.CollectAndCompare(indexLookupsPerQuery, strings.NewReader(observableMetadata), "cortex_chunk_store_index_lookups_per_query"))
 }
 
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {

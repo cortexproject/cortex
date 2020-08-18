@@ -33,6 +33,14 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
+	noCacheRequest = &PrometheusRequest{
+		Path:    "/api/v1/query_range",
+		Start:   1536673680 * 1e3,
+		End:     1536716898 * 1e3,
+		Step:    120 * 1e3,
+		Query:   "sum(container_memory_rss) by (namespace)",
+		NoCache: true,
+	}
 	respHeaders = []*PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
@@ -581,6 +589,71 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestResultsCacheShouldCacheFunc(t *testing.T) {
+	testcases := []struct {
+		name         string
+		shouldCache  ShouldCacheFn
+		requests     []Request
+		expectedCall int
+	}{
+		{
+			name:         "normal",
+			shouldCache:  nil,
+			requests:     []Request{parsedRequest, parsedRequest},
+			expectedCall: 1,
+		},
+		{
+			name: "always no cache",
+			shouldCache: func(r Request) bool {
+				return false
+			},
+			requests:     []Request{parsedRequest, parsedRequest},
+			expectedCall: 2,
+		},
+		{
+			name: "check cache based on request",
+			shouldCache: func(r Request) bool {
+				return !r.GetNoCache()
+			},
+			requests:     []Request{noCacheRequest, noCacheRequest},
+			expectedCall: 2,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			var cfg ResultsCacheConfig
+			flagext.DefaultValues(&cfg)
+			cfg.CacheConfig.Cache = cache.NewMockCache()
+			rcm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				constSplitter(day),
+				fakeLimitsHighMaxCacheFreshness{},
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+				tc.shouldCache,
+				nil,
+			)
+			require.NoError(t, err)
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				calls++
+				return parsedResponse, nil
+			}))
+
+			for _, req := range tc.requests {
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := rc.Do(ctx, req)
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedCall, calls)
 		})
 	}
 }

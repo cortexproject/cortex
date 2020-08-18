@@ -72,6 +72,8 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
+	// GetNoCache returns the cache decision.
+	GetNoCache() bool
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
 	// WithQuery clone the current request with a different query.
@@ -205,6 +207,11 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
+
+	if r.Header.Get(cachecontrolHeader) == noCacheValue {
+		result.NoCache = true
+	}
+
 	return &result, nil
 }
 

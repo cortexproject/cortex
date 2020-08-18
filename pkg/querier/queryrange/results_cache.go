@@ -102,6 +102,8 @@ func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
+type ShouldCacheFn func(r Request) bool
+
 type resultsCache struct {
 	logger   log.Logger
 	cfg      ResultsCacheConfig
@@ -113,6 +115,7 @@ type resultsCache struct {
 	extractor            Extractor
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
+	shouldCache          ShouldCacheFn
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -129,6 +132,7 @@ func NewResultsCacheMiddleware(
 	merger Merger,
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
+	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
 ) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig, reg, logger)
@@ -151,6 +155,7 @@ func NewResultsCacheMiddleware(
 			extractor:            extractor,
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
+			shouldCache:          shouldCache,
 		}
 	}), c, nil
 }
@@ -159,6 +164,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if s.shouldCache != nil && !s.shouldCache(r) {
+		return s.next.Do(ctx, r)
 	}
 
 	if s.cacheGenNumberLoader != nil {

@@ -380,6 +380,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -417,6 +418,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		fakeLimitsHighMaxCacheFreshness{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -487,6 +489,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -521,6 +524,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)

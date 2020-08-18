@@ -305,7 +305,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Just get series for metric if there are no matchers
 	//or count of matchers after exlusion is 0
 	if len(matchers) == 0 || counter == 0 {
-		indexLookupsPerQuery.Observe(1)
+		indexLookupsPerQuery.Observe(float64(1))
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))

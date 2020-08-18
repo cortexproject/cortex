@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+<<<<<<< HEAD
 	"strings"
+=======
+	"sort"
+	"strings"
+	"sync"
+>>>>>>> Fix issue
 	"testing"
 	"time"
 
@@ -32,8 +38,7 @@ type configFactory func() StoreConfig
 
 var seriesStoreSchemas = []string{"v9", "v10", "v11"}
 
-// var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
-var schemas = append([]string{}, seriesStoreSchemas...)
+var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
 
 //using metric name 'job' as this field has only 1 value i.e 'prometheus'
 var excludeLblCfg = util.ExcludeLabels{
@@ -121,14 +126,14 @@ func TestChunkStore_Get(t *testing.T) {
 	const observableMetadata = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
-	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 24
-	cortex_chunk_store	_index_lookups_per_query_bucket{le="2"} 24
-	cortex_chunk_store_index_lookups_per_query_bucket{le="4"} 24
-	cortex_chunk_store_index_lookups_per_query_bucket{le="8"} 24
-	cortex_chunk_store_index_lookups_per_query_bucket{le="16"} 24
-	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 24
-	cortex_chunk_store_index_lookups_per_query_sum 12
-	cortex_chunk_store_index_lookups_per_query_count 24
+	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 102
+	cortex_chunk_store_index_lookups_per_query_bucket{le="2"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="4"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="8"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="16"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 120
+	cortex_chunk_store_index_lookups_per_query_sum 138
+	cortex_chunk_store_index_lookups_per_query_count 120
 	`
 	fooMetric1 := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},

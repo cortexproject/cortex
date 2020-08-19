@@ -77,6 +77,12 @@ blocks_storage:
   filesystem:
     dir: /tmp/cortex/storage
 
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
 frontend_worker:
   match_max_concurrent: true
 

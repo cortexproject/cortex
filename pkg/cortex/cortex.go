@@ -188,7 +188,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid table_manager config")
+		return errors.Wrap(err, "invalid table-manager config")
+	}
+	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
+		return errors.Wrap(err, "invalid store-gateway config")
 	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {

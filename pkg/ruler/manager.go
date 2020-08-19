@@ -20,6 +20,24 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+var (
+	configUpdatesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_config_updates_total",
+		Help:      "Total number of config updates triggered by a user",
+	}, []string{"user"})
+	configUpdateFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_config_update_failures_total",
+		Help:      "Total number of config update failures triggered by a user",
+	}, []string{"user", "reason"})
+	userManagerFailed = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ruler_manager_failed",
+		Help:      "Boolean set to 1 whenever the Ruler manager failed to start for a user.",
+	}, []string{"user"})
+)
+
 type DefaultMultiTenantManager struct {
 	cfg            Config
 	notifierCfg    *config.Config
@@ -112,6 +130,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
 				configUpdateFailuresTotal.WithLabelValues(user, "rule-manager-creation-failure").Inc()
+				userManagerFailed.WithLabelValues(user).Set(1)
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
@@ -123,9 +142,12 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
 			configUpdateFailuresTotal.WithLabelValues(user, "rules-update-failure").Inc()
+			userManagerFailed.WithLabelValues(user).Set(1)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}
+
+		userManagerFailed.WithLabelValues(user).Set(0)
 	}
 }
 

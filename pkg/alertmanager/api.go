@@ -138,6 +138,10 @@ func validateUserConfig(cfg alerts.AlertConfigDesc) error {
 	}
 
 	// Create templates on disk in a temporary directory.
+	// Note: This means the validation will succeed if we can write to tmp but
+	// not to configured data dir, and on the flipside, it'll fail if we can't write
+	// to tmpDir. Ignoring both cases for now as they're ultra rare but will revisit if
+	// we see this in the wild.
 	tmpDir, err := ioutil.TempDir("", "validate-config")
 	if err != nil {
 		return err
@@ -162,6 +166,11 @@ func validateUserConfig(cfg alerts.AlertConfigDesc) error {
 	if err != nil {
 		return err
 	}
+
+	// Note: Not validating the MultitenantAlertmanager.transformConfig function as that
+	// that function shouldn't break configuration. Only way it can fail is if the base
+	// autoWebhookURL itself is broken. In that case, I would argue, we should accept the config
+	// not reject it.
 
 	return nil
 }

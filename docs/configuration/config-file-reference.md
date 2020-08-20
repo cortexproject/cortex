@@ -669,17 +669,24 @@ The `querier_config` configures the Cortex querier.
 [store_gateway_addresses: <string> | default = ""]
 
 store_gateway_client:
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -experimental.querier.store-gateway-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -experimental.querier.store-gateway-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Second store engine to use for querying. Empty = disabled.
 # CLI flag: -querier.second-store-engine
@@ -797,17 +804,24 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 ruler_client:
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -ruler.client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -ruler.client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -ruler.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ruler.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -2330,17 +2344,24 @@ grpc_client_config:
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
 
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -ingester.client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -ingester.client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -ingester.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ingester.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `frontend_worker_config`
@@ -2409,17 +2430,24 @@ grpc_client_config:
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
 
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -querier.frontend-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -querier.frontend-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -querier.frontend-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -2970,17 +2998,24 @@ The `configstore_config` configures the config database storing rules and alerts
 # CLI flag: -<prefix>.configs.client-timeout
 [client_timeout: <duration> | default = 5s]
 
-# TLS cert path for the client
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.configs.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# TLS key path for the client
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
 # CLI flag: -<prefix>.configs.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# TLS CA path for the client
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.configs.tls-ca-path
 [tls_ca_path: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.configs.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`

@@ -146,17 +146,24 @@ querier:
   [store_gateway_addresses: <string> | default = ""]
 
   store_gateway_client:
-    # TLS cert path for the client
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
     # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
     [tls_cert_path: <string> | default = ""]
 
-    # TLS key path for the client
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
     # CLI flag: -experimental.querier.store-gateway-client.tls-key-path
     [tls_key_path: <string> | default = ""]
 
-    # TLS CA path for the client
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
     # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
     [tls_ca_path: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -experimental.querier.store-gateway-client.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
 
   # Second store engine to use for querying. Empty = disabled.
   # CLI flag: -querier.second-store-engine

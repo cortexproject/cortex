@@ -95,15 +95,16 @@ See [`fifo_cache_config` documentation](../configuration/config-file-reference.m
 You can also use [Redis](https://redis.io/) for out-of-process caching; this is a relatively new addition to Cortex and is under active development.
 
 ```
--<prefix>.redis.topology
-    Redis topology: server (default), cluster, sentinel
--<prefix>.redis.enable-tls
-    Enables connecting to redis with TLS.
 -<prefix>.redis.endpoint string
     Redis endpoint to use when caching chunks. If empty, no redis will be used.
-    For Redis server - Redis service endpoint
-    For Redis cluster - comma-separated list of Redis node's endpoints
-    For Redis sentinel - Redis Sentinel service endpoint
+    For Redis Server - Redis service endpoint
+    For Redis Cluster - comma-separated list of Redis node's endpoints
+    For Redis Sentinel - Redis Sentinel service endpoint
+-<prefix>.redis.master_name
+    Redis Sentinel master group name.
+    An empty string for Redis Server or Redis Cluster
+-<prefix>.redis.enable-tls
+    Enables connecting to redis with TLS.
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
 -<prefix>.redis.pool-size int

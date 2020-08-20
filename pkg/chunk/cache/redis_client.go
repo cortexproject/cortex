@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -12,23 +11,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-redis/redis/v8"
 )
 
-const (
-	redisTopologyServer   string = "server"
-	redisTopologyCluster  string = "cluster"
-	redisTopologySentinel string = "sentinel"
-)
-
-var ErrNoMasters = errors.New("redis: no masters")
-
 // RedisConfig defines how a RedisCache should be constructed.
 type RedisConfig struct {
-	Topology    string         `yaml:"topology"`
 	Endpoint    string         `yaml:"endpoint"`
+	MasterName  string         `yaml:"master_name"`
 	Timeout     time.Duration  `yaml:"timeout"`
 	Expiration  time.Duration  `yaml:"expiration"`
 	PoolSize    int            `yaml:"pool_size"`
@@ -40,8 +29,8 @@ type RedisConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Topology, prefix+"redis.topology", redisTopologyServer, description+"Redis topology. Supported: "+redisTopologyServer+", "+redisTopologyCluster+", "+redisTopologySentinel+".")
-	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis service endpoint to use for caching. A comma-separated list of endpoints when the topology is cluster. If empty, no redis will be used.")
+	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server or Redis Sentinel endpoint. A comma-separated list of endpoints for Redis Cluster. If empty, no redis will be used.")
+	f.StringVar(&cfg.MasterName, prefix+"redis.master_name", "", description+"Redis Sentinel master group name. An empty string for Redis Server or Redis Cluster.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
@@ -53,10 +42,8 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 
 // Validate Redis configuration
 func (cfg *RedisConfig) Validate() error {
-	switch cfg.Topology {
-	case redisTopologyServer, redisTopologyCluster, redisTopologySentinel:
-	default:
-		return fmt.Errorf("unsupported Redis topology %q", cfg.Topology)
+	if len(cfg.Endpoint) == 0 {
+		return fmt.Errorf("redis endpoint cannot be empty")
 	}
 	return nil
 }
@@ -77,25 +64,23 @@ type redisCommander interface {
 }
 
 // NewRedisClient creates Redis client
-func NewRedisClient(cfg *RedisConfig, logger log.Logger) RedisClient {
-	switch cfg.Topology {
-	case redisTopologyCluster:
-		return newRedisClusterClient(cfg, logger)
-	case redisTopologySentinel:
-		return newRedisSentinelClient(cfg, logger)
-	default:
-		return newRedisServerClient(cfg, logger)
+func NewRedisClient(cfg *RedisConfig) RedisClient {
+	if len(cfg.MasterName) > 0 {
+		return newRedisSentinelClient(cfg)
 	}
+	if addrs := strings.Split(cfg.Endpoint, ","); len(addrs) > 1 {
+		return newRedisClusterClient(cfg, addrs)
+	}
+	return newRedisServerClient(cfg)
 }
 
 type redisBasicClient struct {
-	logger     log.Logger
 	expiration time.Duration
 	timeout    time.Duration
 	rdb        redisCommander
 }
 
-func newRedisServerClient(cfg *RedisConfig, logger log.Logger) *redisBasicClient {
+func newRedisServerClient(cfg *RedisConfig) *redisBasicClient {
 	opt := &redis.Options{
 		Addr:        cfg.Endpoint,
 		Password:    cfg.Password.Value,
@@ -107,16 +92,15 @@ func newRedisServerClient(cfg *RedisConfig, logger log.Logger) *redisBasicClient
 		opt.TLSConfig = &tls.Config{}
 	}
 	return &redisBasicClient{
-		logger:     logger,
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewClient(opt),
 	}
 }
 
-func newRedisClusterClient(cfg *RedisConfig, logger log.Logger) *redisBasicClient {
+func newRedisClusterClient(cfg *RedisConfig, addrs []string) *redisBasicClient {
 	opt := &redis.ClusterOptions{
-		Addrs:       strings.Split(cfg.Endpoint, ","),
+		Addrs:       addrs,
 		Password:    cfg.Password.Value,
 		PoolSize:    cfg.PoolSize,
 		IdleTimeout: cfg.IdleTimeout,
@@ -126,7 +110,6 @@ func newRedisClusterClient(cfg *RedisConfig, logger log.Logger) *redisBasicClien
 		opt.TLSConfig = &tls.Config{}
 	}
 	return &redisBasicClient{
-		logger:     logger,
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewClusterClient(opt),
@@ -191,14 +174,14 @@ func (c *redisBasicClient) Close() error {
 }
 
 type redisSentinelClient struct {
-	logger     log.Logger
+	masterName string
 	expiration time.Duration
 	timeout    time.Duration
 	rdb        *redis.SentinelClient
 	opt        *redis.Options
 }
 
-func newRedisSentinelClient(cfg *RedisConfig, logger log.Logger) *redisSentinelClient {
+func newRedisSentinelClient(cfg *RedisConfig) *redisSentinelClient {
 	opt := &redis.Options{
 		Addr:        cfg.Endpoint,
 		Password:    cfg.Password.Value,
@@ -210,7 +193,7 @@ func newRedisSentinelClient(cfg *RedisConfig, logger log.Logger) *redisSentinelC
 		opt.TLSConfig = &tls.Config{}
 	}
 	return &redisSentinelClient{
-		logger:     logger,
+		masterName: cfg.MasterName,
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewSentinelClient(opt),
@@ -219,40 +202,29 @@ func newRedisSentinelClient(cfg *RedisConfig, logger log.Logger) *redisSentinelC
 }
 
 func (c *redisSentinelClient) getMaster(ctx context.Context) (*redisBasicClient, error) {
-	masters, err := c.rdb.Masters(ctx).Result()
+	// expected: info = []string{<host>, <port>}
+	info, err := c.rdb.GetMasterAddrByName(ctx, c.masterName).Result()
 	if err != nil {
 		return nil, err
 	}
-	err = ErrNoMasters
-	if len(masters) == 0 {
-		return nil, err
+	switch len(info) {
+	case 0:
+		return nil, fmt.Errorf("redis: no master")
+	case 2:
+		return &redisBasicClient{
+			expiration: c.expiration,
+			timeout:    c.timeout,
+			rdb: redis.NewClient(&redis.Options{
+				Addr:        fmt.Sprintf("%s:%s", info[0], info[1]),
+				Password:    c.opt.Password,
+				PoolSize:    c.opt.PoolSize,
+				IdleTimeout: c.opt.IdleTimeout,
+				MaxConnAge:  c.opt.MaxConnAge,
+			}),
+		}, nil
+	default:
+		return nil, fmt.Errorf("redis: unexpected master info format %v", info)
 	}
-	for _, master := range masters {
-		// expected: master = []interface {}{"name", "<master name>", "ip", "<IP>", "port", "<port>", ... }
-		if info, ok := master.([]interface{}); ok {
-			if len(info) >= 6 && info[2] == "ip" && info[4] == "port" {
-				return &redisBasicClient{
-					logger:     c.logger,
-					expiration: c.expiration,
-					timeout:    c.timeout,
-					rdb: redis.NewClient(&redis.Options{
-						Addr:        fmt.Sprintf("%s:%s", info[3], info[5]),
-						Password:    c.opt.Password,
-						PoolSize:    c.opt.PoolSize,
-						IdleTimeout: c.opt.IdleTimeout,
-						MaxConnAge:  c.opt.MaxConnAge,
-					}),
-				}, nil
-			}
-			err = fmt.Errorf("redis: unexpected master info format %v", info)
-			level.Warn(c.logger).Log("msg", err.Error())
-
-		} else {
-			err = fmt.Errorf("redis: unexpected master info type %#v", master)
-			level.Warn(c.logger).Log("msg", err.Error())
-		}
-	}
-	return nil, err
 }
 
 func (c *redisSentinelClient) Ping(ctx context.Context) error {

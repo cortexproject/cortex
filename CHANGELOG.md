@@ -24,7 +24,7 @@
   * `cortex_bucket_stores_tenants_synced`
 * [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
   - The following changes have been made in Redis configuration:
-   - `-redis.topology` added
+   - `-redis.master_name` added
    - `-redis.max-active-conns` changed to `-redis.pool-size`
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed

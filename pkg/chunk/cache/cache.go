@@ -57,9 +57,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 }
 
 func (cfg *Config) Validate() error {
-	if err := cfg.Redis.Validate(); err != nil {
-		return err
-	}
 	return cfg.Fifocache.Validate()
 }
 

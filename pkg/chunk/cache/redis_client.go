@@ -40,14 +40,6 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
 }
 
-// Validate Redis configuration
-func (cfg *RedisConfig) Validate() error {
-	if len(cfg.Endpoint) == 0 {
-		return fmt.Errorf("redis endpoint cannot be empty")
-	}
-	return nil
-}
-
 // RedisClient is a generic Redis client interface
 type RedisClient interface {
 	Ping(context.Context) error

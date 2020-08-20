@@ -1,5 +1,3 @@
-// +build !race
-
 package alertmanager
 
 import (
@@ -57,8 +55,6 @@ func (m *mockAlertStore) DeleteAlertConfig(ctx context.Context, user string) err
 	return fmt.Errorf("not implemented")
 }
 
-// TestLoadAllConfigs ensures the multitenant alertmanager can properly load configs from a local backend store.
-// It is excluded from the race detector due to a vendored race issue https://github.com/prometheus/alertmanager/issues/2182
 func TestLoadAllConfigs(t *testing.T) {
 	mockStore := &mockAlertStore{
 		configs: map[string]alerts.AlertConfigDesc{

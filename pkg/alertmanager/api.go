@@ -96,7 +96,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 
 	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
 	if err := validateUserConfig(cfgDesc); err != nil {
-		level.Error(logger).Log("msg", errValidatingConfig, "err", err.Error())
+		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
 		return
 	}
@@ -149,17 +149,15 @@ func validateUserConfig(cfg alerts.AlertConfigDesc) error {
 	defer os.RemoveAll(tmpDir)
 
 	for _, tmpl := range cfg.Templates {
-		_, err := createTemplatesFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
+		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			return err
 		}
 	}
 
 	templateFiles := make([]string, len(amCfg.Templates))
-	if len(amCfg.Templates) > 0 {
-		for i, t := range amCfg.Templates {
-			templateFiles[i] = filepath.Join(tmpDir, "templates", cfg.User, t)
-		}
+	for i, t := range amCfg.Templates {
+		templateFiles[i] = filepath.Join(tmpDir, "templates", cfg.User, t)
 	}
 
 	_, err = template.FromGlobs(templateFiles...)

@@ -355,10 +355,6 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	return amConfig, nil
 }
 
-func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content string) (bool, error) {
-	return createTemplatesFile(am.cfg.DataDir, userID, fn, content)
-}
-
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
@@ -370,7 +366,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := am.createTemplatesFile(cfg.User, tmpl.Filename, tmpl.Body)
+		hasChanged, err := createTemplateFile(am.cfg.DataDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -491,7 +487,7 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func createTemplatesFile(dataDir, userID, fn, content string) (bool, error) {
+func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
 	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {

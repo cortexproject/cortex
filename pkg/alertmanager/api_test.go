@@ -1,14 +1,20 @@
 package alertmanager
 
 import (
+	"bytes"
+	"context"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 )
 
-func TestAMConfigValidation(t *testing.T) {
+func TestAMConfigValidationAPI(t *testing.T) {
 	testCases := []struct {
 		cfg    UserConfig
 		hasErr bool
@@ -62,13 +68,42 @@ receivers:
 		},
 	}
 
+	am := &MultitenantAlertmanager{
+		store:  noopAlertStore{},
+		logger: util.Logger,
+	}
 	for _, tc := range testCases {
-		cfgDesc := alerts.ToProto(tc.cfg.AlertmanagerConfig, tc.cfg.TemplateFiles, "fake")
-		err := validateUserConfig(cfgDesc)
+		payload, err := yaml.Marshal(&tc.cfg)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("GET", "http://foooo", bytes.NewReader(payload))
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "testing")
+		require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
+		w := httptest.NewRecorder()
+		am.SetUserConfig(w, req)
+
+		resp := w.Result()
 		if tc.hasErr {
-			require.Error(t, err)
+			require.Equal(t, 400, resp.StatusCode)
 		} else {
-			require.NoError(t, err)
+			require.Equal(t, 201, resp.StatusCode)
 		}
 	}
+
+}
+
+type noopAlertStore struct{}
+
+func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+	return nil, nil
+}
+func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+	return alerts.AlertConfigDesc{}, nil
+}
+func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+	return nil
+}
+func (noopAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
+	return nil
 }

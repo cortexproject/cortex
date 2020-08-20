@@ -15,6 +15,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	alertConfig "github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/types"
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -375,6 +376,32 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("deleting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// SendAlertToAlermanager sends alerts to the Alertmanager API
+func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert) error {
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/alerts", nil)
+
+	data, err := json.Marshal([]types.Alert{{Alert: *alert}})
+	if err != nil {
+		return fmt.Errorf("error marshaling the alert: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("sending alert failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	return nil

@@ -150,6 +150,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Silences:   am.silences,
 		StatusFunc: am.marker.Status,
 		Peer:       cfg.Peer,
+		Registry:   am.registry,
 		Logger:     log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)

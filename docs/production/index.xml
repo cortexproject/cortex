@@ -517,8 +517,7 @@ generating certificates. A Certifying Authority (CA) will be used for this
 purpose which should be private to the organization, as any certificates signed
 by this CA will have permissions to communicate with the cluster.&lt;/p>
 &lt;p>We will use the following script to generate self signed certs for the cluster:&lt;/p>
-&lt;pre>&lt;code># Refer: github.com/cortexproject/cortex/integration/certs/genCerts.sh
-# keys
+&lt;pre>&lt;code># keys
 openssl genrsa -out root.key
 openssl genrsa -out client.key
 openssl genrsa -out server.key

@@ -55,7 +55,6 @@ var stores = []struct {
 		configFn: func() StoreConfig {
 			var storeCfg StoreConfig
 			flagext.DefaultValues(&storeCfg)
-			storeCfg.ExcludeLabels = excludeLblCfg
 			return storeCfg
 		},
 	},
@@ -126,13 +125,13 @@ func TestChunkStore_Get(t *testing.T) {
 	const observableMetadata = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
-	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 102
+	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 84
 	cortex_chunk_store_index_lookups_per_query_bucket{le="2"} 120
 	cortex_chunk_store_index_lookups_per_query_bucket{le="4"} 120
 	cortex_chunk_store_index_lookups_per_query_bucket{le="8"} 120
 	cortex_chunk_store_index_lookups_per_query_bucket{le="16"} 120
 	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 120
-	cortex_chunk_store_index_lookups_per_query_sum 138
+	cortex_chunk_store_index_lookups_per_query_sum 156
 	cortex_chunk_store_index_lookups_per_query_count 120
 	`
 	fooMetric1 := labels.Labels{
@@ -270,6 +269,156 @@ func TestChunkStore_Get(t *testing.T) {
 	assert.NoError(t, testutil.CollectAndCompare(indexLookupsPerQuery, strings.NewReader(observableMetadata), "cortex_chunk_store_index_lookups_per_query"))
 }
 
+// TestChunkStore_ExcludeLabels tests results are returned correctly after exclusions of certain labels
+func TestChunkStore_ExcludeLabels(t *testing.T) {
+	ctx := context.Background()
+	now := model.Now()
+	const observableMetadata = `
+	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
+	# TYPE cortex_chunk_store_index_lookups_per_query histogram
+	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="2"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="4"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="8"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="16"} 120
+	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 120
+	cortex_chunk_store_index_lookups_per_query_sum 120
+	cortex_chunk_store_index_lookups_per_query_count 120
+	`
+	fooMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
+	}
+	fooMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
+	}
+
+	// barMetric1 is a subset of barMetric2 to test over-matching bug.
+	barMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
+	}
+	barMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
+	}
+
+	fooChunk1 := dummyChunkFor(now, fooMetric1)
+	fooChunk2 := dummyChunkFor(now, fooMetric2)
+
+	barChunk1 := dummyChunkFor(now, barMetric1)
+	barChunk2 := dummyChunkFor(now, barMetric2)
+
+	testCases := []struct {
+		query  string
+		expect []Chunk
+		err    string
+	}{
+		{
+			query:  `foo`,
+			expect: []Chunk{fooChunk1, fooChunk2},
+		},
+		{
+			query:  `foo{flip=""}`,
+			expect: []Chunk{fooChunk2},
+		},
+		{
+			query:  `foo{bar="baz"}`,
+			expect: []Chunk{fooChunk1},
+		},
+		{
+			query:  `foo{bar="beep"}`,
+			expect: []Chunk{fooChunk2},
+		},
+		{
+			query:  `foo{toms="code"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
+		},
+		{
+			query:  `foo{bar!="baz"}`,
+			expect: []Chunk{fooChunk2},
+		},
+		{
+			query:  `foo{bar=~"beep|baz"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
+		},
+		{
+			query:  `foo{toms="code", bar=~"beep|baz"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
+		},
+		{
+			query:  `foo{toms="code", bar="baz"}`,
+			expect: []Chunk{fooChunk1},
+		},
+		{
+			query:  `foo{a="b", bar="baz"}`,
+			expect: nil,
+		},
+		{
+			query: `{__name__=~"foo"}`,
+			err:   "query must contain metric name",
+		},
+	}
+	for _, schema := range schemas {
+		for _, storeCase := range stores {
+			storeCfg := storeCase.configFn()
+			storeCfg.ExcludeLabels = excludeLblCfg
+			store := newTestChunkStoreConfig(t, schema, storeCfg)
+			defer store.Stop()
+			if err := store.Put(ctx, []Chunk{
+				fooChunk1,
+				fooChunk2,
+				barChunk1,
+				barChunk2,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range testCases {
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema)
+					matchers, err := parser.ParseMetricSelector(tc.query)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					// Query with ordinary time-range
+					chunks1, err := store.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					if tc.err != "" {
+						require.Error(t, err)
+						require.Equal(t, tc.err, err.Error())
+						return
+					}
+					require.NoError(t, err)
+					if !reflect.DeepEqual(tc.expect, chunks1) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks1))
+					}
+
+					// Pushing end of time-range into future should yield exact same resultset
+					chunks2, err := store.Get(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
+					require.NoError(t, err)
+					if !reflect.DeepEqual(tc.expect, chunks2) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks2))
+					}
+
+					// Query with both begin & end of time-range in future should yield empty resultset
+					chunks3, err := store.Get(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
+					require.NoError(t, err)
+					if len(chunks3) != 0 {
+						t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
+							tc.query, len(chunks3), chunks3)
+					}
+				})
+			}
+		}
+	}
+	assert.NoError(t, testutil.CollectAndCompare(indexLookupsPerQuery, strings.NewReader(observableMetadata), "cortex_chunk_store_index_lookups_per_query"))
+}
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()

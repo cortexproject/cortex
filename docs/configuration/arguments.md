@@ -496,7 +496,7 @@ If a reverse proxy is used in front of Cortex it might be diffult to troubleshoo
 
   Set this to `true` to add logging of the IP when a Forwarded, X-Real-IP or X-Forwarded-For header is used. A field called `sourceIPs` will be added to error logs when data is pushed into Cortex.
 
-- `server.log-source-ips-header` 
+- `server.log-source-ips-header`
 
   Header field storing the source IPs. It is only used if `server.log-source-ips-enabled` is true and if `server.log-source-ips-regex` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
 

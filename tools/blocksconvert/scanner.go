@@ -209,6 +209,9 @@ func (s *Scanner) running(ctx context.Context) error {
 		level.Info(s.logger).Log("msg", "done scanning table", "table", t)
 	}
 
+	// All good, just wait until context is done, to avoid restarts.
+	level.Info(s.logger).Log("Finished")
+	<-ctx.Done()
 	return nil
 }
 

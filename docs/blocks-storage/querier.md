@@ -185,6 +185,69 @@ blocks_storage:
   # CLI flag: -experimental.blocks-storage.backend
   [backend: <string> | default = "s3"]
 
+  s3:
+    # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+    # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+    # S3-compatible service in hostname:port format.
+    # CLI flag: -experimental.blocks-storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # S3 bucket name
+    # CLI flag: -experimental.blocks-storage.s3.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # S3 secret access key
+    # CLI flag: -experimental.blocks-storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # S3 access key ID
+    # CLI flag: -experimental.blocks-storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # If enabled, use http:// for the S3 endpoint instead of https://. This
+    # could be useful in local dev/test environments while using an
+    # S3-compatible backend storage, like Minio.
+    # CLI flag: -experimental.blocks-storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+  gcs:
+    # GCS bucket name
+    # CLI flag: -experimental.blocks-storage.gcs.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # JSON representing either a Google Developers Console
+    # client_credentials.json file or a Google Developers service account key
+    # file. If empty, fallback to Google default logic.
+    # CLI flag: -experimental.blocks-storage.gcs.service-account
+    [service_account: <string> | default = ""]
+
+  azure:
+    # Azure storage account name
+    # CLI flag: -experimental.blocks-storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # Azure storage account key
+    # CLI flag: -experimental.blocks-storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Azure storage container name
+    # CLI flag: -experimental.blocks-storage.azure.container-name
+    [container_name: <string> | default = ""]
+
+    # Azure storage endpoint suffix without schema. The account name will be
+    # prefixed to this value to create the FQDN
+    # CLI flag: -experimental.blocks-storage.azure.endpoint-suffix
+    [endpoint_suffix: <string> | default = ""]
+
+    # Number of retries for recoverable errors
+    # CLI flag: -experimental.blocks-storage.azure.max-retries
+    [max_retries: <int> | default = 20]
+
+  filesystem:
+    # Local filesystem storage directory.
+    # CLI flag: -experimental.blocks-storage.filesystem.dir
+    [dir: <string> | default = ""]
+
   # This configures how the store-gateway synchronizes blocks stored in the
   # bucket.
   bucket_store:
@@ -490,67 +553,4 @@ blocks_storage:
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -experimental.blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
-
-  s3:
-    # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
-    # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
-    # S3-compatible service in hostname:port format.
-    # CLI flag: -experimental.blocks-storage.s3.endpoint
-    [endpoint: <string> | default = ""]
-
-    # S3 bucket name
-    # CLI flag: -experimental.blocks-storage.s3.bucket-name
-    [bucket_name: <string> | default = ""]
-
-    # S3 secret access key
-    # CLI flag: -experimental.blocks-storage.s3.secret-access-key
-    [secret_access_key: <string> | default = ""]
-
-    # S3 access key ID
-    # CLI flag: -experimental.blocks-storage.s3.access-key-id
-    [access_key_id: <string> | default = ""]
-
-    # If enabled, use http:// for the S3 endpoint instead of https://. This
-    # could be useful in local dev/test environments while using an
-    # S3-compatible backend storage, like Minio.
-    # CLI flag: -experimental.blocks-storage.s3.insecure
-    [insecure: <boolean> | default = false]
-
-  gcs:
-    # GCS bucket name
-    # CLI flag: -experimental.blocks-storage.gcs.bucket-name
-    [bucket_name: <string> | default = ""]
-
-    # JSON representing either a Google Developers Console
-    # client_credentials.json file or a Google Developers service account key
-    # file. If empty, fallback to Google default logic.
-    # CLI flag: -experimental.blocks-storage.gcs.service-account
-    [service_account: <string> | default = ""]
-
-  azure:
-    # Azure storage account name
-    # CLI flag: -experimental.blocks-storage.azure.account-name
-    [account_name: <string> | default = ""]
-
-    # Azure storage account key
-    # CLI flag: -experimental.blocks-storage.azure.account-key
-    [account_key: <string> | default = ""]
-
-    # Azure storage container name
-    # CLI flag: -experimental.blocks-storage.azure.container-name
-    [container_name: <string> | default = ""]
-
-    # Azure storage endpoint suffix without schema. The account name will be
-    # prefixed to this value to create the FQDN
-    # CLI flag: -experimental.blocks-storage.azure.endpoint-suffix
-    [endpoint_suffix: <string> | default = ""]
-
-    # Number of retries for recoverable errors
-    # CLI flag: -experimental.blocks-storage.azure.max-retries
-    [max_retries: <int> | default = 20]
-
-  filesystem:
-    # Local filesystem storage directory.
-    # CLI flag: -experimental.blocks-storage.filesystem.dir
-    [dir: <string> | default = ""]
 ```

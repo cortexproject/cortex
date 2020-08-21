@@ -57,40 +57,53 @@ func TestValidateLabels(t *testing.T) {
 	cfg.enforceMetricName = true
 
 	for _, c := range []struct {
-		metric model.Metric
-		err    error
+		metric                  model.Metric
+		skipLabelNameValidation bool
+		err                     error
 	}{
 		{
 			map[model.LabelName]model.LabelValue{},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, " "),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, "foo ", `valid{foo ="bar"}`),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"},
+			false,
 			nil,
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelName", "this_is_a_really_really_long_name_that_should_cause_an_error": "test_value_please_ignore"},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, "this_is_a_really_really_long_name_that_should_cause_an_error", `badLabelName{this_is_a_really_really_long_name_that_should_cause_an_error="test_value_please_ignore"}`),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here", `badLabelValue{much_shorter_name="test_value_please_ignore_no_really_nothing_to_see_here"}`),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
+			false,
 			httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, `foo{bar="baz", blip="blop"}`, 3, 2),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"},
+			true,
+			nil,
 		},
 	} {
 
-		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric))
+		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }
@@ -151,7 +164,7 @@ func TestValidateLabelOrder(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
-	})
+	}, false)
 	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errLabelsNotSorted, "a", `m{b="b", a="a"}`), err)
 }
 
@@ -166,13 +179,13 @@ func TestValidateLabelDuplication(t *testing.T) {
 	err := ValidateLabels(cfg, userID, []client.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
-	})
+	}, false)
 	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "__name__", `a{__name__="b"}`), err)
 
 	err = ValidateLabels(cfg, userID, []client.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
-	})
+	}, false)
 	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "a", `a{a="a", a="a"}`), err)
 }

@@ -12,208 +12,236 @@ func TestConfig_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config      Config
+		config      BlocksStorageConfig
 		expectedErr error
 	}{
 		"should pass on S3 backend": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: nil,
 		},
 		"should pass on GCS backend": {
-			config: Config{
-				Backend:                   "gcs",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                2,
+			config: BlocksStorageConfig{
+				Backend: "gcs",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: nil,
 		},
 		"should fail on unknown storage backend": {
-			config: Config{
-				Backend:    "unknown",
-				StripeSize: 2,
+			config: BlocksStorageConfig{
+				Backend: "unknown",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					StripeSize:  2,
+					BlockRanges: DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errUnsupportedStorageBackend,
 		},
 		"should fail on invalid ship concurrency": {
-			config: Config{
-				Backend:         "s3",
-				ShipInterval:    time.Minute,
-				ShipConcurrency: 0,
-				StripeSize:      2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					ShipInterval:    time.Minute,
+					ShipConcurrency: 0,
+					StripeSize:      2,
+					BlockRanges:     DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidShipConcurrency,
 		},
 		"should pass on invalid ship concurrency but shipping is disabled": {
-			config: Config{
-				Backend:                   "s3",
-				ShipInterval:              0,
-				ShipConcurrency:           0,
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					ShipInterval:              0,
+					ShipConcurrency:           0,
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: nil,
 		},
 		"should fail on invalid compaction interval": {
-			config: Config{
-				Backend:                "s3",
-				HeadCompactionInterval: 0 * time.Minute,
-				StripeSize:             2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval: 0 * time.Minute,
+					StripeSize:             2,
+					BlockRanges:            DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},
 		"should fail on too high compaction interval": {
-			config: Config{
-				Backend:                "s3",
-				HeadCompactionInterval: 10 * time.Minute,
-				StripeSize:             2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval: 10 * time.Minute,
+					StripeSize:             2,
+					BlockRanges:            DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},
 		"should fail on invalid compaction concurrency": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    time.Minute,
-				HeadCompactionConcurrency: 0,
-				StripeSize:                2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    time.Minute,
+					HeadCompactionConcurrency: 0,
+					StripeSize:                2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidCompactionConcurrency,
 		},
 		"should pass on on valid compaction config": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    time.Minute,
-				HeadCompactionConcurrency: 10,
-				StripeSize:                2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    time.Minute,
+					HeadCompactionConcurrency: 10,
+					StripeSize:                2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: nil,
 		},
 		"should fail on negative stripe size": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                -2,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                -2,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
 		"should fail on stripe size 0": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                0,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                0,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
 		"should fail on stripe size 1": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                1,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                1,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: errInvalidStripeSize,
 		},
 		"should pass on stripe size": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                1 << 14,
+			config: BlocksStorageConfig{
+				Backend: "s3",
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
 					},
 				},
-				BlockRanges: DurationList{1 * time.Minute},
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                1 << 14,
+					BlockRanges:               DurationList{1 * time.Minute},
+				},
 			},
 			expectedErr: nil,
 		},
 		"should fail on empty block ranges": {
-			config: Config{
-				Backend:                   "s3",
-				HeadCompactionInterval:    1 * time.Minute,
-				HeadCompactionConcurrency: 5,
-				StripeSize:                8,
+			config: BlocksStorageConfig{
+				Backend: "s3",
+				TSDB: TSDBConfig{
+					HeadCompactionInterval:    1 * time.Minute,
+					HeadCompactionConcurrency: 5,
+					StripeSize:                8,
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -238,32 +266,34 @@ func TestConfig_DurationList(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		cfg            Config
+		cfg            BlocksStorageConfig
 		expectedRanges []int64
-		f              func(*Config)
+		f              func(*BlocksStorageConfig)
 	}{
 		"default to 2h": {
-			cfg:            Config{},
+			cfg:            BlocksStorageConfig{},
 			expectedRanges: []int64{7200000},
-			f: func(c *Config) {
+			f: func(c *BlocksStorageConfig) {
 				c.RegisterFlags(&flag.FlagSet{})
 			},
 		},
 		"parse ranges correctly": {
-			cfg: Config{
-				BlockRanges: []time.Duration{
-					2 * time.Hour,
-					10 * time.Hour,
-					50 * time.Hour,
+			cfg: BlocksStorageConfig{
+				TSDB: TSDBConfig{
+					BlockRanges: []time.Duration{
+						2 * time.Hour,
+						10 * time.Hour,
+						50 * time.Hour,
+					},
 				},
 			},
 			expectedRanges: []int64{7200000, 36000000, 180000000},
-			f:              func(*Config) {},
+			f:              func(*BlocksStorageConfig) {},
 		},
 		"handle multiple flag parse": {
-			cfg:            Config{},
+			cfg:            BlocksStorageConfig{},
 			expectedRanges: []int64{7200000},
-			f: func(c *Config) {
+			f: func(c *BlocksStorageConfig) {
 				c.RegisterFlags(&flag.FlagSet{})
 				c.RegisterFlags(&flag.FlagSet{})
 			},
@@ -275,7 +305,7 @@ func TestConfig_DurationList(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			testdata.f(&testdata.cfg)
-			assert.Equal(t, testdata.expectedRanges, testdata.cfg.BlockRanges.ToMilliseconds())
+			assert.Equal(t, testdata.expectedRanges, testdata.cfg.TSDB.BlockRanges.ToMilliseconds())
 		})
 	}
 }

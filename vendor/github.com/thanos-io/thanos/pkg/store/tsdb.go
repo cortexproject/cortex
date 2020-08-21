@@ -12,22 +12,28 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+type TSDBReader interface {
+	storage.Queryable
+	StartTime() (int64, error)
+}
 
 // TSDBStore implements the store API against a local TSDB instance.
 // It attaches the provided external labels to all results. It only responds with raw data
 // and does not support downsampling.
 type TSDBStore struct {
 	logger         log.Logger
-	db             *tsdb.DB
+	db             TSDBReader
 	component      component.StoreAPI
 	externalLabels labels.Labels
 }
@@ -39,7 +45,7 @@ type ReadWriteTSDBStore struct {
 }
 
 // NewTSDBStore creates a new TSDBStore.
-func NewTSDBStore(logger log.Logger, _ prometheus.Registerer, db *tsdb.DB, component component.StoreAPI, externalLabels labels.Labels) *TSDBStore {
+func NewTSDBStore(logger log.Logger, _ prometheus.Registerer, db TSDBReader, component component.StoreAPI, externalLabels labels.Labels) *TSDBStore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -53,14 +59,16 @@ func NewTSDBStore(logger log.Logger, _ prometheus.Registerer, db *tsdb.DB, compo
 
 // Info returns store information about the Prometheus instance.
 func (s *TSDBStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	minTime, err := s.db.StartTime()
+	if err != nil {
+		return nil, errors.Wrap(err, "TSDB min Time")
+	}
+
 	res := &storepb.InfoResponse{
 		Labels:    make([]storepb.Label, 0, len(s.externalLabels)),
 		StoreType: s.component.ToProto(),
-		MinTime:   0,
+		MinTime:   minTime,
 		MaxTime:   math.MaxInt64,
-	}
-	if blocks := s.db.Blocks(); len(blocks) > 0 {
-		res.MinTime = blocks[0].Meta().MinTime
 	}
 	for _, l := range s.externalLabels {
 		res.Labels = append(res.Labels, storepb.Label{
@@ -107,13 +115,10 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 	}
 	defer runutil.CloseWithLogOnErr(s.logger, q, "close tsdb querier series")
 
-	set, _, err := q.Select(false, nil, matchers...)
-	if err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-
-	var respSeries storepb.Series
-
+	var (
+		set        = q.Select(false, nil, matchers...)
+		respSeries storepb.Series
+	)
 	for set.Next() {
 		series := set.At()
 
@@ -122,12 +127,7 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 		if !r.SkipChunks {
 			// TODO(fabxc): An improvement over this trivial approach would be to directly
 			// use the chunks provided by TSDB in the response.
-			// But since the sidecar has a similar approach, optimizing here has only
-			// limited benefit for now.
-			// NOTE: XOR encoding supports a max size of 2^16 - 1 samples, so we need
-			// to chunk all samples into groups of no more than 2^16 - 1
-			// See: https://github.com/thanos-io/thanos/pull/1038.
-			c, err := s.encodeChunks(series.Iterator(), math.MaxUint16)
+			c, err := s.encodeChunks(series.Iterator(), MaxSamplesPerChunk)
 			if err != nil {
 				return status.Errorf(codes.Internal, "encode chunk: %s", err)
 			}
@@ -138,6 +138,9 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 		if err := srv.Send(storepb.NewSeriesResponse(&respSeries)); err != nil {
 			return status.Error(codes.Aborted, err.Error())
 		}
+	}
+	if err := set.Err(); err != nil {
+		return status.Error(codes.Internal, err.Error())
 	}
 	return nil
 }
@@ -211,10 +214,10 @@ func (s *TSDBStore) translateAndExtendLabels(m, extend labels.Labels) []storepb.
 }
 
 // LabelNames returns all known label names.
-func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (
+func (s *TSDBStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (
 	*storepb.LabelNamesResponse, error,
 ) {
-	q, err := s.db.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, r.Start, r.End)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -231,7 +234,7 @@ func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest
 func (s *TSDBStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (
 	*storepb.LabelValuesResponse, error,
 ) {
-	q, err := s.db.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, r.Start, r.End)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

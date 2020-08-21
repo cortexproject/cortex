@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euf -o pipefail
+
+readonly IMAGE_PREFIX=$1
+readonly VERSION=$2
+readonly DISABLE_CLEANUP=${DISABLE_CLEANUP:-0}
+
+declare -a CONTAINERS=()
+
+function error() {
+    echo "$@"; exit 1
+}
+
+function cleanup() {
+    if [[ "${DISABLE_CLEANUP}" -ne 1 ]]; then
+        docker rm --force "${CONTAINERS[@]}" &>/dev/null
+    fi
+}
+
+function ready() {
+    local -ri max_attempts=$1
+    local -ri sleep_interval=$2
+    local -ri port=$3
+    local -i attempt=1
+
+    sleep "${sleep_interval}"
+    until curl -s localhost:"${port}"/ready | grep -q ready; do
+        if [[ ${attempt} -eq ${max_attempts} ]]; then
+            echo "Cortex not ready in ${max_attempts} attempts"
+            return 1
+        else
+            (( attempt++ ))
+        fi
+        sleep "${sleep_interval}"
+    done
+}
+
+trap cleanup EXIT
+
+function test_with_systemd() {
+    local -r image=$1
+    local -r install_command=$2
+    local container
+
+    container=$(docker run --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro -itd -v "$(pwd)"/dist:/opt/cortex -p 9009 "${image}")
+    CONTAINERS+=("${container}")
+
+    port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "9009/tcp") 0).HostPort}}' "${container}")
+
+    docker exec -it "${container}" /bin/bash -c "${install_command}; systemctl start cortex.service; systemctl enable cortex.service"
+
+    ready 10 1 "${port}" || error "Testing image: ${image} with command: '${install_command}' failed"
+}
+
+test_with_systemd "${IMAGE_PREFIX}"debian-systemd "dpkg -i /opt/cortex/cortex-${VERSION}.deb"
+test_with_systemd "${IMAGE_PREFIX}"centos-systemd "rpm -i /opt/cortex/cortex-${VERSION}.rpm"

@@ -760,7 +760,7 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 	for i, ts := range []int64{minT, maxT - 1} {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
-		app := db.Appender()
+		app := db.Appender(context.Background())
 		_, err := app.Add(lbls, ts, float64(i))
 		require.NoError(t, err)
 
@@ -799,9 +799,13 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 
 func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTime time.Time) {
 	content := mockDeletionMarkJSON(blockID.String(), deletionTime)
-	path := filepath.Join(dir, blockID.String(), metadata.DeletionMarkFilename)
+	blockPath := filepath.Join(dir, blockID.String())
+	markPath := filepath.Join(blockPath, metadata.DeletionMarkFilename)
 
-	require.NoError(t, ioutil.WriteFile(path, []byte(content), os.ModePerm))
+	// Ensure the block directory exists.
+	require.NoError(t, os.MkdirAll(blockPath, os.ModePerm))
+
+	require.NoError(t, ioutil.WriteFile(markPath, []byte(content), os.ModePerm))
 }
 
 func findCompactorByUserID(compactors []*Compactor, logs []*bytes.Buffer, userID string) (*Compactor, *bytes.Buffer, error) {
@@ -855,7 +859,7 @@ func prepareConfig() Config {
 }
 
 func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
-	storageCfg := cortex_tsdb.Config{}
+	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
 	// Create a temporary directory for compactor data.

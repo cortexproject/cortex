@@ -13,8 +13,6 @@ ingester_client:
     use_gzip_compression: true
 
 ingester:
-  max_transfer_retries: 1
-
   lifecycler:
     # We want to start immediately.
     join_after: 0
@@ -28,6 +26,9 @@ ingester:
           host: consul:8500
       replication_factor: 1
 
+querier:
+  query_ingesters_within: 3h
+
 store_gateway:
   sharding_enabled: true
   sharding_ring:
@@ -37,16 +38,14 @@ store_gateway:
       consul:
         host: consul:8500
 
-querier:
-  blocks_consistency_check:
-    enabled: true
-
-tsdb:
-  dir: /data/cortex-tsdb-ingester
-  ship_interval: 1m
-  block_ranges_period: [ 2h ]
-  retention_period: 3h
+blocks_storage:
   backend: s3
+
+  tsdb:
+    dir: /data/cortex-tsdb-ingester
+    ship_interval: 1m
+    block_ranges_period: [ 2h ]
+    retention_period: 3h
 
   bucket_store:
     sync_dir: /data/cortex-tsdb-querier
@@ -59,4 +58,20 @@ tsdb:
     insecure:          true
 
 storage:
-  engine: tsdb
+  engine: blocks
+
+ruler:
+  enable_api: true
+  enable_sharding: true
+  poll_interval: 2s
+  storage:
+    type: s3
+    s3:
+      bucketnames: cortex-rules
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+  ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500

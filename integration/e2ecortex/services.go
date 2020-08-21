@@ -275,8 +275,9 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
-			"-target":    "alertmanager",
-			"-log.level": "warn",
+			"-target":                               "alertmanager",
+			"-log.level":                            "warn",
+			"-experimental.alertmanager.enable-api": "true",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -295,6 +296,34 @@ func NewRuler(name string, flags map[string]string, image string) *CortexService
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
 			"-log.level": "warn",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+	)
+}
+
+func NewPurger(name string, flags map[string]string, image string) *CortexService {
+	return NewPurgerWithConfigFile(name, "", flags, image)
+}
+
+func NewPurgerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":                   "purger",
+			"-log.level":                "warn",
+			"-purger.object-store-type": "filesystem",
+			"-local.chunk-directory":    e2e.ContainerSharedDir,
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

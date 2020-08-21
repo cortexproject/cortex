@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,13 +15,6 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
-
-func TestIngesterHandOverWithBlocksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, BlocksStorageFlags, func(t *testing.T, s *e2e.Scenario) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.tsdb.s3.bucket-name"])
-		require.NoError(t, s.StartAndWaitReady(minio))
-	})
-}
 
 func TestIngesterHandOverWithChunksStorage(t *testing.T) {
 	runIngesterHandOverTest(t, ChunksStorageFlags, func(t *testing.T, s *e2e.Scenario) {
@@ -76,9 +70,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
 	// Ensure 1st ingester metrics are tracked correctly.
-	if flags["-store.engine"] != blocksStorageEngine {
-		require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
-	}
+	require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
 
 	// Start ingester-2.
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
@@ -88,17 +80,30 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 
 	// Wait a bit to make sure that querier is caught up. Otherwise, we may be querying for data,
 	// while querier still knows about old ingester only.
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "PENDING"}))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "PENDING"))))
 
 	// Stop ingester-1. This function will return once the ingester-1 is successfully
 	// stopped, which means the transfer to ingester-2 is completed.
 	require.NoError(t, s.Stop(ingester1))
 
 	// Make sure querier now sees only new ingester. We check that by verifying that there is only one ACTIVE, but no PENDING or JOINING ingester.
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(1), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(0), "cortex_ring_members", map[string]string{"name": "ingester", "state": "JOINING"}))
-	require.NoError(t, querier.WaitForMetricWithLabels(e2e.EqualsSingle(0), "cortex_ring_members", map[string]string{"name": "ingester", "state": "PENDING"}))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "JOINING"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "PENDING"))))
 
 	// Query the series again.
 	result, err = c.Query("series_1", now)

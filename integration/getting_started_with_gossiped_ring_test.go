@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -52,8 +53,13 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 
 	// We need two "ring members" visible from both Cortex instances
-	require.NoError(t, cortex1.WaitForMetricWithLabels(e2e.EqualsSingle(2), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
-	require.NoError(t, cortex2.WaitForMetricWithLabels(e2e.EqualsSingle(2), "cortex_ring_members", map[string]string{"name": "ingester", "state": "ACTIVE"}))
+	require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
 	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)

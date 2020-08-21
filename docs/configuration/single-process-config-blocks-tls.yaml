@@ -37,9 +37,6 @@ ingester_client:
     tls_ca_path: "root.crt"
 
 ingester:
-  # Disable blocks transfers on ingesters shutdown or rollout.
-  max_transfer_retries: 0
-
   lifecycler:
     # The address to advertise for this ingester.  Will be autodiscovered by
     # looking up address on eth0 or en0; can be specified if this fails.
@@ -58,10 +55,12 @@ ingester:
       replication_factor: 1
 
 storage:
-  engine: tsdb
+  engine: blocks
 
-tsdb:
-  dir: /tmp/cortex/tsdb
+blocks_storage:
+  tsdb:
+    dir: /tmp/cortex/tsdb
+
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync
 
@@ -98,3 +97,11 @@ frontend_worker:
     tls_cert_path: "client.crt"
     tls_key_path: "client.key"
     tls_ca_path: "root.crt"
+
+ruler:
+  enable_api: true
+  enable_sharding: false
+  storage:
+    type: local
+    local:
+      directory: /tmp/cortex/rules

@@ -1,3 +1,4 @@
 *
-!cortex-tsdb
 !.gitignore
+!cortex-tsdb
+!cortex-alertmanager

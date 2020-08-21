@@ -53,6 +53,7 @@ func TestRemoteReadHandler(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 
 	require.Equal(t, 200, recorder.Result().StatusCode)
+	require.Equal(t, []string([]string{"application/x-protobuf"}), recorder.Result().Header["Content-Type"])
 	responseBody, err := ioutil.ReadAll(recorder.Result().Body)
 	require.NoError(t, err)
 	responseBody, err = snappy.Decode(nil, responseBody)
@@ -87,11 +88,11 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if sp == nil {
 		panic(fmt.Errorf("select params must be set"))
 	}
-	return series.MatrixToSeriesSet(m.matrix), nil, nil
+	return series.MatrixToSeriesSet(m.matrix)
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

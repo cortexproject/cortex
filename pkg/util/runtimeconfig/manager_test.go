@@ -2,11 +2,18 @@ package runtimeconfig
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
@@ -35,22 +42,38 @@ func (l *TestLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return unmarshal((*plain)(l))
 }
 
-func testLoadOverrides(filename string) (interface{}, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
+func testLoadOverrides(r io.Reader) (interface{}, error) {
 	var overrides = &testOverrides{}
 
-	decoder := yaml.NewDecoder(f)
+	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
 	if err := decoder.Decode(&overrides); err != nil {
 		return nil, err
 	}
-
 	return overrides, nil
+}
+
+func newTestOverridesManagerConfig(t *testing.T, i int32) (*atomic.Int32, ManagerConfig) {
+	var config = atomic.NewInt32(i)
+
+	// create empty file
+	tempFile, err := ioutil.TempFile("", "test-validation")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+	})
+
+	// testing NewRuntimeConfigManager with overrides reload config set
+	return config, ManagerConfig{
+		ReloadPeriod: 5 * time.Second,
+		LoadPath:     tempFile.Name(),
+		Loader: func(_ io.Reader) (i interface{}, err error) {
+			val := int(config.Load())
+			return val, nil
+		},
+	}
 }
 
 func TestNewOverridesManager(t *testing.T) {
@@ -98,9 +121,10 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 		require.NoError(t, os.Remove(tempFile.Name()))
 	}()
 
-	err = ioutil.WriteFile(tempFile.Name(), []byte(`overrides:
+	config := []byte(`overrides:
   user1:
-    limit2: 150`), 0600)
+    limit2: 150`)
+	err = ioutil.WriteFile(tempFile.Name(), config, 0600)
 	require.NoError(t, err)
 
 	defaultTestLimits = &TestLimits{Limit1: 100}
@@ -112,17 +136,30 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
+	reg := prometheus.NewPedanticRegistry()
+
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
+
+	// check if the metrics is set to the config map value before
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+					# HELP cortex_runtime_config_hash Hash of the currently active runtime config file.
+					# TYPE cortex_runtime_config_hash gauge
+					cortex_runtime_config_hash{sha256="%s"} 1
+					# HELP cortex_runtime_config_last_reload_successful Whether the last runtime-config reload attempt was successful.
+					# TYPE cortex_runtime_config_last_reload_successful gauge
+					cortex_runtime_config_last_reload_successful 1
+				`, fmt.Sprintf("%x", sha256.Sum256(config))))))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
 	// rewrite file
-	err = ioutil.WriteFile(tempFile.Name(), []byte(`overrides:
+	config = []byte(`overrides:
   user2:
-    limit2: 200`), 0600)
+    limit2: 200`)
+	err = ioutil.WriteFile(tempFile.Name(), config, 0600)
 	require.NoError(t, err)
 
 	// reload
@@ -141,6 +178,16 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.Equal(t, 200, to.Overrides["user2"].Limit2) // new overrides
 	require.Equal(t, 100, to.Overrides["user2"].Limit1) // from defaults
 
+	// check if the metrics have been updated
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+					# HELP cortex_runtime_config_hash Hash of the currently active runtime config file.
+					# TYPE cortex_runtime_config_hash gauge
+					cortex_runtime_config_hash{sha256="%s"} 1
+					# HELP cortex_runtime_config_last_reload_successful Whether the last runtime-config reload attempt was successful.
+					# TYPE cortex_runtime_config_last_reload_successful gauge
+					cortex_runtime_config_last_reload_successful 1
+				`, fmt.Sprintf("%x", sha256.Sum256(config))))))
+
 	// Cleaning up
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
 
@@ -149,17 +196,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 }
 
 func TestOverridesManager_ListenerChannel(t *testing.T) {
-	var config = atomic.NewInt32(555)
-
-	// testing NewRuntimeConfigManager with overrides reload config set
-	overridesManagerConfig := ManagerConfig{
-		ReloadPeriod: 5 * time.Second,
-		LoadPath:     "ignored",
-		Loader: func(filename string) (i interface{}, err error) {
-			val := int(config.Load())
-			return val, nil
-		},
-	}
+	config, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)
@@ -199,17 +236,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 }
 
 func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
-	var config = atomic.NewInt32(555)
-
-	// testing NewRuntimeConfigManager with overrides reload config set
-	overridesManagerConfig := ManagerConfig{
-		ReloadPeriod: 5 * time.Second,
-		LoadPath:     "ignored",
-		Loader: func(filename string) (i interface{}, err error) {
-			val := int(config.Load())
-			return val, nil
-		},
-	}
+	_, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
 	require.NoError(t, err)

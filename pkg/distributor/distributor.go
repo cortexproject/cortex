@@ -154,6 +154,10 @@ type Config struct {
 
 	// for testing
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
+
+	// when true the distributor does not validate the label name, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
+	SkipLabelNameValidation bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -332,7 +336,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Returns the validated series with it's labels/samples, and any error.
 func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
-	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, d.cfg.SkipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -509,11 +513,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	// Obtain a subring if required
 	if size := d.limits.SubringSize(userID); size > 0 {
-		h := client.HashAdd32(client.HashNew32(), userID)
-		subRing, err = d.ingestersRing.Subring(h, size)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unable to create subring: %v", err)
-		}
+		h := client.HashAdd32a(client.HashNew32a(), userID)
+		subRing = d.ingestersRing.Subring(h, size)
 	}
 
 	keys := append(seriesKeys, metadataKeys...)

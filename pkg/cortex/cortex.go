@@ -12,12 +12,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
@@ -43,9 +40,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -76,28 +75,29 @@ type Config struct {
 	AuthEnabled bool   `yaml:"auth_enabled"`
 	PrintConfig bool   `yaml:"-"`
 	HTTPPrefix  string `yaml:"http_prefix"`
+	ListModules bool   `yaml:"-"` // No yaml for this, it only works with flags.
 
-	API              api.Config               `yaml:"api"`
-	Server           server.Config            `yaml:"server"`
-	Distributor      distributor.Config       `yaml:"distributor"`
-	Querier          querier.Config           `yaml:"querier"`
-	IngesterClient   client.Config            `yaml:"ingester_client"`
-	Ingester         ingester.Config          `yaml:"ingester"`
-	Flusher          flusher.Config           `yaml:"flusher"`
-	Storage          storage.Config           `yaml:"storage"`
-	ChunkStore       chunk.StoreConfig        `yaml:"chunk_store"`
-	Schema           chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig     validation.Limits        `yaml:"limits"`
-	Prealloc         client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
-	Worker           frontend.WorkerConfig    `yaml:"frontend_worker"`
-	Frontend         frontend.Config          `yaml:"frontend"`
-	QueryRange       queryrange.Config        `yaml:"query_range"`
-	TableManager     chunk.TableManagerConfig `yaml:"table_manager"`
-	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB             tsdb.Config              `yaml:"tsdb"`
-	Compactor        compactor.Config         `yaml:"compactor"`
-	StoreGateway     storegateway.Config      `yaml:"store_gateway"`
-	DataPurgerConfig purger.Config            `yaml:"purger"`
+	API            api.Config               `yaml:"api"`
+	Server         server.Config            `yaml:"server"`
+	Distributor    distributor.Config       `yaml:"distributor"`
+	Querier        querier.Config           `yaml:"querier"`
+	IngesterClient client.Config            `yaml:"ingester_client"`
+	Ingester       ingester.Config          `yaml:"ingester"`
+	Flusher        flusher.Config           `yaml:"flusher"`
+	Storage        storage.Config           `yaml:"storage"`
+	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store"`
+	Schema         chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig   validation.Limits        `yaml:"limits"`
+	Prealloc       client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
+	Worker         frontend.WorkerConfig    `yaml:"frontend_worker"`
+	Frontend       frontend.Config          `yaml:"frontend"`
+	QueryRange     queryrange.Config        `yaml:"query_range"`
+	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
+	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	BlocksStorage  tsdb.BlocksStorageConfig `yaml:"blocks_storage"`
+	Compactor      compactor.Config         `yaml:"compactor"`
+	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
+	PurgerConfig   purger.Config            `yaml:"purger"`
 
 	Ruler         ruler.Config                               `yaml:"ruler"`
 	Configs       configs.Config                             `yaml:"configs"`
@@ -110,7 +110,8 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
+	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Use \"-modules\" command line flag to get a list of available options.")
+	f.BoolVar(&c.ListModules, "modules", false, "List available values to be use as target. Cannot be used in YAML config.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -132,10 +133,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
-	c.TSDB.RegisterFlags(f)
+	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
-	c.DataPurgerConfig.RegisterFlags(f)
+	c.PurgerConfig.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
@@ -165,7 +166,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
-	if err := c.TSDB.Validate(); err != nil {
+	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
@@ -177,11 +178,17 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.IngesterClient.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid ingester_client config")
+	}
+	if err := c.Worker.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid frontend_worker config")
+	}
 	if err := c.QueryRange.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
+		return errors.Wrap(err, "invalid table_manager config")
 	}
 	return nil
 }
@@ -207,20 +214,21 @@ type Cortex struct {
 	TableManager     *chunk.TableManager
 	Cache            cache.Cache
 	RuntimeConfig    *runtimeconfig.Manager
-	DataPurger       *purger.DataPurger
+	Purger           *purger.Purger
 	TombstonesLoader *purger.TombstonesLoader
 
 	Ruler        *ruler.Ruler
+	RulerStorage rules.RuleStore
 	ConfigAPI    *configAPI.API
 	ConfigDB     db.DB
 	Alertmanager *alertmanager.MultitenantAlertmanager
 	Compactor    *compactor.Compactor
 	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInit
+	MemberlistKV *memberlist.KVInitService
 
-	// Queryable that the querier should use to query the long
+	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	StoreQueryable prom_storage.Queryable
+	StoreQueryables []querier.QueryableWithFilter
 }
 
 // New makes a new Cortex.
@@ -232,11 +240,18 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
+		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+
 	cortex := &Cortex{
 		Cfg: cfg,
 	}
 
-	cortex.setupAuthMiddleware()
 	cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {
@@ -244,37 +259,6 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	return cortex, nil
-}
-
-func (t *Cortex) setupAuthMiddleware() {
-	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			middleware.ServerUserHeaderInterceptor,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		)
-	} else {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			fakeGRPCAuthUniaryMiddleware,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			fakeGRPCAuthStreamMiddleware,
-		)
-		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
-	}
 }
 
 // setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
@@ -291,6 +275,10 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	if !t.ModuleManager.IsUserVisibleModule(t.Cfg.Target) {
+		level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", t.Cfg.Target)
+	}
+
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
 	if err != nil {
 		return err
@@ -326,15 +314,15 @@ func (t *Cortex) Run() error {
 		for m, s := range t.ServiceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
-					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
 				} else {
-					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+					level.Error(util.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
 				}
 				return
 			}
 		}
 
-		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "err", service.FailureCase())
 	}
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
@@ -392,6 +380,15 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 		if t.Ingester != nil {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		// Query Frontend has a special check that makes sure that a querier is attached before it signals
+		// itself as ready
+		if t.Frontend != nil {
+			if err := t.Frontend.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Query Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 		}

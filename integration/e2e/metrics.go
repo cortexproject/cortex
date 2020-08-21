@@ -6,7 +6,7 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-func getValue(m *io_prometheus_client.Metric) float64 {
+func getMetricValue(m *io_prometheus_client.Metric) float64 {
 	if m.GetGauge() != nil {
 		return m.GetGauge().GetValue()
 	} else if m.GetCounter() != nil {
@@ -20,10 +20,63 @@ func getValue(m *io_prometheus_client.Metric) float64 {
 	}
 }
 
-func sumValues(family *io_prometheus_client.MetricFamily) float64 {
+func getMetricCount(m *io_prometheus_client.Metric) float64 {
+	if m.GetHistogram() != nil {
+		return float64(m.GetHistogram().GetSampleCount())
+	} else if m.GetSummary() != nil {
+		return float64(m.GetSummary().GetSampleCount())
+	} else {
+		return 0
+	}
+}
+
+func getValues(metrics []*io_prometheus_client.Metric, opts MetricsOptions) []float64 {
+	values := make([]float64, 0, len(metrics))
+	for _, m := range metrics {
+		values = append(values, opts.GetValue(m))
+	}
+	return values
+}
+
+func filterMetrics(metrics []*io_prometheus_client.Metric, opts MetricsOptions) []*io_prometheus_client.Metric {
+	// If no label matcher is configured, then no filtering should be done.
+	if len(opts.LabelMatchers) == 0 {
+		return metrics
+	}
+	if len(metrics) == 0 {
+		return metrics
+	}
+
+	filtered := make([]*io_prometheus_client.Metric, 0, len(metrics))
+
+	for _, m := range metrics {
+		metricLabels := map[string]string{}
+		for _, lp := range m.GetLabel() {
+			metricLabels[lp.GetName()] = lp.GetValue()
+		}
+
+		matches := true
+		for _, matcher := range opts.LabelMatchers {
+			if !matcher.Matches(metricLabels[matcher.Name]) {
+				matches = false
+				break
+			}
+		}
+
+		if !matches {
+			continue
+		}
+
+		filtered = append(filtered, m)
+	}
+
+	return filtered
+}
+
+func sumValues(values []float64) float64 {
 	sum := 0.0
-	for _, m := range family.Metric {
-		sum += getValue(m)
+	for _, v := range values {
+		sum += v
 	}
 	return sum
 }

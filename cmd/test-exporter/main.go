@@ -46,14 +46,23 @@ func main() {
 
 	runner.Add(correctness.NewSimpleTestCase("now_seconds", func(t time.Time) float64 {
 		return t.Sub(unixStart).Seconds()
-	}))
+	}, runnerConfig.CommonTestConfig))
 
 	runner.Add(correctness.NewSimpleTestCase("sine_wave", func(t time.Time) float64 {
 		// With a 15-second scrape interval this gives a ten-minute period
-		period := float64(40 * runnerConfig.ScrapeInterval.Nanoseconds())
+		period := float64(40 * runnerConfig.CommonTestConfig.ScrapeInterval.Nanoseconds())
 		radians := float64(t.UnixNano()) / period * 2 * math.Pi
 		return math.Sin(radians)
-	}))
+	}, runnerConfig.CommonTestConfig))
+
+	if runnerConfig.EnableDeleteSeriesTest {
+		runnerConfig.DeleteSeriesTestConfig.ExtraSelectors = runnerConfig.ExtraSelectors
+		runnerConfig.DeleteSeriesTestConfig.PrometheusAddr = runnerConfig.PrometheusAddr
+		runnerConfig.DeleteSeriesTestConfig.UserID = runnerConfig.UserID
+		runner.Add(correctness.NewDeleteSeriesTest("delete_series", func(t time.Time) float64 {
+			return t.Sub(unixStart).Seconds()
+		}, runnerConfig.DeleteSeriesTestConfig, runnerConfig.CommonTestConfig))
+	}
 
 	prometheus.MustRegister(runner)
 	err = server.Run()

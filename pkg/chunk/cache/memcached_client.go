@@ -11,20 +11,14 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 
 	"github.com/cortexproject/cortex/pkg/util"
-)
-
-var (
-	memcacheServersDiscovered = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "memcache_client_servers",
-		Help:      "The number of memcache servers discovered.",
-	}, []string{"name"})
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -54,6 +48,8 @@ type memcachedClient struct {
 	wait sync.WaitGroup
 
 	numServers prometheus.Gauge
+
+	logger log.Logger
 }
 
 // MemcachedClientConfig defines how a MemcachedClient should be constructed.
@@ -80,7 +76,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer) MemcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
 		selector = &MemcachedJumpHashSelector{}
@@ -101,10 +97,16 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		serverList: selector,
 		hostname:   cfg.Host,
 		service:    cfg.Service,
-		provider:   dns.NewProvider(util.Logger, dnsProviderRegisterer, dns.GolangResolverType),
+		logger:     logger,
+		provider:   dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
 		quit:       make(chan struct{}),
 
-		numServers: memcacheServersDiscovered.WithLabelValues(name),
+		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "cortex",
+			Name:        "memcache_client_servers",
+			Help:        "The number of memcache servers discovered.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 	}
 
 	if len(cfg.Addresses) > 0 {
@@ -114,7 +116,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 
 	err := newClient.updateMemcacheServers()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error setting memcache servers to host", "host", cfg.Host, "err", err)
+		level.Error(logger).Log("msg", "error setting memcache servers to host", "host", cfg.Host, "err", err)
 	}
 
 	newClient.wait.Add(1)
@@ -128,6 +130,22 @@ func (c *memcachedClient) Stop() {
 	c.wait.Wait()
 }
 
+func (c *memcachedClient) Set(item *memcache.Item) error {
+	err := c.Client.Set(item)
+	if err == nil {
+		return nil
+	}
+
+	// Inject the server address in order to have more information about which memcached
+	// backend server failed. This is a best effort.
+	addr, addrErr := c.serverList.PickServer(item.Key)
+	if addrErr != nil {
+		return err
+	}
+
+	return errors.Wrapf(err, "server=%s", addr)
+}
+
 func (c *memcachedClient) updateLoop(updateInterval time.Duration) {
 	defer c.wait.Done()
 	ticker := time.NewTicker(updateInterval)
@@ -136,7 +154,7 @@ func (c *memcachedClient) updateLoop(updateInterval time.Duration) {
 		case <-ticker.C:
 			err := c.updateMemcacheServers()
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "error updating memcache servers", "err", err)
+				level.Warn(c.logger).Log("msg", "error updating memcache servers", "err", err)
 			}
 		case <-c.quit:
 			ticker.Stop()

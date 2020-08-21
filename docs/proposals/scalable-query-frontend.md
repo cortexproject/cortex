@@ -213,7 +213,7 @@ Having a singleton queue is attractive because it is simple to reason about and 
 
 ## Conclusion
 
-In this document we reviewed the [reasons the frontend exists](#query frontend-role), [challenges and proposals to scaling the frontend](#challenges-and-proposals) and [an alternative architecture that avoids most problems but comes with its own challenges.](#alternative)
+In this document we reviewed the [reasons the frontend exists](#query-frontend-role), [challenges and proposals to scaling the frontend](#challenges-and-proposals) and [an alternative architecture that avoids most problems but comes with its own challenges.](#alternative)
 
 <table>
   <tr>
@@ -246,6 +246,7 @@ In this document we reviewed the [reasons the frontend exists](#query frontend-r
    <td>Operational/Configuration Issue.  No Changes Proposed.
    </td>
    <td>
+   N/A
    </td>
   </tr>
   <tr>
@@ -253,7 +254,7 @@ In this document we reviewed the [reasons the frontend exists](#query frontend-r
    </td>
    <td>Query Frontend HTTP Health Checks
    </td>
-   <td>Proposed
+   <td><a href="https://github.com/cortexproject/cortex/pull/2733">Pull Request</a>
    </td>
   </tr>
   <tr>
@@ -261,7 +262,7 @@ In this document we reviewed the [reasons the frontend exists](#query frontend-r
    </td>
    <td>Round Robin with additional alternatives proposed
    </td>
-   <td><a href="https://github.com/cortexproject/cortex/issues/2431">Issue</a>
+   <td><a href="https://github.com/cortexproject/cortex/pull/2553">Pull Request</a>
    </td>
   </tr>
 </table>

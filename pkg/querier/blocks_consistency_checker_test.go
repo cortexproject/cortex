@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -27,75 +25,61 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 	block3 := ulid.MustNew(uint64(util.TimeToMillis(now.Add(-uploadGracePeriod*4))), nil)
 
 	tests := map[string]struct {
-		expectedBlocks     []*BlockMeta
-		knownDeletionMarks map[ulid.ULID]*metadata.DeletionMark
-		queriedBlocks      map[string][]hintspb.Block
-		expectedErr        error
+		knownBlocks           []*BlockMeta
+		knownDeletionMarks    map[ulid.ULID]*metadata.DeletionMark
+		queriedBlocks         []ulid.ULID
+		expectedMissingBlocks []ulid.ULID
 	}{
-		"no expected blocks": {
-			expectedBlocks:     []*BlockMeta{},
+		"no known blocks": {
+			knownBlocks:        []*BlockMeta{},
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks:      map[string][]hintspb.Block{},
+			queriedBlocks:      []ulid.ULID{},
 		},
-		"all expected blocks have been queried from a single store-gateway": {
-			expectedBlocks: []*BlockMeta{
+		"all known blocks have been queried from a single store-gateway": {
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 			},
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}, {Id: block2.String()}},
-			},
+			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
-		"all expected blocks have been queried from multiple store-gateway": {
-			expectedBlocks: []*BlockMeta{
+		"all known blocks have been queried from multiple store-gateway": {
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 			},
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block2.String()}},
-			},
+			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
 		"store-gateway has queried more blocks than expected": {
-			expectedBlocks: []*BlockMeta{
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 			},
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block2.String()}, {Id: block3.String()}},
-			},
+			queriedBlocks:      []ulid.ULID{block1, block2, block3},
 		},
 		"store-gateway has queried less blocks than expected": {
-			expectedBlocks: []*BlockMeta{
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block3.String()}},
-			},
-			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block2.String()),
+			knownDeletionMarks:    map[ulid.ULID]*metadata.DeletionMark{},
+			queriedBlocks:         []ulid.ULID{block1, block3},
+			expectedMissingBlocks: []ulid.ULID{block2},
 		},
 		"store-gateway has queried less blocks than expected, but the missing block has been recently uploaded": {
-			expectedBlocks: []*BlockMeta{
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-uploadGracePeriod).Add(time.Minute)},
 			},
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block2.String()}},
-			},
+			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
 		"store-gateway has queried less blocks than expected and the missing block has been recently marked for deletion": {
-			expectedBlocks: []*BlockMeta{
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
@@ -103,14 +87,11 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{
 				block3: {DeletionTime: now.Add(-deletionGracePeriod / 2).Unix()},
 			},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block2.String()}},
-			},
-			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block3.String()),
+			queriedBlocks:         []ulid.ULID{block1, block2},
+			expectedMissingBlocks: []ulid.ULID{block3},
 		},
 		"store-gateway has queried less blocks than expected and the missing block has been marked for deletion long time ago": {
-			expectedBlocks: []*BlockMeta{
+			knownBlocks: []*BlockMeta{
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
 				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
@@ -118,10 +99,7 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{
 				block3: {DeletionTime: now.Add(-deletionGracePeriod * 2).Unix()},
 			},
-			queriedBlocks: map[string][]hintspb.Block{
-				"1.1.1.1": {{Id: block1.String()}},
-				"2.2.2.2": {{Id: block2.String()}},
-			},
+			queriedBlocks: []ulid.ULID{block1, block2},
 		},
 	}
 
@@ -130,11 +108,11 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			c := NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod, log.NewNopLogger(), reg)
 
-			err := c.Check(testData.expectedBlocks, testData.knownDeletionMarks, testData.queriedBlocks)
-			assert.Equal(t, testData.expectedErr, err)
+			missingBlocks := c.Check(testData.knownBlocks, testData.knownDeletionMarks, testData.queriedBlocks)
+			assert.Equal(t, testData.expectedMissingBlocks, missingBlocks)
 			assert.Equal(t, float64(1), testutil.ToFloat64(c.checksTotal))
 
-			if testData.expectedErr != nil {
+			if len(testData.expectedMissingBlocks) > 0 {
 				assert.Equal(t, float64(1), testutil.ToFloat64(c.checksFailed))
 			} else {
 				assert.Equal(t, float64(0), testutil.ToFloat64(c.checksFailed))

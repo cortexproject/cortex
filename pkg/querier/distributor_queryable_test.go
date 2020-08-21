@@ -2,12 +2,16 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -15,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 )
 
@@ -23,8 +28,9 @@ const (
 )
 
 func TestDistributorQuerier(t *testing.T) {
-	d := &mockDistributor{
-		m: model.Matrix{
+	d := &mockDistributor{}
+	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		model.Matrix{
 			// Matrixes are unsorted, so this tests that the labels get sorted.
 			&model.SampleStream{
 				Metric: model.Metric{
@@ -37,13 +43,14 @@ func TestDistributorQuerier(t *testing.T) {
 				},
 			},
 		},
-	}
-	queryable := newDistributorQueryable(d, false, nil)
+		nil)
+
+	queryable := newDistributorQueryable(d, false, nil, 0)
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, _, err := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, err)
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
 	series := seriesSet.At()
@@ -57,6 +64,105 @@ func TestDistributorQuerier(t *testing.T) {
 	require.NoError(t, seriesSet.Err())
 }
 
+func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) {
+	now := time.Now()
+
+	tests := map[string]struct {
+		querySeries          bool
+		queryIngestersWithin time.Duration
+		queryMinT            int64
+		queryMaxT            int64
+		expectedMinT         int64
+		expectedMaxT         int64
+	}{
+		"should not manipulate query time range if queryIngestersWithin is disabled": {
+			queryIngestersWithin: 0,
+			queryMinT:            util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:         util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:         util.TimeToMillis(now.Add(-30 * time.Minute)),
+		},
+		"should not manipulate query time range if queryIngestersWithin is enabled but query min time is newer": {
+			queryIngestersWithin: time.Hour,
+			queryMinT:            util.TimeToMillis(now.Add(-50 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:         util.TimeToMillis(now.Add(-50 * time.Minute)),
+			expectedMaxT:         util.TimeToMillis(now.Add(-30 * time.Minute)),
+		},
+		"should manipulate query time range if queryIngestersWithin is enabled and query min time is older": {
+			queryIngestersWithin: time.Hour,
+			queryMinT:            util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:         util.TimeToMillis(now.Add(-60 * time.Minute)),
+			expectedMaxT:         util.TimeToMillis(now.Add(-30 * time.Minute)),
+		},
+		"should skip the query if the query max time is older than queryIngestersWithin": {
+			queryIngestersWithin: time.Hour,
+			queryMinT:            util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-90 * time.Minute)),
+			expectedMinT:         0,
+			expectedMaxT:         0,
+		},
+		"should not manipulate query time range if queryIngestersWithin is enabled and query max time is older, but the query is for /series": {
+			querySeries:          true,
+			queryIngestersWithin: time.Hour,
+			queryMinT:            util.TimeToMillis(now.Add(-100 * time.Minute)),
+			queryMaxT:            util.TimeToMillis(now.Add(-90 * time.Minute)),
+			expectedMinT:         util.TimeToMillis(now.Add(-100 * time.Minute)),
+			expectedMaxT:         util.TimeToMillis(now.Add(-90 * time.Minute)),
+		},
+	}
+
+	for _, streamingEnabled := range []bool{false, true} {
+		for testName, testData := range tests {
+			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
+				distributor := &mockDistributor{}
+				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
+				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
+
+				ctx := user.InjectOrgID(context.Background(), "test")
+				queryable := newDistributorQueryable(distributor, streamingEnabled, nil, testData.queryIngestersWithin)
+				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
+				require.NoError(t, err)
+
+				// Select hints are not passed by Prometheus when querying /series.
+				var hints *storage.SelectHints
+				if !testData.querySeries {
+					hints = &storage.SelectHints{Start: testData.queryMinT, End: testData.queryMaxT}
+				}
+
+				seriesSet := querier.Select(true, hints)
+				require.NoError(t, seriesSet.Err())
+
+				if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
+					assert.Len(t, distributor.Calls, 0)
+				} else {
+					require.Len(t, distributor.Calls, 1)
+					assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(5*time.Second.Milliseconds()))
+					assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)))
+				}
+			})
+		}
+	}
+}
+
+func TestDistributorQueryableFilter(t *testing.T) {
+	d := &mockDistributor{}
+	dq := newDistributorQueryable(d, false, nil, 1*time.Hour)
+
+	now := time.Now()
+
+	queryMinT := util.TimeToMillis(now.Add(-5 * time.Minute))
+	queryMaxT := util.TimeToMillis(now)
+
+	require.True(t, dq.UseQueryable(now, queryMinT, queryMaxT))
+	require.True(t, dq.UseQueryable(now.Add(time.Hour), queryMinT, queryMaxT))
+
+	// Same query, hour+1ms later, is not sent to ingesters.
+	require.False(t, dq.UseQueryable(now.Add(time.Hour).Add(1*time.Millisecond), queryMinT, queryMaxT))
+}
+
 func TestIngesterStreaming(t *testing.T) {
 	// We need to make sure that there is atleast one chunk present,
 	// else no series will be selected.
@@ -68,8 +174,9 @@ func TestIngesterStreaming(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	d := &mockDistributor{
-		r: &client.QueryStreamResponse{
+	d := &mockDistributor{}
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
 					Labels: []client.LabelAdapter{
@@ -85,14 +192,15 @@ func TestIngesterStreaming(t *testing.T) {
 				},
 			},
 		},
-	}
+		nil)
+
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks)
+	queryable := newDistributorQueryable(d, true, mergeChunks, 0)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, _, err := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, err)
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
 	series := seriesSet.At()
@@ -107,17 +215,16 @@ func TestIngesterStreaming(t *testing.T) {
 }
 
 type mockDistributor struct {
-	metadata      []scrape.MetricMetadata
-	metadataError error
-	m             model.Matrix
-	r             *client.QueryStreamResponse
+	mock.Mock
 }
 
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	return m.m, nil
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).(model.Matrix), args.Error(1)
 }
 func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
-	return m.r, nil
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
 	return nil, nil
@@ -125,14 +232,12 @@ func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelNa
 func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
 	return nil, nil
 }
-func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return nil, nil
+func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).([]metric.Metric), args.Error(1)
 }
 
 func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
-	if m.metadataError != nil {
-		return nil, m.metadataError
-	}
-
-	return m.metadata, nil
+	args := m.Called(ctx)
+	return args.Get(0).([]scrape.MetricMetadata), args.Error(1)
 }

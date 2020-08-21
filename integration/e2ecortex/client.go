@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -16,10 +18,13 @@ import (
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/prompb"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
+)
 
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 // Client is a client used to interact with Cortex in integration tests
@@ -63,7 +68,7 @@ func NewClient(
 
 	if alertmanagerAddress != "" {
 		alertmanagerAPIClient, err := promapi.NewClient(promapi.Config{
-			Address:      "http://" + alertmanagerAddress + "/api/prom",
+			Address:      "http://" + alertmanagerAddress,
 			RoundTripper: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
 		})
 		if err != nil {
@@ -108,9 +113,19 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	return res, nil
 }
 
-// Query runs a query
+// Query runs an instant query.
 func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	value, _, err := c.querierClient.Query(context.Background(), query, ts)
+	return value, err
+}
+
+// Query runs a query range.
+func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
+	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
+		Start: start,
+		End:   end,
+		Step:  step,
+	})
 	return value, err
 }
 
@@ -140,16 +155,24 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 	return res, body, nil
 }
 
+// Series finds series by label matchers.
+func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSet, error) {
+	result, _, err := c.querierClient.Series(context.Background(), matches, start, end)
+	return result, err
+}
+
 // LabelValues gets label values
 func (c *Client) LabelValues(label string) (model.LabelValues, error) {
-	value, _, err := c.querierClient.LabelValues(context.Background(), label)
-	return value, err
+	// Cortex currently doesn't support start/end time.
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
+	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames() ([]string, error) {
-	value, _, err := c.querierClient.LabelNames(context.Background())
-	return value, err
+	// Cortex currently doesn't support start/end time.
+	result, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
+	return result, err
 }
 
 type addOrgIDRoundTripper struct {
@@ -173,16 +196,20 @@ type ServerStatus struct {
 
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("/api/v1/status", nil)
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	_, body, err := c.alertmanagerClient.Do(ctx, req)
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
 	}
 
 	var ss *ServerStatus
@@ -283,4 +310,80 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 
 	defer res.Body.Close()
 	return nil
+}
+
+// userConfig is used to communicate a users alertmanager configs
+type userConfig struct {
+	TemplateFiles      map[string]string `yaml:"template_files"`
+	AlertmanagerConfig string            `yaml:"alertmanager_config"`
+}
+
+// SetAlertmanagerConfig gets the status of an alertmanager instance
+func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, templates map[string]string) error {
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
+
+	data, err := yaml.Marshal(&userConfig{
+		AlertmanagerConfig: amConfig,
+		TemplateFiles:      templates,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("setting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// DeleteAlertmanagerConfig gets the status of an alertmanager instance
+func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
+	u := c.alertmanagerClient.URL("/api/v1/alerts", nil)
+	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("deleting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	client := &http.Client{Timeout: c.timeout}
+	return client.Do(req)
 }

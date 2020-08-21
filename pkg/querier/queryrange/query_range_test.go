@@ -113,11 +113,15 @@ func TestMergeAPIResponses(t *testing.T) {
 		input    []Response
 		expected Response
 	}{
-		// No responses shouldn't panic.
+		// No responses shouldn't panic and return a non-null result and result type.
 		{
 			input: []Response{},
 			expected: &PrometheusResponse{
 				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result:     []SampleStream{},
+				},
 			},
 		},
 

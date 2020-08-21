@@ -18,6 +18,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -28,12 +29,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // BucketStores is a multi-tenant wrapper of Thanos BucketStore.
 type BucketStores struct {
 	logger             log.Logger
-	cfg                tsdb.Config
+	cfg                tsdb.BlocksStorageConfig
+	limits             *validation.Overrides
 	bucket             objstore.Bucket
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
@@ -42,6 +45,9 @@ type BucketStores struct {
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
+
+	// Gate used to limit query concurrency across all tenants.
+	queryGate gate.Gate
 
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
@@ -53,21 +59,31 @@ type BucketStores struct {
 }
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilter, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
 
+	// The number of concurrent queries against the tenants BucketStores are limited.
+	queryGateReg := extprom.WrapRegistererWithPrefix("cortex_bucket_stores_", reg)
+	queryGate := gate.NewKeeper(queryGateReg).NewGate(cfg.BucketStore.MaxConcurrent)
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_bucket_stores_gate_queries_concurrent_max",
+		Help: "Number of maximum concurrent queries allowed.",
+	}).Set(float64(cfg.BucketStore.MaxConcurrent))
+
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
+		limits:             limits,
 		bucket:             cachingBucket,
 		filters:            filters,
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
+		queryGate:          queryGate,
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -268,9 +284,9 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		fetcher,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
 		u.indexCache,
-		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
-		u.cfg.BucketStore.MaxSampleCount,
-		u.cfg.BucketStore.MaxConcurrent,
+		u.queryGate,
+		u.cfg.BucketStore.MaxChunkPoolBytes,
+		newChunksLimiterFactory(u.limits, userID),
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
@@ -339,4 +355,12 @@ type spanSeriesServer struct {
 
 func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
+}
+
+func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter)
+	}
 }

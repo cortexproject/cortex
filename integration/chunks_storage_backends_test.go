@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -60,8 +61,9 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	}
 
 	storageFlags := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-cassandra.addresses": cassandra.NetworkHTTPEndpoint(),
-		"-cassandra.keyspace":  "tests", // keyspace gets created on startup if it does not exist
+		"-cassandra.addresses":          cassandra.NetworkHTTPEndpoint(),
+		"-cassandra.keyspace":           "tests", // keyspace gets created on startup if it does not exist
+		"-cassandra.replication-factor": "1",
 	})
 
 	// bigtable client needs to set an environment variable when connecting to an emulator
@@ -118,8 +120,9 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 204, res.StatusCode)
 
-		// lets wait till ingester has no chunks in memory
-		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_memory_chunks"))
+		// Let's wait until all chunks are flushed.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_queue_length"))
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_series_in_progress"))
 
 		// lets verify that chunk store chunk metrics are updated.
 		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunks_total"))
@@ -183,7 +186,7 @@ func TestSwiftChunkStorage(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil)
+	store, err := storage.NewStore(cfg, storeConfig, schemaConfig, limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	defer store.Stop()

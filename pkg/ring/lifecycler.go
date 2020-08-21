@@ -14,6 +14,7 @@ import (
 	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -96,7 +97,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	cfg.InfNames = []string{"eth0", "en0"}
-	f.Var((*flagext.Strings)(&cfg.InfNames), prefix+"lifecycler.interface", "Name of network interface to read address from.")
+	f.Var((*flagext.StringSlice)(&cfg.InfNames), prefix+"lifecycler.interface", "Name of network interface to read address from.")
 	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
@@ -121,7 +122,7 @@ type Lifecycler struct {
 	Zone     string
 
 	// Whether to flush if transfer fails on shutdown.
-	flushOnShutdown bool
+	flushOnShutdown *atomic.Bool
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -177,7 +178,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		ID:              cfg.ID,
 		RingName:        ringName,
 		RingKey:         ringKey,
-		flushOnShutdown: flushOnShutdown,
+		flushOnShutdown: atomic.NewBool(flushOnShutdown),
 		Zone:            zone,
 
 		actorChan: make(chan func()),
@@ -226,6 +227,9 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	}
 
 	if err := ringDesc.Ready(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+		level.Warn(util.Logger).Log("msg", "found an existing ingester(s) with a problem in the ring, "+
+			"this ingester cannot complete joining and become ready until this problem is resolved. "+
+			"The /ring http endpoint on the distributor (or single binary) provides visibility into the ring.", "err", err)
 		return err
 	}
 
@@ -727,17 +731,17 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 
 // FlushOnShutdown returns if flushing is enabled if transfer fails on a shutdown.
 func (i *Lifecycler) FlushOnShutdown() bool {
-	return i.flushOnShutdown
+	return i.flushOnShutdown.Load()
 }
 
 // SetFlushOnShutdown enables/disables flush on shutdown if transfer fails.
 // Passing 'true' enables it, and 'false' disabled it.
 func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
-	i.flushOnShutdown = flushOnShutdown
+	i.flushOnShutdown.Store(flushOnShutdown)
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {
-	flushRequired := i.flushOnShutdown
+	flushRequired := i.flushOnShutdown.Load()
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
 		if err == ErrTransferDisabled {

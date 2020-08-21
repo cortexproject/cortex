@@ -285,6 +285,66 @@ func TestMigrationToTypedRecord(t *testing.T) {
 	require.Equal(t, checkpointRecord, newCheckpointRecordDecoded)
 }
 
+func TestCheckpointIndex(t *testing.T) {
+	tcs := []struct {
+		filename    string
+		includeTmp  bool
+		index       int
+		shouldError bool
+	}{
+		{
+			filename:    "checkpoint.123456",
+			includeTmp:  false,
+			index:       123456,
+			shouldError: false,
+		},
+		{
+			filename:    "checkpoint.123456",
+			includeTmp:  true,
+			index:       123456,
+			shouldError: false,
+		},
+		{
+			filename:    "checkpoint.123456.tmp",
+			includeTmp:  true,
+			index:       123456,
+			shouldError: false,
+		},
+		{
+			filename:    "checkpoint.123456.tmp",
+			includeTmp:  false,
+			shouldError: true,
+		},
+		{
+			filename:    "not-checkpoint.123456.tmp",
+			includeTmp:  true,
+			shouldError: true,
+		},
+		{
+			filename:    "checkpoint.123456.tmp2",
+			shouldError: true,
+		},
+		{
+			filename:    "checkpoints123456",
+			shouldError: true,
+		},
+		{
+			filename:    "012345",
+			shouldError: true,
+		},
+	}
+	for _, tc := range tcs {
+		index, err := checkpointIndex(tc.filename, tc.includeTmp)
+		if tc.shouldError {
+			require.Error(t, err, "filename: %s, includeTmp: %t", tc.filename, tc.includeTmp)
+			continue
+		}
+
+		require.NoError(t, err, "filename: %s, includeTmp: %t", tc.filename, tc.includeTmp)
+		require.Equal(t, tc.index, index)
+	}
+}
+
 func BenchmarkWALReplay(b *testing.B) {
 	dirname, err := ioutil.TempDir("", "cortex-wal")
 	require.NoError(b, err)

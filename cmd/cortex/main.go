@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -29,11 +30,21 @@ var (
 	Revision string
 )
 
+// configHash exposes information about the loaded config
+var configHash *prometheus.GaugeVec = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "cortex_config_hash",
+		Help: "Hash of the currently active config file.",
+	},
+	[]string{"sha256"},
+)
+
 func init() {
 	version.Version = Version
 	version.Branch = Branch
 	version.Revision = Revision
 	prometheus.MustRegister(version.NewCollector("cortex"))
+	prometheus.MustRegister(configHash)
 }
 
 const (
@@ -94,7 +105,9 @@ func main() {
 		}
 	}
 
-	if testMode {
+	// Continue on if -modules flag is given. Code handling the
+	// -modules flag will not start cortex.
+	if testMode && !cfg.ListModules {
 		DumpYaml(&cfg)
 		return
 	}
@@ -117,11 +130,15 @@ func main() {
 
 	util.InitEvents(eventSampleRate)
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target); err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
-	} else {
-		defer trace.Close()
+	// In testing mode skip JAEGER setup to avoid panic due to
+	// "duplicate metrics collector registration attempted"
+	if !testMode {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
+		if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target); err != nil {
+			level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
+		} else {
+			defer trace.Close()
+		}
 	}
 
 	// Initialise seed for randomness usage.
@@ -129,6 +146,18 @@ func main() {
 
 	t, err := cortex.New(cfg)
 	util.CheckFatal("initializing cortex", err)
+
+	if t.Cfg.ListModules {
+		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
+			fmt.Fprintln(os.Stdout, m)
+		}
+
+		// in test mode we cannot call os.Exit, it will stop to whole test process.
+		if testMode {
+			return
+		}
+		os.Exit(2)
+	}
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
@@ -165,6 +194,12 @@ func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}
+
+	// create a sha256 hash of the config before expansion and expose it via
+	// the config_info metric
+	hash := sha256.Sum256(buf)
+	configHash.Reset()
+	configHash.WithLabelValues(fmt.Sprintf("%x", hash)).Set(1)
 
 	if expandENV {
 		buf = expandEnv(buf)

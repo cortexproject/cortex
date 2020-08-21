@@ -1,118 +1,17 @@
 package querier
 
 import (
-	"context"
 	"math"
 	"sort"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
-
-// BlockQueryable is a storage.Queryable implementation for blocks storage
-type BlockQueryable struct {
-	services.Service
-
-	us *BucketStoresService
-}
-
-// NewBlockQueryable returns a client to query a block store
-func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
-	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "querier", util.Logger, registerer)
-	if err != nil {
-		return nil, err
-	}
-
-	us, err := NewBucketStoresService(cfg, bucketClient, logLevel, util.Logger, registerer)
-	if err != nil {
-		return nil, err
-	}
-
-	b := &BlockQueryable{us: us}
-	b.Service = services.NewIdleService(b.starting, b.stopping)
-
-	return b, nil
-}
-
-func (b *BlockQueryable) starting(ctx context.Context) error {
-	return errors.Wrap(services.StartAndAwaitRunning(ctx, b.us), "failed to start BucketStoresService")
-}
-
-func (b *BlockQueryable) stopping(_ error) error {
-	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), b.us), "stopping BucketStoresService")
-}
-
-// Querier returns a new Querier on the storage.
-func (b *BlockQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	if s := b.State(); s != services.Running {
-		return nil, promql.ErrStorage{Err: errors.Errorf("BlockQueryable is not running: %v", s)}
-	}
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, promql.ErrStorage{Err: err}
-	}
-
-	return &blocksQuerier{
-		ctx:        ctx,
-		mint:       mint,
-		maxt:       maxt,
-		userID:     userID,
-		userStores: b.us,
-	}, nil
-}
-
-type blocksQuerier struct {
-	ctx        context.Context
-	mint, maxt int64
-	userID     string
-	userStores *BucketStoresService
-}
-
-// Select implements storage.Querier interface.
-// The bool passed is ignored because the series is always sorted.
-func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
-	defer log.Span.Finish()
-
-	mint, maxt := b.mint, b.maxt
-	if sp != nil {
-		mint, maxt = sp.Start, sp.End
-	}
-	converted := convertMatchersToLabelMatcher(matchers)
-
-	// Returned series are sorted.
-	// No processing of responses is done here. Dealing with multiple responses
-	// for the same series and overlapping chunks is done in blockQuerierSeriesSet.
-	series, warnings, err := b.userStores.Series(ctx, b.userID, &storepb.SeriesRequest{
-		MinTime:                 mint,
-		MaxTime:                 maxt,
-		Matchers:                converted,
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
-	})
-	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
-	}
-
-	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
-
-	return &blockQuerierSeriesSet{series: series}, warnings, nil
-}
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
 	var converted []storepb.LabelMatcher
@@ -138,24 +37,10 @@ func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMa
 	return converted
 }
 
-func (b *blocksQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	// Cortex doesn't use this. It will ask ingesters for metadata.
-	return nil, nil, errors.New("not implemented")
-}
-
-func (b *blocksQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	// Cortex doesn't use this. It will ask ingesters for metadata.
-	return nil, nil, errors.New("not implemented")
-}
-
-func (b *blocksQuerier) Close() error {
-	// nothing to do here.
-	return nil
-}
-
 // Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
-	series []*storepb.Series
+	series   []*storepb.Series
+	warnings storage.Warnings
 
 	// next response to process
 	next int
@@ -193,6 +78,10 @@ func (bqss *blockQuerierSeriesSet) At() storage.Series {
 
 func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
+}
+
+func (bqss *blockQuerierSeriesSet) Warnings() storage.Warnings {
+	return bqss.warnings
 }
 
 // newBlockQuerierSeries makes a new blockQuerierSeries. Input labels must be already sorted by name.
@@ -317,7 +206,7 @@ func (it *blockQuerierSeriesIterator) Err() error {
 
 	err := it.iterators[it.i].Err()
 	if err != nil {
-		return promql.ErrStorage{Err: errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)}
+		return errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)
 	}
 	return nil
 }

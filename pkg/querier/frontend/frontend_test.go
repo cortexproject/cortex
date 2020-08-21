@@ -8,11 +8,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -24,6 +24,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -56,8 +57,9 @@ func TestFrontend(t *testing.T) {
 
 		assert.Equal(t, "Hello World", string(body))
 	}
-	testFrontend(t, handler, test, false)
-	testFrontend(t, handler, test, true)
+
+	testFrontend(t, defaultFrontendConfig(), handler, test, false)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -103,20 +105,76 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		_, err = ioutil.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		// Query should do one calls.
+		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	testFrontend(t, handler, test, false)
-	testFrontend(t, handler, test, true)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true)
+}
+
+func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
+	// Create an HTTP server listening locally. This server mocks the downstream
+	// Prometheus API-compatible server.
+	downstreamListen, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	observedHost := make(chan string, 2)
+	downstreamServer := http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			observedHost <- r.Host
+
+			_, err := w.Write([]byte(responseBody))
+			require.NoError(t, err)
+		}),
+	}
+
+	defer downstreamServer.Shutdown(context.Background()) //nolint:errcheck
+	go downstreamServer.Serve(downstreamListen)           //nolint:errcheck
+
+	// Configure the query-frontend with the mocked downstream server.
+	config := defaultFrontendConfig()
+	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
+
+	// Configure the test to send a request to the query-frontend and assert on the
+	// Host HTTP header received by the downstream server.
+	test := func(addr string) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, query), nil)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		req = req.WithContext(ctx)
+		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		require.NoError(t, err)
+
+		client := http.Client{
+			Transport: &nethttp.Transport{},
+		}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		defer resp.Body.Close()
+		_, err = ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// We expect the Host received by the downstream is the downstream host itself
+		// and not the query-frontend host.
+		downstreamReqHost := <-observedHost
+		assert.Equal(t, downstreamListen.Addr().String(), downstreamReqHost)
+		assert.NotEqual(t, downstreamReqHost, addr)
+	}
+
+	testFrontend(t, config, nil, test, false)
+	testFrontend(t, config, nil, test, true)
 }
 
 // TestFrontendCancel ensures that when client requests are cancelled,
 // the underlying query is correctly cancelled _and not retried_.
 func TestFrontendCancel(t *testing.T) {
-	var tries int32
+	var tries atomic.Int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
-		atomic.AddInt32(&tries, 1)
+		tries.Inc()
 	})
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
@@ -136,11 +194,11 @@ func TestFrontendCancel(t *testing.T) {
 		require.Error(t, err)
 
 		time.Sleep(100 * time.Millisecond)
-		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
+		assert.Equal(t, int32(1), tries.Load())
 	}
-	testFrontend(t, handler, test, false)
-	tries = 0
-	testFrontend(t, handler, test, true)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false)
+	tries.Store(0)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true)
 }
 
 func TestFrontendCancelStatusCode(t *testing.T) {
@@ -161,15 +219,46 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 	}
 }
 
-func testFrontend(t *testing.T, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
+func TestFrontendCheckReady(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		downstreamURL    string
+		connectedClients int32
+		msg              string
+		readyForRequests bool
+	}{
+		{"downstream url is always ready", "super url", 0, "", true},
+		{"connected clients are ready", "", 3, "", true},
+		{"no url, no clients is not ready", "", 0, "not ready: number of queriers connected to query-frontend is 0", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &Frontend{
+				connectedClients: atomic.NewInt32(tt.connectedClients),
+				log:              log.NewNopLogger(),
+				cfg: Config{
+					DownstreamURL: tt.downstreamURL,
+				},
+			}
+			err := f.CheckReady(context.Background())
+			errMsg := ""
+
+			if err != nil {
+				errMsg = err.Error()
+			}
+
+			require.Equal(t, tt.msg, errMsg)
+		})
+	}
+}
+
+func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
 	logger := log.NewNopLogger()
 
 	var (
-		config        Config
 		workerConfig  WorkerConfig
 		querierConfig querier.Config
 	)
-	flagext.DefaultValues(&config, &workerConfig)
+	flagext.DefaultValues(&workerConfig)
 	workerConfig.Parallelism = 1
 	workerConfig.MatchMaxConcurrency = matchMaxConcurrency
 	querierConfig.MaxConcurrent = 1
@@ -193,22 +282,32 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string), ma
 
 	RegisterFrontendServer(grpcServer, frontend)
 
+	r := mux.NewRouter()
+	r.PathPrefix("/").Handler(middleware.Merge(
+		middleware.AuthenticateUser,
+		middleware.Tracer{},
+	).Wrap(frontend.Handler()))
+
 	httpServer := http.Server{
-		Handler: middleware.Merge(
-			middleware.AuthenticateUser,
-			middleware.Tracer{},
-		).Wrap(frontend.Handler()),
+		Handler: r,
 	}
 	defer httpServer.Shutdown(context.Background()) //nolint:errcheck
 
 	go httpServer.Serve(httpListen) //nolint:errcheck
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
-	worker, err := NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	var worker services.Service
+	worker, err = NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 
 	test(httpListen.Addr().String())
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
+}
+
+func defaultFrontendConfig() Config {
+	config := Config{}
+	flagext.DefaultValues(&config)
+	return config
 }

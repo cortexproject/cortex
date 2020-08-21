@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestStoreGateway_InitialSyncWithShardingEnabled(t *testing.T) {
@@ -84,7 +85,7 @@ func TestStoreGateway_InitialSyncWithShardingEnabled(t *testing.T) {
 				}))
 			}
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 			assert.False(t, g.ringLifecycler.IsRegistered())
@@ -123,7 +124,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	defer cleanup()
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, mockLoggingLevel(), log.NewNopLogger(), nil)
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
@@ -146,7 +147,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), nil)
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	bucketClient.MockIter("", []string{}, errors.New("network error"))
@@ -239,7 +240,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 				gatewayCfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
 
 				reg := prometheus.NewPedanticRegistry()
-				g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), reg)
+				g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
@@ -319,7 +320,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 			bucketClient := &cortex_tsdb.BucketClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 			assert.False(t, g.ringLifecycler.IsRegistered())
@@ -443,7 +444,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			bucketClient := &cortex_tsdb.BucketClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), reg)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 			require.NoError(t, err)
 
 			// Store the initial ring state before starting the gateway.
@@ -501,7 +502,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, mockLoggingLevel(), log.NewNopLogger(), nil)
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
@@ -579,7 +580,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	storageCfg, cleanup := mockStorageConfig(t)
 	defer cleanup()
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, mockLoggingLevel(), logger, nil)
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), logger, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
@@ -593,7 +594,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 		},
 	}
 
-	srv := NewBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+	srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 	err = g.Series(req, srv)
 	require.NoError(t, err)
 	assert.Empty(t, srv.Warnings)
@@ -605,14 +606,96 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 		// Ensure Cortex external labels have been removed.
 		assert.Equal(t, []storepb.Label{{Name: "series_id", Value: strconv.Itoa(seriesID)}}, actual.Labels)
 
-		// Ensure samples have been correctly queried (it's OK having duplicated samples
-		// at this stage, but should be correctly grouped together).
+		// Ensure samples have been correctly queried. The Thanos store also deduplicate samples
+		// in most cases, but it's not strictly required guaranteeing deduplication at this stage.
 		samples, err := readSamplesFromChunks(actual.Chunks)
 		require.NoError(t, err)
 		assert.Equal(t, []sample{
 			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
-			{ts: minT + (step * int64(seriesID)), value: float64(seriesID)},
 		}, samples)
+	}
+}
+
+func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testing.T) {
+	const chunksQueried = 10
+
+	tests := map[string]struct {
+		limit       int
+		expectedErr string
+	}{
+		"no limit enforced if zero": {
+			limit:       0,
+			expectedErr: "",
+		},
+		"should return NO error if the actual number of queried chunks is <= limit": {
+			limit:       chunksQueried,
+			expectedErr: "",
+		},
+		"should return error if the actual number of queried chunks is > limit": {
+			limit:       chunksQueried - 1,
+			expectedErr: fmt.Sprintf("exceeded chunks limit: limit %d violated (got %d)", chunksQueried-1, chunksQueried),
+		},
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	userID := "user-1"
+
+	storageDir, err := ioutil.TempDir(os.TempDir(), "")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir) //nolint:errcheck
+
+	// Generate 1 TSDB block with chunksQueried series. Since each mocked series contains only 1 sample,
+	// it will also only have 1 chunk.
+	now := time.Now()
+	minT := now.Add(-1*time.Hour).Unix() * 1000
+	maxT := now.Unix() * 1000
+	require.NoError(t, mockTSDB(path.Join(storageDir, userID), chunksQueried, minT, maxT))
+
+	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	// Create a store-gateway used to query back the series from the blocks.
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = false
+	storageCfg, cleanup := mockStorageConfig(t)
+	defer cleanup()
+
+	// Prepare the request to query back all series (1 chunk per series in this test).
+	req := &storepb.SeriesRequest{
+		MinTime: minT,
+		MaxTime: maxT,
+		Matchers: []storepb.LabelMatcher{
+			{Type: storepb.LabelMatcher_RE, Name: "__name__", Value: ".*"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Customise the limits.
+			limits := defaultLimitsConfig()
+			limits.MaxChunksPerQuery = testData.limit
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, overrides, mockLoggingLevel(), logger, nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
+			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+
+			// Query back all the series (1 chunk per series in this test).
+			srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+			err = g.Series(req, srv)
+
+			if testData.expectedErr != "" {
+				require.Error(t, err)
+				assert.True(t, strings.Contains(err.Error(), testData.expectedErr))
+			} else {
+				require.NoError(t, err)
+				assert.Empty(t, srv.Warnings)
+				assert.Len(t, srv.SeriesSet, chunksQueried)
+			}
+		})
 	}
 }
 
@@ -626,11 +709,11 @@ func mockGatewayConfig() Config {
 	return cfg
 }
 
-func mockStorageConfig(t *testing.T) (cortex_tsdb.Config, func()) {
+func mockStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "store-gateway-test-*")
 	require.NoError(t, err)
 
-	cfg := cortex_tsdb.Config{}
+	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 
 	cfg.BucketStore.ConsistencyDelay = 0
@@ -669,7 +752,7 @@ func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 	for i := 0; i < numSeries; i++ {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
-		app := db.Appender()
+		app := db.Appender(context.Background())
 		if _, err := app.Add(lbls, minT+(step*int64(i)), float64(i)); err != nil {
 			return err
 		}
@@ -733,4 +816,17 @@ func readSamplesFromChunks(rawChunks []storepb.AggrChunk) ([]sample, error) {
 type sample struct {
 	ts    int64
 	value float64
+}
+
+func defaultLimitsConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
+}
+
+func defaultLimitsOverrides(t *testing.T) *validation.Overrides {
+	overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+	require.NoError(t, err)
+
+	return overrides
 }

@@ -71,8 +71,8 @@ func Run(conf Config) error {
 			return err
 		}
 
-		fmt.Println(fmt.Sprintf(
-			"\n%f%% avg diff for:\n\tquery: %s\n\tseries: %d\n\tsamples: %d\n\tstart: %v\n\tend: %v\n\tstep: %v",
+		fmt.Printf(
+			"\n%f%% avg diff for:\n\tquery: %s\n\tseries: %d\n\tsamples: %d\n\tstart: %v\n\tend: %v\n\tstep: %v\n",
 			diff.Diff*100,
 			query.Query,
 			diff.Series,
@@ -80,7 +80,7 @@ func Run(conf Config) error {
 			query.Start,
 			query.End,
 			query.StepSize,
-		))
+		)
 
 	}
 	return nil

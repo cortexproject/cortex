@@ -133,6 +133,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_bucket_store_series_result_series_count 6
 
+			# HELP cortex_bucket_store_queries_dropped_total Number of queries that were dropped due to the max chunks per query limit.
+			# TYPE cortex_bucket_store_queries_dropped_total counter
+			cortex_bucket_store_queries_dropped_total 698089
+
 			# HELP cortex_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
 			# TYPE cortex_bucket_store_cached_postings_compressions_total counter
 			cortex_bucket_store_cached_postings_compressions_total{op="encode"} 1125950
@@ -236,7 +240,6 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.chunkSizeBytes.Observe(30 * base)
 
 	m.queriesDropped.Add(31 * base)
-	m.queriesLimit.Add(32 * base)
 
 	m.seriesRefetches.Add(33 * base)
 
@@ -273,7 +276,6 @@ type mockedBucketStoreMetrics struct {
 	resultSeriesCount     prometheus.Summary
 	chunkSizeBytes        prometheus.Histogram
 	queriesDropped        prometheus.Counter
-	queriesLimit          prometheus.Gauge
 
 	cachedPostingsCompressions           *prometheus.CounterVec
 	cachedPostingsCompressionErrors      *prometheus.CounterVec
@@ -355,10 +357,6 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the sample limit.",
 	})
-	m.queriesLimit = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "thanos_bucket_store_queries_concurrent_max",
-		Help: "Number of maximum concurrent queries.",
-	})
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", 64*1024),
@@ -373,7 +371,7 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Help: "Number of postings compression errors.",
 	}, []string{"op"})
 	m.cachedPostingsCompressionTimeSeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "thanos_bucket_store_cached_postings_compression_time_seconds",
+		Name: "thanos_bucket_store_cached_postings_compression_time_seconds_total",
 		Help: "Time spent compressing postings before storing them into postings cache.",
 	}, []string{"op"})
 	m.cachedPostingsOriginalSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{

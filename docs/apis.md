@@ -243,6 +243,57 @@ DELETE /api/v1/rules/{namespace}/{group_name}
 
 **Body**: None
 
+## Alertmanager
+
+### Experimental API
+
+Similarly to the Cortex Ruler, the Cortex Alertmanager supports operations using a configured object storage client as a backend for the storage and management of user's Alertmanager configuration. These API endpoints are opt-in and must be enabled via the `experimental.alertmanger.enable-api` CLI flag.
+
+### Get Alertmanager configuration
+
+```
+GET /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Body**: None
+
+### Set Alertmanager configuration
+
+```
+POST /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `201 CREATED`
+
+**Body**:
+
+```yaml
+template_files:
+  default_template: |
+    {{ define "__alertmanager" }}AlertManager{{ end }}
+    {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+alertmanager_config: "global: \n  smtp_smarthost: 'localhost:25' \n  smtp_from: 'youraddress@example.org' \nroute: \n  receiver: example-email \nreceivers: \n  - name: example-email \n    email_configs: \n    - to: 'youraddress@example.org' \n"
+```
+
+### Delete Alertmanager configuration
+
+```
+DELETE /api/v1/alerts
+```
+
+##### Success Response
+
+**Code**: `200 OK`
+
+**Body**: None
+
+
 ## Configs API
 
 The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.
@@ -377,3 +428,31 @@ Note that setting a new config will effectively "re-enable" the Rules and Alertm
 #### Testing APIs
 
 `POST /push` - Push samples directly to ingesters.  Accepts requests in Prometheus remote write format.  Indended for performance testing and debugging.
+
+## Purger APIs
+
+The Purger service provides APIs for requesting Deletion of series in Chunks storage and managing Delete Requests.
+Delete Series support is still experimental. Read more about it in [Delete Series Guide](./guides/deleting-series.md)
+
+### Endpoints
+
+#### Delete Series
+
+`POST|PUT /api/v1/admin/tsdb/delete_series?match%5B%5D=<matcher>&start=<start-time>&end=<end-time>` - [Prometheus compatible API](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series) for requesting deletion of series.
+
+- Normal Response Codes Created(204)
+- Error Response Codes: Unauthorized(401), NotFound(404)
+
+#### Cancel Delete Request
+
+`POST|PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=<request_id>` - Cancel a Delete Requests before they are picked up for processing.
+
+- Normal Response Codes OK(204)
+- Error Response Codes: Unauthorized(401), NotFound(404)
+
+#### Listing Delete Requests
+
+`GET /api/v1/admin/tsdb/delete_series` - List all the delete requests.
+
+- Normal Response Codes OK(200)
+- Error Response Codes: Unauthorized(401), NotFound(404)

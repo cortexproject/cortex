@@ -7,17 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
-	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -154,10 +153,28 @@ func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
-	rules := []legacy_rulefmt.Rule{
+	rulesV1 := []rulefmt.RuleNode{
 		{
-			Alert: "TestAlert",
-			Expr:  "up == 0",
+			Alert: yaml.Node{Value: "TestAlert"},
+			Expr:  yaml.Node{Value: "up == 0"},
+			For:   dur,
+			Labels: map[string]string{
+				"severity": "critical",
+			},
+			Annotations: map[string]string{
+				"message": "I am a message",
+			},
+		},
+	}
+
+	alertNode := yaml.Node{Line: 4, Column: 12}
+	alertNode.SetString("TestAlert")
+	exprNode := yaml.Node{Line: 5, Column: 11}
+	exprNode.SetString("up == 0")
+	rulesV2 := []rulefmt.RuleNode{
+		{
+			Alert: alertNode,
+			Expr:  exprNode,
 			For:   dur,
 			Labels: map[string]string{
 				"severity": "critical",
@@ -170,7 +187,7 @@ func TestParseFormatted(t *testing.T) {
 
 	for i, tc := range []struct {
 		cfg      RulesConfig
-		expected map[string]legacy_rulefmt.RuleGroups
+		expected map[string]rulefmt.RuleGroups
 	}{
 		{
 			cfg: RulesConfig{
@@ -179,12 +196,12 @@ func TestParseFormatted(t *testing.T) {
 					"legacy.rules": legacyRulesFile,
 				},
 			},
-			expected: map[string]legacy_rulefmt.RuleGroups{
+			expected: map[string]rulefmt.RuleGroups{
 				"legacy.rules": {
-					Groups: []legacy_rulefmt.RuleGroup{
+					Groups: []rulefmt.RuleGroup{
 						{
 							Name:  "rg:legacy.rules",
-							Rules: rules,
+							Rules: rulesV1,
 						},
 					},
 				},
@@ -197,12 +214,12 @@ func TestParseFormatted(t *testing.T) {
 					"alerts.yaml": ruleFile,
 				},
 			},
-			expected: map[string]legacy_rulefmt.RuleGroups{
+			expected: map[string]rulefmt.RuleGroups{
 				"alerts.yaml": {
-					Groups: []legacy_rulefmt.RuleGroup{
+					Groups: []rulefmt.RuleGroup{
 						{
 							Name:  "example",
-							Rules: rules,
+							Rules: rulesV2,
 						},
 					},
 				},

@@ -23,6 +23,7 @@ const (
 	AlertManager
 	Ruler
 	StoreGateway
+	Purger
 )
 
 var (
@@ -30,12 +31,13 @@ var (
 	serviceMetricsPrefixes = map[ServiceType][]string{
 		Distributor:   {},
 		Ingester:      {"!cortex_ingester_client", "cortex_ingester"}, // The metrics prefix cortex_ingester_client may be used by other components so we ignore it.
-		Querier:       {},
+		Querier:       {"cortex_querier"},
 		QueryFrontend: {"cortex_frontend", "cortex_query_frontend"},
 		TableManager:  {},
 		AlertManager:  {"cortex_alertmanager"},
 		Ruler:         {},
 		StoreGateway:  {"!cortex_storegateway_client", "cortex_storegateway"}, // The metrics prefix cortex_storegateway_client may be used by other components so we ignore it.
+		Purger:        {"cortex_purger"},
 	}
 
 	// Blacklisted metrics prefixes across any Cortex service.

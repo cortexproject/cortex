@@ -39,6 +39,12 @@ The following Prometheus API endpoints are supported by `query-tee`:
 - `/api/v1/alerts` (GET)
 - `/api/v1/rules` (GET)
 
+#### Pass-through requests
+
+`query-tee` supports acting as a transparent proxy for requests to routes not matching any of the documented API endpoints above.
+When enabled, those requests are passed on to just the configured preferred backend.
+To activate this feature it requires setting `-proxy.passthrough-non-registered-routes=true` flag and configuring a preferred backend.
+
 ### Authentication
 
 `query-tee` supports [HTTP basic authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication). It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.
@@ -71,6 +77,8 @@ _Note: from the `query-tee` perspective, a backend request is considered success
 `query-tee` allows to optionally enable the query results comparison between two backends. The results comparison can be enabled via the CLI flag `-proxy.compare-responses=true` and requires exactly two configured backends with a preferred one.
 
 When the comparison is enabled, the `query-tee` compares the response received from the two configured backends and logs a message for each query whose results don't match, as well as keeps track of the number of successful and failed comparison through the metric `cortex_querytee_responses_compared_total`.
+
+Floating point sample values are compared with a small tolerance that can be configured via `-proxy.value-comparison-tolerance`. This prevents false positives due to differences in floating point values _rounding_ introduced by the non deterministic series ordering within the Prometheus PromQL engine.
 
 ### Slow backends
 

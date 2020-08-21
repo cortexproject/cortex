@@ -48,7 +48,7 @@ Internally, the access to the chunks storage relies on a unified interface calle
 
 The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
 
-The current schema recommendation is the **v10 schema** (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
+The current schema recommendation is the **v9 schema** for most use cases and **v10 schema** if you expect to have very high cardinality metrics (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
 
 ### Blocks storage (experimental)
 
@@ -64,7 +64,7 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 * [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
 
-For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
+For more information, please check out the [Blocks storage](./blocks-storage/) documentation.
 
 ## Services
 
@@ -133,7 +133,7 @@ The supported KV stores for the hash ring are:
 
 * [Consul](https://www.consul.io)
 * [Etcd](https://etcd.io)
-* Gossip [memberlist](https://github.com/hashicorp/memberlist) (experimental)
+* Gossip [memberlist](https://github.com/hashicorp/memberlist)
 
 #### Quorum consistency
 
@@ -153,17 +153,18 @@ Incoming series are not immediately written to the storage but kept in memory an
 
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
-1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period ("auto-join timeout", configurable via `-ingester.join-after` option), the ingester will join the ring with a new set of random tokens (ie. during a scale up). When hand-over process starts, state changes to `JOINING`.
+- **`PENDING`**<br />
+  The ingester has just started. While in this state, the ingester doesn't receive neither write and read requests, and could be waiting for time series data transfer from another ingester if running the chunks storage and the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) is enabled.
+- **`JOINING`**<br />
+  The ingester is starting up and joining the ring. While in this state the ingester doesn't receive neither write and read requests. The ingester will join the ring using tokens received by a leaving ingester as part of the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) process (if enabled), otherwise it could load tokens from disk (if `-ingester.tokens-file-path` is configured) or generate a set of new random ones. Finally, the ingester optionally observes the ring for tokens conflicts and then, once any conflict is resolved, will move to `ACTIVE` state.
+- **`ACTIVE`**<br />
+  The ingester is up and running. While in this state the ingester can receive both write and read requests.
+- **`LEAVING`**<br />
+  The ingester is shutting down and leaving the ring. While in this state the ingester doesn't receive write requests, while it could receive read requests.
+- **`UNHEALTHY`**<br />
+  The ingester has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
-2. `JOINING` is an ingester's state in two situations. First, ingester will switch to a `JOINING` state from `PENDING` state after auto-join timeout. In this case, ingester will generate tokens, store them into the ring, optionally observe the ring for token conflicts and then move to `ACTIVE` state. Second, ingester will also switch into a `JOINING` state as a result of another `LEAVING` ingester initiating a hand-over process with `PENDING` (which then switches to `JOINING` state). `JOINING` ingester then receives series and tokens from `LEAVING` ingester, and if everything goes well, `JOINING` ingester switches to `ACTIVE` state. If hand-over process fails, `JOINING` ingester will move back to `PENDING` state and either wait for another hand-over or auto-join timeout.
-
-3. `ACTIVE` is an ingester's state when it is fully initialized. It may receive both write and read requests for tokens it owns.
-
-4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `PENDING` ingester to start a hand-over process with, used to transfer the state from `LEAVING` ingester to the `PENDING` one, during a rolling update (`PENDING` ingester moves to `JOINING` state during hand-over process). If there is no new ingester to accept hand-over, ingester in `LEAVING` state will flush data to storage instead.
-
-5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
-
-For more information about the hand-over process, please check out the [Ingester hand-over](guides/ingester-handover.md) documentation.
+_The ingester states are interally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
 
 Ingesters are **semi-stateful**.
 
@@ -176,9 +177,9 @@ If an ingester process crashes or exits abruptly, all the in-memory series that 
 
 The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
 
-The **write-ahead log** (WAL) is used to write to a persistent local disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
+The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
-Contrary to the sole replication and given the persistent local disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
+Contrary to the sole replication and given the persistent disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
 
 The WAL for the chunks storage is disabled by default, while it's always enabled for the blocks storage.
 

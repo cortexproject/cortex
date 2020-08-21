@@ -21,18 +21,18 @@ Now we do the same leader election process T2.
 
 ### Client Side
 
-So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, ideally `cluster` and `replica` (note the default is `__replica__`). For example:
+So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are `cluster` and `__replica__`. For example:
 
 ```
 cluster: prom-team1
-replica: replica1 (or pod-name)
+__replica__: replica1 (or pod-name)
 ```
 
 and
 
 ```
 cluster: prom-team1
-replica: replica2
+__replica__: replica2
 ```
 
 Note: These are external labels and have nothing to do with remote_write config.
@@ -43,4 +43,32 @@ The replica label should be set so that the value for each prometheus is unique 
 
 ### Server Side
 
-To enable handling of samples, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.
+The minimal configuration requires:
+
+* Enabling the HA tracker via `-distributor.ha-tracker.enable=true` CLI flag (or its YAML config option)
+* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store))
+* Setting the limits configuration to accept samples via `-distributor.ha-tracker.enable-for-all-users` (or its YAML config option)
+
+
+The following configuration snippet shows an example of the HA tracker config via YAML config file:
+
+```yaml
+limits:
+  ...
+  accept_ha_samples: true
+  ...
+distributor:
+  ...
+  ha_tracker:
+    enable_ha_tracker: true
+    ...
+    kvstore:
+      [store: <string> | default = "consul"]
+      [consul | etcd | memberlist: <config>]
+      ...
+  ...
+```
+
+For further configuration file documentation, see the [distributor section](../configuration/config-file-reference.md#distributor_config) and [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store).
+
+For flag configuration, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.

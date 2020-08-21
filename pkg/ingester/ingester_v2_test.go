@@ -8,8 +8,10 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +23,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1040,6 +1043,111 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 }
 
+func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
+	const (
+		userID    = "test"
+		numSeries = 100000
+	)
+
+	now := util.TimeToMillis(time.Now())
+	i := createIngesterWithSeries(t, userID, numSeries, now)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	req := &client.MetricsForLabelMatchersRequest{
+		StartTimestampMs: now,
+		EndTimestampMs:   now,
+		// Overlapping matchers to make sure series are correctly deduplicated.
+		MatchersSet: []*client.LabelMatchers{
+			{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
+			}},
+			{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*0"},
+			}},
+		},
+	}
+
+	res, err := i.v2MetricsForLabelMatchers(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, res.GetMetric(), numSeries)
+}
+
+func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
+	const (
+		userID    = "test"
+		numSeries = 100000
+	)
+
+	now := util.TimeToMillis(time.Now())
+	i := createIngesterWithSeries(b, userID, numSeries, now)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		req := &client.MetricsForLabelMatchersRequest{
+			StartTimestampMs: now,
+			EndTimestampMs:   now,
+			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
+				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
+			}}},
+		}
+
+		res, err := i.v2MetricsForLabelMatchers(ctx, req)
+		require.NoError(b, err)
+		require.Len(b, res.GetMetric(), numSeries)
+	}
+}
+
+// createIngesterWithSeries creates an ingester and push numSeries with 1 sample
+// per series.
+func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timestamp int64) *Ingester {
+	const maxBatchSize = 1000
+
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+		cleanup()
+	})
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push fixtures.
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for o := 0; o < numSeries; o += maxBatchSize {
+		batchSize := util.Min(maxBatchSize, numSeries-o)
+
+		// Generate metrics and samples (1 for each series).
+		metrics := make([]labels.Labels, 0, batchSize)
+		samples := make([]client.Sample, 0, batchSize)
+
+		for s := 0; s < batchSize; s++ {
+			metrics = append(metrics, labels.Labels{
+				{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
+			})
+
+			samples = append(samples, client.Sample{
+				TimestampMs: timestamp,
+				Value:       1,
+			})
+		}
+
+		// Send metrics to the ingester.
+		req := client.ToWriteRequest(metrics, samples, nil, client.API)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	return i
+}
+
 func TestIngester_v2QueryStream(t *testing.T) {
 	// Create ingester.
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
@@ -1103,6 +1211,180 @@ func TestIngester_v2QueryStream(t *testing.T) {
 	require.Equal(t, expectedResponse, lastResp)
 }
 
+func TestIngester_v2QueryStreamManySamples(t *testing.T) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	const samplesCount = 100000
+	samples := make([]client.Sample, 0, samplesCount)
+
+	for i := 0; i < samplesCount; i++ {
+		samples = append(samples, client.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
+		})
+	}
+
+	// 10k samples encode to around 140 KiB,
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:10000]))
+	require.NoError(t, err)
+
+	// 100k samples encode to around 1.4 MiB,
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
+	require.NoError(t, err)
+
+	// 50k samples encode to around 716 KiB,
+	_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:50000]))
+	require.NoError(t, err)
+
+	// Create a GRPC server used to query back the data.
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, i)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	go func() {
+		require.NoError(t, serv.Serve(listener))
+	}()
+
+	// Query back the series using GRPC streaming.
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(t, err)
+	defer c.Close()
+
+	s, err := c.QueryStream(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   samplesCount + 1,
+
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	})
+	require.NoError(t, err)
+
+	recvMsgs := 0
+	series := 0
+	totalSamples := 0
+
+	for {
+		resp, err := s.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		require.True(t, len(resp.Timeseries) > 0) // No empty messages.
+
+		recvMsgs++
+		series += len(resp.Timeseries)
+
+		for _, ts := range resp.Timeseries {
+			totalSamples += len(ts.Samples)
+		}
+	}
+
+	// As ingester doesn't guarantee sorting of series, we can get 2 (10k + 50k in first, 100k in second)
+	// or 3 messages (small series first, 100k second, small series last).
+
+	require.True(t, 2 <= recvMsgs && recvMsgs <= 3)
+	require.Equal(t, 3, series)
+	require.Equal(t, 10000+50000+samplesCount, totalSamples)
+}
+
+func writeRequestSingleSeries(lbls labels.Labels, samples []client.Sample) *client.WriteRequest {
+	req := &client.WriteRequest{
+		Source: client.API,
+	}
+
+	ts := client.TimeSeries{}
+	ts.Labels = client.FromLabelsToLabelAdapters(lbls)
+	ts.Samples = samples
+	req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{TimeSeries: &ts})
+
+	return req
+}
+
+type mockQueryStreamServer struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (m *mockQueryStreamServer) Send(response *client.QueryStreamResponse) error {
+	return nil
+}
+
+func (m *mockQueryStreamServer) Context() context.Context {
+	return m.ctx
+}
+
+func BenchmarkIngester_v2QueryStream(b *testing.B) {
+	// Create ingester.
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE.
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series.
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	const samplesCount = 1000
+	samples := make([]client.Sample, 0, samplesCount)
+
+	for i := 0; i < samplesCount; i++ {
+		samples = append(samples, client.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
+		})
+	}
+
+	const seriesCount = 100
+	for s := 0; s < seriesCount; s++ {
+		_, err = i.v2Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: strconv.Itoa(s)}}, samples))
+		require.NoError(b, err)
+	}
+
+	req := &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   samplesCount + 1,
+
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	}
+
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+
+	b.ResetTimer()
+
+	for ix := 0; ix < b.N; ix++ {
+		err := i.v2QueryStream(req, mockStream)
+		require.NoError(b, err)
+	}
+}
+
 func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {
 	samples := []client.Sample{
 		{
@@ -1160,10 +1442,10 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 		return nil, err
 	}
 
-	ingesterCfg.TSDBEnabled = true
-	ingesterCfg.TSDBConfig.Dir = dir
-	ingesterCfg.TSDBConfig.Backend = "s3"
-	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageEnabled = true
+	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dir
+	ingesterCfg.BlocksStorageConfig.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {
@@ -1232,10 +1514,10 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			defer os.RemoveAll(tempDir)
 
 			ingesterCfg := defaultIngesterTestConfig()
-			ingesterCfg.TSDBEnabled = true
-			ingesterCfg.TSDBConfig.Dir = tempDir
-			ingesterCfg.TSDBConfig.Backend = "s3"
-			ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+			ingesterCfg.BlocksStorageEnabled = true
+			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+			ingesterCfg.BlocksStorageConfig.Backend = "s3"
+			ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
 
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
@@ -1254,7 +1536,7 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 func TestIngester_shipBlocks(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.TSDBConfig.ShipConcurrency = 2
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
 	// Create ingester
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
@@ -1298,6 +1580,171 @@ type shipperMock struct {
 func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	args := m.Called(ctx)
 	return args.Int(0), args.Error(1)
+}
+
+func TestIngester_flushing(t *testing.T) {
+	for name, tc := range map[string]struct {
+		setupIngester func(cfg *Config)
+		action        func(t *testing.T, i *Ingester, m *shipperMock)
+	}{
+		"ingesterShutdown": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = true
+				cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
+			},
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				// Shutdown ingester. This triggers flushing of the block.
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+				verifyCompactedHead(t, i, true)
+
+				// Verify that block has been shipped.
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"shutdownHandler": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+				cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.ShutdownHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+
+				verifyCompactedHead(t, i, true)
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"flushHandler": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				pushSingleSample(t, i)
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i, true)
+				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig()
+			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+			cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute // Long enough to not be reached during the test.
+
+			if tc.setupIngester != nil {
+				tc.setupIngester(&cfg)
+			}
+
+			// Create ingester
+			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+			require.NoError(t, err)
+			t.Cleanup(cleanup)
+
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			t.Cleanup(func() {
+				_ = services.StopAndAwaitTerminated(context.Background(), i)
+			})
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// mock user's shipper
+			m := mockUserShipper(t, i)
+			m.On("Sync", mock.Anything).Return(0, nil)
+
+			tc.action(t, i, m)
+		})
+	}
+}
+
+func TestIngester_ForFlush(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// mock user's shipper
+	m := mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Push some data.
+	pushSingleSample(t, i)
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Nothing shipped yet.
+	m.AssertNumberOfCalls(t, "Sync", 0)
+
+	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
+	i, err = NewV2ForFlusher(i.cfg, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	m = mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	// Our single sample should be reloaded from WAL
+	verifyCompactedHead(t, i, false)
+	i.Flush()
+
+	// Head should be empty after flushing.
+	verifyCompactedHead(t, i, true)
+
+	// Verify that block has been shipped.
+	m.AssertNumberOfCalls(t, "Sync", 1)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+}
+
+func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
+	m := &shipperMock{}
+	userDB, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	require.NotNil(t, userDB)
+
+	userDB.shipper = m
+	return m
 }
 
 func Test_Ingester_v2UserStats(t *testing.T) {
@@ -1409,4 +1856,194 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 		},
 	}
 	assert.ElementsMatch(t, expect, res.Stats)
+}
+
+func TestIngesterCompactIdleBlock(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
+
+	r := prometheus.NewRegistry()
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, r)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSample(t, i)
+
+	i.compactBlocks(context.Background(), false)
+	verifyCompactedHead(t, i, false)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// wait one second -- TSDB is now idle.
+	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
+
+	i.compactBlocks(context.Background(), false)
+	verifyCompactedHead(t, i, true)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// Pushing another sample still works.
+	pushSingleSample(t, i)
+	verifyCompactedHead(t, i, false)
+
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 2
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+}
+
+func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+	require.Equal(t, expected, h.NumSeries() == 0)
+}
+
+func pushSingleSample(t *testing.T, i *Ingester) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}
+
+func TestHeadCompactionOnStartup(t *testing.T) {
+	// Create a temporary directory for TSDB
+	tempDir, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+
+	// Build TSDB for user, with data covering 24 hours.
+	{
+		// Number of full chunks, 12 chunks for 24hrs.
+		numFullChunks := 12
+		chunkRange := 2 * time.Hour.Milliseconds()
+
+		userDir := filepath.Join(tempDir, userID)
+		require.NoError(t, os.Mkdir(userDir, 0700))
+
+		db, err := tsdb.Open(userDir, nil, nil, &tsdb.Options{
+			RetentionDuration: int64(time.Hour * 25 / time.Millisecond),
+			NoLockfile:        true,
+			MinBlockDuration:  chunkRange,
+			MaxBlockDuration:  chunkRange,
+		})
+		require.NoError(t, err)
+
+		db.DisableCompactions()
+		head := db.Head()
+
+		l := labels.Labels{{Name: "n", Value: "v"}}
+		for i := 0; i < numFullChunks; i++ {
+			// Not using db.Appender() as it checks for compaction.
+			app := head.Appender(context.Background())
+			_, err := app.Add(l, int64(i)*chunkRange+1, 9.99)
+			require.NoError(t, err)
+			_, err = app.Add(l, int64(i+1)*chunkRange, 9.99)
+			require.NoError(t, err)
+			require.NoError(t, app.Commit())
+		}
+
+		dur := time.Duration(head.MaxTime()-head.MinTime()) * time.Millisecond
+		require.True(t, dur > 23*time.Hour)
+		require.Equal(t, 0, len(db.Blocks()))
+		require.NoError(t, db.Close())
+	}
+
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+
+	ingesterCfg := defaultIngesterTestConfig()
+	ingesterCfg.BlocksStorageEnabled = true
+	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+	ingesterCfg.BlocksStorageConfig.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
+
+	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+
+	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+
+	db := ingester.getTSDB(userID)
+	require.NotNil(t, db)
+
+	h := db.Head()
+
+	dur := time.Duration(h.MaxTime()-h.MinTime()) * time.Millisecond
+	require.True(t, dur <= 2*time.Hour)
+	require.Equal(t, 11, len(db.Blocks()))
+}
+
+func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some data.
+	pushSingleSample(t, i)
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	// Stop ingester.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Verify that DB is no longer in memory, but was closed
+	db = i.getTSDB(userID)
+	require.Nil(t, db)
 }

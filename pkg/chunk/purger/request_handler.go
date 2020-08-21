@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 
@@ -34,15 +35,17 @@ func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandl
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteStore *DeleteStore
-	metrics     *deleteRequestHandlerMetrics
+	deleteStore               *DeleteStore
+	metrics                   *deleteRequestHandlerMetrics
+	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore *DeleteStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteStore: deleteStore,
-		metrics:     newDeleteRequestHandlerMetrics(registerer),
+		deleteStore:               deleteStore,
+		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -110,6 +113,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
@@ -163,8 +167,8 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Before(model.Now()) {
-		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", deleteRequestCancellationDeadline.String()), http.StatusBadRequest)
+	if deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now()) {
+		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 
@@ -174,5 +178,5 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }

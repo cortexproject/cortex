@@ -20,7 +20,10 @@ Cortex can also make use of external memcacheds for caching and although these a
 
 For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config.md) with no dependencies:
 
+Clone and build Cortex
 ```sh
+$ git clone https://github.com/cortexproject/cortex.git
+$ cd cortex
 $ go build ./cmd/cortex
 $ ./cortex -config.file=./docs/configuration/single-process-config.yaml
 ```
@@ -56,7 +59,7 @@ $ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus).
+**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
 
 ## Horizontally scale out
 

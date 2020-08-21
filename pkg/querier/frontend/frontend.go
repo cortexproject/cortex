@@ -3,6 +3,7 @@ package frontend
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -65,9 +67,11 @@ type Frontend struct {
 	cond   *sync.Cond
 	queues *queueIterator
 
+	connectedClients *atomic.Int32
+
 	// Metrics.
 	queueDuration prometheus.Histogram
-	queueLength   prometheus.Gauge
+	queueLength   *prometheus.GaugeVec
 }
 
 type request struct {
@@ -92,11 +96,12 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			Help:      "Time spend by requests queued.",
 			Buckets:   prometheus.DefBuckets,
 		}),
-		queueLength: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
-		}),
+		}, []string{"user"}),
+		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
@@ -118,6 +123,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
+			r.Host = ""
 			return http.DefaultTransport.RoundTrip(r)
 		})
 	}
@@ -189,7 +195,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		// Ensure the form has been parsed so all the parameters are present
 		err = r.ParseForm()
 		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "error", err)
+			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
 		}
 
 		// Attempt to iterate through the Form to log any filled in values
@@ -284,6 +290,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	f.connectedClients.Inc()
+	defer f.connectedClients.Dec()
+
 	// If the downstream request(from querier -> frontend) is cancelled,
 	// we need to ping the condition variable to unblock getNextRequest.
 	// Ideally we'd have ctx aware condition variables...
@@ -354,7 +363,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	select {
 	case queue <- req:
-		f.queueLength.Add(1)
+		f.queueLength.WithLabelValues(userID).Inc()
 		f.cond.Broadcast()
 		return nil
 	default:
@@ -407,7 +416,7 @@ FindQueue:
 			f.cond.Broadcast()
 
 			f.queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
-			f.queueLength.Add(-1)
+			f.queueLength.WithLabelValues(userID).Dec()
 			request.queueSpan.Finish()
 
 			// Ensure the request has not already expired.
@@ -425,4 +434,24 @@ FindQueue:
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
 	goto FindQueue
+}
+
+// CheckReady determines if the query frontend is ready.  Function parameters/return
+// chosen to match the same method in the ingester
+func (f *Frontend) CheckReady(_ context.Context) error {
+	// if the downstream url is configured the query frontend is not aware of the state
+	//  of the queriers and is therefore always ready
+	if f.cfg.DownstreamURL != "" {
+		return nil
+	}
+
+	// if we have more than one querier connected we will consider ourselves ready
+	connectedClients := f.connectedClients.Load()
+	if connectedClients > 0 {
+		return nil
+	}
+
+	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", connectedClients)
+	level.Info(f.log).Log("msg", msg)
+	return errors.New(msg)
 }

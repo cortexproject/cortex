@@ -38,21 +38,19 @@ type ingesterMetrics struct {
 	walReplayDuration       prometheus.Gauge
 	walCorruptionsTotal     prometheus.Counter
 
-	// Chunks / blocks transfer.
+	// Chunks transfer.
 	sentChunks     prometheus.Counter
 	receivedChunks prometheus.Counter
-	sentFiles      prometheus.Counter
-	receivedFiles  prometheus.Counter
-	receivedBytes  prometheus.Counter
-	sentBytes      prometheus.Counter
 
 	// Chunks flushing.
+	flushSeriesInProgress         prometheus.Gauge
 	chunkUtilization              prometheus.Histogram
 	chunkLength                   prometheus.Histogram
 	chunkSize                     prometheus.Histogram
 	chunkAge                      prometheus.Histogram
 	memoryChunks                  prometheus.Gauge
-	flushReasons                  *prometheus.CounterVec
+	seriesEnqueuedForFlush        *prometheus.CounterVec
+	seriesDequeuedOutcome         *prometheus.CounterVec
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 }
@@ -143,24 +141,12 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_received_chunks",
 			Help: "The total number of chunks received by this ingester whilst joining",
 		}),
-		sentFiles: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_sent_files",
-			Help: "The total number of files sent by this ingester whilst leaving.",
-		}),
-		receivedFiles: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_received_files",
-			Help: "The total number of files received by this ingester whilst joining",
-		}),
-		receivedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_received_bytes_total",
-			Help: "The total number of bytes received by this ingester whilst joining",
-		}),
-		sentBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_sent_bytes_total",
-			Help: "The total number of bytes sent by this ingester whilst leaving",
-		}),
 
 		// Chunks flushing.
+		flushSeriesInProgress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_flush_series_in_progress",
+			Help: "Number of flush series operations in progress.",
+		}),
 		chunkUtilization: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",
@@ -187,10 +173,14 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_chunks",
 			Help: "The total number of chunks in memory.",
 		}),
-		flushReasons: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_flush_reasons",
-			Help: "Total number of series scheduled for flushing, with reasons.",
+		seriesEnqueuedForFlush: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_flushing_enqueued_series_total",
+			Help: "Total number of series enqueued for flushing, with reasons.",
 		}, []string{"reason"}),
+		seriesDequeuedOutcome: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_flushing_dequeued_series_total",
+			Help: "Total number of series dequeued for flushing, with outcome (superset of enqueue reasons)",
+		}, []string{"outcome"}),
 		droppedChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_dropped_chunks_total",
 			Help: "Total number of chunks dropped from flushing because they have too few samples.",

@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/weaveworks/common/user"
@@ -39,29 +38,17 @@ type chunkStoreQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 	chunks, err := q.store.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
-		switch err.(type) {
-		case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
-			// Recognized by Prometheus API, vendor/github.com/prometheus/prometheus/promql/engine.go:91.
-			// Don't translate those, just in case we use them internally.
-			return nil, nil, err
-		case chunk.QueryError:
-			// This will be returned with status code 422 by Prometheus API.
-			// vendor/github.com/prometheus/prometheus/web/api/v1/api.go:1393
-			return nil, nil, err
-		default:
-			// All other errors will be returned as 500.
-			return nil, nil, promql.ErrStorage{Err: err}
-		}
+		return storage.ErrSeriesSet(err)
 	}
 
-	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
+	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
 }
 
 // Series in the returned set are sorted alphabetically by labels.

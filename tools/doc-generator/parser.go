@@ -305,7 +305,7 @@ func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map
 }
 
 func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
-	if field.Type == reflect.TypeOf(logging.Level{}) {
+	if field.Type == reflect.TypeOf(logging.Level{}) || field.Type == reflect.TypeOf(logging.Format{}) {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil {
 			return nil, err
@@ -366,6 +366,22 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 			fieldFlag:    fieldFlag.Name,
 			fieldDesc:    fieldFlag.Usage,
 			fieldType:    "duration",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeOf(flagext.Time{}) {
+		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "time",
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}

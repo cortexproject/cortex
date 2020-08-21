@@ -63,9 +63,8 @@ type StoreConfig struct {
 	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 
-	// When DisableChunksDeduplication is true, cache would not be checked for whether chunk is already written.
-	// It would still write the chunk back to cache for reads.
-	DisableChunksDeduplication bool `yaml:"-"`
+	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
+	DisableIndexDeduplication bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -91,11 +90,11 @@ func (cfg *StoreConfig) Validate() error {
 type baseStore struct {
 	cfg StoreConfig
 
-	index  IndexClient
-	chunks Client
-	schema BaseSchema
-	limits StoreLimits
-	*Fetcher
+	index   IndexClient
+	chunks  Client
+	schema  BaseSchema
+	limits  StoreLimits
+	fetcher *Fetcher
 }
 
 func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
@@ -110,8 +109,15 @@ func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks 
 		chunks:  chunks,
 		schema:  schema,
 		limits:  limits,
-		Fetcher: fetcher,
+		fetcher: fetcher,
 	}, nil
+}
+
+// Stop any background goroutines (ie in the cache.)
+func (c *baseStore) Stop() {
+	c.fetcher.storage.Stop()
+	c.fetcher.Stop()
+	c.index.Stop()
 }
 
 // store implements Store
@@ -132,13 +138,6 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 	}, nil
 }
 
-// Stop any background goroutines (ie in the cache.)
-func (c *store) Stop() {
-	c.storage.Stop()
-	c.Fetcher.Stop()
-	c.index.Stop()
-}
-
 // Put implements ChunkStore
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
@@ -152,14 +151,15 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
+	defer log.Finish()
 	chunks := []Chunk{chunk}
 
-	err := c.storage.PutChunks(ctx, chunks)
+	err := c.fetcher.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
-	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+	if cacheErr := c.fetcher.writeBackCache(ctx, chunks); cacheErr != nil {
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
@@ -279,7 +279,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
@@ -371,7 +371,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 	// Now fetch the actual chunk data from Memcache / S3
 	keys := keysFromChunks(filtered)
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -425,11 +425,13 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	// Receive chunkSets from all matchers
 	var chunkIDs []string
 	var lastErr error
+	var initialized bool
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingChunkIDs:
-			if chunkIDs == nil {
+			if !initialized {
 				chunkIDs = incoming
+				initialized = true
 			} else {
 				chunkIDs = intersectStrings(chunkIDs, incoming)
 			}
@@ -447,7 +449,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formatMatcher(matcher))
 	defer log.Span.Finish()
 
 	var err error
@@ -475,11 +477,11 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "queries", len(queries))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "queries", len(queries))
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", matcher, "filteredQueries", len(queries))
+		level.Debug(log).Log("matcher", formatMatcher(matcher), "filteredQueries", len(queries))
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -490,15 +492,25 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "entries", len(entries))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "ids", len(ids))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "ids", len(ids))
 
 	return ids, nil
+}
+
+// Using this function avoids logging of nil matcher, which works, but indirectly via panic and recover.
+// That confuses attached debugger, which wants to breakpoint on each panic.
+// Using simple check is also faster.
+func formatMatcher(matcher *labels.Matcher) string {
+	if matcher == nil {
+		return "nil"
+	}
+	return matcher.String()
 }
 
 func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
@@ -616,7 +628,7 @@ func (c *baseStore) deleteChunk(ctx context.Context,
 		return errors.Wrapf(err, "when deleting index entries for chunkID=%s", chunkID)
 	}
 
-	err = c.chunks.DeleteChunk(ctx, chunkID)
+	err = c.chunks.DeleteChunk(ctx, userID, chunkID)
 	if err != nil {
 		if err == ErrStorageObjectNotFound {
 			return nil
@@ -637,7 +649,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		return ErrParialDeleteChunkNoOverlap
 	}
 
-	chunks, err := c.Fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
+	chunks, err := c.fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
 	if err != nil {
 		if err == ErrStorageObjectNotFound {
 			return nil

@@ -421,7 +421,7 @@ func (t *Test) exec(tc testCommand) error {
 		t.clear()
 
 	case *loadCmd:
-		app := t.storage.Appender()
+		app := t.storage.Appender(context.Background())
 		if err := cmd.append(app); err != nil {
 			app.Rollback()
 			return err
@@ -612,9 +612,13 @@ func (a adapter) Querier(ctx context.Context, mint, maxt int64) (storage.Querier
 	return a.db.Querier(ctx, mint, maxt)
 }
 
+func (a adapter) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+	return a.db.ChunkQuerier(ctx, mint, maxt)
+}
+
 // Appender returns a new appender against the storage.
-func (a adapter) Appender() storage.Appender {
-	return a.db.Appender()
+func (a adapter) Appender(ctx context.Context) storage.Appender {
+	return a.db.Appender(ctx)
 }
 
 // Close closes the storage and all its underlying resources.

@@ -132,7 +132,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Set this flag to `true` for the new behaviour.
 
-   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier. If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
+   Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier (called `-distributor.shard-by-all-labels` on Querier as well). If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
@@ -182,18 +182,24 @@ prefix these flags with `distributor.ha-tracker.`
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
 
-#### memberlist (EXPERIMENTAL)
+#### memberlist
 
-Flags for configuring KV store based on memberlist library. This feature is experimental, please don't use it yet.
+Flags for configuring KV store based on memberlist library.
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
+- `memberlist.randomize-node-name`
+   This flag adds extra random suffix to the node name used by memberlist. Defaults to true. Using random suffix helps to prevent issues when running multiple memberlist nodes on the same machine, or when node names are reused (eg. in stateful sets).
 - `memberlist.retransmit-factor`
    Multiplication factor used when sending out messages (factor * log(N+1)). If not set, default value is used.
 - `memberlist.join`
    Other cluster members to join. Can be specified multiple times.
+- `memberlist.min-join-backoff`, `memberlist.max-join-backoff`, `memberlist.max-join-retries`
+   These flags control backoff settings when joining the cluster.
 - `memberlist.abort-if-join-fails`
    If this node fails to join memberlist cluster, abort.
+- `memberlist.rejoin-interval`
+   How often to try to rejoin the memberlist cluster. Defaults to 0, no rejoining. Occasional rejoin may be useful in some configurations, and is otherwise harmless.
 - `memberlist.left-ingesters-timeout`
    How long to keep LEFT ingesters in the ring. Note: this is only used for gossiping, LEFT ingesters are otherwise invisible.
 - `memberlist.leave-timeout`
@@ -300,11 +306,11 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 - `-ingester.join-after`
 
-   How long to wait in PENDING state during the [hand-over process](../guides/ingester-handover.md). (default 0s)
+   How long to wait in PENDING state during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the chunks storage). (default 0s)
 
 - `-ingester.max-transfer-retries`
 
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingester-handover.md). Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)
+   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the chunks storage). Negative value or zero disables hand-over process completely. (default 10)
 
 - `-ingester.normalise-tokens`
 
@@ -467,8 +473,9 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
 Some clients in Cortex support service discovery via DNS to find addresses of backend servers to connect to (ie. caching servers). The clients supporting it are:
 
-- [Blocks storage's memcached index cache](../operations/blocks-storage.md#memcached-index-cache)
+- [Blocks storage's memcached cache](../blocks-storage/store-gateway.md#caching)
 - [All caching memcached servers](./config-file-reference.md#memcached-client-config)
+- [Memberlist KV store](./config-file-reference.md#memberlist-config)
 
 ### Supported discovery modes
 

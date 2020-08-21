@@ -35,12 +35,14 @@ var Fixtures = []testutils.Fixture{
 			dynamoDB := newMockDynamoDB(0, 0)
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
+				metrics:  newMetrics(nil),
 			}
 			index := &dynamoDBStorageClient{
 				DynamoDB:                dynamoDB,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaConfig,
+				metrics:                 newMetrics(nil),
 			}
 			object := objectclient.NewClient(&S3ObjectClient{
 				S3:        newMockS3(),
@@ -68,12 +70,13 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 			schemaCfg := testutils.DefaultSchemaConfig("aws")
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
+				metrics:  newMetrics(nil),
 			}
 			storage := &dynamoDBStorageClient{
 				cfg: DynamoDBConfig{
 					ChunkGangSize:          gangsize,
 					ChunkGetMaxParallelism: maxParallelism,
-					backoffConfig: util.BackoffConfig{
+					BackoffConfig: util.BackoffConfig{
 						MinBackoff: 1 * time.Millisecond,
 						MaxBackoff: 5 * time.Millisecond,
 						MaxRetries: 20,
@@ -84,6 +87,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaCfg,
+				metrics:                 newMetrics(nil),
 			}
 			return storage, storage, table, schemaCfg, testutils.CloserFunc(func() error {
 				table.Stop()

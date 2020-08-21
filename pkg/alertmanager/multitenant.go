@@ -355,26 +355,6 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	return amConfig, nil
 }
 
-func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content string) (bool, error) {
-	dir := filepath.Join(am.cfg.DataDir, "templates", userID, filepath.Dir(fn))
-	err := os.MkdirAll(dir, 0755)
-	if err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
-	}
-
-	file := filepath.Join(dir, fn)
-	// Check if the template file already exists and if it has changed
-	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
-		return false, nil
-	}
-
-	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
-	}
-
-	return true, nil
-}
-
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
@@ -386,7 +366,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := am.createTemplatesFile(cfg.User, tmpl.Filename, tmpl.Body)
+		hasChanged, err := createTemplateFile(am.cfg.DataDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -505,4 +485,24 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
+	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
+	}
+
+	file := filepath.Join(dir, fn)
+	// Check if the template file already exists and if it has changed
+	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
+		return false, nil
+	}
+
+	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
+	}
+
+	return true, nil
 }

@@ -67,6 +67,10 @@ type Alertmanager struct {
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
 
+	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
+	// Given its metrics don't have any variable labels we need to re-use the same metrics.
+	dispatcherMetrics *dispatch.DispatcherMetrics
+
 	activeMtx sync.Mutex
 	active    bool
 }
@@ -165,6 +169,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
 	return am, nil
 }
 
@@ -233,7 +238,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.marker,
 		timeoutFunc,
 		log.With(am.logger, "component", "dispatcher"),
-		dispatch.NewDispatcherMetrics(am.registry),
+		am.dispatcherMetrics,
 	)
 
 	go am.dispatcher.Run()

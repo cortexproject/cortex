@@ -37,6 +37,7 @@ type ScannerConfig struct {
 	UploadFiles  bool
 	Bucket       tsdb.BucketConfig
 	BucketPrefix string
+	KeepFiles    bool
 }
 
 func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -49,6 +50,7 @@ func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.OutputDirectory, "scanner.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
+	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.StringVar(&cfg.BucketPrefix, "workspace.prefix", "migration", "Prefix in the bucket for storing plan files.")
 }
 
@@ -171,12 +173,12 @@ func (s *Scanner) running(ctx context.Context) error {
 		tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, t+".processed")
 
 		if shouldSkipOperationBecauseFileExists(tableProcessedFile) {
-			s.logger.Log("msg", "skipping table because it was already scanned", "table", t)
+			level.Info(s.logger).Log("msg", "skipping table because it was already scanned", "table", t)
 			continue
 		}
 
 		dir := filepath.Join(s.cfg.OutputDirectory, t)
-		s.logger.Log("msg", "scanning table", "table", t, "output", dir)
+		level.Info(s.logger).Log("msg", "scanning table", "table", t, "output", dir)
 
 		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
 		if err != nil {
@@ -184,11 +186,18 @@ func (s *Scanner) running(ctx context.Context) error {
 		}
 
 		if s.bucket != nil {
-			s.logger.Log("msg", "uploading generated plan files for table", "table", t, "source", dir)
+			level.Info(s.logger).Log("msg", "uploading generated plan files for table", "table", t, "source", dir)
 
 			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.cfg.BucketPrefix)
 			if err != nil {
 				return fmt.Errorf("failed to upload plan files for table %s to bucket: %w", t, err)
+			}
+
+			level.Info(s.logger).Log("msg", "uploaded generated files for table", "table", t)
+			if !s.cfg.KeepFiles {
+				if err := os.RemoveAll(dir); err != nil {
+					return fmt.Errorf("failed to delete uploaded plan files for table %s: %w", t, err)
+				}
 			}
 		}
 
@@ -196,6 +205,8 @@ func (s *Scanner) running(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create file %s: %w", tableProcessedFile, err)
 		}
+
+		level.Info(s.logger).Log("msg", "done scanning table", "table", t)
 	}
 
 	return nil

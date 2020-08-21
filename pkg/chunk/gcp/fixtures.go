@@ -100,7 +100,7 @@ var Fixtures = func() []testutils.Fixture {
 		for _, columnKeyClient := range []bool{true, false} {
 			for _, hashPrefix := range []bool{true, false} {
 				fixtures = append(fixtures, &fixture{
-					name:            fmt.Sprintf("bigtable-columnkey:%v-gcsObjectClient:%v-hashPrefix:%v", columnKeyClient, gcsObjectClient, hashPrefix),
+					name:            fmt.Sprintf("bigtable-columnkey:%v-gcsObjectClient:%v-HashPrefix:%v", columnKeyClient, gcsObjectClient, hashPrefix),
 					columnKeyClient: columnKeyClient,
 					gcsObjectClient: gcsObjectClient,
 					hashPrefix:      hashPrefix,

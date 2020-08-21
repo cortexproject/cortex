@@ -16,6 +16,9 @@ type key struct {
 	seriesID string
 }
 
+// Processor implements IndexEntryProcessor. It caches chunks for single series until it finds
+// that another series has arrived, at which point it writes it to the file.
+// IndexReader guarantees correct order of entries.
 type processor struct {
 	dir   string
 	files *openFiles

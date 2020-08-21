@@ -6874,9 +6874,9 @@ cassandra:
 addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.2.0&lt;/code>).&lt;/p>
+to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.3.0&lt;/code>).&lt;/p>
 &lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.2.0 -config.file=/etc/single-process-config.yaml
+&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.3.0 -config.file=/etc/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/getting-started/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
 &lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
 &lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
@@ -7913,7 +7913,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. &lt;a href="https://github.com/cortexproject/cortex/pull/3015">#3015&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. &lt;a href="https://github.com/cortexproject/cortex/pull/3030">#3030&lt;/a>&lt;/li>
 &lt;/ul>
-&lt;h2 id="130-in-progress">1.3.0 in progress&lt;/h2>
+&lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>
 &lt;ul>
 &lt;li>[CHANGE] Replace the metric &lt;code>cortex_alertmanager_configs&lt;/code> with &lt;code>cortex_alertmanager_config_invalid&lt;/code> exposed by Alertmanager. &lt;a href="https://github.com/cortexproject/cortex/pull/2960">#2960&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Delete Series: Change target flag for purger from &lt;code>data-purger&lt;/code> to &lt;code>purger&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2777">#2777&lt;/a>&lt;/li>
@@ -7924,7 +7924,7 @@ __replica__: replica2
 &lt;li>&lt;code>cortex_bucket_stores_gate_duration_seconds&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>[CHANGE] Metric &lt;code>cortex_ingester_flush_reasons&lt;/code> has been renamed to &lt;code>cortex_ingester_flushing_enqueued_series_total&lt;/code>, and new metric &lt;code>cortex_ingester_flushing_dequeued_series_total&lt;/code> with &lt;code>outcome&lt;/code> label (superset of reason) has been added. &lt;a href="https://github.com/cortexproject/cortex/pull/2802">#2802&lt;/a>, &lt;a href="https://github.com/cortexproject/cortex/pull/2818">#2818&lt;/a>&lt;/li>
+&lt;li>[CHANGE] Metric &lt;code>cortex_ingester_flush_reasons&lt;/code> has been renamed to &lt;code>cortex_ingester_flushing_enqueued_series_total&lt;/code>, and new metric &lt;code>cortex_ingester_flushing_dequeued_series_total&lt;/code> with &lt;code>outcome&lt;/code> label (superset of reason) has been added. &lt;a href="https://github.com/cortexproject/cortex/pull/2802">#2802&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2818">#2818&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/2998">#2998&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental Delete Series: Metric &lt;code>cortex_purger_oldest_pending_delete_request_age_seconds&lt;/code> would track age of delete requests since they are over their cancellation period instead of their creation time. &lt;a href="https://github.com/cortexproject/cortex/pull/2806">#2806&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental blocks storage: the store-gateway service is required in a Cortex cluster running with the experimental blocks storage. Removed the &lt;code>-experimental.tsdb.store-gateway-enabled&lt;/code> CLI flag and &lt;code>store_gateway_enabled&lt;/code> YAML config option. The store-gateway is now always enabled when the storage engine is &lt;code>blocks&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2822">#2822&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental blocks storage: removed support for &lt;code>-experimental.blocks-storage.bucket-store.max-sample-count&lt;/code> flag because the implementation was flawed. To limit the number of samples/chunks processed by a single query you can set &lt;code>-store.query-chunk-limit&lt;/code>, which is now supported by the blocks storage too. &lt;a href="https://github.com/cortexproject/cortex/pull/2852">#2852&lt;/a>&lt;/li>
@@ -8023,6 +8023,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Logger: added JSON logging support, configured via the &lt;code>-log.format=json&lt;/code> CLI flag or its respective YAML config option. &lt;a href="https://github.com/cortexproject/cortex/pull/2386">#2386&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Added new flags &lt;code>-bigtable.grpc-compression&lt;/code>, &lt;code>-ingester.client.grpc-compression&lt;/code>, &lt;code>-querier.frontend-client.grpc-compression&lt;/code> to configure compression used by gRPC. Valid values are &lt;code>gzip&lt;/code>, &lt;code>snappy&lt;/code>, or empty string (no compression, default). &lt;a href="https://github.com/cortexproject/cortex/pull/2940">#2940&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Clarify limitations of the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints. &lt;a href="https://github.com/cortexproject/cortex/pull/2953">#2953&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Ingester: added &lt;code>Dropped&lt;/code> outcome to metric &lt;code>cortex_ingester_flushing_dequeued_series_total&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2998">#2998&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug with &lt;code>api/v1/query_range&lt;/code> where no responses would return null values for &lt;code>result&lt;/code> and empty values for &lt;code>resultType&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2962">#2962&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. &lt;a href="https://github.com/cortexproject/cortex/pull/2796">#2796&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixed the number of reported keys in the background cache queue. &lt;a href="https://github.com/cortexproject/cortex/pull/2764">#2764&lt;/a>&lt;/li>
@@ -8046,6 +8047,8 @@ __replica__: replica2
 &lt;li>[BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. &lt;a href="https://github.com/cortexproject/cortex/pull/2971">#2971&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental blocks storage: &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> only query the TSDB head regardless of the configured &lt;code>-experimental.blocks-storage.tsdb.retention-period&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/2974">#2974&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: Avoid indefinite checkpointing in case of surge in number of series. &lt;a href="https://github.com/cortexproject/cortex/pull/2955">#2955&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ruler: fixed an unintentional breaking change introduced in the ruler&amp;rsquo;s &lt;code>alertmanager_url&lt;/code> YAML config option, which changed the value from a string to a list of strings. &lt;a href="https://github.com/cortexproject/cortex/pull/2989">#2989&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="120--2020-07-01">1.2.0 / 2020-07-01&lt;/h2>
 &lt;ul>

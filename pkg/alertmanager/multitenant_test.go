@@ -191,7 +191,7 @@ func TestAlertmanager_NoExternalURL(t *testing.T) {
 		DataDir: tempDir,
 	}, log.NewNopLogger(), reg)
 
-	require.EqualError(t, err, "unable to create Alertmanager, no 'web.external-url' configured")
+	require.EqualError(t, err, "unable to create Alertmanager because the external URL has not been configured")
 }
 
 func TestAlertmanager_ServeHTTP(t *testing.T) {
@@ -223,7 +223,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
-	require.Equal(t, "no Alertmanager for this user ID, Alertmanager not configured\n", string(body))
+	require.Equal(t, "the Alertmanager is not configured\n", string(body))
 
 	// Create a configuration for the user in storage.
 	mockStore.configs["user1"] = alerts.AlertConfigDesc{
@@ -243,5 +243,5 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
-	require.Equal(t, "Alertmanager is not active, revise its configuration\n", string(body))
+	require.Equal(t, "the Alertmanager is not configured\n", string(body))
 }

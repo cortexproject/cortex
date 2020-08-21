@@ -106,5 +106,5 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	cfg, err = c.GetAlertmanagerConfig(context.Background())
 	require.Error(t, err)
 	require.Nil(t, cfg)
-	require.EqualError(t, err, "getting config failed with status 406 and error Alertmanager is not active, revise its configuration\n")
+	require.EqualError(t, err, "not found")
 }

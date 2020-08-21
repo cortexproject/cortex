@@ -3,7 +3,10 @@ package alertmanager
 import (
 	"bytes"
 	"context"
+	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -76,7 +79,7 @@ receivers:
 		payload, err := yaml.Marshal(&tc.cfg)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest("GET", "http://foooo", bytes.NewReader(payload))
+		req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader(payload))
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "testing")
 		require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
@@ -86,6 +89,9 @@ receivers:
 		resp := w.Result()
 		if tc.hasErr {
 			require.Equal(t, 400, resp.StatusCode)
+			respBody, err := ioutil.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.True(t, strings.Contains(string(respBody), "error validating Alertmanager config"))
 		} else {
 			require.Equal(t, 201, resp.StatusCode)
 		}

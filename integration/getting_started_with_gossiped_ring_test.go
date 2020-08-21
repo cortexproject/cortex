@@ -62,20 +62,29 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
 
 	// Both Cortex servers should have 512 tokens for ingesters ring and 512 tokens for store-gateways ring.
-	for _, ringName := range []string{"ingester", "store-gateway"} {
+	for _, ringName := range []string{"ingester", "store-gateway", "ruler"} {
 		ringMatcher := labels.MustNewMatcher(labels.MatchEqual, "name", ringName)
 
 		require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2*512), []string{"cortex_ring_tokens_total"}, e2e.WithLabelMatchers(ringMatcher)))
 		require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(2*512), []string{"cortex_ring_tokens_total"}, e2e.WithLabelMatchers(ringMatcher)))
 	}
 
-	// We need two "ring members" visible from both Cortex instances
+	// We need two "ring members" visible from both Cortex instances for ingesters
 	require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
 		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
 	require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	// We need two "ring members" visible from both Cortex instances for rulers
+	require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ruler"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ruler"),
 		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
 	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")

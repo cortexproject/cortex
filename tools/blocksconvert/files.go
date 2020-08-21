@@ -46,8 +46,8 @@ func newOpenFiles(bufferSize int, reg prometheus.Registerer) *openFiles {
 	return of
 }
 
-func (of *openFiles) appendJsonEntryToFile(dir, filename string, data interface{}) error {
-	f, err := of.getFile(dir, filename)
+func (of *openFiles) appendJsonEntryToFile(dir, filename string, data interface{}, initialEntry func() interface{}) error {
+	f, err := of.getFile(dir, filename, initialEntry)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (of *openFiles) appendJsonEntryToFile(dir, filename string, data interface{
 	return f.enc.Encode(data)
 }
 
-func (of *openFiles) getFile(dir, filename string) (*file, error) {
+func (of *openFiles) getFile(dir, filename string, initialEntry func() interface{}) (*file, error) {
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
@@ -81,6 +81,13 @@ func (of *openFiles) getFile(dir, filename string) (*file, error) {
 		enc := json.NewEncoder(buf)
 		enc.SetEscapeHTML(false)
 
+		if initialEntry != nil {
+			err := enc.Encode(initialEntry())
+			if err != nil {
+				_ = fl.Close()
+			}
+		}
+
 		f = &file{
 			f:   fl,
 			buf: buf,
@@ -92,7 +99,7 @@ func (of *openFiles) getFile(dir, filename string) (*file, error) {
 	return f, nil
 }
 
-func (of *openFiles) closeAllFiles() []error {
+func (of *openFiles) closeAllFiles(footer func() interface{}) []error {
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
@@ -100,6 +107,13 @@ func (of *openFiles) closeAllFiles() []error {
 
 	for fn, f := range of.files {
 		delete(of.files, fn)
+
+		if footer != nil {
+			err := f.enc.Encode(footer())
+			if err != nil {
+				errors = append(errors, err)
+			}
+		}
 
 		err := f.buf.Flush()
 		if err != nil {

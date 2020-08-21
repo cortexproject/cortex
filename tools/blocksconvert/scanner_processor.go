@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -27,15 +26,11 @@ type processor struct {
 	chunks  []string
 }
 
-func newProcessor(dir string, files *openFiles, reg prometheus.Registerer) *processor {
+func newProcessor(dir string, files *openFiles, series prometheus.Counter) *processor {
 	w := &processor{
-		dir:   dir,
-		files: files,
-
-		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "scanner_series_written_total",
-			Help: "Number of series written to the plan files",
-		}),
+		dir:    dir,
+		files:  files,
+		series: series,
 	}
 
 	return w
@@ -62,10 +57,9 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 		if err != nil {
 			return fmt.Errorf("failed to flush chunks: %w", err)
 		}
-
-		w.lastKey = k
 	}
 
+	w.lastKey = k
 	w.chunks = append(w.chunks, chunkID)
 	return nil
 }
@@ -75,9 +69,16 @@ func (w *processor) Flush() error {
 		return nil
 	}
 
-	err := w.files.appendJsonEntryToFile(filepath.Join(w.dir, w.lastKey.user), strconv.Itoa(w.lastKey.dayIndex)+".plan", PlanEntry{
+	k := w.lastKey
+
+	err := w.files.appendJsonEntryToFile(filepath.Join(w.dir, k.user), strconv.Itoa(k.dayIndex)+".plan", PlanEntry{
 		SeriesID: w.lastKey.seriesID,
 		Chunks:   w.chunks,
+	}, func() interface{} {
+		return PlanHeader{
+			User:     k.user,
+			DayIndex: k.dayIndex,
+		}
 	})
 
 	if err != nil {

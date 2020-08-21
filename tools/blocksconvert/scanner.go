@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -35,11 +36,12 @@ type Scanner struct {
 	cfg         ScannerConfig
 	indexReader IndexReader
 	reg         prometheus.Registerer
+	series      prometheus.Counter
 }
 
 func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
 	if cfg.BigtableProject == "" || cfg.BigtableInstance == "" {
-		return nil, fmt.Errorf("invalid BigTable configuration")
+		return nil, fmt.Errorf("missing BigTable configuration")
 	}
 
 	if cfg.TableName == "" {
@@ -64,6 +66,11 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 		cfg:         cfg,
 		reg:         reg,
 		indexReader: NewBigtableIndexReader(cfg.BigtableProject, cfg.BigtableInstance, l, reg),
+
+		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "scanner_series_written_total",
+			Help: "Number of series written to the plan files",
+		}),
 	}
 
 	s.Service = services.NewBasicService(nil, s.running, nil)
@@ -76,13 +83,17 @@ func (s *Scanner) running(ctx context.Context) error {
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < s.cfg.Concurrency; i++ {
-		ps = append(ps, newProcessor(s.cfg.OutputDirectory, files, s.reg))
+		ps = append(ps, newProcessor(s.cfg.OutputDirectory, files, s.series))
 	}
 
 	err := s.indexReader.ReadIndexEntries(ctx, s.cfg.TableName, ps)
 	if err != nil {
 		return err
 	}
+
+	files.closeAllFiles(func() interface{} {
+		return PlanFooter{Complete: true}
+	})
 
 	return nil
 }

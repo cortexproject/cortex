@@ -80,6 +80,8 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 
 	tbl := client.Open(tableName)
 	if keys, err := tbl.SampleRowKeys(ctx); err == nil {
+		level.Info(r.log).Log("msg", "sampled row keys", "keys", strings.Join(keys, ", "))
+
 		rangesCh = make(chan bigtable.RowRange, len(keys)+1)
 
 		start := ""
@@ -92,7 +94,7 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 	} else {
 		level.Warn(r.log).Log("msg", "failed to sample row keys", "err", err)
 
-		rangesCh = make(chan bigtable.RowRange)
+		rangesCh = make(chan bigtable.RowRange, 1)
 		rangesCh <- bigtable.InfiniteRange("")
 		close(rangesCh)
 	}
@@ -106,7 +108,9 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 			for rng := range rangesCh {
 				var innerErr error
 
-				err = tbl.ReadRows(gctx, rng, func(row bigtable.Row) bool {
+				level.Info(r.log).Log("msg", "reading rows", "range", rng)
+
+				err := tbl.ReadRows(gctx, rng, func(row bigtable.Row) bool {
 					r.rowsRead.Inc()
 
 					entries, err := parseRowKey(row, tableName)

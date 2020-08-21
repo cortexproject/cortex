@@ -51,11 +51,11 @@ func main() {
 	case "scanner":
 		targetService, err = blocksconvert.NewScanner(cfg.ScannerConfig, util.Logger, registry)
 	default:
-		err = fmt.Errorf("unknown target: %s", cfg.Target)
+		err = fmt.Errorf("unknown target")
 	}
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to initialize "+cfg.Target)
+		level.Error(util.Logger).Log("msg", "failed to initialize", "err", err)
 		os.Exit(1)
 	}
 

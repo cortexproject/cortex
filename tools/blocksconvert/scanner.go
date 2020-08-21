@@ -30,6 +30,7 @@ type ScannerConfig struct {
 
 	TableName    string
 	SchemaConfig chunk.SchemaConfig
+	TablesLimit  int
 
 	OutputDirectory string
 	Concurrency     int
@@ -52,6 +53,7 @@ func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.StringVar(&cfg.BucketPrefix, "workspace.prefix", "migration", "Prefix in the bucket for storing plan files.")
+	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
 }
 
 type Scanner struct {
@@ -165,6 +167,10 @@ func (s *Scanner) running(ctx context.Context) error {
 		sort.Sort(sort.Reverse(sort.StringSlice(tables)))
 
 		level.Info(s.logger).Log("msg", fmt.Sprintf("found %d tables to scan", len(tables)), "prefix", s.tablePrefix, "period", s.tablePeriod)
+		if s.cfg.TablesLimit > 0 && len(tables) > s.cfg.TablesLimit {
+			level.Info(s.logger).Log("msg", "applied tables limit", "limit", s.cfg.TablesLimit)
+			tables = tables[:s.cfg.TablesLimit]
+		}
 	} else {
 		tables = []string{s.table}
 	}

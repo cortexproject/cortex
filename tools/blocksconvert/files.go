@@ -2,6 +2,7 @@ package blocksconvert
 
 import (
 	"bufio"
+	"compress/gzip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ type file struct {
 	mu  sync.Mutex
 	f   *os.File
 	buf *bufio.Writer
+	gz  *gzip.Writer
 	enc *json.Encoder
 }
 
@@ -54,7 +56,7 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
-	name := filepath.Join(dir, filename)
+	name := filepath.Join(dir, filename+".gz")
 
 	f := of.files[name]
 	if f == nil {
@@ -69,8 +71,8 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 		}
 
 		buf := bufio.NewWriterSize(fl, of.bufferSize)
-
-		enc := json.NewEncoder(buf)
+		gz := gzip.NewWriter(buf)
+		enc := json.NewEncoder(gz)
 		enc.SetEscapeHTML(false)
 
 		if headerFn != nil {
@@ -83,6 +85,7 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 		f = &file{
 			f:   fl,
 			buf: buf,
+			gz:  gz,
 			enc: enc,
 		}
 		of.files[name] = f
@@ -109,7 +112,12 @@ func (of *openFiles) closeAllFiles(footerFn func() interface{}) []error {
 			}
 		}
 
-		err := f.buf.Flush()
+		err := f.gz.Close()
+		if err != nil {
+			errors = append(errors, err)
+		}
+
+		err = f.buf.Flush()
 		if err != nil {
 			errors = append(errors, err)
 		}

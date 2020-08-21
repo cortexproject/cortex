@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type file struct {
@@ -24,24 +23,17 @@ type openFiles struct {
 
 	mu    sync.Mutex
 	files map[string]*file
-	gauge prometheus.GaugeFunc
+
+	openFiles prometheus.Gauge
 }
 
-func newOpenFiles(bufferSize int, reg prometheus.Registerer) *openFiles {
+func newOpenFiles(bufferSize int, openFilesGauge prometheus.Gauge) *openFiles {
 	of := &openFiles{
 		bufferSize: bufferSize,
 		files:      map[string]*file{},
+
+		openFiles: openFilesGauge,
 	}
-
-	of.gauge = promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "open_files",
-		Help: "Number of open filed",
-	}, func() float64 {
-		of.mu.Lock()
-		defer of.mu.Unlock()
-
-		return float64(len(of.files))
-	})
 
 	return of
 }
@@ -94,6 +86,7 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 			enc: enc,
 		}
 		of.files[name] = f
+		of.openFiles.Inc()
 	}
 
 	return f, nil
@@ -107,6 +100,7 @@ func (of *openFiles) closeAllFiles(footerFn func() interface{}) []error {
 
 	for fn, f := range of.files {
 		delete(of.files, fn)
+		of.openFiles.Dec()
 
 		if footerFn != nil {
 			err := f.enc.Encode(footerFn())

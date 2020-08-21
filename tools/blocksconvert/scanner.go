@@ -5,14 +5,21 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/tsdb/errors"
+	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -20,21 +27,28 @@ type ScannerConfig struct {
 	BigtableProject  string
 	BigtableInstance string
 
-	TableName       string
+	TableName    string
+	SchemaConfig chunk.SchemaConfig
+
 	OutputDirectory string
 	Concurrency     int
 
-	SchemaConfig chunk.SchemaConfig
+	UploadFiles  bool
+	Bucket       tsdb.BucketConfig
+	BucketPrefix string
 }
 
 func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(flag.CommandLine)
+	cfg.Bucket.RegisterFlags(flag.CommandLine)
 
 	f.StringVar(&cfg.BigtableProject, "bigtable.project", "", "The Google Cloud Platform project ID. Required.")
 	f.StringVar(&cfg.BigtableInstance, "bigtable.instance", "", "The Google Cloud Bigtable instance ID. Required.")
 	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
 	f.StringVar(&cfg.OutputDirectory, "scanner.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
+	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
+	f.StringVar(&cfg.BucketPrefix, "workspace.prefix", "migration", "Prefix in the bucket for storing plan files.")
 }
 
 type Scanner struct {
@@ -47,8 +61,11 @@ type Scanner struct {
 	openFiles prometheus.Gauge
 	logger    log.Logger
 
+	tablePeriod time.Duration
+
 	table       string
 	tablePrefix string
+	bucket      objstore.Bucket
 }
 
 func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
@@ -57,6 +74,7 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 	}
 
 	tablePrefix := ""
+	tablePeriod := time.Duration(0)
 	if cfg.TableName == "" {
 		err := cfg.SchemaConfig.Load()
 		if err != nil {
@@ -74,8 +92,11 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 
 			if tablePrefix == "" {
 				tablePrefix = c.IndexTables.Prefix
+				tablePeriod = c.IndexTables.Period
 			} else if tablePrefix != c.IndexTables.Prefix {
 				return nil, fmt.Errorf("multiple index table prefixes found in schema: %v, %v", tablePrefix, c.IndexTables.Prefix)
+			} else if tablePeriod != c.IndexTables.Period {
+				return nil, fmt.Errorf("multiple index table periods found in schema: %v, %v", tablePeriod, c.IndexTables.Period)
 			}
 		}
 	}
@@ -84,12 +105,21 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 		return nil, fmt.Errorf("no output directory")
 	}
 
-	err := os.RemoveAll(cfg.OutputDirectory)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete existing output directory %s: %w", cfg.OutputDirectory, err)
+	var bucketClient objstore.Bucket
+	if cfg.UploadFiles {
+		if err := cfg.Bucket.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid bucket config: %w", err)
+		}
+
+		bucket, err := tsdb.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bucket: %w", err)
+		}
+
+		bucketClient = bucket
 	}
 
-	err = os.Mkdir(cfg.OutputDirectory, os.FileMode(0700))
+	err := os.MkdirAll(cfg.OutputDirectory, os.FileMode(0700))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new output directory %s: %w", cfg.OutputDirectory, err)
 	}
@@ -99,7 +129,9 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 		indexReader: NewBigtableIndexReader(cfg.BigtableProject, cfg.BigtableInstance, l, reg),
 		table:       cfg.TableName,
 		tablePrefix: tablePrefix,
+		tablePeriod: tablePeriod,
 		logger:      l,
+		bucket:      bucketClient,
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "scanner_series_written_total",
@@ -121,49 +153,95 @@ func (s *Scanner) running(ctx context.Context) error {
 	if s.table == "" {
 		// Use table prefix to discover tables to scan.
 		// TODO: use min/max day
-		t, err := findTables(ctx, s.indexReader, s.tablePrefix)
+		tableNames, err := s.indexReader.IndexTableNames(ctx)
 		if err != nil {
 			return err
 		}
 
-		s.logger.Log("msg", fmt.Sprintf("found %d tables to scan", len(t)), "prefix", s.tablePrefix)
-		tables = t
+		tables = findTables(s.logger, tableNames, s.tablePrefix, s.tablePeriod)
+		level.Info(s.logger).Log("msg", fmt.Sprintf("found %d tables to scan", len(tables)), "prefix", s.tablePrefix, "period", s.tablePeriod)
 	} else {
 		tables = []string{s.table}
 	}
 
 	for _, t := range tables {
-		// TODO: check if it was processed before.
+		dir := filepath.Join(s.cfg.OutputDirectory, t)
+		s.logger.Log("msg", "scanning table", "table", t, "output", dir)
 
-		s.logger.Log("msg", "scanning table", "table", t)
-		err := scanSingleTable(ctx, s.indexReader, t, s.cfg.OutputDirectory, s.cfg.Concurrency, s.openFiles, s.series)
+		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
 		if err != nil {
 			return fmt.Errorf("failed to process table %s: %w", t, err)
 		}
 
-		// TODO: upload
+		if s.bucket != nil {
+			s.logger.Log("msg", "uploading generated plan files", "source", dir)
+
+			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.cfg.BucketPrefix)
+			if err != nil {
+				return fmt.Errorf("failed to upload %s to bucket: %w", err)
+			}
+		}
 	}
 
 	return nil
 }
 
-func findTables(ctx context.Context, reader IndexReader, prefix string) ([]string, error) {
-	tables, err := reader.IndexTableNames(ctx)
-	if err != nil {
-		return nil, err
+func findTables(logger log.Logger, tableNames []string, prefix string, period time.Duration) []string {
+	type table struct {
+		name        string
+		periodIndex int64
 	}
 
-	// TODO: sort by parsed day index
-	out := []string{}
-	for _, t := range tables {
-		if strings.HasPrefix(t, prefix) {
-			out = append(out, t)
+	var tables []table
+
+	for _, t := range tableNames {
+		if !strings.HasPrefix(t, prefix) {
+			continue
 		}
+
+		if period == 0 {
+			tables = append(tables, table{
+				name:        t,
+				periodIndex: 0,
+			})
+			continue
+		}
+
+		p, err := strconv.ParseInt(t[len(prefix):], 10, 64)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to parse period index of table", "table", t)
+			continue
+		}
+
+		tables = append(tables, table{
+			name:        t,
+			periodIndex: p,
+		})
 	}
-	return out, nil
+
+	sort.Slice(tables, func(i, j int) bool {
+		return tables[i].periodIndex < tables[j].periodIndex
+	})
+
+	var out []string
+	for _, t := range tables {
+		out = append(out, t.name)
+	}
+
+	return out
 }
 
 func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter) error {
+	err := os.RemoveAll(outDir)
+	if err != nil {
+		return fmt.Errorf("failed to delete directory %s: %w", outDir, err)
+	}
+
+	err = os.MkdirAll(outDir, os.FileMode(0700))
+	if err != nil {
+		return fmt.Errorf("failed to prepare directory %s: %w", outDir, err)
+	}
+
 	files := newOpenFiles(1024*1024, openFiles)
 
 	var ps []IndexEntryProcessor
@@ -172,14 +250,17 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 		ps = append(ps, newProcessor(outDir, files, series))
 	}
 
-	err := indexReader.ReadIndexEntries(ctx, tableName, ps)
+	err = indexReader.ReadIndexEntries(ctx, tableName, ps)
 	if err != nil {
 		return err
 	}
 
-	files.closeAllFiles(func() interface{} {
+	errs := files.closeAllFiles(func() interface{} {
 		return PlanFooter{Complete: true}
 	})
+	if len(errs) > 0 {
+		return errors.MultiError(errs)
+	}
 
 	return nil
 }

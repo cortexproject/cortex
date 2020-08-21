@@ -7164,324 +7164,7 @@ This can reduce write load on your backend-database by around 12x.&lt;/p>
 If an entry is in the index write cache it will not be written to the index.
 As such, entries are only written to the index write cache &lt;em>after&lt;/em> being successfully written to the index.
 Data stays in the index indefinitely or until it is evicted by newer entries.&lt;/p>
-&lt;p>The index write cache should be configures on the &lt;strong>ingesters&lt;/strong> using flags with the &lt;code>-store.index-cache-write&lt;/code> prefix.&lt;/p></description></item><item><title>Docs: Cortex APIs</title><link>/docs/apis/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/apis/</guid><description>
-&lt;p>[this is a work in progress]&lt;/p>
-&lt;h2 id="remote-api">Remote API&lt;/h2>
-&lt;p>Cortex supports Prometheus&amp;rsquo;
-&lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read">&lt;code>remote_read&lt;/code>&lt;/a>
-and
-&lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write">&lt;code>remote_write&lt;/code>&lt;/a>
-APIs.&lt;/p>
-&lt;p>The API for writes accepts a HTTP POST request with a body containing a request encoded with &lt;a href="https://developers.google.com/protocol-buffers">Protocol Buffers&lt;/a> and compressed with &lt;a href="https://github.com/google/snappy">Snappy&lt;/a>.
-The HTTP path for writes is &lt;code>/api/prom/push&lt;/code>.
-The definition of the protobuf message can be found in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#L30">Cortex codebase&lt;/a> or in the &lt;a href="https://github.com/prometheus/prometheus/blob/master/prompb/remote.proto#L22">Prometheus codebase&lt;/a>.
-The HTTP request should contain the header &lt;code>X-Prometheus-Remote-Write-Version&lt;/code> set to &lt;code>0.1.0&lt;/code>.&lt;/p>
-&lt;p>The API for reads also accepts HTTP/protobuf/snappy, and the path is &lt;code>/api/prom/read&lt;/code>.&lt;/p>
-&lt;p>See the Prometheus documentation for &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations">more information on the Prometheus remote write format&lt;/a>.&lt;/p>
-&lt;h2 id="ruler">Ruler&lt;/h2>
-&lt;h3 id="prometheus-endpoints">Prometheus Endpoints&lt;/h3>
-&lt;p>Cortex supports the Prometheus&amp;rsquo; &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#alerts">alerts&lt;/a> and &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#rules">rules&lt;/a> api endpoints. This is supported in the Ruler service and can be enabled using the &lt;code>experimental.ruler.enable-api&lt;/code> flag.&lt;/p>
-&lt;pre>&lt;code>GET /prometheus/api/v1/rules
-&lt;/code>&lt;/pre>&lt;p>List of alerting and recording rules that are currently loaded in the Ruler. This endpoint retrieves the running rule groups in each ruler for a user, merges them and returns the response to the caller.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#a40000">$&lt;/span> &lt;span style="color:#a40000">curl&lt;/span> &lt;span style="color:#a40000">-H&lt;/span> &lt;span style="color:#a40000">&amp;#39;X-Scope-OrgID:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#a40000">&amp;#39;&lt;/span> &lt;span style="color:#a40000">http://localhost:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9009&lt;/span>&lt;span style="color:#a40000">/prometheus/api/v&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#a40000">/rules&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;data&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;groups&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">[&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">[&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alerts&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">[&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;activeAt&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;2018-07-04T20:27:12.60602144+02:00&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;annotations&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;summary&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;High request latency&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alertname&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;HighRequestLatency&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;severity&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;page&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;state&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;firing&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;value&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;1e+00&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">],&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;annotations&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;summary&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;High request latency&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;duration&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">600&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;health&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;ok&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;severity&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;page&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;name&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;HighRequestLatency&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;query&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;job:request_latency_seconds:mean5m{job=\&amp;#34;myjob\&amp;#34;} &amp;gt; 0.5&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;type&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;alerting&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;health&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;ok&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;name&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;job:http_inprogress_requests:sum&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;query&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;sum by (job) (http_inprogress_requests)&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;type&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;recording&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">],&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;file&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;rules.yaml&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;interval&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">60&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;name&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;example&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">]&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;status&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;success&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;pre>&lt;code>GET /prometheus/api/v1/alerts
-&lt;/code>&lt;/pre>&lt;p>Returns a list of all active alerts.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#a40000">$&lt;/span> &lt;span style="color:#a40000">curl&lt;/span> &lt;span style="color:#a40000">-H&lt;/span> &lt;span style="color:#a40000">&amp;#39;X-Scope-OrgID:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#a40000">&amp;#39;&lt;/span> &lt;span style="color:#a40000">http://localhost:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9009&lt;/span>&lt;span style="color:#a40000">/prometheus/api/v&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#a40000">/alerts&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;data&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alerts&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">[&lt;/span>
-&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;activeAt&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;2018-07-04T20:27:12.60602144+02:00&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;annotations&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alertname&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;my-alert&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;state&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;firing&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;value&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;1e+00&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">]&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;status&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;success&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="experimental-api">Experimental API&lt;/h3>
-&lt;p>The ruler supports operations using a configured object storage client as a backend for the storage and management of user rule groups. In order to use this API the &lt;code>experimental.ruler.enable-api&lt;/code> must be set and a valid object storage backend must be configured for the ruler. The ruler API uses the concept of a namespace when creating rule groups. This is a stand in for the name of the rule file in Prometheus and rule groups must be named uniquely within a namespace.&lt;/p>
-&lt;h4 id="list-rule-groups">List Rule Groups&lt;/h4>
-&lt;pre>&lt;code>GET /api/v1/rules
-&lt;/code>&lt;/pre>&lt;h5 id="success-response">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>200 OK&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Data&lt;/strong>:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">---&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;namespace1&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> interval: &amp;lt;duration;optional&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">rules&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">record&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">alert&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> annotations:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;annotation_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> labels:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;label_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> interval: &amp;lt;duration;optional&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">rules&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">record&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">alert&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> annotations:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;annotation_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> labels:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;label_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;namespace2&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> interval: &amp;lt;duration;optional&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">rules&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">record&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">alert&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> annotations:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;annotation_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> labels:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;label_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The success response for the list operation returns a yaml dictionary with all of the rule groups for each rule namespace.&lt;/p>
-&lt;h4 id="get-rule-group">Get Rule Group&lt;/h4>
-&lt;pre>&lt;code>GET /api/v1/rules/{namespace}/{group_name}
-&lt;/code>&lt;/pre>&lt;h5 id="success-response-1">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>200 OK&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Data&lt;/strong>:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration;optional&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">rules&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">record&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">alert&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> annotations:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;annotation_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> labels:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;label_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="set-rule-group">Set Rule Group&lt;/h4>
-&lt;pre>&lt;code>POST /api/v1/rules/{namespace}
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>Content-Type&lt;/strong>: &lt;code>application/yaml&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration;optional&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">rules&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">record&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">alert&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> expr: &amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> annotations:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;annotation_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> labels:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">&amp;lt;label_name&amp;gt;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h5 id="success-response-2">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>202 ACCEPTED&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>: None&lt;/p>
-&lt;h4 id="delete-rule-group">Delete Rule Group&lt;/h4>
-&lt;pre>&lt;code>DELETE /api/v1/rules/{namespace}/{group_name}
-&lt;/code>&lt;/pre>&lt;h5 id="success-response-3">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>202 ACCEPTED&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>: None&lt;/p>
-&lt;h2 id="alertmanager">Alertmanager&lt;/h2>
-&lt;h3 id="experimental-api-1">Experimental API&lt;/h3>
-&lt;p>Similarly to the Cortex Ruler, the Cortex Alertmanager supports operations using a configured object storage client as a backend for the storage and management of user&amp;rsquo;s Alertmanager configuration. These API endpoints are opt-in and must be enabled via the &lt;code>experimental.alertmanger.enable-api&lt;/code> CLI flag.&lt;/p>
-&lt;h3 id="get-alertmanager-configuration">Get Alertmanager configuration&lt;/h3>
-&lt;pre>&lt;code>GET /api/v1/alerts
-&lt;/code>&lt;/pre>&lt;h5 id="success-response-4">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>200 OK&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>: None&lt;/p>
-&lt;h3 id="set-alertmanager-configuration">Set Alertmanager configuration&lt;/h3>
-&lt;pre>&lt;code>POST /api/v1/alerts
-&lt;/code>&lt;/pre>&lt;h5 id="success-response-5">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>201 CREATED&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">template_files&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">default_template&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic">|
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> {{ define &amp;#34;__alertmanager&amp;#34; }}AlertManager{{ end }}&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>{{&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>define&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;__alertmanagerURL&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>}}{{&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>.ExternalURL&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>}}/&lt;span style="color:#8f5902;font-style:italic">#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">alertmanager_config&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;global: \n smtp_smarthost: &amp;#39;localhost:25&amp;#39; \n smtp_from: &amp;#39;youraddress@example.org&amp;#39; \nroute: \n receiver: example-email \nreceivers: \n - name: example-email \n email_configs: \n - to: &amp;#39;youraddress@example.org&amp;#39; \n&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="delete-alertmanager-configuration">Delete Alertmanager configuration&lt;/h3>
-&lt;pre>&lt;code>DELETE /api/v1/alerts
-&lt;/code>&lt;/pre>&lt;h5 id="success-response-6">Success Response&lt;/h5>
-&lt;p>&lt;strong>Code&lt;/strong>: &lt;code>200 OK&lt;/code>&lt;/p>
-&lt;p>&lt;strong>Body&lt;/strong>: None&lt;/p>
-&lt;h2 id="configs-api">Configs API&lt;/h2>
-&lt;p>The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.&lt;/p>
-&lt;p>Each tenant will have it&amp;rsquo;s own set of rule files, Alertmanager config, and templates. A POST operation will effectively replace the existing copy with the configs provided in the request body.&lt;/p>
-&lt;h3 id="configs-format">Configs Format&lt;/h3>
-&lt;p>At the current time of writing, the API is part-way through a migration from a single Configs service that handled all three sets of data to a split API (&lt;a href="https://github.com/cortexproject/cortex/issues/619">Tracking issue&lt;/a>). All APIs take and return all sets of data.&lt;/p>
-&lt;p>The following schema is used both when retrieving the current configs from the API and when setting new configs via the API.&lt;/p>
-&lt;h4 id="schema">Schema:&lt;/h4>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;id&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">99&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rule_format_version&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;2&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alertmanager_config&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;&amp;lt;standard alertmanager.yaml config&amp;gt;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules_files&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules.yaml&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;&amp;lt;standard rules.yaml config&amp;gt;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules2.yaml&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;&amp;lt;standard rules.yaml config&amp;gt;&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;template_files&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;templates.tmpl&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;&amp;lt;standard template file&amp;gt;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;templates2.tmpl&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;&amp;lt;standard template file&amp;gt;&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="formatting">Formatting&lt;/h4>
-&lt;p>&lt;code>id&lt;/code> - should be incremented every time data is updated; Cortex will use the config with the highest number.&lt;/p>
-&lt;p>&lt;code>rule_format_version&lt;/code> - allows compatibility for tenants with config in Prometheus V1 format. Pass &amp;ldquo;1&amp;rdquo; or &amp;ldquo;2&amp;rdquo; according to which Prometheus version you want to match.&lt;/p>
-&lt;p>&lt;code>config.alertmanager_config&lt;/code> - The contents of the alertmanager config file should be as described &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/">here&lt;/a>, encoded as a single string to fit within the overall JSON payload.&lt;/p>
-&lt;p>&lt;code>config.rules_files&lt;/code> - The contents of a rules file should be as described &lt;a href="http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">here&lt;/a>, encoded as a single string to fit within the overall JSON payload.&lt;/p>
-&lt;p>&lt;code>config.template_files&lt;/code> - The contents of a template file should be as described &lt;a href="https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates">here&lt;/a>, encoded as a single string to fit within the overall JSON payload.&lt;/p>
-&lt;h3 id="endpoints">Endpoints&lt;/h3>
-&lt;h4 id="manage-alertmanager">Manage Alertmanager&lt;/h4>
-&lt;p>&lt;code>GET /api/prom/configs/alertmanager&lt;/code> - Get current Alertmanager config&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;p>&lt;code>POST /api/prom/configs/alertmanager&lt;/code> - Replace current Alertmanager config&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: NoContent(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), BadRequest(400)&lt;/li>
-&lt;/ul>
-&lt;p>The POST request body is expected to be like the following example:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rule_format_version&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;2&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;alertmanager_config&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;global:\n resolve_timeout: 10s\nroute: \n receiver: webhook\nreceivers:\n - name: webhook\n webhook_configs: \n - url: http://example.com&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules_files&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;rules.yaml&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;groups:\n- name: demo-service-alerts\n interval: 1s\n rules:\n - alert: SomethingIsUp\n expr: up == 1\n&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>POST /api/prom/configs/alertmanager/validate&lt;/code> - Validate Alertmanager config&lt;/p>
-&lt;p>Normal Response: OK(200)&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;status&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;success&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Error Response: BadRequest(400)&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;status&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;error&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;error&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;error message&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="manage-rules">Manage Rules&lt;/h4>
-&lt;p>&lt;code>GET /api/prom/configs/rules&lt;/code> - Get current rule files&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(400), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;p>&lt;code>POST /api/prom/configs/rules&lt;/code> - Replace current rule files&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: NoContent(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), BadRequest(400)&lt;/li>
-&lt;/ul>
-&lt;h4 id="manage-templates">Manage Templates&lt;/h4>
-&lt;p>&lt;code>GET /api/prom/configs/templates&lt;/code> - Get current templates&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;p>&lt;code>POST /api/prom/configs/templates&lt;/code> - Replace current templates&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: NoContent(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), BadRequest(400)&lt;/li>
-&lt;/ul>
-&lt;h4 id="deactivaterestore-configs">Deactivate/Restore Configs&lt;/h4>
-&lt;p>&lt;code>DELETE /api/prom/configs/deactivate&lt;/code> - Disable configs for a tenant&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;p>&lt;code>POST /api/prom/configs/restore&lt;/code> - Re-enable configs for a tenant&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;p>These API endpoints will disable/enable the current Rule and Alertmanager configuration for a tenant.&lt;/p>
-&lt;p>Note that setting a new config will effectively &amp;ldquo;re-enable&amp;rdquo; the Rules and Alertmanager configuration for a tenant.&lt;/p>
-&lt;h4 id="ingester-shutdown">Ingester Shutdown&lt;/h4>
-&lt;p>&lt;code>POST /shutdown&lt;/code> - Shutdown all operations of an ingester. Shutdown operations performed are similar to when an ingester is gracefully shutting down, including flushing of chunks if no other ingester is in &lt;code>PENDING&lt;/code> state. Ingester does not terminate after calling this endpoint.&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes: NoContent(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401)&lt;/li>
-&lt;/ul>
-&lt;h4 id="testing-apis">Testing APIs&lt;/h4>
-&lt;p>&lt;code>POST /push&lt;/code> - Push samples directly to ingesters. Accepts requests in Prometheus remote write format. Indended for performance testing and debugging.&lt;/p>
-&lt;h2 id="purger-apis">Purger APIs&lt;/h2>
-&lt;p>The Purger service provides APIs for requesting Deletion of series in Chunks storage and managing Delete Requests.
-Delete Series support is still experimental. Read more about it in &lt;a href="/docs/guides/deleting-series/">Delete Series Guide&lt;/a>&lt;/p>
-&lt;h3 id="endpoints-1">Endpoints&lt;/h3>
-&lt;h4 id="delete-series">Delete Series&lt;/h4>
-&lt;p>&lt;code>POST|PUT /api/v1/admin/tsdb/delete_series?match%5B%5D=&amp;lt;matcher&amp;gt;&amp;amp;start=&amp;lt;start-time&amp;gt;&amp;amp;end=&amp;lt;end-time&amp;gt;&lt;/code> - &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a> for requesting deletion of series.&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes Created(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;h4 id="cancel-delete-request">Cancel Delete Request&lt;/h4>
-&lt;p>&lt;code>POST|PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;&lt;/code> - Cancel a Delete Requests before they are picked up for processing.&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes OK(204)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul>
-&lt;h4 id="listing-delete-requests">Listing Delete Requests&lt;/h4>
-&lt;p>&lt;code>GET /api/v1/admin/tsdb/delete_series&lt;/code> - List all the delete requests.&lt;/p>
-&lt;ul>
-&lt;li>Normal Response Codes OK(200)&lt;/li>
-&lt;li>Error Response Codes: Unauthorized(401), NotFound(404)&lt;/li>
-&lt;/ul></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
+&lt;p>The index write cache should be configures on the &lt;strong>ingesters&lt;/strong> using flags with the &lt;code>-store.index-cache-write&lt;/code> prefix.&lt;/p></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
 &lt;p>Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e">custom framework&lt;/a> running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/">&lt;code>testing&lt;/code>&lt;/a> package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p>
 &lt;h2 id="how-to-run-integration-tests">How to run integration tests&lt;/h2>
 &lt;p>When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong>locally&lt;/strong> you should build the Cortex Docker image first:&lt;/p>
@@ -9698,4 +9381,28 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li>[BUGFIX] HA Tracker no longer always makes a request to Consul/Etcd when a request is not from the active replica &lt;a href="https://github.com/cortexproject/cortex/pull/1516">#1516&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Queries are now correctly cancelled by the query-frontend &lt;a href="https://github.com/cortexproject/cortex/pull/1508">#1508&lt;/a>&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Code of Conduct</title><link>/docs/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/code-of-conduct/</guid><description>
-&lt;p>Cortex follows the &lt;a href="https://github.com/cncf/foundation/blob/master/code-of-conduct.md">CNCF Code of Conduct&lt;/a>.&lt;/p></description></item></channel></rss>
+&lt;p>Cortex follows the &lt;a href="https://github.com/cncf/foundation/blob/master/code-of-conduct.md">CNCF Code of Conduct&lt;/a>.&lt;/p></description></item><item><title>Docs: Roadmap</title><link>/docs/roadmap/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/roadmap/</guid><description>
+&lt;p>The following is only a selection of some of the major features we plan to implement in the near future. To get a more complete overview of planned features and current work, see the issue trackers for the various repositories, for example, the &lt;a href="https://github.com/cortexproject/cortex/issues">Cortex repo&lt;/a>. Note that these are not ordered by priority.&lt;/p>
+&lt;h2 id="making-a-nosql-store-optional">Making a NoSQL store optional&lt;/h2>
+&lt;p>Currently Cortex depends on a NoSQL store (like Bigtable, DynamoDB, Cassandra) for its index storage. This adds a lot of complexity and cost to manage and we are currently working on making the NoSQL store optional by using an ObjectStore for index storage as well.&lt;/p>
+&lt;h2 id="helm-charts-and-other-packaging">Helm charts and other packaging&lt;/h2>
+&lt;p>We have a &lt;a href="https://github.com/cortexproject/cortex-helm-chart">helm chart&lt;/a> but it needs work before it can be effectively utilised by different backends. We also don&amp;rsquo;t provide an official set of dashboards and alerts to our users yet. This is one of the most requested features and something we will tackle in the immediate future. We also plan on publishing debs, rpms along with guides on how to run Cortex on bare-metal.&lt;/p>
+&lt;h2 id="auth-gateway">Auth Gateway&lt;/h2>
+&lt;p>Cortex server has a simple authentication mechanism (X-Scope-OrgId) but users can&amp;rsquo;t use the multitenancy features out of the box without complicated proxy configuration. It&amp;rsquo;s hard to support all the different authentication mechanisms used by different companies but plan to have a simple but opinionated auth-gateway that provides value out of the box. The configuration could be as simple as:&lt;/p>
+&lt;pre>&lt;code>tenants:
+- name: infra-team
+password: basic-auth-password
+- name: api-team
+password: basic-auth-password2
+&lt;/code>&lt;/pre>&lt;h2 id="billing-and-usage-analytics">Billing and Usage analytics&lt;/h2>
+&lt;p>We have all the metrics to track how many series, samples and queries each tenant is sending but don&amp;rsquo;t have dashboards that help with this. We plan to have dashboards and UIs that will help operators monitor and control each tenants usage out of the box.&lt;/p>
+&lt;h2 id="downsampling-and-per-tenantmetric-retention">Downsampling and Per tenant/metric retention&lt;/h2>
+&lt;p>Currently, we only support a single retention period for all metrics and tenants. For most operators, the ability to set per tenant retention and also custom retention for subsets of metrics is important. We will add support per tenant and metric retention policies. Also, we currently store all the samples we ingested, and there is no way to reduce the resolution for the metrics. We plan to add downsampling to allow users to store less data when needed.&lt;/p>
+&lt;h2 id="soft-multitenancy">Soft Multitenancy&lt;/h2>
+&lt;p>Currently our multitenancy allows a tenant to view &lt;em>all&lt;/em> their metrics and only their metrics. There is no way for an &amp;ldquo;admin&amp;rdquo; tenant to view all the metrics in the system but for particular teams to only view theirs. This is another feature we plan to add into Cortex.&lt;/p>
+&lt;h2 id="exemplar-and-prometheus-metadata-support">Exemplar and Prometheus metadata support&lt;/h2>
+&lt;p>There is currently an ongoing effort in Prometheus to add &lt;a href="https://docs.google.com/document/d/1ymZlc9yuTj8GvZyKz1r3KDRrhaOjZ1W1qZVW_5Gj7gA/edit">exemplar support&lt;/a> and we should be an active stakeholder in the discussion. The plan is to propagate the exemplars through remote write and make them available for querying in Cortex. We currently have experimental metadata support for Prometheus but this is using the Grafana Cloud Agent. We should help move this &lt;a href="https://github.com/prometheus/prometheus/pull/6815">PR forward&lt;/a> and also add persistence of the metadata (right now it&amp;rsquo;s only in-mem).&lt;/p>
+&lt;h2 id="bulk-loading-historical-data">Bulk loading historical data&lt;/h2>
+&lt;p>This is another highly requested features. There is currently no way to backfill the existing data in local Prometheus to Cortex. The plan is to add an API for users to ship the TSDB blocks to Cortex and a side-car / command to do this.&lt;/p>
+&lt;h2 id="scalability">Scalability&lt;/h2>
+&lt;p>Scalability has always been a focus for the project, but there is a lot more work to be done. We can now scale to 100s of Millions of active series but 1 Billion active series is still an unknown. We also need to make the Alertmanager horizontally scalable with the number of users.&lt;/p></description></item></channel></rss>

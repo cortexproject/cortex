@@ -1,39 +1,34 @@
 package blocksconvert
 
 import (
-	"bufio"
-	"compress/gzip"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type file struct {
-	mu  sync.Mutex
-	f   *os.File
-	buf *bufio.Writer
-	gz  *gzip.Writer
-	enc *json.Encoder
+	mu   sync.Mutex
+	file *os.File
+	comp io.WriteCloser
+	enc  *json.Encoder
 }
 
 // Provides serialized access to writing entries.
 type openFiles struct {
-	bufferSize int
-
 	mu    sync.Mutex
 	files map[string]*file
 
 	openFiles prometheus.Gauge
 }
 
-func newOpenFiles(bufferSize int, openFilesGauge prometheus.Gauge) *openFiles {
+func newOpenFiles(openFilesGauge prometheus.Gauge) *openFiles {
 	of := &openFiles{
-		bufferSize: bufferSize,
-		files:      map[string]*file{},
-
+		files:     map[string]*file{},
 		openFiles: openFilesGauge,
 	}
 
@@ -56,7 +51,7 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
-	name := filepath.Join(dir, filename+".gz")
+	name := filepath.Join(dir, filename+".snappy")
 
 	f := of.files[name]
 	if f == nil {
@@ -70,9 +65,8 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 			return nil, err
 		}
 
-		buf := bufio.NewWriterSize(fl, of.bufferSize)
-		gz := gzip.NewWriter(buf)
-		enc := json.NewEncoder(gz)
+		comp := snappy.NewBufferedWriter(fl)
+		enc := json.NewEncoder(comp)
 		enc.SetEscapeHTML(false)
 
 		if headerFn != nil {
@@ -83,10 +77,9 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 		}
 
 		f = &file{
-			f:   fl,
-			buf: buf,
-			gz:  gz,
-			enc: enc,
+			file: fl,
+			comp: comp,
+			enc:  enc,
 		}
 		of.files[name] = f
 		of.openFiles.Inc()
@@ -112,17 +105,12 @@ func (of *openFiles) closeAllFiles(footerFn func() interface{}) []error {
 			}
 		}
 
-		err := f.gz.Close()
+		err := f.comp.Close()
 		if err != nil {
 			errors = append(errors, err)
 		}
 
-		err = f.buf.Flush()
-		if err != nil {
-			errors = append(errors, err)
-		}
-
-		err = f.f.Close()
+		err = f.file.Close()
 		if err != nil {
 			errors = append(errors, err)
 		}

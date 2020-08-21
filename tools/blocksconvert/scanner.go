@@ -271,7 +271,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 		return fmt.Errorf("failed to prepare directory %s: %w", outDir, err)
 	}
 
-	files := newOpenFiles(128*1024, openFiles)
+	files := newOpenFiles(openFiles)
 
 	var ps []IndexEntryProcessor
 

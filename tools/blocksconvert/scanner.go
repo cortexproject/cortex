@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -149,7 +150,7 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 }
 
 func (s *Scanner) running(ctx context.Context) error {
-	tables := []string{}
+	var tables []string
 	if s.table == "" {
 		// Use table prefix to discover tables to scan.
 		// TODO: use min/max day
@@ -165,25 +166,53 @@ func (s *Scanner) running(ctx context.Context) error {
 	}
 
 	for _, t := range tables {
+		tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, t+".processed")
+
+		exists, err := fileExists(tableProcessedFile)
+		if err != nil {
+			return fmt.Errorf("failed to stat file %s: %w", tableProcessedFile, err)
+		}
+		if exists {
+			s.logger.Log("msg", "skipping table because it was already scanned", "table", t)
+			continue
+		}
+
 		dir := filepath.Join(s.cfg.OutputDirectory, t)
 		s.logger.Log("msg", "scanning table", "table", t, "output", dir)
 
-		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
+		err = scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
 		if err != nil {
-			return fmt.Errorf("failed to process table %s: %w", t, err)
+			return fmt.Errorf("failed to scan table %s and generate plan files: %w", t, err)
 		}
 
 		if s.bucket != nil {
-			s.logger.Log("msg", "uploading generated plan files", "source", dir)
+			s.logger.Log("msg", "uploading generated plan files for table", "table", t, "source", dir)
 
 			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.cfg.BucketPrefix)
 			if err != nil {
-				return fmt.Errorf("failed to upload %s to bucket: %w", err)
+				return fmt.Errorf("failed to upload plan files for table %s to bucket: %w", t, err)
 			}
+		}
+
+		err = ioutil.WriteFile(tableProcessedFile, []byte("Finished on "+time.Now().String()), 0600)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", tableProcessedFile, err)
 		}
 	}
 
 	return nil
+}
+
+func fileExists(file string) (bool, error) {
+	_, err := os.Stat(file)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, err
 }
 
 func findTables(logger log.Logger, tableNames []string, prefix string, period time.Duration) []string {

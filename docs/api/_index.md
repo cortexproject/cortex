@@ -7,7 +7,7 @@ menu:
 no_section_index_title: true
 ---
 
-Cortex exposes an HTTP API for pushing and querying time series data, other then operating the cluster itself.
+Cortex exposes an HTTP API for pushing and querying time series data, and operating the cluster itself.
 
 For the sake of clarity, in this document we have grouped API endpoints by service, but keep in mind that they're exposed both when running Cortex in microservices and singly-binary mode:
 - **Microservices**: each service exposes its own endpoints
@@ -75,6 +75,14 @@ In this documentation you will find the usage of some placeholders for the path 
 | `<prometheus-http-prefix>`   | `/prometheus`   | `-http.prometheus-http-prefix`   | `api > prometheus_http_prefix` |
 | `<alertmanager-http-prefix>` | `/alertmanager` | `-http.alertmanager-http-prefix` | `api > alertmanager_http_prefix` |
 
+### Authentication
+
+When multi-tenancy is enabled, endpoints requiring authentication are expected to be called with the `X-Scope-OrgID` HTTP request header set to the tenant ID. Otherwise, when multi-tenancy is disabled, Cortex doesn't require any request to have the `X-Scope-OrgID` header.
+
+Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
+
+_For more information, please refer to the dedicated [Authentication and Authorisation](../production/auth.md) guide._
+
 ## All services
 
 The following API endpoints are exposed by all services.
@@ -128,6 +136,8 @@ This API endpoint accepts an HTTP POST request with a body containing a request 
 
 _For more information, please check out Prometheus [Remote storage integrations](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)._
 
+_Requires [authentication](#authentication)._
+
 ### Tenants stats
 
 ```
@@ -161,7 +171,7 @@ GET|POST /ingester/flush
 GET|POST /flush
 ```
 
-Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage.
+Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
 
 ### Shutdown
 
@@ -172,7 +182,7 @@ GET|POST /ingester/shutdown
 GET|POST /shutdown
 ```
 
-Triggers an ingester shutdown procedure. The performed shutdown is similar to when the `SIGINT` / `SIGTERM` signal is sent to the process, except that when the shutdown endpoint is called **the process will not terminate automatically**; the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns.
+Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns. In the meantime, `/ready` will not return 200.
 
 _This API endpoint is usually used by scale down automations._
 
@@ -205,6 +215,8 @@ Prometheus-compatible instant query endpoint.
 
 _For more information, please check out the Prometheus [instant query](https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries) documentation._
 
+_Requires [authentication](#authentication)._
+
 ### Range query
 
 ```
@@ -217,6 +229,8 @@ GET|POST <legacy-http-prefix>/api/v1/query_range
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
 
 _For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
+
+_Requires [authentication](#authentication)._
 
 ### Get series by label matchers
 
@@ -231,6 +245,8 @@ Find series by label matchers. Differently than Prometheus and due to scalabilit
 
 _For more information, please check out the Prometheus [series endpoint](https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers) documentation._
 
+_Requires [authentication](#authentication)._
+
 ### Get label names
 
 ```
@@ -243,6 +259,8 @@ GET|POST <legacy-http-prefix>/api/v1/labels
 Get label names of ingested series. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label names from in-memory data stored in the ingesters.
 
 _For more information, please check out the Prometheus [get label names](https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names) documentation._
+
+_Requires [authentication](#authentication)._
 
 ### Get label values
 
@@ -257,6 +275,8 @@ Get label values for a given label name. Differently than Prometheus and due to 
 
 _For more information, please check out the Prometheus [get label values](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values) documentation._
 
+_Requires [authentication](#authentication)._
+
 ### Get metric metadata
 
 ```
@@ -269,6 +289,8 @@ GET <legacy-http-prefix>/api/v1/metadata
 Prometheus-compatible metric metadata endpoint.
 
 _For more information, please check out the Prometheus [metric metadata](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-metric-metadata) documentation._
+
+_Requires [authentication](#authentication)._
 
 ### Remote read
 
@@ -283,6 +305,8 @@ Prometheus-compatible [remote read](https://prometheus.io/docs/prometheus/latest
 
 _For more information, please check out Prometheus [Remote storage integrations](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)._
 
+_Requires [authentication](#authentication)._
+
 
 ## Querier
 
@@ -296,6 +320,8 @@ GET <legacy-http-prefix>/user_stats
 ```
 
 Returns realtime ingestion rate, for the authenticated tenant, in `JSON` format.
+
+_Requires [authentication](#authentication)._
 
 ### Get tenant chunks
 
@@ -313,6 +339,8 @@ Fetch a compressed tar of all the chunks containing samples for the given time r
 | `start` | Start timestamp, in RFC3339 format or unix epoch. |
 | `end` | End timestamp, in RFC3339 format or unix epoch. |
 | `matcher` | Label matcher that selects the series for which chunks should be fetched. |
+
+_Requires [authentication](#authentication)._
 
 ## Ruler
 
@@ -344,6 +372,8 @@ _For more information, please check out the Prometheus [rules](https://prometheu
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 ### List alerts
 
 ```
@@ -359,6 +389,8 @@ _For more information, please check out the Prometheus [alerts](https://promethe
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 ### List rule groups
 
 ```
@@ -371,6 +403,8 @@ GET <legacy-http-prefix>/rules
 List all rules configured for the authenticated tenant. This endpoint returns a YAML dictionary with all the rule groups for each namespace and `200` status code on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
 
 #### Example response
 
@@ -429,6 +463,8 @@ Returns the rule groups defined for a given namespace.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 #### Example response
 
 ```yaml
@@ -459,6 +495,8 @@ Returns the rule group matching the request namespace and group name.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 ### Set rule group
 
 ```
@@ -471,6 +509,8 @@ POST <legacy-http-prefix>/rules/{namespace}
 Creates or updates a rule group. This endpoint expects a request with `Content-Type: application/yaml` header and the rules **YAML** definition in the request body, and returns `202` on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
 
 #### Example request
 
@@ -507,6 +547,8 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 ## Alertmanager
 
 ### Alertmanager status
@@ -531,6 +573,8 @@ GET /<legacy-http-prefix>
 
 Displays the Alertmanager UI.
 
+_Requires [authentication](#authentication)._
+
 ### Get Alertmanager configuration
 
 ```
@@ -542,6 +586,8 @@ Get the current Alertmanager configuration for the authenticated tenant, reading
 This endpoint doesn't accept any URL query parameter and returns `200` on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
 
 ### Set Alertmanager configuration
 
@@ -555,6 +601,8 @@ This endpoint expects the Alertmanager **YAML** configuration in the request bod
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
 
+_Requires [authentication](#authentication)._
+
 #### Example request body
 
 ```yaml
@@ -562,7 +610,16 @@ template_files:
   default_template: |
     {{ define "__alertmanager" }}AlertManager{{ end }}
     {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
-alertmanager_config: "global: \n  smtp_smarthost: 'localhost:25' \n  smtp_from: 'youraddress@example.org' \nroute: \n  receiver: example-email \nreceivers: \n  - name: example-email \n    email_configs: \n    - to: 'youraddress@example.org' \n"
+alertmanager_config: |
+  global:
+    smtp_smarthost: 'localhost:25'
+    smtp_from: 'youraddress@example.org'
+  route:
+    receiver: example-email
+  receivers:
+    - name: example-email
+      email_configs:
+      - to: 'youraddress@example.org'
 ```
 
 ### Delete Alertmanager configuration
@@ -576,6 +633,8 @@ Deletes the Alertmanager configuration for the authenticated tenant.
 This endpoint doesn't accept any URL query parameter and returns `200` on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
 
 ## Purger
 
@@ -594,6 +653,8 @@ Prometheus-compatible delete series endpoint.
 
 _For more information, please check out the Prometheus [delete series](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series) documentation._
 
+_Requires [authentication](#authentication)._
+
 ### List delete requests
 
 ```
@@ -604,6 +665,8 @@ GET <legacy-http-prefix>/api/v1/admin/tsdb/delete_series
 ```
 
 List all the delete requests.
+
+_Requires [authentication](#authentication)._
 
 ### Cancel delete request
 
@@ -619,6 +682,8 @@ Cancel a delete request while the request is still in the grace period (before t
 | URL query parameter | Description |
 | ------------------- | ----------- |
 | `request_id` | Deletion request ID to cancel. Can be obtained by the [List delete requests](#list-delete-requests) endpoint. |
+
+_Requires [authentication](#authentication)._
 
 ## Store-gateway
 
@@ -684,6 +749,8 @@ GET /api/prom/configs/rules
 
 Get the current rule files for the authenticated tenant.
 
+_Requires [authentication](#authentication)._
+
 ### Set rule files
 
 ```
@@ -691,6 +758,8 @@ POST /api/prom/configs/rules
 ```
 
 Replace the current rule files for the authenticated tenant.
+
+_Requires [authentication](#authentication)._
 
 ### Get template files
 
@@ -700,6 +769,8 @@ GET /api/prom/configs/templates
 
 Get the current template files for the authenticated tenant.
 
+_Requires [authentication](#authentication)._
+
 ### Set template files
 
 ```
@@ -707,6 +778,8 @@ POST /api/prom/configs/templates
 ```
 
 Replace the current template files for the authenticated tenant.
+
+_Requires [authentication](#authentication)._
 
 #### Get Alertmanager config file
 
@@ -716,6 +789,8 @@ GET /api/prom/configs/alertmanager
 
 Get the current Alertmanager config for the authenticated tenant.
 
+_Requires [authentication](#authentication)._
+
 ### Set Alertmanager config file
 
 ```
@@ -723,6 +798,8 @@ POST /api/prom/configs/alertmanager
 ```
 
 Replace the current Alertmanager config for the authenticated tenant.
+
+_Requires [authentication](#authentication)._
 
 ### Validate Alertmanager config file
 
@@ -740,6 +817,8 @@ DELETE /api/prom/configs/deactivate
 
 Disable configs for the authenticated tenant. Please be aware that setting a new config will effectively "re-enable" the Rules and Alertmanager configuration for the tenant.
 
+_Requires [authentication](#authentication)._
+
 ### Restore configs
 
 ```
@@ -747,3 +826,5 @@ POST /api/prom/configs/restore
 ```
 
 Re-enable configs for the authenticated tenant, after being previously deactivated.
+
+_Requires [authentication](#authentication)._

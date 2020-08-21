@@ -160,6 +160,8 @@ func (s *Scanner) running(ctx context.Context) error {
 		}
 
 		tables = findTables(s.logger, tableNames, s.tablePrefix, s.tablePeriod)
+		sort.Sort(sort.Reverse(sort.StringSlice(tables)))
+
 		level.Info(s.logger).Log("msg", fmt.Sprintf("found %d tables to scan", len(tables)), "prefix", s.tablePrefix, "period", s.tablePeriod)
 	} else {
 		tables = []string{s.table}
@@ -168,11 +170,7 @@ func (s *Scanner) running(ctx context.Context) error {
 	for _, t := range tables {
 		tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, t+".processed")
 
-		exists, err := fileExists(tableProcessedFile)
-		if err != nil {
-			return fmt.Errorf("failed to stat file %s: %w", tableProcessedFile, err)
-		}
-		if exists {
+		if shouldSkipOperationBecauseFileExists(tableProcessedFile) {
 			s.logger.Log("msg", "skipping table because it was already scanned", "table", t)
 			continue
 		}
@@ -180,7 +178,7 @@ func (s *Scanner) running(ctx context.Context) error {
 		dir := filepath.Join(s.cfg.OutputDirectory, t)
 		s.logger.Log("msg", "scanning table", "table", t, "output", dir)
 
-		err = scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
+		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
 		if err != nil {
 			return fmt.Errorf("failed to scan table %s and generate plan files: %w", t, err)
 		}
@@ -203,16 +201,15 @@ func (s *Scanner) running(ctx context.Context) error {
 	return nil
 }
 
-func fileExists(file string) (bool, error) {
+func shouldSkipOperationBecauseFileExists(file string) bool {
+	// If file exists, we should skip the operation.
 	_, err := os.Stat(file)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
+		// Any error (including ErrNotExists) indicates operation should continue.
+		return false
 	}
 
-	return true, err
+	return true
 }
 
 func findTables(logger log.Logger, tableNames []string, prefix string, period time.Duration) []string {

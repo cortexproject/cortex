@@ -1,8 +1,9 @@
-package blocksconvert
+package main
 
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/querytee"
 )
 
@@ -22,12 +24,14 @@ type Config struct {
 	Target            string
 	LogLevel          logging.Level
 	ServerMetricsPort int
+	ScannerConfig     blocksconvert.ScannerConfig
 }
 
 func main() {
 	cfg := Config{}
 	flag.StringVar(&cfg.Target, "target", "", "Module to run: Scanner, Scheduler, Builder")
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
+	cfg.ScannerConfig.RegisterFlags(flag.CommandLine)
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -37,24 +41,23 @@ func main() {
 
 	cfg.Target = strings.ToLower(cfg.Target)
 
-	var targetService services.Service
-	switch cfg.Target {
-	case "scanner":
-		// run scanner
-	case "scheduler":
-		// run scheduler
-	case "builder":
-		// run builder
-	}
-
-	if targetService == nil {
-		level.Error(util.Logger).Log("msg", "unknown target", "target", cfg.Target)
-		os.Exit(1)
-	}
-
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
+
+	var targetService services.Service
+	var err error
+	switch cfg.Target {
+	case "scanner":
+		targetService, err = blocksconvert.NewScanner(cfg.ScannerConfig, util.Logger, registry)
+	default:
+		err = fmt.Errorf("unknown target: %s", cfg.Target)
+	}
+
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to initialize "+cfg.Target)
+		os.Exit(1)
+	}
 
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
 	if err := i.Start(); err != nil {
@@ -67,7 +70,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup signal handler and stop service gently when asked to stop.
+	// Setup signal handler and ask service to stop when signal arrives.
 	handler := signals.NewHandler(logging.GoKit(log.With(util.Logger, "caller", log.Caller(4))))
 	go func() {
 		handler.Loop()

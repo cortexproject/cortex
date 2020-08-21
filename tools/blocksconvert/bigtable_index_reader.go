@@ -118,7 +118,7 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 					r.parsedIndexEntries.Add(float64(len(entries)))
 
 					for _, e := range entries {
-						err := p(e)
+						err := p.ProcessIndexEntry(e)
 						if err != nil {
 							innerErr = fmt.Errorf("processor error: %w", err)
 							return false
@@ -137,7 +137,7 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 				}
 			}
 
-			return nil
+			return p.Flush()
 		})
 	}
 

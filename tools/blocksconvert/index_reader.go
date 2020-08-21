@@ -6,8 +6,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-// Function that receives index entries from the table.
-type IndexEntryProcessor func(entry chunk.IndexEntry) error
+// Processor that receives index entries from the table.
+type IndexEntryProcessor interface {
+	ProcessIndexEntry(indexEntry chunk.IndexEntry) error
+
+	// Called at the end of reading of index entries.
+	Flush() error
+}
 
 // IndexReader parses index entries and passed them to the IndexEntryProcessor.
 type IndexReader interface {

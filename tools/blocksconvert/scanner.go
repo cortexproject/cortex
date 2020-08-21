@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,8 @@ type ScannerConfig struct {
 	Bucket       tsdb.BucketConfig
 	BucketPrefix string
 	KeepFiles    bool
+
+	IgnoredUserPattern string
 }
 
 func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -54,6 +57,7 @@ func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.StringVar(&cfg.BucketPrefix, "workspace.prefix", "migration", "Prefix in the bucket for storing plan files.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
+	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-user", "", "Regex pattern with ignored users.")
 }
 
 type Scanner struct {
@@ -71,6 +75,7 @@ type Scanner struct {
 	table       string
 	tablePrefix string
 	bucket      objstore.Bucket
+	ignored     *regexp.Regexp
 }
 
 func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
@@ -124,6 +129,15 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 		bucketClient = bucket
 	}
 
+	var ignoredUserRegex *regexp.Regexp = nil
+	if cfg.IgnoredUserPattern != "" {
+		re, err := regexp.Compile(cfg.IgnoredUserPattern)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile ignored user regex: %w", err)
+		}
+		ignoredUserRegex = re
+	}
+
 	err := os.MkdirAll(cfg.OutputDirectory, os.FileMode(0700))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new output directory %s: %w", cfg.OutputDirectory, err)
@@ -137,6 +151,8 @@ func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Sc
 		tablePeriod: tablePeriod,
 		logger:      l,
 		bucket:      bucketClient,
+
+		ignored: ignoredUserRegex,
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "scanner_series_written_total",
@@ -186,7 +202,7 @@ func (s *Scanner) running(ctx context.Context) error {
 		dir := filepath.Join(s.cfg.OutputDirectory, t)
 		level.Info(s.logger).Log("msg", "scanning table", "table", t, "output", dir)
 
-		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series)
+		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored)
 		if err != nil {
 			return fmt.Errorf("failed to scan table %s and generate plan files: %w", t, err)
 		}
@@ -207,7 +223,7 @@ func (s *Scanner) running(ctx context.Context) error {
 			}
 		}
 
-		err = ioutil.WriteFile(tableProcessedFile, []byte("Finished on "+time.Now().String()), 0600)
+		err = ioutil.WriteFile(tableProcessedFile, []byte("Finished on "+time.Now().String()+"\n"), 0600)
 		if err != nil {
 			return fmt.Errorf("failed to create file %s: %w", tableProcessedFile, err)
 		}
@@ -216,7 +232,7 @@ func (s *Scanner) running(ctx context.Context) error {
 	}
 
 	// All good, just wait until context is done, to avoid restarts.
-	level.Info(s.logger).Log("Finished")
+	level.Info(s.logger).Log("msg", "finished")
 	<-ctx.Done()
 	return nil
 }
@@ -277,7 +293,7 @@ func findTables(logger log.Logger, tableNames []string, prefix string, period ti
 	return out
 }
 
-func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter) error {
+func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp) error {
 	err := os.RemoveAll(outDir)
 	if err != nil {
 		return fmt.Errorf("failed to delete directory %s: %w", outDir, err)
@@ -293,7 +309,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, files, series))
+		ps = append(ps, newProcessor(outDir, files, ignored, series))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)

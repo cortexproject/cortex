@@ -3,6 +3,7 @@ package blocksconvert
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,8 +21,9 @@ type key struct {
 // that another series has arrived, at which point it writes it to the file.
 // IndexReader guarantees correct order of entries.
 type processor struct {
-	dir   string
-	files *openFiles
+	dir     string
+	files   *openFiles
+	ignored *regexp.Regexp
 
 	series prometheus.Counter
 
@@ -29,11 +31,12 @@ type processor struct {
 	chunks  []string
 }
 
-func newProcessor(dir string, files *openFiles, series prometheus.Counter) *processor {
+func newProcessor(dir string, files *openFiles, ignored *regexp.Regexp, series prometheus.Counter) *processor {
 	w := &processor{
-		dir:    dir,
-		files:  files,
-		series: series,
+		dir:     dir,
+		files:   files,
+		series:  series,
+		ignored: ignored,
 	}
 
 	return w
@@ -47,6 +50,11 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 	user, index, seriesID, chunkID, err := GetSeriesToChunkMapping(indexEntry.HashValue, indexEntry.RangeValue)
 	if err != nil {
 		return err
+	}
+
+	if w.ignored != nil && w.ignored.MatchString(user) {
+		// Ignore this user.
+		return nil
 	}
 
 	k := key{

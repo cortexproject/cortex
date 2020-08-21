@@ -17,7 +17,9 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		"should pass on S3 backend": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -34,7 +36,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should pass on GCS backend": {
 			config: BlocksStorageConfig{
-				Backend: "gcs",
+				Bucket: BucketConfig{
+					Backend: "gcs",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -51,7 +55,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on unknown storage backend": {
 			config: BlocksStorageConfig{
-				Backend: "unknown",
+				Bucket: BucketConfig{
+					Backend: "unknown",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -66,7 +72,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on invalid ship concurrency": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -83,7 +91,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should pass on invalid ship concurrency but shipping is disabled": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -102,7 +112,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on invalid compaction interval": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -118,7 +130,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on too high compaction interval": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -134,7 +148,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on invalid compaction concurrency": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -151,7 +167,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should pass on on valid compaction config": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -168,7 +186,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on negative stripe size": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -185,7 +205,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on stripe size 0": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -202,7 +224,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on stripe size 1": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -219,7 +243,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should pass on stripe size": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				BucketStore: BucketStoreConfig{
 					IndexCache: IndexCacheConfig{
 						Backend: "inmemory",
@@ -236,7 +262,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on empty block ranges": {
 			config: BlocksStorageConfig{
-				Backend: "s3",
+				Bucket: BucketConfig{
+					Backend: "s3",
+				},
 				TSDB: TSDBConfig{
 					HeadCompactionInterval:    1 * time.Minute,
 					HeadCompactionConcurrency: 5,

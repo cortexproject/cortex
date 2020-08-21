@@ -29,7 +29,6 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -468,10 +467,8 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	require.Equal(t, errResp.code, 400)
 
 	// Same timestamp as previous sample, but different value.
-	ctx = util.AddSourceToIncomingContext(ctx, "1.2.3.4")
 	err = ing.append(ctx, userID, m, 1, 1, client.API, nil)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
-	require.Contains(t, err.Error(), "1.2.3.4")
 	errResp, ok = err.(*validationError)
 	require.True(t, ok)
 	require.Equal(t, errResp.code, 400)

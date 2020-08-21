@@ -190,6 +190,8 @@ github.com/edsrzf/mmap-go
 github.com/facette/natsort
 # github.com/fatih/color v1.9.0
 github.com/fatih/color
+# github.com/felixge/httpsnoop v1.0.1
+github.com/felixge/httpsnoop
 # github.com/fsouza/fake-gcs-server v1.7.0
 ## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
@@ -695,7 +697,7 @@ github.com/uber/jaeger-client-go/utils
 # github.com/uber/jaeger-lib v2.2.0+incompatible
 github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
-# github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9
+# github.com/weaveworks/common v0.0.0-20200820123129-280614068c5e
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors

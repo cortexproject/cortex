@@ -23,7 +23,7 @@
 * [BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. #3015
 * [BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. #3030
 
-## 1.3.0 in progress
+## 1.3.0 / 2020-08-21
 
 * [CHANGE] Replace the metric `cortex_alertmanager_configs` with `cortex_alertmanager_config_invalid` exposed by Alertmanager. #2960
 * [CHANGE] Experimental Delete Series: Change target flag for purger from `data-purger` to `purger`. #2777
@@ -31,7 +31,7 @@
   * `cortex_bucket_stores_gate_queries_concurrent_max`
   * `cortex_bucket_stores_gate_queries_in_flight`
   * `cortex_bucket_stores_gate_duration_seconds`
-* [CHANGE] Metric `cortex_ingester_flush_reasons` has been renamed to `cortex_ingester_flushing_enqueued_series_total`, and new metric `cortex_ingester_flushing_dequeued_series_total` with `outcome` label (superset of reason) has been added. #2802, #2818
+* [CHANGE] Metric `cortex_ingester_flush_reasons` has been renamed to `cortex_ingester_flushing_enqueued_series_total`, and new metric `cortex_ingester_flushing_dequeued_series_total` with `outcome` label (superset of reason) has been added. #2802 #2818 #2998
 * [CHANGE] Experimental Delete Series: Metric `cortex_purger_oldest_pending_delete_request_age_seconds` would track age of delete requests since they are over their cancellation period instead of their creation time. #2806
 * [CHANGE] Experimental blocks storage: the store-gateway service is required in a Cortex cluster running with the experimental blocks storage. Removed the `-experimental.tsdb.store-gateway-enabled` CLI flag and `store_gateway_enabled` YAML config option. The store-gateway is now always enabled when the storage engine is `blocks`. #2822
 * [CHANGE] Experimental blocks storage: removed support for `-experimental.blocks-storage.bucket-store.max-sample-count` flag because the implementation was flawed. To limit the number of samples/chunks processed by a single query you can set `-store.query-chunk-limit`, which is now supported by the blocks storage too. #2852
@@ -115,6 +115,7 @@
 * [ENHANCEMENT] Logger: added JSON logging support, configured via the `-log.format=json` CLI flag or its respective YAML config option. #2386
 * [ENHANCEMENT] Added new flags `-bigtable.grpc-compression`, `-ingester.client.grpc-compression`, `-querier.frontend-client.grpc-compression` to configure compression used by gRPC. Valid values are `gzip`, `snappy`, or empty string (no compression, default). #2940
 * [ENHANCEMENT] Clarify limitations of the `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` endpoints. #2953
+* [ENHANCEMENT] Ingester: added `Dropped` outcome to metric `cortex_ingester_flushing_dequeued_series_total`. #2998
 * [BUGFIX] Fixed a bug with `api/v1/query_range` where no responses would return null values for `result` and empty values for `resultType`. #2962
 * [BUGFIX] Fixed a bug in the index intersect code causing storage to return more chunks/series than required. #2796
 * [BUGFIX] Fixed the number of reported keys in the background cache queue. #2764
@@ -135,6 +136,8 @@
 * [BUGFIX] Fix panic caused by KVs from boltdb being used beyond their life. #2971
 * [BUGFIX] Experimental blocks storage: `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` only query the TSDB head regardless of the configured `-experimental.blocks-storage.tsdb.retention-period`. #2974
 * [BUGFIX] Ingester: Avoid indefinite checkpointing in case of surge in number of series. #2955
+* [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
+* [BUGFIX] Ruler: fixed an unintentional breaking change introduced in the ruler's `alertmanager_url` YAML config option, which changed the value from a string to a list of strings. #2989
 
 ## 1.2.0 / 2020-07-01
 

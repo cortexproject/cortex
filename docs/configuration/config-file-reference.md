@@ -345,7 +345,8 @@ ha_tracker:
 
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
+    # inmemory. Memberlist is not available for ha_tracker since Gossip is too
+    # slow for HA purposes.
     # CLI flag: -distributor.ha-tracker.store
     [store: <string> | default = "consul"]
 

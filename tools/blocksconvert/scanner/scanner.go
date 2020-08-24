@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
@@ -30,25 +29,19 @@ type Config struct {
 	BigtableProject  string
 	BigtableInstance string
 
-	TableName    string
-	SchemaConfig chunk.SchemaConfig
-	TablesLimit  int
+	TableName   string
+	TablesLimit int
 
 	OutputDirectory string
 	Concurrency     int
 
-	UploadFiles  bool
-	Bucket       tsdb.BucketConfig
-	BucketPrefix string
-	KeepFiles    bool
+	UploadFiles bool
+	KeepFiles   bool
 
 	IgnoredUserPattern string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.SchemaConfig.RegisterFlags(flag.CommandLine)
-	cfg.Bucket.RegisterFlags(flag.CommandLine)
-
 	f.StringVar(&cfg.BigtableProject, "bigtable.project", "", "The Google Cloud Platform project ID. Required.")
 	f.StringVar(&cfg.BigtableInstance, "bigtable.instance", "", "The Google Cloud Bigtable instance ID. Required.")
 	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
@@ -56,7 +49,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
-	f.StringVar(&cfg.BucketPrefix, "workspace.prefix", "migration", "Prefix in the bucket for storing plan files.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
 	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-user", "", "Regex pattern with ignored users.")
 }
@@ -64,8 +56,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Scanner struct {
 	services.Service
 
-	cfg         Config
-	indexReader IndexReader
+	cfg          Config
+	bucketPrefix string
+	indexReader  IndexReader
 
 	series    prometheus.Counter
 	openFiles prometheus.Gauge
@@ -79,7 +72,7 @@ type Scanner struct {
 	ignored     *regexp.Regexp
 }
 
-func NewScanner(cfg Config, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
+func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
 	if cfg.BigtableProject == "" || cfg.BigtableInstance == "" {
 		return nil, fmt.Errorf("missing BigTable configuration")
 	}
@@ -87,12 +80,12 @@ func NewScanner(cfg Config, l log.Logger, reg prometheus.Registerer) (*Scanner, 
 	tablePrefix := ""
 	tablePeriod := time.Duration(0)
 	if cfg.TableName == "" {
-		err := cfg.SchemaConfig.Load()
+		err := scfg.SchemaConfig.Load()
 		if err != nil {
 			return nil, fmt.Errorf("no table name provided, and schema failed to load: %w", err)
 		}
 
-		for _, c := range cfg.SchemaConfig.Configs {
+		for _, c := range scfg.SchemaConfig.Configs {
 			if c.IndexTables.Period%(24*time.Hour) != 0 {
 				return nil, fmt.Errorf("invalid index table period: %v", c.IndexTables.Period)
 			}
@@ -118,11 +111,11 @@ func NewScanner(cfg Config, l log.Logger, reg prometheus.Registerer) (*Scanner, 
 
 	var bucketClient objstore.Bucket
 	if cfg.UploadFiles {
-		if err := cfg.Bucket.Validate(); err != nil {
+		if err := scfg.Bucket.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid bucket config: %w", err)
 		}
 
-		bucket, err := tsdb.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
+		bucket, err := tsdb.NewBucketClient(context.Background(), scfg.Bucket, "bucket", l, reg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bucket: %w", err)
 		}
@@ -145,13 +138,14 @@ func NewScanner(cfg Config, l log.Logger, reg prometheus.Registerer) (*Scanner, 
 	}
 
 	s := &Scanner{
-		cfg:         cfg,
-		indexReader: NewBigtableIndexReader(cfg.BigtableProject, cfg.BigtableInstance, l, reg),
-		table:       cfg.TableName,
-		tablePrefix: tablePrefix,
-		tablePeriod: tablePeriod,
-		logger:      l,
-		bucket:      bucketClient,
+		cfg:          cfg,
+		indexReader:  NewBigtableIndexReader(cfg.BigtableProject, cfg.BigtableInstance, l, reg),
+		table:        cfg.TableName,
+		tablePrefix:  tablePrefix,
+		tablePeriod:  tablePeriod,
+		logger:       l,
+		bucket:       bucketClient,
+		bucketPrefix: scfg.BucketPrefix,
 
 		ignored: ignoredUserRegex,
 
@@ -211,7 +205,7 @@ func (s *Scanner) running(ctx context.Context) error {
 		if s.bucket != nil {
 			level.Info(s.logger).Log("msg", "uploading generated plan files for table", "table", t, "source", dir)
 
-			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.cfg.BucketPrefix)
+			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.bucketPrefix)
 			if err != nil {
 				return fmt.Errorf("failed to upload plan files for table %s to bucket: %w", t, err)
 			}

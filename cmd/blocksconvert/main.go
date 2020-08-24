@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/scanner"
 	"github.com/cortexproject/cortex/tools/querytee"
 )
@@ -24,13 +25,16 @@ type Config struct {
 	Target            string
 	LogLevel          logging.Level
 	ServerMetricsPort int
-	ScannerConfig     scanner.Config
+
+	SharedConfig  blocksconvert.SharedConfig
+	ScannerConfig scanner.Config
 }
 
 func main() {
 	cfg := Config{}
 	flag.StringVar(&cfg.Target, "target", "", "Module to run: Scanner, Scheduler, Builder")
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
+	cfg.SharedConfig.RegisterFlags(flag.CommandLine)
 	cfg.ScannerConfig.RegisterFlags(flag.CommandLine)
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	flag.Parse()
@@ -49,7 +53,7 @@ func main() {
 	var err error
 	switch cfg.Target {
 	case "scanner":
-		targetService, err = scanner.NewScanner(cfg.ScannerConfig, util.Logger, registry)
+		targetService, err = scanner.NewScanner(cfg.ScannerConfig, cfg.SharedConfig, util.Logger, registry)
 	default:
 		err = fmt.Errorf("unknown target")
 	}

@@ -38,7 +38,7 @@ storage:
 ## Community plugins
 
 
-For reference these are the gRPC based chunk store implementation for Mongo and Mysql:
+The following list shows Cortex storage plugins built and shared by the community:
 
 1. [gRPC based Cortex chunk store for Mongo](https://github.com/VineethReddy02/cortex-mongo-store)
 2. [gRPC based Cortex chunk store for Mysql](https://github.com/VineethReddy02/cortex-mysql-store)

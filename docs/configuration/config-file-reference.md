@@ -343,10 +343,12 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
+  # Backend storage to use for the ring. Please be aware that memberlist is not
+  # supported by the HA tracker since Gossip propagation is too slow for HA
+  # purposes.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory. Memberlist is not available for ha_tracker since Gossip is too
-    # slow for HA purposes.
+    # inmemory, memberlist, multi.
     # CLI flag: -distributor.ha-tracker.store
     [store: <string> | default = "consul"]
 

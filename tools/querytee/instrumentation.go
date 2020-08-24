@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 
+	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"

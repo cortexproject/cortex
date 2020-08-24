@@ -1,4 +1,4 @@
-package blocksconvert
+package scanner
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 type ScannerConfig struct {
@@ -318,7 +319,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	}
 
 	errs := files.closeAllFiles(func() interface{} {
-		return PlanFooter{Complete: true}
+		return blocksconvert.PlanFooter{Complete: true}
 	})
 	if len(errs) > 0 {
 		return errors.MultiError(errs)

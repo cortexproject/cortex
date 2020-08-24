@@ -1,4 +1,4 @@
-package blocksconvert
+package scanner
 
 import (
 	"bytes"

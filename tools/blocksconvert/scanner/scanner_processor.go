@@ -1,4 +1,4 @@
-package blocksconvert
+package scanner
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 type key struct {
@@ -82,11 +83,11 @@ func (w *processor) Flush() error {
 
 	k := w.lastKey
 
-	err := w.files.appendJsonEntryToFile(filepath.Join(w.dir, k.user), strconv.Itoa(k.dayIndex)+".plan", PlanEntry{
+	err := w.files.appendJsonEntryToFile(filepath.Join(w.dir, k.user), strconv.Itoa(k.dayIndex)+".plan", blocksconvert.PlanEntry{
 		SeriesID: w.lastKey.seriesID,
 		Chunks:   w.chunks,
 	}, func() interface{} {
-		return PlanHeader{
+		return blocksconvert.PlanHeader{
 			User:     k.user,
 			DayIndex: k.dayIndex,
 		}

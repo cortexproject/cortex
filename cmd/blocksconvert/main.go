@@ -16,7 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/tools/blocksconvert"
+	"github.com/cortexproject/cortex/tools/blocksconvert/scanner"
 	"github.com/cortexproject/cortex/tools/querytee"
 )
 
@@ -24,7 +24,7 @@ type Config struct {
 	Target            string
 	LogLevel          logging.Level
 	ServerMetricsPort int
-	ScannerConfig     blocksconvert.ScannerConfig
+	ScannerConfig     scanner.ScannerConfig
 }
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	var err error
 	switch cfg.Target {
 	case "scanner":
-		targetService, err = blocksconvert.NewScanner(cfg.ScannerConfig, util.Logger, registry)
+		targetService, err = scanner.NewScanner(cfg.ScannerConfig, util.Logger, registry)
 	default:
 		err = fmt.Errorf("unknown target")
 	}

@@ -8,6 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -37,6 +41,8 @@ type Config struct {
 
 	ChunkCacheConfig cache.Config
 	HeartbeatPeriod  time.Duration
+	UploadBlock      bool
+	DeleteLocalBlock bool
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -47,6 +53,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
 	f.IntVar(&cfg.Concurrency, "builder.concurrency", 128, "Number of concurrent series processors.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan status file.")
+	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
+	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Builder, error) {
@@ -64,6 +72,13 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	bucketClient, err := scfg.GetBucket(l, reg)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.OutputDirectory == "" {
+		return nil, errors.New("no output directory")
+	}
+	if err := os.MkdirAll(cfg.OutputDirectory, os.FileMode(0700)); err != nil {
+		return nil, errors.Wrap(err, "failed to create output directory")
 	}
 
 	b := &Builder{
@@ -92,7 +107,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Help: "Written samples",
 		}),
 	}
-	b.Service = services.NewBasicService(nil, b.running, nil)
+	b.Service = services.NewBasicService(b.cleanup, b.running, nil)
 	return b, err
 }
 
@@ -112,6 +127,29 @@ type Builder struct {
 	fetchedChunksSize prometheus.Counter
 	processedSeries   prometheus.Counter
 	writtenSamples    prometheus.Counter
+}
+
+func (b *Builder) cleanup(_ context.Context) error {
+	files, err := ioutil.ReadDir(b.cfg.OutputDirectory)
+	if err != nil {
+		return err
+	}
+
+	// Delete directories with .tmp suffix (unfinished blocks).
+	for _, f := range files {
+		if strings.HasSuffix(f.Name(), ".tmp") && f.IsDir() {
+			toRemove := filepath.Join(b.cfg.OutputDirectory, f.Name())
+
+			level.Info(b.log).Log("msg", "deleting unfinished block", "dir", toRemove)
+
+			err := os.RemoveAll(toRemove)
+			if err != nil {
+				return errors.Wrapf(err, "removing %s", toRemove)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (b *Builder) running(ctx context.Context) error {
@@ -204,7 +242,27 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 
 	level.Info(b.log).Log("msg", "successfully built block for a plan", "plan", planFile, "ulid", ulid.String())
 
-	// TODO: Upload block to storage.
+	blockDir := filepath.Join(b.cfg.OutputDirectory, ulid.String())
+
+	if b.cfg.UploadBlock {
+		userBucket := cortex_tsdb.NewUserBucketClient(userID, b.bucketClient)
+		if err := block.Upload(ctx, b.log, userBucket, blockDir); err != nil {
+			return errors.Wrap(err, "uploading block")
+		}
+
+		level.Info(b.log).Log("msg", "block uploaded", "ulid", ulid.String())
+
+		if b.cfg.DeleteLocalBlock {
+			if err := os.RemoveAll(blockDir); err != nil {
+				return errors.Wrap(err, "failed to delete local block")
+			}
+		}
+	}
+
+	// Upload finished status file
+	if err := b.bucketClient.Upload(ctx, fmt.Sprintf("%s.finished.%s", planFileBase, ulid.String()), strings.NewReader(ulid.String())); err != nil {
+		return errors.Wrap(err, "failed to upload finished status file")
+	}
 
 	// Stop heartbeating.
 	if err := services.StopAndAwaitTerminated(ctx, hb); err != nil {
@@ -230,7 +288,7 @@ func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, la
 		case failure := <-fw.Chan():
 			hbCancel()
 			level.Error(b.log).Log("msg", "heartbeating failed, cancelling build", "err", failure)
-		case <-ctx.Done():
+		case <-hbCtx.Done():
 			return
 		}
 	}()

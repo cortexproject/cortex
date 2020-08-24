@@ -10,21 +10,17 @@ import (
 )
 
 type fetcher struct {
-	f      *chunk.Fetcher
 	userID string
+
+	client chunk.Client
 
 	fetchedChunks     prometheus.Counter
 	fetchedChunksSize prometheus.Counter
 }
 
 func newFetcher(userID string, client chunk.Client, chunksCache cache.Cache, fetchedChunks, fetchedChunksSize prometheus.Counter) (*fetcher, error) {
-	f, err := chunk.NewChunkFetcher(chunksCache, false, client)
-	if err != nil {
-		return nil, err
-	}
-
 	return &fetcher{
-		f:                 f,
+		client:            client,
 		userID:            userID,
 		fetchedChunks:     fetchedChunks,
 		fetchedChunksSize: fetchedChunksSize,
@@ -43,7 +39,7 @@ func (f *fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.C
 		chunks = append(chunks, c)
 	}
 
-	cs, err := f.f.FetchChunks(ctx, chunks, chunkIDs)
+	cs, err := f.client.GetChunks(ctx, chunks)
 	for _, c := range cs {
 		f.fetchedChunks.Inc()
 		enc, nerr := c.Encoded()
@@ -54,8 +50,4 @@ func (f *fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.C
 	}
 
 	return cs, err
-}
-
-func (f *fetcher) stop() {
-	f.f.Stop()
 }

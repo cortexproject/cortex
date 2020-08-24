@@ -207,7 +207,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 	if err != nil {
 		return errors.Wrap(err, "failed to create chunk fetcher")
 	}
-	defer fetcher.stop()
+	// defer fetcher.stop()
 
 	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, b.log, b.processedSeries, b.writtenSamples)
 	if err != nil {

@@ -5843,7 +5843,35 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;pre>&lt;code>curl -X GET \
 &amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
 -H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
+A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
+For example, if you&amp;rsquo;re deploying your Cortex cluster on Kubernetes, the plugin would run as a sidecar container of your Cortex pods and the Cortex&amp;rsquo;s &lt;code>-grpc-store.server-address&lt;/code> should be configured to the endpoint exposed by the sidecar plugin (eg. &lt;code>localhost:&amp;lt;port&amp;gt;&lt;/code>).&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>In the cortex configuration file, add &lt;code>store&lt;/code> and &lt;code>object_store&lt;/code> as &lt;code>grpc-store&lt;/code> and configure storage with plugin server endpoint (ie. the address to the gRPC server which implements the cortex chunk store methods).&lt;/p>
+&lt;pre>&lt;code>schema:
+configs:
+- from: 2019-07-29
+store: grpc-store
+object_store: grpc-store
+schema: v10
+index:
+prefix: index_
+period: 168h
+chunks:
+prefix: chunk_
+period: 168h
+storage:
+grpc_store:
+# gRPC server address
+server_address: localhost:6666
+&lt;/code>&lt;/pre>&lt;h2 id="community-plugins">Community plugins&lt;/h2>
+&lt;p>The following list shows Cortex storage plugins built and shared by the community:&lt;/p>
+&lt;ol>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mongo-store">gRPC based Cortex chunk store for Mongo&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mysql-store">gRPC based Cortex chunk store for Mysql&lt;/a>&lt;/li>
+&lt;/ol></description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
 &lt;p>The Cortex documentation is compiled into a website published at &lt;a href="https://cortexmetrics.io/">cortexmetrics.io&lt;/a>. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p>
 &lt;h2 id="initial-setup">Initial setup&lt;/h2>
 &lt;p>The following initial setup is required only once:&lt;/p>
@@ -7912,6 +7940,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. &lt;a href="https://github.com/cortexproject/cortex/pull/3015">#3015&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. &lt;a href="https://github.com/cortexproject/cortex/pull/3030">#3030&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fixes the Alertmanager panicking when no &lt;code>-alertmanager.web.external-url&lt;/code> is provided. &lt;a href="https://github.com/cortexproject/cortex/pull/3017">#3017&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>
 &lt;ul>
@@ -9385,28 +9414,4 @@ Further, if you&amp;rsquo;re using the configs service, we&amp;rsquo;ve upgraded
 &lt;li>[BUGFIX] HA Tracker no longer always makes a request to Consul/Etcd when a request is not from the active replica &lt;a href="https://github.com/cortexproject/cortex/pull/1516">#1516&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Queries are now correctly cancelled by the query-frontend &lt;a href="https://github.com/cortexproject/cortex/pull/1508">#1508&lt;/a>&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Code of Conduct</title><link>/docs/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/code-of-conduct/</guid><description>
-&lt;p>Cortex follows the &lt;a href="https://github.com/cncf/foundation/blob/master/code-of-conduct.md">CNCF Code of Conduct&lt;/a>.&lt;/p></description></item><item><title>Docs: Roadmap</title><link>/docs/roadmap/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/roadmap/</guid><description>
-&lt;p>The following is only a selection of some of the major features we plan to implement in the near future. To get a more complete overview of planned features and current work, see the issue trackers for the various repositories, for example, the &lt;a href="https://github.com/cortexproject/cortex/issues">Cortex repo&lt;/a>. Note that these are not ordered by priority.&lt;/p>
-&lt;h2 id="making-a-nosql-store-optional">Making a NoSQL store optional&lt;/h2>
-&lt;p>Currently Cortex depends on a NoSQL store (like Bigtable, DynamoDB, Cassandra) for its index storage. This adds a lot of complexity and cost to manage and we are currently working on making the NoSQL store optional by using an ObjectStore for index storage as well.&lt;/p>
-&lt;h2 id="helm-charts-and-other-packaging">Helm charts and other packaging&lt;/h2>
-&lt;p>We have a &lt;a href="https://github.com/cortexproject/cortex-helm-chart">helm chart&lt;/a> but it needs work before it can be effectively utilised by different backends. We also don&amp;rsquo;t provide an official set of dashboards and alerts to our users yet. This is one of the most requested features and something we will tackle in the immediate future. We also plan on publishing debs, rpms along with guides on how to run Cortex on bare-metal.&lt;/p>
-&lt;h2 id="auth-gateway">Auth Gateway&lt;/h2>
-&lt;p>Cortex server has a simple authentication mechanism (X-Scope-OrgId) but users can&amp;rsquo;t use the multitenancy features out of the box without complicated proxy configuration. It&amp;rsquo;s hard to support all the different authentication mechanisms used by different companies but plan to have a simple but opinionated auth-gateway that provides value out of the box. The configuration could be as simple as:&lt;/p>
-&lt;pre>&lt;code>tenants:
-- name: infra-team
-password: basic-auth-password
-- name: api-team
-password: basic-auth-password2
-&lt;/code>&lt;/pre>&lt;h2 id="billing-and-usage-analytics">Billing and Usage analytics&lt;/h2>
-&lt;p>We have all the metrics to track how many series, samples and queries each tenant is sending but don&amp;rsquo;t have dashboards that help with this. We plan to have dashboards and UIs that will help operators monitor and control each tenants usage out of the box.&lt;/p>
-&lt;h2 id="downsampling-and-per-tenantmetric-retention">Downsampling and Per tenant/metric retention&lt;/h2>
-&lt;p>Currently, we only support a single retention period for all metrics and tenants. For most operators, the ability to set per tenant retention and also custom retention for subsets of metrics is important. We will add support per tenant and metric retention policies. Also, we currently store all the samples we ingested, and there is no way to reduce the resolution for the metrics. We plan to add downsampling to allow users to store less data when needed.&lt;/p>
-&lt;h2 id="soft-multitenancy">Soft Multitenancy&lt;/h2>
-&lt;p>Currently our multitenancy allows a tenant to view &lt;em>all&lt;/em> their metrics and only their metrics. There is no way for an &amp;ldquo;admin&amp;rdquo; tenant to view all the metrics in the system but for particular teams to only view theirs. This is another feature we plan to add into Cortex.&lt;/p>
-&lt;h2 id="exemplar-and-prometheus-metadata-support">Exemplar and Prometheus metadata support&lt;/h2>
-&lt;p>There is currently an ongoing effort in Prometheus to add &lt;a href="https://docs.google.com/document/d/1ymZlc9yuTj8GvZyKz1r3KDRrhaOjZ1W1qZVW_5Gj7gA/edit">exemplar support&lt;/a> and we should be an active stakeholder in the discussion. The plan is to propagate the exemplars through remote write and make them available for querying in Cortex. We currently have experimental metadata support for Prometheus but this is using the Grafana Cloud Agent. We should help move this &lt;a href="https://github.com/prometheus/prometheus/pull/6815">PR forward&lt;/a> and also add persistence of the metadata (right now it&amp;rsquo;s only in-mem).&lt;/p>
-&lt;h2 id="bulk-loading-historical-data">Bulk loading historical data&lt;/h2>
-&lt;p>This is another highly requested features. There is currently no way to backfill the existing data in local Prometheus to Cortex. The plan is to add an API for users to ship the TSDB blocks to Cortex and a side-car / command to do this.&lt;/p>
-&lt;h2 id="scalability">Scalability&lt;/h2>
-&lt;p>Scalability has always been a focus for the project, but there is a lot more work to be done. We can now scale to 100s of Millions of active series but 1 Billion active series is still an unknown. We also need to make the Alertmanager horizontally scalable with the number of users.&lt;/p></description></item></channel></rss>
+&lt;p>Cortex follows the &lt;a href="https://github.com/cncf/foundation/blob/master/code-of-conduct.md">CNCF Code of Conduct&lt;/a>.&lt;/p></description></item></channel></rss>

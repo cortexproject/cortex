@@ -34,7 +34,35 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;pre>&lt;code>curl -X GET \
 &amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
 -H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
+A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
+For example, if you&amp;rsquo;re deploying your Cortex cluster on Kubernetes, the plugin would run as a sidecar container of your Cortex pods and the Cortex&amp;rsquo;s &lt;code>-grpc-store.server-address&lt;/code> should be configured to the endpoint exposed by the sidecar plugin (eg. &lt;code>localhost:&amp;lt;port&amp;gt;&lt;/code>).&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>In the cortex configuration file, add &lt;code>store&lt;/code> and &lt;code>object_store&lt;/code> as &lt;code>grpc-store&lt;/code> and configure storage with plugin server endpoint (ie. the address to the gRPC server which implements the cortex chunk store methods).&lt;/p>
+&lt;pre>&lt;code>schema:
+configs:
+- from: 2019-07-29
+store: grpc-store
+object_store: grpc-store
+schema: v10
+index:
+prefix: index_
+period: 168h
+chunks:
+prefix: chunk_
+period: 168h
+storage:
+grpc_store:
+# gRPC server address
+server_address: localhost:6666
+&lt;/code>&lt;/pre>&lt;h2 id="community-plugins">Community plugins&lt;/h2>
+&lt;p>The following list shows Cortex storage plugins built and shared by the community:&lt;/p>
+&lt;ol>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mongo-store">gRPC based Cortex chunk store for Mongo&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mysql-store">gRPC based Cortex chunk store for Mysql&lt;/a>&lt;/li>
+&lt;/ol></description></item><item><title>Docs: Config for horizontally scaling the Ruler</title><link>/docs/guides/ruler-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ruler-sharding/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
 &lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
 &lt;h2 id="config">Config&lt;/h2>

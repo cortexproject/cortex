@@ -98,7 +98,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Whenever the Alertmanager config is invalid for a user.
+		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
 		# TYPE cortex_alertmanager_config_invalid gauge
 		cortex_alertmanager_config_invalid{user="user1"} 0
 		cortex_alertmanager_config_invalid{user="user2"} 0
@@ -115,7 +115,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Len(t, am.alertmanagers, 3)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Whenever the Alertmanager config is invalid for a user.
+		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
 		# TYPE cortex_alertmanager_config_invalid gauge
 		cortex_alertmanager_config_invalid{user="user1"} 0
 		cortex_alertmanager_config_invalid{user="user2"} 0
@@ -148,7 +148,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Whenever the Alertmanager config is invalid for a user.
+		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
 		# TYPE cortex_alertmanager_config_invalid gauge
 		cortex_alertmanager_config_invalid{user="user1"} 0
 		cortex_alertmanager_config_invalid{user="user2"} 0
@@ -172,7 +172,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Whenever the Alertmanager config is invalid for a user.
+		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
 		# TYPE cortex_alertmanager_config_invalid gauge
 		cortex_alertmanager_config_invalid{user="user1"} 0
 		cortex_alertmanager_config_invalid{user="user2"} 0

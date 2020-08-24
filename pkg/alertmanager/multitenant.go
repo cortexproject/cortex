@@ -135,7 +135,7 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 	m.invalidConfig = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "alertmanager_config_invalid",
-		Help:      "Whenever the Alertmanager config is invalid for a user.",
+		Help:      "Boolean set to 1 whenever the Alertmanager config is invalid for a user.",
 	}, []string{"user"})
 
 	return m

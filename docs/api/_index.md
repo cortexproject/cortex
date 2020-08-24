@@ -21,16 +21,17 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Configuration](#configuration) | _All services_ | `GET /config` |
 | [Services status](#services-status) | _All services_ | `GET /services` |
 | [Readiness probe](#readiness-probe) | _All services_ | `GET /ready` |
+| [Metrics](#metrics) | _All services_ | `GET /metrics` |
 | [Remote write](#remote-write) | Distributor | `POST /api/v1/push` |
 | [Tenants stats](#tenants-stats) | Distributor | `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor | `GET /distributor/ha_tracker` |
-| [Flush chunks / blocks](#flush-chunks--blocks) | Ingester | `GET|POST /ingester/flush` |
-| [Shutdown](#shutdown) | Ingester | `GET|POST /ingester/shutdown` |
+| [Flush chunks / blocks](#flush-chunks--blocks) | Ingester | `GET,POST /ingester/flush` |
+| [Shutdown](#shutdown) | Ingester | `GET,POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester | `GET /ingester/ring` |
-| [Instant query](#instant-query) | Querier, Query-frontend | `GET|POST <prometheus-http-prefix>/api/v1/query` |
-| [Range query](#range-query) | Querier, Query-frontend | `GET|POST <prometheus-http-prefix>/api/v1/query_range` |
-| [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend | `GET|POST <prometheus-http-prefix>/api/v1/series` |
-| [Get label names](#get-label-names) | Querier, Query-frontend | `GET|POST <prometheus-http-prefix>/api/v1/labels` |
+| [Instant query](#instant-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query` |
+| [Range query](#range-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
+| [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/series` |
+| [Get label names](#get-label-names) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend | `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
 | [Get metric metadata](#get-metric-metadata) | Querier, Query-frontend | `GET <prometheus-http-prefix>/api/v1/metadata` |
 | [Remote read](#remote-read) | Querier, Query-frontend | `POST <prometheus-http-prefix>/api/v1/read` |
@@ -49,9 +50,9 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager | `DELETE /api/v1/alerts` |
-| [Delete series](#delete-series) | Purger | `PUT|POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
+| [Delete series](#delete-series) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
 | [List delete requests](#list-delete-requests) | Purger | `GET <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
-| [Cancel delete request](#cancel-delete-request) | Purger | `PUT|POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request` |
+| [Cancel delete request](#cancel-delete-request) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway | `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor | `GET /compactor/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) | `GET /api/prom/configs/rules` |
@@ -119,6 +120,14 @@ GET /ready
 
 Returns 200 when Cortex is ready to serve traffic.
 
+### Metrics
+
+```
+GET /metrics
+```
+
+Returns the metrics for the running Cortex service in the Prometheus exposition format.
+
 ## Distributor
 
 ### Remote write
@@ -165,10 +174,10 @@ Displays a web page with the current status of the HA tracker, including the ele
 ### Flush chunks / blocks
 
 ```
-GET|POST /ingester/flush
+GET,POST /ingester/flush
 
 # Legacy
-GET|POST /flush
+GET,POST /flush
 ```
 
 Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
@@ -176,10 +185,10 @@ Triggers a flush of the in-memory time series data (chunks or blocks) to the lon
 ### Shutdown
 
 ```
-GET|POST /ingester/shutdown
+GET,POST /ingester/shutdown
 
 # Legacy
-GET|POST /shutdown
+GET,POST /shutdown
 ```
 
 Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns. In the meantime, `/ready` will not return 200.
@@ -205,10 +214,10 @@ The following endpoints are exposed both by the querier and query-frontend.
 ### Instant query
 
 ```
-GET|POST <prometheus-http-prefix>/api/v1/query
+GET,POST <prometheus-http-prefix>/api/v1/query
 
 # Legacy
-GET|POST <legacy-http-prefix>/api/v1/query
+GET,POST <legacy-http-prefix>/api/v1/query
 ```
 
 Prometheus-compatible instant query endpoint.
@@ -220,10 +229,10 @@ _Requires [authentication](#authentication)._
 ### Range query
 
 ```
-GET|POST <prometheus-http-prefix>/api/v1/query_range
+GET,POST <prometheus-http-prefix>/api/v1/query_range
 
 # Legacy
-GET|POST <legacy-http-prefix>/api/v1/query_range
+GET,POST <legacy-http-prefix>/api/v1/query_range
 ```
 
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
@@ -235,10 +244,10 @@ _Requires [authentication](#authentication)._
 ### Get series by label matchers
 
 ```
-GET|POST <prometheus-http-prefix>/api/v1/series
+GET,POST <prometheus-http-prefix>/api/v1/series
 
 # Legacy
-GET|POST <legacy-http-prefix>/api/v1/series
+GET,POST <legacy-http-prefix>/api/v1/series
 ```
 
 Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the series from in-memory data stored in the ingesters.
@@ -250,10 +259,10 @@ _Requires [authentication](#authentication)._
 ### Get label names
 
 ```
-GET|POST <prometheus-http-prefix>/api/v1/labels
+GET,POST <prometheus-http-prefix>/api/v1/labels
 
 # Legacy
-GET|POST <legacy-http-prefix>/api/v1/labels
+GET,POST <legacy-http-prefix>/api/v1/labels
 ```
 
 Get label names of ingested series. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label names from in-memory data stored in the ingesters.
@@ -643,10 +652,10 @@ The Purger service provides APIs for requesting deletion of series in chunks sto
 ### Delete series
 
 ```
-PUT|POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series
+PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series
 
 # Legacy
-PUT|POST <legacy-http-prefix>/api/v1/admin/tsdb/delete_series
+PUT,POST <legacy-http-prefix>/api/v1/admin/tsdb/delete_series
 ```
 
 Prometheus-compatible delete series endpoint.
@@ -671,10 +680,10 @@ _Requires [authentication](#authentication)._
 ### Cancel delete request
 
 ```
-PUT|POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
+PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
 
 # Legacy
-PUT|POST <legacy-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
+PUT,POST <legacy-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
 ```
 
 Cancel a delete request while the request is still in the grace period (before the request is effectively processed by the purger and time series data is hard-deleted from the storage).

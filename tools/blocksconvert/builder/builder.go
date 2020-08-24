@@ -115,10 +115,28 @@ type Builder struct {
 }
 
 func (b *Builder) running(ctx context.Context) error {
-	return b.processPlanFile(ctx, b.cfg.PlanFile)
+	if err := b.processPlanFile(ctx, b.cfg.PlanFile, ""); err != nil {
+		return err
+	}
+
+	<-ctx.Done()
+	return ctx.Err()
 }
 
-func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
+func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHeartbeatFile string) error {
+	planFileBase, err := getPlanBaseName(planFile)
+	if err != nil {
+		return err
+	}
+
+	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
+	// context will be canceled.
+	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planFileBase, lastHeartbeatFile)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
 	f, err := b.bucketClient.Get(ctx, planFile)
 	if err != nil {
 		return errors.Wrapf(err, "failed to read plan file %s", planFile)
@@ -128,32 +146,26 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 	}()
 
 	// Use a buffer for reading plan file.
-	r, _, err := preparePlanFileAndGetBaseName(planFile, bufio.NewReaderSize(f, 1*1024*1024))
+	r, err := preparePlanFile(planFile, bufio.NewReaderSize(f, 1*1024*1024))
 	if err != nil {
 		return err
 	}
 
 	dec := json.NewDecoder(r)
 
-	header := blocksconvert.PlanEntry{}
-	if err := dec.Decode(&header); err != nil {
-		return errors.Wrapf(err, "failed to read plan file header %s", planFile)
-	}
-	if header.User == "" || header.DayIndex == 0 {
-		return errors.New("failed to read plan file header: no user or day index found")
+	userID, dayStart, dayEnd, err := parsePlanHeader(dec)
+	if err != nil {
+		return err
 	}
 
-	dayStart := time.Unix(int64(header.DayIndex)*int64(24*time.Hour/time.Second), 0).UTC()
-	dayEnd := dayStart.Add(24 * time.Hour)
-
-	level.Info(b.log).Log("msg", "processing plan file", "plan", planFile, "user", header.User, "dayStart", dayStart, "dayEnd", dayEnd)
+	level.Info(b.log).Log("msg", "processing plan file", "plan", planFile, "user", userID, "dayStart", dayStart, "dayEnd", dayEnd)
 	chunkClient, err := b.createChunkClientForDay(dayStart)
 	if err != nil {
 		return errors.Wrap(err, "failed to create chunk client")
 	}
 	defer chunkClient.Stop()
 
-	fetcher, err := newFetcher(header.User, chunkClient, b.chunksCache, b.fetchedChunks, b.fetchedChunksSize)
+	fetcher, err := newFetcher(userID, chunkClient, b.chunksCache, b.fetchedChunks, b.fetchedChunksSize)
 	if err != nil {
 		return errors.Wrap(err, "failed to create chunk fetcher")
 	}
@@ -183,7 +195,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 
 	// Finish block.
 	ulid, err := tsdbBuilder.finishBlock("blocksconvert", map[string]string{
-		cortex_tsdb.TenantIDExternalLabel: header.User,
+		cortex_tsdb.TenantIDExternalLabel: userID,
 	})
 
 	if err != nil {
@@ -194,7 +206,72 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 
 	// TODO: Upload block to storage.
 
+	// Stop heartbeating.
+	if err := services.StopAndAwaitTerminated(ctx, hb); err != nil {
+		return errors.Wrap(err, "heartbeating failed")
+	}
+
+	// All OK
 	return nil
+}
+
+func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, lastHeartbeatFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
+	hbCtx, hbCancel := context.WithCancel(ctx)
+
+	hb := newHeartbeat(b.log, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastHeartbeatFile)
+	if err := services.StartAndAwaitRunning(hbCtx, hb); err != nil {
+		return nil, nil, nil, err
+	}
+
+	fw := services.NewFailureWatcher()
+	fw.WatchService(hb)
+	go func() {
+		select {
+		case failure := <-fw.Chan():
+			hbCancel()
+			level.Error(b.log).Log("msg", "heartbeating failed, cancelling build", "err", failure)
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	return hb, hbCtx, hbCancel, nil
+}
+
+// Returns plan file name without ".plan" suffix (and possible compression suffix)
+func getPlanBaseName(planFile string) (string, error) {
+	switch {
+	case strings.HasSuffix(planFile, ".gz"):
+		planFile = planFile[:len(planFile)-len(".gz")]
+
+	case strings.HasSuffix(planFile, ".snappy"):
+		planFile = planFile[:len(planFile)-len(".snappy")]
+
+	default:
+		return "", errors.Errorf("unknown plan filename")
+	}
+
+	if !strings.HasSuffix(planFile, ".plan") {
+		return "", errors.New("not a .plan file")
+	}
+
+	planFile = planFile[:len(planFile)-len(".plan")]
+	return planFile, nil
+}
+
+func parsePlanHeader(dec *json.Decoder) (userID string, startTime, endTime time.Time, err error) {
+	header := blocksconvert.PlanEntry{}
+	if err = dec.Decode(&header); err != nil {
+		return
+	}
+	if header.User == "" || header.DayIndex == 0 {
+		err = errors.New("failed to read plan file header: no user or day index found")
+		return
+	}
+
+	dayStart := time.Unix(int64(header.DayIndex)*int64(24*time.Hour/time.Second), 0).UTC()
+	dayEnd := dayStart.Add(24 * time.Hour)
+	return header.User, dayStart, dayEnd, nil
 }
 
 func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan blocksconvert.PlanEntry) error {
@@ -285,31 +362,16 @@ func fetchAndBuildSingleSeries(ctx context.Context, fetcher *fetcher, chunksIds 
 	return m, cs, nil
 }
 
-func preparePlanFileAndGetBaseName(planFile string, in io.Reader) (io.Reader, string, error) {
-	baseFilename := planFile
+func preparePlanFile(planFile string, in io.Reader) (io.Reader, error) {
+	switch {
+	case strings.HasSuffix(planFile, ".snappy"):
+		return snappy.NewReader(in), nil
 
-	var r = in
-
-	if strings.HasSuffix(baseFilename, ".snappy") {
-		r = snappy.NewReader(r)
-		baseFilename = baseFilename[:len(baseFilename)-len(".snappy")]
+	case strings.HasSuffix(planFile, ".gz"):
+		return gzip.NewReader(in)
 	}
 
-	if strings.HasSuffix(baseFilename, ".gz") {
-		var err error
-		r, err = gzip.NewReader(r)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to open plan file %s: %w", planFile, err)
-		}
-		baseFilename = baseFilename[:len(baseFilename)-len(".gz")]
-	}
-
-	if !strings.HasSuffix(baseFilename, ".plan") {
-		return nil, "", fmt.Errorf("failed to determine base plan file name: %s", planFile)
-	}
-
-	baseFilename = baseFilename[:len(baseFilename)-len(".plan")]
-	return r, baseFilename, nil
+	return in, nil
 }
 
 // Finds storage configuration for given day, and builds a client.

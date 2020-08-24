@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
+	"github.com/cortexproject/cortex/tools/blocksconvert/builder"
 	"github.com/cortexproject/cortex/tools/blocksconvert/scanner"
 	"github.com/cortexproject/cortex/tools/querytee"
 )
@@ -28,6 +29,7 @@ type Config struct {
 
 	SharedConfig  blocksconvert.SharedConfig
 	ScannerConfig scanner.Config
+	BuilderConfig builder.Config
 }
 
 func main() {
@@ -36,6 +38,7 @@ func main() {
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
 	cfg.SharedConfig.RegisterFlags(flag.CommandLine)
 	cfg.ScannerConfig.RegisterFlags(flag.CommandLine)
+	cfg.BuilderConfig.RegisterFlags(flag.CommandLine)
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -54,6 +57,8 @@ func main() {
 	switch cfg.Target {
 	case "scanner":
 		targetService, err = scanner.NewScanner(cfg.ScannerConfig, cfg.SharedConfig, util.Logger, registry)
+	case "builder":
+		targetService, err = builder.NewBuilder(cfg.BuilderConfig, cfg.SharedConfig, util.Logger, registry)
 	default:
 		err = fmt.Errorf("unknown target")
 	}

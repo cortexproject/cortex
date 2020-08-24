@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
@@ -111,16 +110,11 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 
 	var bucketClient objstore.Bucket
 	if cfg.UploadFiles {
-		if err := scfg.Bucket.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid bucket config: %w", err)
-		}
-
-		bucket, err := tsdb.NewBucketClient(context.Background(), scfg.Bucket, "bucket", l, reg)
+		var err error
+		bucketClient, err = scfg.GetBucket(l, reg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bucket: %w", err)
+			return nil, err
 		}
-
-		bucketClient = bucket
 	}
 
 	var ignoredUserRegex *regexp.Regexp = nil

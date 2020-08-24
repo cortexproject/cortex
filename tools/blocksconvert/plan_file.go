@@ -4,16 +4,19 @@ package blocksconvert
 // It consists of JSON objects, each written on its own line.
 // Plan file starts with single header, many plan entries and single footer.
 
-type PlanHeader struct {
+type PlanEntry struct {
+	// Header
 	User     string `json:"user"`
 	DayIndex int    `json:"day_index"`
-}
 
-type PlanEntry struct {
+	// Entries
 	SeriesID string   `json:"sid"`
 	Chunks   []string `json:"cs"`
+
+	// Footer
+	Complete bool `json:"complete"`
 }
 
-type PlanFooter struct {
-	Complete bool `json:"complete"`
+func (pe *PlanEntry) Reset() {
+	*pe = PlanEntry{}
 }

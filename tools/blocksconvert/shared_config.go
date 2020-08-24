@@ -10,11 +10,14 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 type SharedConfig struct {
-	SchemaConfig chunk.SchemaConfig // Flags registered by main.go
+	SchemaConfig  chunk.SchemaConfig // Flags registered by main.go
+	StorageConfig storage.Config
+
 	Bucket       tsdb.BucketConfig
 	BucketPrefix string
 }
@@ -22,6 +25,7 @@ type SharedConfig struct {
 func (cfg *SharedConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(flag.CommandLine)
 	cfg.Bucket.RegisterFlags(flag.CommandLine)
+	cfg.StorageConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.BucketPrefix, "blocksconvert.bucket-prefix", "migration", "Prefix in the bucket for storing plan files.")
 }

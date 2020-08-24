@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
@@ -181,16 +181,23 @@ func (d *tsdbBuilder) addSeries(m labels.Labels, cs []chunks.Meta, samples uint6
 	d.series = append(d.series, series{metric: sl, cs: cs, minTime: minTime, maxTime: maxTime, samples: samples})
 }
 
-func (d *tsdbBuilder) finishBlock() (ulid.ULID, error) {
+func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid.ULID, error) {
 	if err := d.chunksWriter.Close(); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "closing chunks writer")
 	}
 
-	meta := &tsdb.BlockMeta{
-		ULID:    d.ulid,
-		Version: 1,
-		MinTime: math.MaxInt64,
-		MaxTime: math.MinInt64,
+	meta := &metadata.Meta{
+		BlockMeta: tsdb.BlockMeta{
+			ULID:    d.ulid,
+			Version: 1,
+			MinTime: math.MaxInt64,
+			MaxTime: math.MinInt64,
+		},
+
+		Thanos: metadata.Thanos{
+			Labels: labels,
+			Source: metadata.SourceType(source),
+		},
 	}
 
 	indexWriter, err := index.NewWriter(context.Background(), filepath.Join(d.tmpBlockDir, "index"))
@@ -239,9 +246,7 @@ func (d *tsdbBuilder) finishBlock() (ulid.ULID, error) {
 		return ulid.ULID{}, errors.Wrap(err, "writing tombstones")
 	}
 
-	// Increase maxtime by 1. Blocks max time is exclusive.
-	meta.MaxTime++
-	if err := writeMetaJson(d.tmpBlockDir, meta); err != nil {
+	if err := metadata.Write(d.log, d.tmpBlockDir, meta); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "writing meta.json")
 	}
 
@@ -250,31 +255,6 @@ func (d *tsdbBuilder) finishBlock() (ulid.ULID, error) {
 	}
 
 	return d.ulid, nil
-}
-
-func writeMetaJson(dir string, meta *tsdb.BlockMeta) error {
-	// Create meta.json file.
-	f, err := os.Create(filepath.Join(dir, "meta.json"))
-	if err != nil {
-		return errors.Wrap(err, "create meta.json")
-	}
-
-	jsonMeta, err := json.MarshalIndent(meta, "", "\t")
-	if err != nil {
-		return errors.Wrap(err, "marshal meta.json")
-	}
-
-	_, err = f.Write(jsonMeta)
-	if err != nil {
-		return errors.Wrap(err, "write meta.json")
-	}
-
-	err = f.Close()
-	if err != nil {
-		return errors.Wrap(err, "close meta.json")
-	}
-
-	return nil
 }
 
 type series struct {

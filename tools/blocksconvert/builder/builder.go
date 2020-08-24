@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bufio"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
@@ -30,21 +32,20 @@ import (
 type Config struct {
 	PlanFile string
 
-	OutputDirectory  string
-	Concurrency      int
-	StorageConfig    storage.Config
+	OutputDirectory string
+	Concurrency     int
+
 	ChunkCacheConfig cache.Config
 	HeartbeatPeriod  time.Duration
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("chunks.", "Chunks cache", f)
-	cfg.StorageConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.PlanFile, "builder.plan-file", "", "Plan file to process. (Test only)")
 
 	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
-	f.IntVar(&cfg.Concurrency, "builder.concurrency", 16, "Number of concurrent index processors.")
+	f.IntVar(&cfg.Concurrency, "builder.concurrency", 128, "Number of concurrent series processors.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan status file.")
 }
 
@@ -69,9 +70,10 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		cfg: cfg,
 		log: l,
 
-		bucketClient: bucketClient,
-		chunksCache:  chunksCache,
-		schemaConfig: scfg.SchemaConfig,
+		bucketClient:  bucketClient,
+		chunksCache:   chunksCache,
+		schemaConfig:  scfg.SchemaConfig,
+		storageConfig: scfg.StorageConfig,
 
 		fetchedChunks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "builder_fetched_chunks_total",
@@ -81,7 +83,6 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "builder_fetched_chunks_bytes_total",
 			Help: "Fetched chunks bytes",
 		}),
-
 		processedSeries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "builder_series_total",
 			Help: "Processed series",
@@ -102,9 +103,10 @@ type Builder struct {
 	log log.Logger
 	reg prometheus.Registerer
 
-	bucketClient objstore.Bucket
-	chunksCache  cache.Cache
-	schemaConfig chunk.SchemaConfig
+	bucketClient  objstore.Bucket
+	chunksCache   cache.Cache
+	schemaConfig  chunk.SchemaConfig
+	storageConfig storage.Config
 
 	fetchedChunks     prometheus.Counter
 	fetchedChunksSize prometheus.Counter
@@ -125,7 +127,8 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 		_ = f.Close()
 	}()
 
-	r, _, err := preparePlanFileAndGetBaseName(planFile, f)
+	// Use a buffer for reading plan file.
+	r, _, err := preparePlanFileAndGetBaseName(planFile, bufio.NewReaderSize(f, 1*1024*1024))
 	if err != nil {
 		return err
 	}
@@ -171,7 +174,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 	}
 
 	g.Go(func() error {
-		return parsePlanEntries(dec, planEntryCh)
+		return parsePlanEntries(gctx, dec, planEntryCh)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -179,7 +182,10 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 	}
 
 	// Finish block.
-	ulid, err := tsdbBuilder.finishBlock()
+	ulid, err := tsdbBuilder.finishBlock("blocksconvert", map[string]string{
+		cortex_tsdb.TenantIDExternalLabel: header.User,
+	})
+
 	if err != nil {
 		return errors.Wrap(err, "failed to finish block building")
 	}
@@ -191,7 +197,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string) error {
 	return nil
 }
 
-func parsePlanEntries(dec *json.Decoder, planEntryCh chan blocksconvert.PlanEntry) error {
+func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan blocksconvert.PlanEntry) error {
 	defer close(planEntryCh)
 
 	var err error
@@ -208,7 +214,13 @@ func parsePlanEntries(dec *json.Decoder, planEntryCh chan blocksconvert.PlanEntr
 		}
 
 		if entry.SeriesID != "" && len(entry.Chunks) > 0 {
-			planEntryCh <- *entry
+			select {
+			case planEntryCh <- *entry:
+				// ok
+			case <-ctx.Done():
+				return nil
+			}
+
 		}
 
 		entry.Reset()
@@ -316,7 +328,7 @@ func (b *Builder) createChunkClientForDay(dayStart time.Time) (chunk.Client, err
 			objectStoreType = s.IndexType
 		}
 		// No registerer, to avoid problems with registering same metrics multiple times.
-		chunks, err := storage.NewChunkClient(objectStoreType, b.cfg.StorageConfig, b.schemaConfig, nil)
+		chunks, err := storage.NewChunkClient(objectStoreType, b.storageConfig, b.schemaConfig, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error creating object client: %w", err)
 		}

@@ -25,9 +25,6 @@ import (
 )
 
 type Config struct {
-	BigtableProject  string
-	BigtableInstance string
-
 	TableName   string
 	TablesLimit int
 
@@ -41,8 +38,6 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.BigtableProject, "bigtable.project", "", "The Google Cloud Platform project ID. Required.")
-	f.StringVar(&cfg.BigtableInstance, "bigtable.instance", "", "The Google Cloud Bigtable instance ID. Required.")
 	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
 	f.StringVar(&cfg.OutputDirectory, "scanner.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
@@ -72,7 +67,9 @@ type Scanner struct {
 }
 
 func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
-	if cfg.BigtableProject == "" || cfg.BigtableInstance == "" {
+	bigTable := scfg.StorageConfig.GCPStorageConfig
+
+	if bigTable.Project == "" || bigTable.Instance == "" {
 		return nil, fmt.Errorf("missing BigTable configuration")
 	}
 
@@ -133,7 +130,7 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 
 	s := &Scanner{
 		cfg:          cfg,
-		indexReader:  NewBigtableIndexReader(cfg.BigtableProject, cfg.BigtableInstance, l, reg),
+		indexReader:  NewBigtableIndexReader(bigTable.Project, bigTable.Instance, l, reg),
 		table:        cfg.TableName,
 		tablePrefix:  tablePrefix,
 		tablePeriod:  tablePeriod,
@@ -307,7 +304,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	}
 
 	errs := files.closeAllFiles(func() interface{} {
-		return blocksconvert.PlanFooter{Complete: true}
+		return blocksconvert.PlanEntry{Complete: true}
 	})
 	if len(errs) > 0 {
 		return errors.MultiError(errs)

@@ -87,7 +87,7 @@ func (w *processor) Flush() error {
 		SeriesID: w.lastKey.seriesID,
 		Chunks:   w.chunks,
 	}, func() interface{} {
-		return blocksconvert.PlanHeader{
+		return blocksconvert.PlanEntry{
 			User:     k.user,
 			DayIndex: k.dayIndex,
 		}

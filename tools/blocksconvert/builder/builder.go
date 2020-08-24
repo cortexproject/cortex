@@ -106,6 +106,10 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "builder_written_samples_total",
 			Help: "Written samples",
 		}),
+		planFileReadPosition: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "builder_plan_file_position",
+			Help: "Read bytes from the plan file.",
+		}),
 	}
 	b.Service = services.NewBasicService(b.cleanup, b.running, nil)
 	return b, err
@@ -127,6 +131,8 @@ type Builder struct {
 	fetchedChunksSize prometheus.Counter
 	processedSeries   prometheus.Counter
 	writtenSamples    prometheus.Counter
+
+	planFileReadPosition prometheus.Gauge
 }
 
 func (b *Builder) cleanup(_ context.Context) error {
@@ -184,7 +190,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 	}()
 
 	// Use a buffer for reading plan file.
-	r, err := preparePlanFile(planFile, bufio.NewReaderSize(f, 1*1024*1024))
+	r, err := preparePlanFile(planFile, bufio.NewReaderSize(&readPositionReporter{r: f, g: b.planFileReadPosition}, 1*1024*1024))
 	if err != nil {
 		return err
 	}
@@ -456,4 +462,19 @@ func (b *Builder) createChunkClientForDay(dayStart time.Time) (chunk.Client, err
 	}
 
 	return nil, fmt.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
+}
+
+type readPositionReporter struct {
+	r   io.Reader
+	g   prometheus.Gauge
+	pos int64
+}
+
+func (r *readPositionReporter) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	if n > 0 {
+		r.pos += int64(n)
+		r.g.Set(float64(r.pos))
+	}
+	return n, err
 }

@@ -7,7 +7,7 @@ slug: grpc-based-plugin
 
 _This feature is currently experimental and is only supported for Chunks storage._
 
-Cortex chunks storage supports a **gRPC-based plugin system** to use an alternative backends for the index and chunks store.
+Cortex chunks storage supports a **gRPC-based plugin system** to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
 For example, if you're deploying your Cortex cluster on Kubernetes, the plugin would run as a sidecar container of your Cortex pods and the Cortex's `-grpc-store.server-address` should be configured to the endpoint exposed by the sidecar plugin (eg. `localhost:<port>`).
 
@@ -42,4 +42,3 @@ For reference these are the gRPC based chunk store implementation for Mongo and 
 
 1. [gRPC based Cortex chunk store for Mongo](https://github.com/VineethReddy02/cortex-mongo-store)
 2. [gRPC based Cortex chunk store for Mysql](https://github.com/VineethReddy02/cortex-mysql-store)
-

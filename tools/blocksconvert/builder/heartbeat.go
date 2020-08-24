@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -37,6 +38,19 @@ func newHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration
 }
 
 func (hb *heartbeat) heartbeat(ctx context.Context) error {
+	if hb.lastHeartbeat != "" {
+		ok, err := hb.bucket.Exists(ctx, hb.lastHeartbeat)
+		if err != nil {
+			level.Warn(hb.log).Log("msg", "failed to check old heartbeat file", "err", err)
+			return errors.Wrap(err, "cannot check if heartbeat file exists")
+		}
+
+		if !ok {
+			level.Warn(hb.log).Log("msg", "previous heartbeat file doesn't exist")
+			return errors.New("previous heartbeat file doesn't exist")
+		}
+	}
+
 	newHeartbeat := ""
 
 	now := time.Now().Unix()
@@ -51,11 +65,19 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 		}
 	}
 
+	level.Debug(hb.log).Log("msg", "updated heartbeat", "file", hb.lastHeartbeat)
 	hb.lastHeartbeat = newHeartbeat
 	return nil
 }
 
-func (hb *heartbeat) stopping(_ error) error {
+func (hb *heartbeat) stopping(failure error) error {
+	// Only delete heartbeat file if there was no failure until now.
+	if failure != nil {
+		return nil
+	}
+
+	level.Debug(hb.log).Log("msg", "deleting last heartbeat file", "file", hb.lastHeartbeat)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -66,4 +88,8 @@ func (hb *heartbeat) stopping(_ error) error {
 	}
 
 	return nil
+}
+
+func (hb *heartbeat) String() string {
+	return "heartbeat"
 }

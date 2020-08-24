@@ -37,6 +37,7 @@ func (s *InstrumentationServer) Start() error {
 
 	router := mux.NewRouter()
 	router.Handle("/metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
+	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 
 	s.srv = &http.Server{
 		Handler: router,

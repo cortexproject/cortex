@@ -35,7 +35,7 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 		// decrease timeouts to make test faster. should still be fine with two instances only
 		"-ingester.join-after":                                    "0s", // join quickly
 		"-ingester.observe-period":                                "5s", // to avoid conflicts in tokens
-		"-experimental.blocks-storage.bucket-store.sync-interval": "1s", // sync continously
+		"-experimental.blocks-storage.bucket-store.sync-interval": "1s", // sync continuously
 		"-experimental.blocks-storage.backend":                    "s3",
 		"-experimental.blocks-storage.s3.bucket-name":             bucketName,
 		"-experimental.blocks-storage.s3.access-key-id":           e2edb.MinioAccessKey,

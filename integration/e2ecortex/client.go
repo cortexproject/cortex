@@ -212,6 +212,10 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 		return nil, ErrNotFound
 	}
 
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
 	var ss *ServerStatus
 	err = json.Unmarshal(body, &ss)
 	if err != nil {

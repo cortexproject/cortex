@@ -1444,8 +1444,8 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 
 	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dir
-	ingesterCfg.BlocksStorageConfig.Backend = "s3"
-	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
 	if err != nil {
@@ -1516,8 +1516,8 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			ingesterCfg := defaultIngesterTestConfig()
 			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
-			ingesterCfg.BlocksStorageConfig.Backend = "s3"
-			ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+			ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
+			ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
@@ -1995,8 +1995,8 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	ingesterCfg := defaultIngesterTestConfig()
 	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
-	ingesterCfg.BlocksStorageConfig.Backend = "s3"
-	ingesterCfg.BlocksStorageConfig.S3.Endpoint = "localhost"
+	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
+	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
 	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)

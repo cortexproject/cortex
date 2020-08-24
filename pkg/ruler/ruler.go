@@ -38,16 +38,6 @@ var (
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	configUpdatesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "ruler_config_updates_total",
-		Help:      "Total number of config updates triggered by a user",
-	}, []string{"user"})
-	configUpdateFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "ruler_config_update_failures_total",
-		Help:      "Total number of config update failures triggered by a user",
-	}, []string{"user", "reason"})
 )
 
 // Config is the configuration for the recording rules server.

@@ -73,9 +73,6 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
      * `[ENHANCEMENT]`
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
-3. For a major or minor release, update the Cortex version in the following locations:
-   - Kubernetes manifests located at `k8s/`
-   - Documentation located at `docs/`
 
 Once your PR with release prepartion is approved, merge it to "release-X.Y" branch, and continue with publishing.
 
@@ -83,11 +80,11 @@ Once your PR with release prepartion is approved, merge it to "release-X.Y" bran
 
 To publish a release candidate:
 
+1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
 1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
-1a. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
-2. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
-3. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
-3. Create a pre-release in GitHub
+1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+1. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+1. Create a pre-release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
@@ -96,21 +93,24 @@ To publish a release candidate:
 
 To publish a stable release:
 
+1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
 1. Ensure the `VERSION` file has **no** `-rc.X` suffix
-2. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
-3. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
-4. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
-5. Create a release in GitHub
+1. Update the Cortex version in the following locations:
+   - Kubernetes manifests located at `k8s/`
+   - Documentation located at `docs/`
+1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+1. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+1. Create a release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
-6. Merge the release branch `release-x.y` to `master`
+1. Merge the release branch `release-x.y` to `master`
    - Merge to `master` in the local checkout
    - Fix any conflict and `git commit -s`
    - Temporarily disable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
    - Push changes to upstream (please double check before pushing!)
    - Re-enable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
-7. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
+1. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
 
 ### How to tag a release
 

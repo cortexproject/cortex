@@ -106,5 +106,5 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	cfg, err = c.GetAlertmanagerConfig(context.Background())
 	require.Error(t, err)
 	require.Nil(t, cfg)
-	require.EqualError(t, err, e2ecortex.ErrNotFound.Error())
+	require.EqualError(t, err, "not found")
 }

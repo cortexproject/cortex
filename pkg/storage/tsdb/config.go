@@ -56,18 +56,22 @@ var (
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
-// BlocksStorageConfig holds the config information for the blocks storage.
-//nolint:golint
-type BlocksStorageConfig struct {
-	Backend     string            `yaml:"backend"`
-	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
-	TSDB        TSDBConfig        `yaml:"tsdb"`
-
+// BucketConfig holds configuration for accessing long-term storage.
+type BucketConfig struct {
+	Backend string `yaml:"backend"`
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+}
+
+// BlocksStorageConfig holds the config information for the blocks storage.
+//nolint:golint
+type BlocksStorageConfig struct {
+	Bucket      BucketConfig      `yaml:",inline"`
+	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
+	TSDB        TSDBConfig        `yaml:"tsdb"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -107,22 +111,35 @@ func (d *DurationList) ToMilliseconds() []int64 {
 	return values
 }
 
-// RegisterFlags registers the TSDB flags
-func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
+// RegisterFlags registers the TSDB Backend
+func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
 	cfg.Azure.RegisterFlags(f)
-	cfg.BucketStore.RegisterFlags(f)
 	cfg.Filesystem.RegisterFlags(f)
-	cfg.TSDB.RegisterFlags(f)
 
 	f.StringVar(&cfg.Backend, "experimental.blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 }
 
-// Validate the config.
-func (cfg *BlocksStorageConfig) Validate() error {
+// RegisterFlags registers the TSDB flags
+func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.Bucket.RegisterFlags(f)
+	cfg.BucketStore.RegisterFlags(f)
+	cfg.TSDB.RegisterFlags(f)
+}
+
+func (cfg *BucketConfig) Validate() error {
 	if !util.StringsContain(supportedBackends, cfg.Backend) {
 		return errUnsupportedStorageBackend
+	}
+
+	return nil
+}
+
+// Validate the config.
+func (cfg *BlocksStorageConfig) Validate() error {
+	if err := cfg.Bucket.Validate(); err != nil {
+		return err
 	}
 
 	if err := cfg.TSDB.Validate(); err != nil {

@@ -2,7 +2,9 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -70,6 +74,39 @@ func TestWAL(t *testing.T) {
 
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	}
+
+	cfg.WALConfig.WALEnabled = true
+	cfg.WALConfig.CheckpointEnabled = true
+
+	// Start a new ingester and recover the WAL.
+	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+
+	userID := userIDs[0]
+	sampleStream := testData[userID][0]
+	lastSample := sampleStream.Values[len(sampleStream.Values)-1]
+
+	// In-order and out of order sample in the same request.
+	metric := client.FromLabelAdaptersToLabels(client.FromMetricsToLabelAdapters(sampleStream.Metric))
+	outOfOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
+	inOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = ing.Push(ctx, client.ToWriteRequest(
+		[]labels.Labels{metric, metric},
+		[]client.Sample{outOfOrderSample, inOrderSample}, nil, client.API))
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(makeMetricValidationError(sampleOutOfOrder, metric,
+		fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", lastSample.Timestamp, model.Time(outOfOrderSample.TimestampMs))), userID).Error()), err)
+
+	// We should have logged the in-order sample.
+	testData[userID][0].Values = append(testData[userID][0].Values, model.SamplePair{
+		Timestamp: model.Time(inOrderSample.TimestampMs),
+		Value:     model.SampleValue(inOrderSample.Value),
+	})
+
+	// Check samples after restart from WAL.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	retrieveTestSamples(t, ing, userIDs, testData)
 }
 
 func TestCheckpointRepair(t *testing.T) {

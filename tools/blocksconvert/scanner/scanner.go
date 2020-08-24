@@ -26,7 +26,7 @@ import (
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
-type ScannerConfig struct {
+type Config struct {
 	BigtableProject  string
 	BigtableInstance string
 
@@ -45,7 +45,7 @@ type ScannerConfig struct {
 	IgnoredUserPattern string
 }
 
-func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(flag.CommandLine)
 	cfg.Bucket.RegisterFlags(flag.CommandLine)
 
@@ -64,7 +64,7 @@ func (cfg *ScannerConfig) RegisterFlags(f *flag.FlagSet) {
 type Scanner struct {
 	services.Service
 
-	cfg         ScannerConfig
+	cfg         Config
 	indexReader IndexReader
 
 	series    prometheus.Counter
@@ -79,7 +79,7 @@ type Scanner struct {
 	ignored     *regexp.Regexp
 }
 
-func NewScanner(cfg ScannerConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
+func NewScanner(cfg Config, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
 	if cfg.BigtableProject == "" || cfg.BigtableInstance == "" {
 		return nil, fmt.Errorf("missing BigTable configuration")
 	}

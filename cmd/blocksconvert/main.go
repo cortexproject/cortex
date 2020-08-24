@@ -24,7 +24,7 @@ type Config struct {
 	Target            string
 	LogLevel          logging.Level
 	ServerMetricsPort int
-	ScannerConfig     scanner.ScannerConfig
+	ScannerConfig     scanner.Config
 }
 
 func main() {

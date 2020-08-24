@@ -75,6 +75,11 @@ func TestFlagParsing(t *testing.T) {
 			stderrExcluded: "ingester\n",
 		},
 
+		"root level configuration option specified as an empty node in YAML": {
+			yaml:          "querier:",
+			stderrMessage: "the Querier configuration in YAML has been specified as an empty YAML node",
+		},
+
 		// we cannot test the happy path, as cortex would then fully start
 	} {
 		t.Run(name, func(t *testing.T) {

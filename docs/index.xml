@@ -7373,6 +7373,7 @@ which was written before support for migration was in place.&lt;/em>&lt;/p>
 &lt;li>Cortex cluster is managed by Kubernetes&lt;/li>
 &lt;li>Cortex is using chunks storage&lt;/li>
 &lt;li>Ingesters are using WAL&lt;/li>
+&lt;li>Cortex version 1.3.0 or later.&lt;/li>
 &lt;/ul>
 &lt;p>&lt;em>If your ingesters are not using WAL, the documented procedure will still apply, but the presented migration script will not work properly without changes, as it assumes that ingesters are managed via StatefulSet.&lt;/em>&lt;/p>
 &lt;p>The migration procedure is composed by 3 steps:&lt;/p>
@@ -7403,9 +7404,9 @@ As chunks ingesters shut down, they flush chunks to the storage. They are then r
 to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don&amp;rsquo;t reload chunks),
 and need to use storage instead.&lt;/p>
 &lt;h4 id="-querieringester-streamingfalse">&lt;code>-querier.ingester-streaming=false&lt;/code>&lt;/h4>
-&lt;p>Querier (and ruler) has a &lt;a href="https://github.com/cortexproject/cortex/issues/2935">bug&lt;/a> and doesn&amp;rsquo;t properly
-merge streamed results from chunks and blocks-based ingesters. Instead it only returns data from blocks- instesters.
-To avoid this problem, we need to temporarily disable this feature by setting &lt;code>-querier.ingester-streaming=false&lt;/code>.
+&lt;p>Querier (and ruler) in Cortex version 1.3.0 has a &lt;a href="https://github.com/cortexproject/cortex/issues/2935">bug&lt;/a> and doesn&amp;rsquo;t properly
+merge streamed results from chunks and blocks-based ingesters. Instead it only returns data from blocks instesters.
+To avoid this problem we can use newer Cortex release, or temporarily disable this feature by setting &lt;code>-querier.ingester-streaming=false&lt;/code>.
 After migration is complete (i.e. all ingesters are running blocks only), this can be turned back to true, which is the default value.&lt;/p>
 &lt;h3 id="query-frontend">Query-frontend&lt;/h3>
 &lt;p>Query-frontend needs to be reconfigured as follow:&lt;/p>
@@ -7454,7 +7455,7 @@ New StatefulSet with blocks ingesters should have 0 replicas at the beginning of
 &lt;p>The CLI flag &lt;code>-querier.use-second-store-before-time&lt;/code> (or its respective YAML config option) is only available for secondary store.
 This flag can be set to a timestamp when migration has finished, and it avoids querying secondary store (chunks) for data when running queries that don&amp;rsquo;t need data before given time.&lt;/p>
 &lt;h4 id="-querieringester-streamingtrue">&lt;code>-querier.ingester-streaming=true&lt;/code>&lt;/h4>
-&lt;p>Querier can be configured to make use of streamed responses from ingester at this point (&lt;code>-querier.ingester-streaming=true&lt;/code>).&lt;/p>
+&lt;p>If querier was configured to disable ingester streaming during migration (required for Cortex 1.3.0), Querier can be configured to make use of streamed responses from ingester at this point (&lt;code>-querier.ingester-streaming=true&lt;/code>).&lt;/p>
 &lt;h2 id="rollback">Rollback&lt;/h2>
 &lt;p>If rollback to chunks is needed for any reason, it is possible to use the same migration script with reversed arguments:&lt;/p>
 &lt;ul>
@@ -7937,9 +7938,11 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Added &lt;code>cortex_request_message_bytes&lt;/code> and &lt;code>cortex_response_message_bytes&lt;/code> histograms to track received and sent gRPC message and HTTP request/response sizes. Added &lt;code>cortex_inflight_requests&lt;/code> gauge to track number of inflight gRPC and HTTP requests. &lt;a href="https://github.com/cortexproject/cortex/pull/3064">#3064&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add config validation to the experimental Alertmanager API. Invalid configs are no longer accepted. &lt;a href="https://github.com/cortexproject/cortex/pull/3053">#3053&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. &lt;a href="https://github.com/cortexproject/cortex/pull/3013">#3013&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. &lt;a href="https://github.com/cortexproject/cortex/pull/3015">#3015&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. &lt;a href="https://github.com/cortexproject/cortex/pull/3030">#3030&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Fixes the Alertmanager panicking when no &lt;code>-alertmanager.web.external-url&lt;/code> is provided. &lt;a href="https://github.com/cortexproject/cortex/pull/3017">#3017&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>
 &lt;ul>

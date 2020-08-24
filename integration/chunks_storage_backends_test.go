@@ -61,8 +61,9 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	}
 
 	storageFlags := mergeFlags(ChunksStorageFlags, map[string]string{
-		"-cassandra.addresses": cassandra.NetworkHTTPEndpoint(),
-		"-cassandra.keyspace":  "tests", // keyspace gets created on startup if it does not exist
+		"-cassandra.addresses":          cassandra.NetworkHTTPEndpoint(),
+		"-cassandra.keyspace":           "tests", // keyspace gets created on startup if it does not exist
+		"-cassandra.replication-factor": "1",
 	})
 
 	// bigtable client needs to set an environment variable when connecting to an emulator

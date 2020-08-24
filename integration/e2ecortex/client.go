@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -154,18 +155,24 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 	return res, body, nil
 }
 
+// Series finds series by label matchers.
+func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSet, error) {
+	result, _, err := c.querierClient.Series(context.Background(), matches, start, end)
+	return result, err
+}
+
 // LabelValues gets label values
 func (c *Client) LabelValues(label string) (model.LabelValues, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
+	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames() ([]string, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
+	return result, err
 }
 
 type addOrgIDRoundTripper struct {
@@ -203,6 +210,10 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	var ss *ServerStatus
@@ -367,4 +378,16 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	client := &http.Client{Timeout: c.timeout}
+	return client.Do(req)
 }

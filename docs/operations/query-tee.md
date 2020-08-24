@@ -39,6 +39,12 @@ The following Prometheus API endpoints are supported by `query-tee`:
 - `/api/v1/alerts` (GET)
 - `/api/v1/rules` (GET)
 
+#### Pass-through requests
+
+`query-tee` supports acting as a transparent proxy for requests to routes not matching any of the documented API endpoints above.
+When enabled, those requests are passed on to just the configured preferred backend.
+To activate this feature it requires setting `-proxy.passthrough-non-registered-routes=true` flag and configuring a preferred backend.
+
 ### Authentication
 
 `query-tee` supports [HTTP basic authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication). It allows either to configure username and password in the backend URL, to forward the request auth to the backend or merge the two.

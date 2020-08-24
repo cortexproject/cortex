@@ -752,7 +752,7 @@ func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 	for i := 0; i < numSeries; i++ {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
-		app := db.Appender()
+		app := db.Appender(context.Background())
 		if _, err := app.Add(lbls, minT+(step*int64(i)), float64(i)); err != nil {
 			return err
 		}

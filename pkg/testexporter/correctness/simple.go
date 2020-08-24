@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	otlog "github.com/opentracing/opentracing-go/log"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -161,7 +160,7 @@ func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair
 		} else {
 			sampleResult.WithLabelValues(tc.Name(), fail).Inc()
 			level.Error(log).Log("msg", "wrong value", "at", pair.Timestamp, "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
-			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
+			log.Error(fmt.Errorf("wrong value"))
 			return false
 		}
 	}
@@ -171,14 +170,14 @@ func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair
 		expectedNumSamples := int(duration / cfg.ScrapeInterval)
 		if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), cfg.samplesEpsilon) {
 			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-			log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
+			log.Error(fmt.Errorf("wrong number of samples"))
 			return false
 		}
 	} else {
 		expectedNumSamples := int(duration / cfg.ScrapeInterval)
 		if math.Abs(float64(expectedNumSamples-len(pairs))) > 2 {
 			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-			log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
+			log.Error(fmt.Errorf("wrong number of samples"))
 			return false
 		}
 	}

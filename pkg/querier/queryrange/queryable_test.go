@@ -40,7 +40,7 @@ func TestSelect(t *testing.T) {
 				expected := &PrometheusResponse{
 					Status: "success",
 					Data: PrometheusData{
-						ResultType: parser.ValueTypeVector,
+						ResultType: string(parser.ValueTypeVector),
 					},
 				}
 
@@ -88,7 +88,7 @@ func TestSelect(t *testing.T) {
 			querier: mkQuerier(mockHandler(
 				&PrometheusResponse{
 					Data: PrometheusData{
-						ResultType: parser.ValueTypeVector,
+						ResultType: string(parser.ValueTypeVector),
 						Result: []SampleStream{
 							{
 								Labels: []client.LabelAdapter{
@@ -216,7 +216,7 @@ func TestSelectConcurrent(t *testing.T) {
 			// each request will return a single samplestream
 			querier := mkQuerier(mockHandler(&PrometheusResponse{
 				Data: PrometheusData{
-					ResultType: parser.ValueTypeVector,
+					ResultType: string(parser.ValueTypeVector),
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{

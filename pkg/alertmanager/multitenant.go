@@ -175,6 +175,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
 	}
 
+	if cfg.ExternalURL.URL == nil {
+		return nil, fmt.Errorf("unable to create Alertmanager because the external URL has not been configured")
+	}
+
 	var fallbackConfig []byte
 	if cfg.FallbackConfigFile != "" {
 		fallbackConfig, err = ioutil.ReadFile(cfg.FallbackConfigFile)
@@ -460,9 +464,10 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if !ok || !userAM.IsActive() {
-		http.Error(w, "no Alertmanager for this user ID", http.StatusNotFound)
+		http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
 		return
 	}
+
 	userAM.mux.ServeHTTP(w, req)
 }
 

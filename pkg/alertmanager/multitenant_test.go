@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -176,4 +178,70 @@ func TestLoadAllConfigs(t *testing.T) {
 		cortex_alertmanager_config_invalid{user="user2"} 0
 		cortex_alertmanager_config_invalid{user="user3"} 0
 	`), "cortex_alertmanager_config_invalid"))
+}
+
+func TestAlertmanager_NoExternalURL(t *testing.T) {
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create the Multitenant Alertmanager.
+	reg := prometheus.NewPedanticRegistry()
+	_, err = NewMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		DataDir: tempDir,
+	}, log.NewNopLogger(), reg)
+
+	require.EqualError(t, err, "unable to create Alertmanager because the external URL has not been configured")
+}
+
+func TestAlertmanager_ServeHTTP(t *testing.T) {
+	mockStore := &mockAlertStore{
+		configs: map[string]alerts.AlertConfigDesc{},
+	}
+
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
+
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create the Multitenant Alertmanager.
+	reg := prometheus.NewPedanticRegistry()
+	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		ExternalURL: externalURL,
+		DataDir:     tempDir,
+	}, nil, nil, mockStore, log.NewNopLogger(), reg)
+
+	// Request when no user configuration is present.
+	req := httptest.NewRequest("GET", externalURL.String(), nil)
+	req.Header.Add(user.OrgIDHeaderName, "user1")
+	w := httptest.NewRecorder()
+
+	am.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+	require.Equal(t, "the Alertmanager is not configured\n", string(body))
+
+	// Create a configuration for the user in storage.
+	mockStore.configs["user1"] = alerts.AlertConfigDesc{
+		User:      "user1",
+		RawConfig: simpleConfigTwo,
+		Templates: []*alerts.TemplateDesc{},
+	}
+
+	// Make the alertmanager pick it up, then pause it.
+	err = am.updateConfigs()
+	require.NoError(t, err)
+	am.alertmanagers["user1"].Pause()
+
+	// Request when user configuration is paused.
+	w = httptest.NewRecorder()
+	am.ServeHTTP(w, req)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	require.Equal(t, "the Alertmanager is not configured\n", string(body))
 }

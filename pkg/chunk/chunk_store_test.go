@@ -116,6 +116,12 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 func TestChunkStore_Get(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()
+	indexLookupsPerQuery = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_index_lookups_per_query",
+		Help:      "Distribution of #index lookups per query.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
 	const observableMetadata = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
@@ -267,6 +273,12 @@ func TestChunkStore_Get(t *testing.T) {
 func TestChunkStore_ExcludeLabels(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()
+	indexLookupsPerQuery = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_index_lookups_per_query",
+		Help:      "Distribution of #index lookups per query.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
 	const observableMetadata = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram

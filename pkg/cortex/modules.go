@@ -165,7 +165,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 		return
 	}
 
-	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor, t.Cfg.Server)
+	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
 
 	return t.Distributor, nil
 }
@@ -307,7 +307,7 @@ func (t *Cortex) initIngester() (serv services.Service, err error) {
 		return
 	}
 
-	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor, t.Cfg.Server)
+	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor)
 
 	return t.Ingester, nil
 }

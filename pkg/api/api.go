@@ -171,7 +171,7 @@ func (a *API) RegisterAPI(cfg interface{}) {
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.
-func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config, serverConfig server.Config) {
+func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
 	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false)
@@ -183,7 +183,7 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service
-func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config, serverConfig server.Config) {
+func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 
 	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)

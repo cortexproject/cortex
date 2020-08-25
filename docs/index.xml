@@ -7948,6 +7948,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. &lt;a href="https://github.com/cortexproject/cortex/pull/3030">#3030&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixes the Alertmanager panicking when no &lt;code>-alertmanager.web.external-url&lt;/code> is provided. &lt;a href="https://github.com/cortexproject/cortex/pull/3017">#3017&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Fixes the registration of the Alertmanager API metrics &lt;code>cortex_alertmanager_alerts_received_total&lt;/code> and &lt;code>cortex_alertmanager_alerts_invalid_total&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/3065">#3065&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ingester: If push request contained both valid and invalid samples, valid samples were ingested but not stored to WAL of the chunks storage. This has been fixed. &lt;a href="https://github.com/cortexproject/cortex/pull/3067">#3067&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>
 &lt;ul>

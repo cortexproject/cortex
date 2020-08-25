@@ -503,7 +503,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey(), c.cfg.ExcludeLabels)
 	if err != nil {
 		return nil, nil, err
 	}

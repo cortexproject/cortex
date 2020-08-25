@@ -66,7 +66,7 @@ type SeriesStoreSchema interface {
 	BaseSchema
 
 	// returns cache key string and []IndexEntry per bucket, matched in order
-	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error)
+	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels) ([]string, [][]IndexEntry, error)
 	GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 
 	// If the query resulted in series IDs, use this method to find chunks.

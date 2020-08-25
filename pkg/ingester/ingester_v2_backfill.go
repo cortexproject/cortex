@@ -85,23 +85,21 @@ func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err e
 		return err
 	}
 	startAppend := time.Now()
+
 	cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(la))
 	// If the cached reference exists, we try to use it.
 	if cachedRefExists {
 		err = app.AddFast(cachedRef, s.TimestampMs, s.Value)
-		if err != nil && errors.Cause(err) == storage.ErrNotFound {
-			cachedRefExists = false
-			err = nil
+		if err == nil || errors.Cause(err) != storage.ErrNotFound {
+			return err
 		}
 	}
 
-	// If the cached reference doesn't exist, we (re)try without using the reference.
-	if !cachedRefExists {
-		// Copy the label set because both TSDB and the cache may retain it.
-		copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(la)
-		if ref, err := app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
-			db.refCache.SetRef(startAppend, copiedLabels, ref)
-		}
+	// Copy the label set because both TSDB and the cache may retain it.
+	copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(la)
+	ref, err := app.Add(copiedLabels, s.TimestampMs, s.Value)
+	if err == nil {
+		db.refCache.SetRef(startAppend, copiedLabels, ref)
 	}
 
 	return err
@@ -147,7 +145,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		}
 		app = a.secondAppender.app
 		db = a.backfillTSDB.dbs[1].db
-	} else if s.TimestampMs > mtime.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
+	} else if a.backfillTSDB.isWithinBackfillAge(s.TimestampMs) {
 		// The sample is in the backfill range.
 		if a.backfillTSDB.dbs[0] != nil && a.backfillTSDB.dbs[1] != nil {
 			// This can happen if the dbs[1] is running compaction/shipping.
@@ -178,7 +176,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			// The TSDB would touch the main TSDB. Hence this is the first TSDB.
 			if a.backfillTSDB.dbs[0] != nil {
 				// Check if we have to move this TSDB to the next position.
-				if a.backfillTSDB.dbs[0].start <= mtime.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
+				if !a.backfillTSDB.isWithinBackfillAge(a.backfillTSDB.dbs[0].start) {
 					a.backfillTSDB.dbs[1] = a.backfillTSDB.dbs[0]
 					a.backfillTSDB.dbs[0] = nil
 				} else {
@@ -266,7 +264,7 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 
 	result := make([]storage.SeriesSet, len(queriers))
 	for i, q := range queriers {
-		ss := q.Select(false, nil, matchers...)
+		ss := q.Select(true, nil, matchers...)
 		if ss.Err() != nil {
 			return nil, ss.Err()
 		}
@@ -290,7 +288,7 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		db := b.dbs[i]
 		b.mtx.RUnlock()
 
-		if db == nil || (!force && db.end > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
+		if db == nil || (!force && b.isWithinBackfillAge(db.end)) {
 			// DB is either nil or not outside backfill age yet.
 			// It might be a forced compaction, so we continue instead of breaking.
 			continue
@@ -322,6 +320,13 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	}
 
 	return merr.Err()
+}
+
+// isWithinBackfillAge returns true if the given timestamp is withing the backfill age.
+func (b *backfillTSDB) isWithinBackfillAge(ts int64) bool {
+	// The backfillAge is backfill time beyond what is already possible by main TSDB.
+	// Hence the -time.Hour.
+	return ts > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000
 }
 
 // compactAndShipDB compacts and ships the backfill TSDB if it is beyond the backfill age.

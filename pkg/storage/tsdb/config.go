@@ -178,7 +178,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 	f.StringVar(&cfg.BackfillDir, "experimental.blocks-storage.tsdb.backfill-dir", "backfill_tsdb", "Local directory to store backfill TSDBs in the ingesters.")
-	f.DurationVar(&cfg.BackfillMaxAge, "experimental.blocks-storage.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling. 0 disables it. It should be in hours and align with 24h.")
+	f.DurationVar(&cfg.BackfillMaxAge, "experimental.blocks-storage.tsdb.backfill-max-age", 0, "Maximum accepted sample age by backfilling beyond what is already possible when disabled. 0 disables it. It should be in hours and align with 24h.")
 }
 
 // Validate the config.

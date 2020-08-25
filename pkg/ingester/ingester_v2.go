@@ -451,6 +451,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			if cause == storage.ErrOutOfBounds &&
 				i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge > 0 &&
 				s.TimestampMs > mtime.Now().Add(-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge-time.Hour).Unix()*1000 {
+				// The -time.Hour comes from the main TSDB.
 				if backfillApp == nil {
 					backfillApp = db.backfillTSDB.appender(i)
 				}
@@ -576,16 +577,18 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	}
 	defer q.Close()
 
-	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
-	if ss.Err() != nil {
-		return nil, ss.Err()
-	}
-
 	backfillSSs, err := db.backfillSelect(ctx, int64(from), int64(through), matchers)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get the sorted series only if we have to merge it with backfill TSDB results.
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
+	ss := q.Select(len(backfillSSs) > 0, nil, matchers...)
+	if ss.Err() != nil {
+		return nil, ss.Err()
+	}
+
 	if len(backfillSSs) > 0 {
 		// TODO(codesome): If any TSDB in backfill buckets were overlapping
 		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
@@ -824,16 +827,18 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 	defer q.Close()
 
-	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
-	if ss.Err() != nil {
-		return ss.Err()
-	}
-
 	backfillSSs, err := db.backfillSelect(ctx, int64(from), int64(through), matchers)
 	if err != nil {
 		return err
 	}
+
+	// Get the sorted series only if we have to merge it with backfill TSDB results.
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
+	ss := q.Select(len(backfillSSs) > 0, nil, matchers...)
+	if ss.Err() != nil {
+		return ss.Err()
+	}
+
 	if len(backfillSSs) > 0 {
 		// TODO(codesome): If any TSDB in backfill buckets were overlapping
 		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
@@ -1193,24 +1198,18 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 
 	db.backfillTSDB.mtx.Lock()
 	// TODO(codesome): Dont load TSDB if the block range is not same as current configured. Compact and ship them instead.
-	if len(backfillTSDBDirs) > 0 {
-		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-1].Name())
-		if err == nil {
-			db.backfillTSDB.dbs[0] = &backfillTSDBWrapper{
-				db:    userDB,
-				start: start,
-				end:   end,
-			}
+	for i := range []int{0, 1} {
+		if len(backfillTSDBDirs) <= i {
+			break
 		}
-	}
-	if len(backfillTSDBDirs) > 1 {
-		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-2].Name())
-		if err == nil {
-			db.backfillTSDB.dbs[1] = &backfillTSDBWrapper{
-				db:    userDB,
-				start: start,
-				end:   end,
-			}
+		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-i-1].Name())
+		if err != nil {
+			continue
+		}
+		db.backfillTSDB.dbs[i] = &backfillTSDBWrapper{
+			db:    userDB,
+			start: start,
+			end:   end,
 		}
 	}
 	db.backfillTSDB.mtx.Unlock()

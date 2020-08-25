@@ -397,11 +397,7 @@ type TokenDesc struct {
 
 // getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
 func (d *Desc) getTokens() []TokenDesc {
-	numTokens := 0
-	for _, ing := range d.Ingesters {
-		numTokens += len(ing.Tokens)
-	}
-	tokens := make([]TokenDesc, 0, numTokens)
+	tokens := make([]TokenDesc, 0, d.getTokensCountEstimation())
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
 			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
@@ -410,6 +406,37 @@ func (d *Desc) getTokens() []TokenDesc {
 
 	sort.Sort(ByToken(tokens))
 	return tokens
+}
+
+// TODO comment
+// TODO test me
+func (d *Desc) getTokensByZone() map[string][]TokenDesc {
+	zones := map[string][]TokenDesc{}
+
+	for key, ing := range d.Ingesters {
+		// TODO initialize zones[ing.Zone] with a slice allocated for getTokensCountEstimation() ?
+		for _, token := range ing.Tokens {
+			zones[ing.Zone] = append(zones[ing.Zone], TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
+		}
+	}
+
+	// Ensure tokens are sorted within each zone.
+	for zone := range zones {
+		sort.Sort(ByToken(zones[zone]))
+	}
+
+	return zones
+}
+
+// getTokensCountEstimation returns a quick estimation of the number of tokens
+// across all instances in the ring, assuming each instance has the same number
+// of tokens.
+func (d *Desc) getTokensCountEstimation() int {
+	for _, ing := range d.Ingesters {
+		return len(ing.Tokens) * len(d.Ingesters)
+	}
+
+	return 0
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

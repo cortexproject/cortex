@@ -2,7 +2,6 @@ package builder
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 type heartbeat struct {
@@ -53,9 +53,9 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 
 	newHeartbeat := ""
 
-	now := time.Now().Unix()
-	newHeartbeat = fmt.Sprintf("%s.progress.%d", hb.planFileBasename, now)
-	if err := hb.bucket.Upload(ctx, newHeartbeat, strings.NewReader(strconv.FormatInt(now, 10))); err != nil {
+	now := time.Now()
+	newHeartbeat = blocksconvert.ProgressFile(hb.planFileBasename, now)
+	if err := hb.bucket.Upload(ctx, newHeartbeat, strings.NewReader(strconv.FormatInt(now.Unix(), 10))); err != nil {
 		return errors.Wrap(err, "failed to upload new heartbeat file")
 	}
 

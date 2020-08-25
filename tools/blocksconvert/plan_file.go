@@ -1,5 +1,15 @@
 package blocksconvert
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/oklog/ulid"
+)
+
 // Plan file describes which series must be included in a block for given user and day.
 // It consists of JSON objects, each written on its own line.
 // Plan file starts with single header, many plan entries and single footer.
@@ -19,4 +29,71 @@ type PlanEntry struct {
 
 func (pe *PlanEntry) Reset() {
 	*pe = PlanEntry{}
+}
+
+// Returns true and "base name" or false and empty string.
+func IsPlanFile(name string) (bool, string) {
+	switch {
+	case strings.HasSuffix(name, ".plan.gz"):
+		return true, name[:len(name)-len(".plan.gz")]
+
+	case strings.HasSuffix(name, ".plan.snappy"):
+		return true, name[:len(name)-len(".plan.snappy")]
+
+	case strings.HasSuffix(name, ".plan"):
+		return true, name[:len(name)-len(".plan")]
+	}
+
+	return false, ""
+}
+
+func ProgressFile(planBaseName string, t time.Time) string {
+	return fmt.Sprintf("%s.progress.%d", planBaseName, t.Unix())
+}
+
+var progress = regexp.MustCompile("^(.+)\\.progress\\.(\\d+)$")
+
+func IsProgressFile(name string) (bool, string, time.Time) {
+	m := progress.FindStringSubmatch(name)
+	if len(m) == 0 {
+		return false, "", time.Time{}
+	}
+
+	ts, err := strconv.ParseInt(m[2], 10, 64)
+	if err != nil {
+		return false, "", time.Time{}
+	}
+
+	return true, m[1], time.Unix(ts, 0)
+}
+
+func FinishedFile(planBaseName string, id ulid.ULID) string {
+	return fmt.Sprintf("%s.finished.%s", planBaseName, id.String())
+}
+
+var finished = regexp.MustCompile("^(.+)\\.finished\\.([a-zA-Z0-9]+)$")
+
+func IsFinishedFile(name string) (bool, string, ulid.ULID) {
+	m := finished.FindStringSubmatch(name)
+	if len(m) == 0 {
+		return false, "", ulid.ULID{}
+	}
+
+	id, err := ulid.Parse(m[2])
+	if err != nil {
+		return false, "", ulid.ULID{}
+	}
+
+	return true, m[1], id
+}
+
+func ErrorFile(planBaseName string) string {
+	return planBaseName + ".error"
+}
+
+func IsErrorFile(name string) (bool, string) {
+	if strings.HasSuffix(name, ".error") {
+		return true, name[:len(name)-len(".error")]
+	}
+	return false, ""
 }

@@ -168,9 +168,9 @@ func (b *Builder) running(ctx context.Context) error {
 }
 
 func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHeartbeatFile string) error {
-	planFileBase, err := getPlanBaseName(planFile)
-	if err != nil {
-		return err
+	isPlanFile, planFileBase := blocksconvert.IsPlanFile(planFile)
+	if !isPlanFile {
+		return errors.Errorf("not a plan file: %q", planFile)
 	}
 
 	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
@@ -266,7 +266,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 	}
 
 	// Upload finished status file
-	if err := b.bucketClient.Upload(ctx, fmt.Sprintf("%s.finished.%s", planFileBase, ulid.String()), strings.NewReader(ulid.String())); err != nil {
+	if err := b.bucketClient.Upload(ctx, blocksconvert.FinishedFile(planFileBase, ulid), strings.NewReader(ulid.String())); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}
 
@@ -300,27 +300,6 @@ func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, la
 	}()
 
 	return hb, hbCtx, hbCancel, nil
-}
-
-// Returns plan file name without ".plan" suffix (and possible compression suffix)
-func getPlanBaseName(planFile string) (string, error) {
-	switch {
-	case strings.HasSuffix(planFile, ".gz"):
-		planFile = planFile[:len(planFile)-len(".gz")]
-
-	case strings.HasSuffix(planFile, ".snappy"):
-		planFile = planFile[:len(planFile)-len(".snappy")]
-
-	default:
-		return "", errors.Errorf("unknown plan filename")
-	}
-
-	if !strings.HasSuffix(planFile, ".plan") {
-		return "", errors.New("not a .plan file")
-	}
-
-	planFile = planFile[:len(planFile)-len(".plan")]
-	return planFile, nil
 }
 
 func parsePlanHeader(dec *json.Decoder) (userID string, startTime, endTime time.Time, err error) {

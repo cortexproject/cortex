@@ -1,0 +1,319 @@
+package scheduler
+
+import (
+	"context"
+	"flag"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/tools/blocksconvert"
+)
+
+type Config struct {
+	ScanInterval        time.Duration
+	PlanScanConcurrency int
+	MaxProgressFileAge  time.Duration
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.ScanInterval, "scheduler.scan-interval", 5*time.Minute, "How often to scan for plans and their status.")
+	f.IntVar(&cfg.PlanScanConcurrency, "scheduler.plan-scan-concurrency", 5, "Limit of concurrent plan scans.")
+	f.DurationVar(&cfg.MaxProgressFileAge, "scheduler.max-progress-file-age", 30*time.Minute, "Progress files older than this duration are deleted.")
+}
+
+func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scheduler, error) {
+	b, err := scfg.GetBucket(l, reg)
+	if err != nil {
+		return nil, errors.Wrap(err, "create bucket")
+	}
+
+	return newSchedulerWithBucket(l, b, scfg.BucketPrefix, cfg, reg), nil
+}
+
+func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, cfg Config, reg prometheus.Registerer) *Scheduler {
+	s := &Scheduler{
+		log:          l,
+		cfg:          cfg,
+		bucket:       b,
+		bucketPrefix: bucketPrefix,
+
+		planStatus: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "scheduler_scanned_plans",
+			Help: "Number of plans in different status",
+		}, []string{"status"}),
+	}
+
+	s.Service = services.NewTimerService(cfg.ScanInterval, s.scanBucketForPlans, s.scanBucketForPlans, nil)
+	return s
+}
+
+type Scheduler struct {
+	services.Service
+	cfg Config
+	log log.Logger
+
+	bucket       objstore.Bucket
+	bucketPrefix string
+
+	planStatus *prometheus.GaugeVec
+
+	// Used to avoid scanning while there is dequeuing happening.
+	dequeueWG sync.WaitGroup
+
+	scanMu       sync.Mutex
+	scanning     bool
+	allUserPlans map[string]map[string]plan
+	plansQueue   []queuedPlan // Queued plans are sorted by day index - more recent (higher day index) days go first.
+}
+
+type queuedPlan struct {
+	dayIndex int
+	planFile string
+}
+
+func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
+	s.scanMu.Lock()
+	s.scanning = true
+	s.scanMu.Unlock()
+
+	defer func() {
+		s.scanMu.Lock()
+		s.scanning = false
+		s.scanMu.Unlock()
+	}()
+
+	// Make sure that no dequeuing is happening when scanning.
+	s.dequeueWG.Wait()
+
+	users, err := scanForUsers(ctx, s.bucket, s.bucketPrefix)
+	if err != nil {
+		level.Error(s.log).Log("msg", "failed to scan for users", "err", err)
+		return nil
+	}
+
+	var mu sync.Mutex
+	allPlans := map[string]map[string]plan{}
+	stats := map[planStatus]int{}
+	var queue []queuedPlan
+
+	runConcurrently(ctx, s.cfg.PlanScanConcurrency, users, func(user string) {
+		userPlans, err := scanForPlans(ctx, s.bucket, s.bucketPrefix, user)
+		if err != nil {
+			level.Error(s.log).Log("msg", "failed to scan plans for user", "user", user, "err", err)
+			return
+		}
+
+		mu.Lock()
+		allPlans[user] = userPlans
+		mu.Unlock()
+
+		for base, plan := range userPlans {
+			st := plan.Status()
+			if st == InProgress {
+				for pg, t := range plan.progressFiles {
+					if time.Now().Sub(t) > s.cfg.MaxProgressFileAge {
+						level.Warn(s.log).Log("msg", "deleting obsolete progress file", "path", pg)
+						err := s.bucket.Delete(ctx, pg)
+						if err != nil {
+							level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
+						} else {
+							delete(plan.progressFiles, pg)
+						}
+					}
+				}
+
+				// After deleting old progress files, status might have changed from InProgress to New.
+				st = plan.Status()
+			}
+
+			mu.Lock()
+			stats[st] += 1
+			mu.Unlock()
+
+			if st != New {
+				continue
+			}
+
+			dayIndex, err := strconv.ParseInt(base, 10, 32)
+			if err != nil {
+				level.Warn(s.log).Log("msg", "unable to parse day-index", "planFile", plan.planFile)
+				continue
+			}
+
+			mu.Lock()
+			queue = append(queue, queuedPlan{
+				dayIndex: int(dayIndex),
+				planFile: plan.planFile,
+			})
+			mu.Unlock()
+		}
+	})
+
+	// Plans with higher day-index (more recent) are put at the beginning.
+	sort.Slice(queue, func(i, j int) bool {
+		return queue[i].dayIndex > queue[j].dayIndex
+	})
+
+	for st, c := range stats {
+		s.planStatus.WithLabelValues(st.String()).Set(float64(c))
+	}
+
+	s.scanMu.Lock()
+	s.allUserPlans = allPlans
+	s.plansQueue = queue
+	s.scanMu.Unlock()
+
+	return nil
+}
+
+// Returns plan file, and first progress file created by scheduler.
+func (s *Scheduler) NextPlan(ctx context.Context) (string, string) {
+	if s.State() != services.Running {
+		return "", ""
+	}
+
+	return s.nextPlanNoRunningCheck(ctx)
+}
+
+func (s *Scheduler) nextPlanNoRunningCheck(ctx context.Context) (string, string) {
+	p := s.getNextPlanAndIncreaseDequeuingWG()
+	if p == "" {
+		return "", ""
+	}
+
+	// otherwise dequeueWG has been increased
+	defer s.dequeueWG.Done()
+
+	// Before we return plan file, we create progress file.
+	ok, base := blocksconvert.IsPlanFile(p)
+	if !ok {
+		// Should not happen
+		level.Error(s.log).Log("msg", "enqueued file is not a plan file", "path", p)
+		return "", ""
+	}
+
+	pg := blocksconvert.ProgressFile(base, time.Now())
+	err := s.bucket.Upload(ctx, pg, strings.NewReader("starting"))
+	if err != nil {
+		level.Error(s.log).Log("msg", "failed to create progress file", "path", pg, "err", err)
+		return "", ""
+	}
+
+	return p, pg
+}
+
+func (s *Scheduler) getNextPlanAndIncreaseDequeuingWG() string {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+
+	if s.scanning {
+		return ""
+	}
+
+	if len(s.plansQueue) == 0 {
+		return ""
+	}
+
+	var p string
+	p, s.plansQueue = s.plansQueue[0].planFile, s.plansQueue[1:]
+
+	s.dequeueWG.Add(1)
+	return p
+}
+
+func runConcurrently(ctx context.Context, concurrency int, users []string, userFunc func(user string)) {
+	wg := sync.WaitGroup{}
+	ch := make(chan string)
+
+	for ix := 0; ix < concurrency; ix++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for userID := range ch {
+				userFunc(userID)
+			}
+		}()
+	}
+
+sendLoop:
+	for _, userID := range users {
+		select {
+		case ch <- userID:
+			// ok
+		case <-ctx.Done():
+			// don't start new tasks.
+			break sendLoop
+		}
+	}
+
+	close(ch)
+
+	// wait for ongoing workers to finish.
+	wg.Wait()
+}
+
+func scanForUsers(ctx context.Context, bucket objstore.Bucket, bucketPrefix string) ([]string, error) {
+	var users []string
+	err := bucket.Iter(ctx, bucketPrefix, func(entry string) error {
+		users = append(users, strings.TrimSuffix(entry[len(bucketPrefix)+1:], "/"))
+		return nil
+	})
+
+	return users, err
+}
+
+func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, user string) (map[string]plan, error) {
+	prefix := path.Join(bucketPrefix, user)
+	prefixWithSlash := prefix + "/"
+
+	plans := map[string]plan{}
+
+	err := bucket.Iter(ctx, prefix, func(fullPath string) error {
+		if !strings.HasPrefix(fullPath, prefixWithSlash) {
+			return errors.Errorf("invalid prefix: %v", fullPath)
+		}
+
+		filename := fullPath[len(prefixWithSlash):]
+		if ok, base := blocksconvert.IsPlanFile(filename); ok {
+			p := plans[base]
+			p.planFile = fullPath
+			plans[base] = p
+		} else if ok, base, ts := blocksconvert.IsProgressFile(filename); ok {
+			p := plans[base]
+			if p.progressFiles == nil {
+				p.progressFiles = map[string]time.Time{}
+			}
+			p.progressFiles[fullPath] = ts
+			plans[base] = p
+		} else if ok, base, id := blocksconvert.IsFinishedFile(filename); ok {
+			p := plans[base]
+			p.finished = append(p.finished, id)
+			plans[base] = p
+		} else if ok, base := blocksconvert.IsErrorFile(filename); ok {
+			p := plans[base]
+			p.errorFile = true
+			plans[base] = p
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get plan status for user %s", user)
+	}
+
+	return plans, nil
+}

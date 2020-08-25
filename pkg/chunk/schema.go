@@ -688,6 +688,16 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels l
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
+		skipLabel := false
+		exlbls := excfg[userID]
+		for _, lbl := range exlbls {
+			if lbl.MetricName == lbl.MetricName && lbl.LabelName == v.Value {
+				skipLabel = true
+			}
+		}
+		if skipLabel {
+			continue
+		}
 		valueHash := sha256bytes(v.Value)
 		entries = append(entries, IndexEntry{
 			TableName:  bucket.tableName,
@@ -790,6 +800,16 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 	// We use a hash of the value to limit its length.
 	for _, v := range labels {
 		if v.Name == model.MetricNameLabel {
+			continue
+		}
+		skipLabel := false
+		exlbls := excfg[userID]
+		for _, lbl := range exlbls {
+			if lbl.MetricName == lbl.MetricName && lbl.LabelName == v.Value {
+				skipLabel = true
+			}
+		}
+		if skipLabel {
 			continue
 		}
 		valueHash := sha256bytes(v.Value)
@@ -913,6 +933,16 @@ func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 	labelNames := make([]string, 0, len(labels))
 	for _, l := range labels {
 		if l.Name == model.MetricNameLabel {
+			continue
+		}
+		skipLabel := false
+		exlbls := excfg[userID]
+		for _, lbl := range exlbls {
+			if lbl.MetricName == lbl.MetricName && lbl.LabelName == l.Value {
+				skipLabel = true
+			}
+		}
+		if skipLabel {
 			continue
 		}
 		labelNames = append(labelNames, l.Name)

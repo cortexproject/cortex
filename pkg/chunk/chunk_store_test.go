@@ -301,7 +301,13 @@ func TestChunkStore_ExcludeLabels(t *testing.T) {
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
-	const observableMetadata = `
+	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_index_entries_per_chunk",
+		Help:      "Number of entries written to storage per chunk.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
+	const observableMetadataIndexLookup = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
 	cortex_chunk_store_index_lookups_per_query_bucket{le="1"} 120
@@ -312,6 +318,19 @@ func TestChunkStore_ExcludeLabels(t *testing.T) {
 	cortex_chunk_store_index_lookups_per_query_bucket{le="+Inf"} 120
 	cortex_chunk_store_index_lookups_per_query_sum 120
 	cortex_chunk_store_index_lookups_per_query_count 120
+	`
+
+	const observableMetadataEntriesChunk = `
+	# HELP cortex_chunk_store_index_entries_per_chunk Number of entries written to storage per chunk.
+	# TYPE cortex_chunk_store_index_entries_per_chunk histogram
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="1"} 4
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="2"} 20
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="4"} 60
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="8"} 72
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="16"} 72
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="+Inf"} 72
+	cortex_chunk_store_index_entries_per_chunk_sum 240
+	cortex_chunk_store_index_entries_per_chunk_count 72
 	`
 	fooMetric1 := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
@@ -445,7 +464,8 @@ func TestChunkStore_ExcludeLabels(t *testing.T) {
 			}
 		}
 	}
-	assert.NoError(t, testutil.CollectAndCompare(indexLookupsPerQuery, strings.NewReader(observableMetadata), "cortex_chunk_store_index_lookups_per_query"))
+	assert.NoError(t, testutil.CollectAndCompare(indexLookupsPerQuery, strings.NewReader(observableMetadataIndexLookup), "cortex_chunk_store_index_lookups_per_query"))
+	assert.NoError(t, testutil.CollectAndCompare(indexEntriesPerChunk, strings.NewReader(observableMetadataEntriesChunk), "cortex_chunk_store_index_entries_per_chunk"))
 }
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	ctx := context.Background()

@@ -48,6 +48,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20200819132913-cb830b0a9c78
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
+	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.5.1
 	github.com/thanos-io/thanos v0.13.1-0.20200807203500-9b578afb4763
@@ -79,3 +80,6 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 // We can't upgrade to grpc 1.30.0 until go.etcd.io/etcd will support it.
 replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
+
+// Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
+replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab

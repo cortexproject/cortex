@@ -21,6 +21,7 @@
 * [ENHANCEMENT] Add config validation to the experimental Alertmanager API. Invalid configs are no longer accepted. #3053
 * [ENHANCEMENT] Add "integration" as a label for `cortex_alertmanager_notifications_total` and `cortex_alertmanager_notifications_failed_total` metrics. #3056
 * [ENHANCEMENT] Add `cortex_ruler_config_last_reload_successful` and `cortex_ruler_config_last_reload_successful_seconds` to check status of users rule manager. #3056
+* [ENHANCEMENT] Memcached dial() calls now have an optional circuit-breaker to avoid hammering a broken cache #3051
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
@@ -29,8 +30,9 @@
 * [BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. #3030
 * [BUGFIX] Fixes the Alertmanager panicking when no `-alertmanager.web.external-url` is provided. #3017
 * [BUGFIX] Fixes the registration of the Alertmanager API metrics `cortex_alertmanager_alerts_received_total` and `cortex_alertmanager_alerts_invalid_total`. #3065
-* [BUGFIX] Fixes `-config.expand-env` requires argument. #3083
+* [BUGFIX] An index optimisation actually slows things down when using caching. Moved it to the right location. #2973
 * [BUGFIX] Ingester: If push request contained both valid and invalid samples, valid samples were ingested but not stored to WAL of the chunks storage. This has been fixed. #3067
+* [BUGFIX] Fixes `-config.expand-env` requires argument. #3083
 
 ## 1.3.0 / 2020-08-21
 

@@ -561,6 +561,11 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 			if _, ok := matchSet[string(labelValue)]; !ok {
 				continue
 			}
+
+			// If its in the set, then add it to set, we don't need to run
+			// matcher on it again.
+			result = append(result, chunkKey)
+			continue
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {

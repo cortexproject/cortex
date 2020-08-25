@@ -505,6 +505,10 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			[]Chunk{chunk1, chunk2},
 		},
 		{
+			`foo{bar=~"beeping|baz"}`,
+			[]Chunk{chunk1},
+		},
+		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
 		},

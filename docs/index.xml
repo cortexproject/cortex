@@ -485,6 +485,9 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -distributor.ha-tracker.failover-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ha_tracker_failover_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>30s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Backend storage to use for the ring. Please be aware that memberlist is not&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># supported by the HA tracker since gossip propagation is too slow for HA&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># purposes.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Backend storage to use for the ring. Supported values are: consul, etcd,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># inmemory, memberlist, multi.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4285,6 +4288,7 @@ N/A
 &lt;li>&lt;a href="https://www.consul.io">Consul&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://etcd.io">Etcd&lt;/a>&lt;/li>
 &lt;/ul>
+&lt;p>Note: Memberlist is not supported. Memberlist-based KV store propagates updates using gossip, which is very slow for HA purposes: result is that different distributors may see different Prometheus server as elected HA replica, which is definitely not desirable.&lt;/p>
 &lt;p>For more information, please refer to &lt;a href="/docs/production/ha-pair-handling/">config for sending HA pairs data to Cortex&lt;/a> in the documentation.&lt;/p>
 &lt;h4 id="hashing">Hashing&lt;/h4>
 &lt;p>Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which ingester instance(s) should receive a given series.&lt;/p>
@@ -4631,12 +4635,14 @@ This flag can be used to specify label names that to drop during sample ingestio
 &lt;/li>
 &lt;/ul>
 &lt;h3 id="ringha-tracker-store">Ring/HA Tracker Store&lt;/h3>
-&lt;p>The KVStore client is used by both the Ring and HA Tracker.&lt;/p>
+&lt;p>The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn&amp;rsquo;t support memberlist as KV store).&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>{ring,distributor.ha-tracker}.prefix&lt;/code>
 The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.&lt;/li>
 &lt;li>&lt;code>{ring,distributor.ha-tracker}.store&lt;/code>
-Backend storage to use for the ring (consul, etcd, inmemory, memberlist, multi).&lt;/li>
+Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).&lt;/li>
+&lt;li>&lt;code>{ring,distributor.ring}.store&lt;/code>
+Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).&lt;/li>
 &lt;/ul>
 &lt;h4 id="consul">Consul&lt;/h4>
 &lt;p>By default these flags are used to configure Consul used for the ring. To configure Consul for the HA tracker,
@@ -4663,7 +4669,7 @@ The timeout for the etcd connection.&lt;/li>
 The maximum number of retries to do for failed ops.&lt;/li>
 &lt;/ul>
 &lt;h4 id="memberlist">memberlist&lt;/h4>
-&lt;p>Flags for configuring KV store based on memberlist library.&lt;/p>
+&lt;p>Flags for configuring KV store based on memberlist library (works only for the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a>, not for the HA Tracker).&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>memberlist.nodename&lt;/code>
 Name of the node in memberlist cluster. Defaults to hostname.&lt;/li>
@@ -4746,7 +4752,7 @@ Prometheus label to look for in samples to identify a Prometheus HA replica. (de
 &lt;li>&lt;code>distributor.ha-tracker.failover-timeout&lt;/code>
 If we don&amp;rsquo;t receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)&lt;/li>
 &lt;li>&lt;code>distributor.ha-tracker.store&lt;/code>
-Backend storage to use for the ring (consul, etcd, inmemory). (default &amp;ldquo;consul&amp;rdquo;)&lt;/li>
+Backend storage to use for the ring (consul, etcd, inmemory, multi). Inmemory only works if there is a single distributor and ingester running in the same process (for testing purposes). (default &amp;ldquo;consul&amp;rdquo;)&lt;/li>
 &lt;li>&lt;code>distributor.ha-tracker.update-timeout&lt;/code>
 Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)&lt;/li>
 &lt;/ul>
@@ -7910,7 +7916,7 @@ __replica__: replica2
 &lt;p>The minimal configuration requires:&lt;/p>
 &lt;ul>
 &lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
-&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>)&lt;/li>
+&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.&lt;/li>
 &lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
 &lt;/ul>
 &lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
@@ -7925,7 +7931,7 @@ __replica__: replica2
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;consul&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd | memberlist&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>

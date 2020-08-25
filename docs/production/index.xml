@@ -614,7 +614,7 @@ __replica__: replica2
 &lt;p>The minimal configuration requires:&lt;/p>
 &lt;ul>
 &lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
-&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>)&lt;/li>
+&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.&lt;/li>
 &lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
 &lt;/ul>
 &lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
@@ -629,7 +629,7 @@ __replica__: replica2
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;consul&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd | memberlist&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>

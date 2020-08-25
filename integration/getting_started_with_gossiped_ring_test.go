@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
+	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
@@ -20,6 +22,10 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
 	// Start Cortex components.
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-gossip-1.yaml", "config1.yaml"))
 	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-gossip-2.yaml", "config2.yaml"))
@@ -27,8 +33,15 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	// We don't care for storage part too much here. Both Cortex instances will write new blocks to /tmp, but that's fine.
 	flags := map[string]string{
 		// decrease timeouts to make test faster. should still be fine with two instances only
-		"-ingester.join-after":     "0s", // join quickly
-		"-ingester.observe-period": "5s", // to avoid conflicts in tokens
+		"-ingester.join-after":                                    "0s", // join quickly
+		"-ingester.observe-period":                                "5s", // to avoid conflicts in tokens
+		"-experimental.blocks-storage.bucket-store.sync-interval": "1s", // sync continuously
+		"-experimental.blocks-storage.backend":                    "s3",
+		"-experimental.blocks-storage.s3.bucket-name":             bucketName,
+		"-experimental.blocks-storage.s3.access-key-id":           e2edb.MinioAccessKey,
+		"-experimental.blocks-storage.s3.secret-access-key":       e2edb.MinioSecretKey,
+		"-experimental.blocks-storage.s3.endpoint":                fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-experimental.blocks-storage.s3.insecure":                "true",
 	}
 
 	// This cortex will fail to join the cluster configured in yaml file. That's fine.
@@ -44,13 +57,17 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex1))
 	require.NoError(t, s.StartAndWaitReady(cortex2))
 
-	// Both Cortex serves should see each other.
+	// Both Cortex servers should see each other.
 	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
 
-	// Both Cortex servers should have 512 tokens
-	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
-	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+	// Both Cortex servers should have 512 tokens for ingesters ring and 512 tokens for store-gateways ring.
+	for _, ringName := range []string{"ingester", "store-gateway"} {
+		ringMatcher := labels.MustNewMatcher(labels.MatchEqual, "name", ringName)
+
+		require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2*512), []string{"cortex_ring_tokens_total"}, e2e.WithLabelMatchers(ringMatcher)))
+		require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(2*512), []string{"cortex_ring_tokens_total"}, e2e.WithLabelMatchers(ringMatcher)))
+	}
 
 	// We need two "ring members" visible from both Cortex instances
 	require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
@@ -67,7 +84,7 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	// Push some series to Cortex2 (Cortex1 may not yet see Cortex2 as ACTIVE due to gossip, so we play it safe by pushing to Cortex2)
+	// Push some series to Cortex2
 	now := time.Now()
 	series, expectedVector := generateSeries("series_1", now)
 
@@ -80,4 +97,21 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
+
+	// Before flushing the blocks we expect no store-gateway has loaded any block.
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(0), "cortex_bucket_store_blocks_loaded"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(0), "cortex_bucket_store_blocks_loaded"))
+
+	// Flush blocks from ingesters to the store.
+	for _, instance := range []*e2ecortex.CortexService{cortex1, cortex2} {
+		res, err = e2e.GetRequest("http://" + instance.HTTPEndpoint() + "/flush")
+		require.NoError(t, err)
+		require.Equal(t, 204, res.StatusCode)
+	}
+
+	// Given store-gateway blocks sharding is enabled with the default replication factor of 3,
+	// and ingestion replication factor is 1, we do expect the series has been ingested by 1
+	// single ingester and so we have 1 block shipped from ingesters and loaded by both store-gateways.
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 }

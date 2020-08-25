@@ -394,7 +394,8 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 		return nil
 	}
 
-	return fmt.Errorf("got status code: %v, expected code in range: [%v, %v]", res.StatusCode, p.expectedStatusRangeStart, p.expectedStatusRangeEnd)
+	body, _ := ioutil.ReadAll(res.Body)
+	return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.

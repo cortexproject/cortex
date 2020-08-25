@@ -150,11 +150,13 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 ### Ring/HA Tracker Store
 
-The KVStore client is used by both the Ring and HA Tracker.
+The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't support memberlist as KV store).
 - `{ring,distributor.ha-tracker}.prefix`
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`
-   Backend storage to use for the ring (consul, etcd, inmemory, memberlist, multi).
+   Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
+- `{ring,distributor.ring}.store`
+   Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 
 #### Consul
 
@@ -184,7 +186,7 @@ prefix these flags with `distributor.ha-tracker.`
 
 #### memberlist
 
-Flags for configuring KV store based on memberlist library.
+Flags for configuring KV store based on memberlist library (works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker).
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
@@ -278,7 +280,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 - `distributor.ha-tracker.failover-timeout`
    If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
 - `distributor.ha-tracker.store`
-   Backend storage to use for the ring (consul, etcd, inmemory). (default "consul")
+   Backend storage to use for the ring (consul, etcd, inmemory, multi). Inmemory only works if there is a single distributor and ingester running in the same process (for testing purposes). (default "consul")
 - `distributor.ha-tracker.update-timeout`
    Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
 

@@ -46,7 +46,7 @@ The replica label should be set so that the value for each prometheus is unique 
 The minimal configuration requires:
 
 * Enabling the HA tracker via `-distributor.ha-tracker.enable=true` CLI flag (or its YAML config option)
-* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store))
+* Configuring the KV store for the ring (See: [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store)). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.
 * Setting the limits configuration to accept samples via `-distributor.ha-tracker.enable-for-all-users` (or its YAML config option)
 
 
@@ -64,7 +64,7 @@ distributor:
     ...
     kvstore:
       [store: <string> | default = "consul"]
-      [consul | etcd | memberlist: <config>]
+      [consul | etcd: <config>]
       ...
   ...
 ```

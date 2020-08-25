@@ -2934,6 +2934,20 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
 [consistent_hash: <boolean> | default = true]
+
+# Trip circuit-breaker after this number of consecutive dial failures (if zero
+# then circuit-breaker is disabled).
+# CLI flag: -<prefix>.memcached.cb.failures
+[circuit_breaker_consecutive_failures: <int> | default = 0]
+
+# Duration circuit-breaker remains open after tripping (if zero then 60 seconds
+# is used).
+# CLI flag: -<prefix>.memcached.cb.timeout
+[circuit_breaker_timeout: <duration> | default = 10s]
+
+# Reset circuit-breaker counts after this long (if zero then never reset).
+# CLI flag: -<prefix>.memcached.cb.interval
+[circuit_breaker_interval: <duration> | default = 10s]
 ```
 
 ### `fifo_cache_config`

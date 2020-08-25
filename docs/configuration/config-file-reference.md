@@ -344,7 +344,7 @@ ha_tracker:
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
   # Backend storage to use for the ring. Please be aware that memberlist is not
-  # supported by the HA tracker since Gossip propagation is too slow for HA
+  # supported by the HA tracker since gossip propagation is too slow for HA
   # purposes.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

@@ -160,7 +160,7 @@ func (s storeSchema) GetWriteEntries(from, through model.Time, userID string, me
 }
 
 // returns cache key string and []IndexEntry per bucket, matched in order
-func (s seriesStoreSchema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error) {
+func (s seriesStoreSchema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels) ([]string, [][]IndexEntry, error) {
 	var keys []string
 	var indexEntries [][]IndexEntry
 
@@ -177,7 +177,7 @@ func (s seriesStoreSchema) GetCacheKeysAndLabelWriteEntries(from, through model.
 		key = hex.EncodeToString([]byte(key))
 		keys = append(keys, key)
 
-		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, labels, chunkID)
+		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, labels, chunkID, excfg, userID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -190,7 +190,7 @@ func (s seriesStoreSchema) GetChunkWriteEntries(from, through model.Time, userID
 	var result []IndexEntry
 
 	for _, bucket := range s.buckets(from, through, userID) {
-		entries, err := s.entries.GetChunkWriteEntries(bucket, metricName, labels, chunkID)
+		entries, err := s.entries.GetChunkWriteEntries(bucket, metricName, labels, chunkID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -364,7 +364,7 @@ type storeEntries interface {
 type seriesStoreEntries interface {
 	baseEntries
 
-	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
+	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels, userID string) ([]IndexEntry, error)
 	GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 
 	GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
@@ -669,7 +669,7 @@ func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardA
 // v9Entries adds a layer of indirection between labels -> series -> chunks.
 type v9Entries struct{}
 
-func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels, userID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	entries := []IndexEntry{
@@ -770,7 +770,7 @@ type v10Entries struct {
 	rowShards uint32
 }
 
-func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg Util.ExcludeLabels, userID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard
@@ -904,7 +904,7 @@ type v11Entries struct {
 	v10Entries
 }
 
-func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels, userID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard

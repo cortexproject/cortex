@@ -179,19 +179,13 @@ func (w *walWrapper) Stop() {
 }
 
 func (w *walWrapper) Log(record *WALRecord) error {
-	if record == nil {
+	if record == nil || (len(record.Series) == 0 && len(record.Samples) == 0) {
 		return nil
 	}
 	select {
 	case <-w.quit:
 		return nil
 	default:
-		if len(record.Series) == 0 && len(record.Samples) == 0 {
-			// This is possible if a tenant is sending a lot of invalid samples.
-			// We avoid taking out a buffer from the pool in that case.
-			return nil
-		}
-
 		buf := w.bytesPool.Get().([]byte)[:0]
 		defer func() {
 			w.bytesPool.Put(buf) // nolint:staticcheck

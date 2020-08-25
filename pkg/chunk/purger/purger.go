@@ -379,7 +379,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 
 		// this is mostly required to clean up series ids from series store
 		err := p.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.PlanInterval.StartTimestampMs), model.Time(plan.PlanInterval.EndTimestampMs),
-			userID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels))
+			userID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), nil)
 		if err != nil {
 			return err
 		}

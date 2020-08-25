@@ -56,10 +56,14 @@ func newBackfillTSDB(userID string, backfillAge time.Duration, metrics *ingester
 	}
 }
 
-func (b *backfillTSDB) appender(i *Ingester) *backfillAppender {
+func (b *backfillTSDB) appender(
+	createNewTSDB func(userID, dbDir string, minBlockDuration, maxBlockDuration int64, reg *prometheus.Registry) (*userTSDB, error),
+	backfillBlocksDir func(userID string) string,
+) *backfillAppender {
 	return &backfillAppender{
-		ingester:     i,
-		backfillTSDB: b,
+		createNewTSDB:     createNewTSDB,
+		backfillBlocksDir: backfillBlocksDir,
+		backfillTSDB:      b,
 	}
 }
 
@@ -67,9 +71,14 @@ func (b *backfillTSDB) appender(i *Ingester) *backfillAppender {
 // This _does not_ implement storage.Appender interface.
 // The methods of this appender should not be called concurrently.
 type backfillAppender struct {
-	ingester                      *Ingester
 	backfillTSDB                  *backfillTSDB
 	firstAppender, secondAppender *backfillRangeAppender
+
+	// Keeping this methods of Ingester here to avoid the appender having a reference to the ingester.
+	createNewTSDB func(userID, dbDir string, minBlockDuration, maxBlockDuration int64, reg *prometheus.Registry) (*userTSDB, error)
+	// We are keeping the method instead of string for backfill dir because if there is a surge in backfill writes,
+	// it will create a new string for every push while we want it only to open a new TSDB.
+	backfillBlocksDir func(userID string) string
 }
 
 type backfillRangeAppender struct {
@@ -154,10 +163,10 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 
 		var err error
 		start, end := a.timeRangesForTimestamp(s.TimestampMs)
-		db, err = a.ingester.createNewTSDB(
+		db, err = a.createNewTSDB(
 			a.backfillTSDB.userID,
 			filepath.Join(
-				a.ingester.cfg.BlocksStorageConfig.TSDB.BackfillBlocksDir(a.backfillTSDB.userID),
+				a.backfillBlocksDir(a.backfillTSDB.userID),
 				getTSDBName(start, end),
 			),
 			(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
@@ -197,10 +206,10 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			a.secondAppender = &backfillRangeAppender{app: app, db: db, start: start, end: end}
 		}
 
-		a.ingester.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
+		a.backfillTSDB.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
 		if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
 			// This user did not have a backfill TSDB before.
-			a.ingester.metrics.numUsersWithBackfillTSDBs.Inc()
+			a.backfillTSDB.metrics.numUsersWithBackfillTSDBs.Inc()
 		}
 	}
 	if app == nil {
@@ -322,7 +331,7 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	return merr.Err()
 }
 
-// isWithinBackfillAge returns true if the given timestamp is withing the backfill age.
+// isWithinBackfillAge returns true if the given timestamp is within the backfill age.
 func (b *backfillTSDB) isWithinBackfillAge(ts int64) bool {
 	// The backfillAge is backfill time beyond what is already possible by main TSDB.
 	// Hence the -time.Hour.

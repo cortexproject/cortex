@@ -453,7 +453,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				s.TimestampMs > mtime.Now().Add(-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge-time.Hour).Unix()*1000 {
 				// The -time.Hour comes from the main TSDB.
 				if backfillApp == nil {
-					backfillApp = db.backfillTSDB.appender(i)
+					backfillApp = db.backfillTSDB.appender(i.createNewTSDB, i.cfg.BlocksStorageConfig.TSDB.BackfillBlocksDir)
 				}
 				err := backfillApp.add(ts.Labels, s)
 				if err == nil {

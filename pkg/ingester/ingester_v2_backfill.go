@@ -69,7 +69,13 @@ func (b *backfillTSDB) appender(i *Ingester) *backfillAppender {
 type backfillAppender struct {
 	ingester                      *Ingester
 	backfillTSDB                  *backfillTSDB
-	firstAppender, secondAppender storage.Appender
+	firstAppender, secondAppender *backfillRangeAppender
+}
+
+type backfillRangeAppender struct {
+	app        storage.Appender
+	db         *userTSDB
+	start, end int64
 }
 
 // add requires the samples to be within the backfill age.
@@ -105,23 +111,41 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	var app storage.Appender
 	var db *userTSDB
 
+	// Fast path.
+	if a.firstAppender != nil && s.TimestampMs >= a.firstAppender.start && s.TimestampMs < a.firstAppender.end {
+		return a.firstAppender.app, a.firstAppender.db, nil
+	} else if a.secondAppender != nil && s.TimestampMs >= a.secondAppender.start && s.TimestampMs < a.secondAppender.end {
+		return a.secondAppender.app, a.secondAppender.db, nil
+	}
+
 	// We could use RLock here to check the TSDBs, but because we create new TSDB if none exists,
 	// it's easier and cleaner to handle races by taking the write lock.
 	// TODO(codesome): If we see performance issues, explore ways to read lock here.
+	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in first and second.
 	a.backfillTSDB.mtx.Lock()
 	defer a.backfillTSDB.mtx.Unlock()
 	// Check if we already have TSDB created and use it.
 	if a.backfillTSDB.dbs[0] != nil && s.TimestampMs >= a.backfillTSDB.dbs[0].start && s.TimestampMs < a.backfillTSDB.dbs[0].end {
 		if a.firstAppender == nil {
-			a.firstAppender = a.backfillTSDB.dbs[0].db.Appender()
+			a.firstAppender = &backfillRangeAppender{
+				app:   a.backfillTSDB.dbs[0].db.Appender(),
+				db:    a.backfillTSDB.dbs[0].db,
+				start: a.backfillTSDB.dbs[0].start,
+				end:   a.backfillTSDB.dbs[0].end,
+			}
 		}
-		app = a.firstAppender
+		app = a.firstAppender.app
 		db = a.backfillTSDB.dbs[0].db
 	} else if a.backfillTSDB.dbs[1] != nil && s.TimestampMs >= a.backfillTSDB.dbs[1].start && s.TimestampMs < a.backfillTSDB.dbs[1].end {
 		if a.secondAppender == nil {
-			a.secondAppender = a.backfillTSDB.dbs[1].db.Appender()
+			a.secondAppender = &backfillRangeAppender{
+				app:   a.backfillTSDB.dbs[1].db.Appender(),
+				db:    a.backfillTSDB.dbs[1].db,
+				start: a.backfillTSDB.dbs[1].start,
+				end:   a.backfillTSDB.dbs[1].end,
+			}
 		}
-		app = a.secondAppender
+		app = a.secondAppender.app
 		db = a.backfillTSDB.dbs[1].db
 	} else if s.TimestampMs > mtime.Now().Add(-a.backfillTSDB.backfillAge-time.Hour).Unix()*1000 {
 		// The sample is in the backfill range.
@@ -164,7 +188,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			}
 			a.backfillTSDB.dbs[0] = newDB
 			app = db.Appender()
-			a.firstAppender = app
+			a.firstAppender = &backfillRangeAppender{app: app, db: db, start: start, end: end}
 		} else {
 			if a.backfillTSDB.dbs[1] != nil {
 				// This should not happen.
@@ -172,7 +196,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 			}
 			a.backfillTSDB.dbs[1] = newDB
 			app = db.Appender()
-			a.secondAppender = app
+			a.secondAppender = &backfillRangeAppender{app: app, db: db, start: start, end: end}
 		}
 
 		a.ingester.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
@@ -191,10 +215,10 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 func (a *backfillAppender) commit() error {
 	var merr tsdb_errors.MultiError
 	if a.firstAppender != nil {
-		merr.Add(a.firstAppender.Commit())
+		merr.Add(a.firstAppender.app.Commit())
 	}
 	if a.secondAppender != nil {
-		merr.Add(a.secondAppender.Commit())
+		merr.Add(a.secondAppender.app.Commit())
 	}
 	return merr.Err()
 }
@@ -202,10 +226,10 @@ func (a *backfillAppender) commit() error {
 func (a *backfillAppender) rollback() error {
 	var merr tsdb_errors.MultiError
 	if a.firstAppender != nil {
-		merr.Add(a.firstAppender.Rollback())
+		merr.Add(a.firstAppender.app.Rollback())
 	}
 	if a.secondAppender != nil {
-		merr.Add(a.secondAppender.Rollback())
+		merr.Add(a.secondAppender.app.Rollback())
 	}
 	return merr.Err()
 }
@@ -258,66 +282,59 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	b.compactMtx.Lock()
 	defer b.compactMtx.Unlock()
-	b.mtx.RLock()
-	// There is no second TSDB. Try compaction for first TSDB.
-	if b.dbs[1] == nil {
-		firstDB := b.dbs[0]
-		b.mtx.RUnlock()
 
-		err := b.compactAndShipAndCloseDB(0, force)
-		if err != nil {
-			return err
-		}
-
-		if err := os.RemoveAll(firstDB.db.Dir()); err != nil {
-			// TODO(codesome): Add a metric for this to alert on.
-			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compact", "user", firstDB.db.userID, "dir", firstDB.db.Dir())
-		}
-
-		return nil
-	}
-	b.mtx.RUnlock()
-
-	// There is second TSDB.
-	// This loop takes care of clearing both TSDBs if they were beyond backfill age.
-	for i := 0; i < 2; i++ {
+	var merr tsdb_errors.MultiError
+	secondCompacted := false
+	for i := range []int{1, 0} {
 		b.mtx.RLock()
-		secondDB := b.dbs[1]
+		db := b.dbs[i]
 		b.mtx.RUnlock()
 
-		err := b.compactAndShipAndCloseDB(1, force)
-		if err != nil {
-			return err
+		if db == nil || (!force && db.end > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
+			// DB is either nil or not outside backfill age yet.
+			// It might be a forced compaction, so we continue instead of breaking.
+			continue
 		}
 
+		if err := b.compactAndShipAndCloseDB(i); err != nil {
+			merr.Add(err)
+			// It might be a forced compaction, so we continue instead of breaking.
+			continue
+		}
+
+		if i == 1 {
+			secondCompacted = true
+		}
+
+		if err := os.RemoveAll(db.db.Dir()); err != nil {
+			// TODO(codesome): Add a metric for this to alert on.
+			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compact", "user", db.db.userID, "dir", db.db.Dir())
+		}
+	}
+
+	if secondCompacted {
 		b.mtx.Lock()
-		// Move the TSDB because if the older TSDB went out of backfill age,
+		// Move the TSDB because if the older TSDB was compacted,
 		// then the newer among them now becomes the oldest.
 		b.dbs[1] = b.dbs[0]
 		b.dbs[0] = nil
 		b.mtx.Unlock()
-
-		if err := os.RemoveAll(secondDB.db.Dir()); err != nil {
-			// TODO(codesome): Add a metric for this to alert on.
-			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compact", "user", secondDB.db.userID, "dir", secondDB.db.Dir())
-		}
 	}
 
-	return nil
+	return merr.Err()
 }
 
 // compactAndShipDB compacts and ships the backfill TSDB if it is beyond the backfill age.
 // If there was an error, the boolean is always false.
 // NOTE: This is intended to be used by member functions of backfillTSDB only.
-func (b *backfillTSDB) compactAndShipAndCloseDB(idx int, force bool) (err error) {
+func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 	b.mtx.Lock()
 	db := b.dbs[idx]
-	if db == nil || (!force && db.end > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000) {
-		// Still inside backfill age (or nil).
+	if db == nil {
+		// While the caller does the nil check, we have this check here to avoid any regression.
 		b.mtx.Unlock()
 		return nil
 	}
-
 	// So that we don't get any samples after compaction.
 	b.dbs[idx] = nil
 	b.mtx.Unlock()
@@ -389,7 +406,7 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 		db := b.dbs[i]
 		b.mtx.RUnlock()
 
-		err := b.compactAndShipAndCloseDB(i, true)
+		err := b.compactAndShipAndCloseDB(i)
 		if err != nil {
 			merr.Add(err)
 			continue

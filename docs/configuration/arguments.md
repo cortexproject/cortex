@@ -156,7 +156,7 @@ The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't s
 - `{ring,distributor.ha-tracker}.store`
    Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
 - `{ring,distributor.ring}.store`
-   Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi)).
+   Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 
 #### Consul
 

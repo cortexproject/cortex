@@ -77,6 +77,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		var err error
 		sourceIPs, err = middleware.NewSourceIPs(serverCfg.LogSourceIPsHeader, serverCfg.LogSourceIPsRegex)
 		if err != nil {
+			// This should have already been caught in the Server creation
 			return nil, err
 		}
 	}

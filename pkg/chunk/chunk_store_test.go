@@ -5,13 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-<<<<<<< HEAD
 	"strings"
-=======
-	"sort"
-	"strings"
-	"sync"
->>>>>>> Fix issue
 	"testing"
 	"time"
 
@@ -1285,7 +1279,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.Equal(t, 2, len(chunks))
 
 			// lets try deleting series ID without deleting the chunk
-			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric, excludeLblCfg)
 			require.NoError(t, err)
 
 			// series IDs should still be there since chunks for them still exist
@@ -1298,7 +1292,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			err = store.DeleteChunk(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.ExternalKey(), metric1, nil)
 			require.NoError(t, err)
 
-			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric, excludeLblCfg)
 			require.NoError(t, err)
 
 			// there should be only be 1 chunk and 1 series ID left for it
@@ -1317,7 +1311,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 				&model.Interval{Start: fooChunk2.From, End: fooChunk2.From.Add(30 * time.Minute)})
 			require.NoError(t, err)
 
-			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric, excludeLblCfg)
 			require.NoError(t, err)
 
 			// partial deletion should have left another chunk and a series ID in store

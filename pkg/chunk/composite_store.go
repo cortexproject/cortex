@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -38,7 +39,7 @@ type Store interface {
 	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
 	DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error
 	// DeleteSeriesIDs is only relevant for SeriesStore.
-	DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error
+	DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels, excfg util.ExcludeLabels) error
 	Stop()
 }
 
@@ -192,9 +193,9 @@ func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
 }
 
 // DeleteSeriesIDs deletes series IDs from index in series store
-func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels, excfg util.ExcludeLabels) error {
 	return c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		return store.DeleteSeriesIDs(innerCtx, from, through, userID, metric)
+		return store.DeleteSeriesIDs(innerCtx, from, through, userID, metric, excfg)
 	})
 }
 

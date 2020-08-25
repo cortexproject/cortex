@@ -78,7 +78,7 @@ type SeriesStoreSchema interface {
 	// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
 	// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
 	// if yes then it doesn't include IndexEntry's for that bucket for deletion.
-	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error)
+	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc, excfg util.ExcludeLabels) ([]IndexEntry, error)
 }
 
 // IndexQuery describes a query for entries
@@ -260,7 +260,7 @@ func (s seriesStoreSchema) GetChunksForSeries(from, through model.Time, userID s
 // Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
 // It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
 // if yes then it doesn't include IndexEntry's for that bucket for deletion.
-func (s seriesStoreSchema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+func (s seriesStoreSchema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc, excfg util.ExcludeLabels) ([]IndexEntry, error) {
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, ErrMetricNameLabelMissing
@@ -318,7 +318,7 @@ func (s seriesStoreSchema) GetSeriesDeleteEntries(from, through model.Time, user
 	var result []IndexEntry
 
 	for _, bucket := range buckets {
-		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, metric, "")
+		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, metric, "", excfg, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -770,7 +770,7 @@ type v10Entries struct {
 	rowShards uint32
 }
 
-func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg Util.ExcludeLabels, userID string) ([]IndexEntry, error) {
+func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string, excfg util.ExcludeLabels, userID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard

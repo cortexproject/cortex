@@ -191,8 +191,8 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid table_manager config")
 	}
 
-	if c.Storage.Engine == storage.StorageEngineBlocks && len(c.Schema.Configs) > 0 {
-		level.Warn(log).Log("schema configuration is not used in blocks storage mode, and will have no effect")
+	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
+		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
 	}
 
 	return nil

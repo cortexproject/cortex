@@ -190,7 +190,7 @@ func (s seriesStoreSchema) GetChunkWriteEntries(from, through model.Time, userID
 	var result []IndexEntry
 
 	for _, bucket := range s.buckets(from, through, userID) {
-		entries, err := s.entries.GetChunkWriteEntries(bucket, metricName, labels, chunkID, userID)
+		entries, err := s.entries.GetChunkWriteEntries(bucket, metricName, labels, chunkID)
 		if err != nil {
 			return nil, err
 		}

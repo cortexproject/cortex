@@ -82,7 +82,8 @@ func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state In
 	return backoff.Err()
 }
 
-// TODO comment (guarantee sorting)
+// getZones return the list zones from the provided tokens. The returned list
+// is guaranteed to be sorted.
 func getZones(tokens map[string][]TokenDesc) []string {
 	var zones []string
 
@@ -94,7 +95,7 @@ func getZones(tokens map[string][]TokenDesc) []string {
 	return zones
 }
 
-// TODO comment
+// searchToken returns the offset of the tokens entry holding the range for the provided key.
 func searchToken(tokens []TokenDesc, key uint32) int {
 	i := sort.Search(len(tokens), func(x int) bool {
 		return tokens[x].Token > key

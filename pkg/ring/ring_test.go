@@ -248,21 +248,8 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 		shardSizes     = []int{3, 6, 9, 12, 15}
 	)
 
-	// Initialise the ring instances.
-	instances := make(map[string]IngesterDesc, numInstances)
-	for i := 1; i <= numInstances; i++ {
-		id := fmt.Sprintf("instance-%d", i)
-		instances[id] = IngesterDesc{
-			Addr:      fmt.Sprintf("127.0.0.%d", i),
-			Timestamp: time.Now().Unix(),
-			State:     ACTIVE,
-			Tokens:    GenerateTokens(128, nil),
-			Zone:      fmt.Sprintf("zone-%d", i%numZones),
-		}
-	}
-
 	// Initialise the ring.
-	ringDesc := &Desc{Ingesters: instances}
+	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
 	ring := Ring{
 		cfg:              Config{HeartbeatTimeout: time.Hour},
 		ringDesc:         ringDesc,
@@ -706,7 +693,6 @@ func generateTokensLinear(instanceID, numInstances, numTokens int) []uint32 {
 	return tokens
 }
 
-// TODO use across the tests
 func generateRingInstances(numInstances, numZones int) map[string]IngesterDesc {
 	instances := make(map[string]IngesterDesc, numInstances)
 
@@ -729,7 +715,6 @@ func generateRingInstance(id, zone int) (string, IngesterDesc) {
 }
 
 // compareReplicationSets returns the list of instance addresses which differ between the two sets.
-// TODO check if can be used to simplify other tests
 func compareReplicationSets(first, second ReplicationSet) (added, removed []string) {
 	for _, instance := range first.Ingesters {
 		if !second.Includes(instance.Addr) {

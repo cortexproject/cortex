@@ -106,11 +106,15 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	// This is to avoid race when dequeing creates progress file, but scan will not find it.
 	s.dequeueWG.Wait()
 
+	level.Info(s.log).Log("msg", "scanning for users")
+
 	users, err := scanForUsers(ctx, s.bucket, s.bucketPrefix)
 	if err != nil {
 		level.Error(s.log).Log("msg", "failed to scan for users", "err", err)
 		return nil
 	}
+
+	level.Info(s.log).Log("msg", "found users", "count", len(users))
 
 	var mu sync.Mutex
 	allPlans := map[string]map[string]plan{}
@@ -183,6 +187,13 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	s.allUserPlans = allPlans
 	s.plansQueue = queue
 	s.scanMu.Unlock()
+
+	totalPlans := 0
+	for _, p := range allPlans {
+		totalPlans += len(p)
+	}
+
+	level.Info(s.log).Log("msg", "plans scan finished", "queued", len(queue), "total_plans", totalPlans)
 
 	return nil
 }

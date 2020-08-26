@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"flag"
+	"html/template"
+	"net/http"
 	"path"
 	"sort"
 	"strconv"
@@ -12,11 +14,14 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
@@ -33,13 +38,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxProgressFileAge, "scheduler.max-progress-file-age", 30*time.Minute, "Progress files older than this duration are deleted.")
 }
 
-func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer, http *mux.Router, grpcServ *grpc.Server) (*Scheduler, error) {
 	b, err := scfg.GetBucket(l, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket")
 	}
 
-	return newSchedulerWithBucket(l, b, scfg.BucketPrefix, cfg, reg), nil
+	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, cfg, reg)
+	blocksconvert.RegisterSchedulerServer(grpcServ, s)
+	http.HandleFunc("/plans", s.httpPlans)
+	return s, nil
 }
 
 func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, cfg Config, reg prometheus.Registerer) *Scheduler {
@@ -79,8 +87,8 @@ type Scheduler struct {
 }
 
 type queuedPlan struct {
-	dayIndex int
-	planFile string
+	DayIndex int
+	PlanFile string
 }
 
 func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
@@ -95,6 +103,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	}()
 
 	// Make sure that no dequeuing is happening when scanning.
+	// This is to avoid race when dequeing creates progress file, but scan will not find it.
 	s.dequeueWG.Wait()
 
 	users, err := scanForUsers(ctx, s.bucket, s.bucketPrefix)
@@ -122,14 +131,14 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 		for base, plan := range userPlans {
 			st := plan.Status()
 			if st == InProgress {
-				for pg, t := range plan.progressFiles {
+				for pg, t := range plan.ProgressFiles {
 					if time.Now().Sub(t) > s.cfg.MaxProgressFileAge {
 						level.Warn(s.log).Log("msg", "deleting obsolete progress file", "path", pg)
 						err := s.bucket.Delete(ctx, pg)
 						if err != nil {
 							level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
 						} else {
-							delete(plan.progressFiles, pg)
+							delete(plan.ProgressFiles, pg)
 						}
 					}
 				}
@@ -148,14 +157,14 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 
 			dayIndex, err := strconv.ParseInt(base, 10, 32)
 			if err != nil {
-				level.Warn(s.log).Log("msg", "unable to parse day-index", "planFile", plan.planFile)
+				level.Warn(s.log).Log("msg", "unable to parse day-index", "planFile", plan.PlanFile)
 				continue
 			}
 
 			mu.Lock()
 			queue = append(queue, queuedPlan{
-				dayIndex: int(dayIndex),
-				planFile: plan.planFile,
+				DayIndex: int(dayIndex),
+				PlanFile: plan.PlanFile,
 			})
 			mu.Unlock()
 		}
@@ -163,7 +172,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 
 	// Plans with higher day-index (more recent) are put at the beginning.
 	sort.Slice(queue, func(i, j int) bool {
-		return queue[i].dayIndex > queue[j].dayIndex
+		return queue[i].DayIndex > queue[j].DayIndex
 	})
 
 	for st, c := range stats {
@@ -178,13 +187,17 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	return nil
 }
 
-// Returns plan file, and first progress file created by scheduler.
-func (s *Scheduler) NextPlan(ctx context.Context) (string, string) {
+// Returns next plan that builder should work on.
+func (s *Scheduler) NextPlan(ctx context.Context, _ *blocksconvert.NextPlanRequest) (*blocksconvert.NextPlanResponse, error) {
 	if s.State() != services.Running {
-		return "", ""
+		return &blocksconvert.NextPlanResponse{}, nil
 	}
 
-	return s.nextPlanNoRunningCheck(ctx)
+	plan, progress := s.nextPlanNoRunningCheck(ctx)
+	return &blocksconvert.NextPlanResponse{
+		PlanFile:     plan,
+		ProgressFile: progress,
+	}, nil
 }
 
 func (s *Scheduler) nextPlanNoRunningCheck(ctx context.Context) (string, string) {
@@ -227,7 +240,7 @@ func (s *Scheduler) getNextPlanAndIncreaseDequeuingWG() string {
 	}
 
 	var p string
-	p, s.plansQueue = s.plansQueue[0].planFile, s.plansQueue[1:]
+	p, s.plansQueue = s.plansQueue[0].PlanFile, s.plansQueue[1:]
 
 	s.dequeueWG.Add(1)
 	return p
@@ -289,22 +302,22 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 		filename := fullPath[len(prefixWithSlash):]
 		if ok, base := blocksconvert.IsPlanFile(filename); ok {
 			p := plans[base]
-			p.planFile = fullPath
+			p.PlanFile = fullPath
 			plans[base] = p
 		} else if ok, base, ts := blocksconvert.IsProgressFile(filename); ok {
 			p := plans[base]
-			if p.progressFiles == nil {
-				p.progressFiles = map[string]time.Time{}
+			if p.ProgressFiles == nil {
+				p.ProgressFiles = map[string]time.Time{}
 			}
-			p.progressFiles[fullPath] = ts
+			p.ProgressFiles[fullPath] = ts
 			plans[base] = p
 		} else if ok, base, id := blocksconvert.IsFinishedFile(filename); ok {
 			p := plans[base]
-			p.finished = append(p.finished, id)
+			p.Blocks = append(p.Blocks, id)
 			plans[base] = p
 		} else if ok, base := blocksconvert.IsErrorFile(filename); ok {
 			p := plans[base]
-			p.errorFile = true
+			p.ErrorFile = fullPath
 			plans[base] = p
 		}
 
@@ -316,4 +329,69 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 	}
 
 	return plans, nil
+}
+
+var plansTemplate = template.Must(template.New("plans").Parse(`
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Queue, Plans</title>
+	</head>
+	<body>
+		<p>Current time: {{ .Now }}</p>
+		<ul>
+		{{ range $i, $p := .Queue }}
+			<li>{{ .DayIndex }} - {{ .PlanFile }}</li>
+		{{ end }}
+		</ul>
+
+		{{ range $u, $up := .Plans }}
+			<h2>{{ $u }}</h2>
+
+			<table width="100%" border="1">
+				<thead>
+					<tr>
+						<th>Plan File</th>
+						<th>Status</th>
+						<th>Comment</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{ range $base, $planStatus := $up }}
+						{{ with $planStatus }}
+						<tr>
+							<td>{{ .PlanFile }}</td>
+							<td>{{ .Status }}</td>
+							<td>
+								{{ if .ErrorFile }} <strong>Error:</strong> {{ .ErrorFile }} <br />{{ end }}
+								{{ if .ProgressFiles }} <strong>Progress:</strong> {{ range $p, $t := .ProgressFiles }} {{ $p }} {{ end }} <br /> {{ end }}
+								{{ if .Blocks }} <strong>Blocks:</strong> {{ .Blocks }} <br />{{ end }}
+							</td>
+						</tr>
+						{{ end }}
+					{{ end }}
+				</tbody>
+			</table>
+		{{ end }}
+	</body>
+</html>`))
+
+func (s *Scheduler) httpPlans(writer http.ResponseWriter, req *http.Request) {
+	s.scanMu.Lock()
+	plans := s.allUserPlans
+	queue := s.plansQueue
+	s.scanMu.Unlock()
+
+	data := struct {
+		Now   time.Time
+		Plans map[string]map[string]plan
+		Queue []queuedPlan
+	}{
+		Now:   time.Now(),
+		Plans: plans,
+		Queue: queue,
+	}
+
+	util.RenderHTTPResponse(writer, data, plansTemplate, req)
 }

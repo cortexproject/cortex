@@ -38,33 +38,33 @@ func TestScanForPlans(t *testing.T) {
 
 	require.Equal(t, map[string]plan{
 		"1": {
-			planFile: "migration/12345/1.plan",
-			progressFiles: map[string]time.Time{
+			PlanFile: "migration/12345/1.plan",
+			ProgressFiles: map[string]time.Time{
 				"migration/12345/1.progress.1234567": time.Unix(1234567, 0),
 				"migration/12345/1.progress.2345678": time.Unix(2345678, 0),
 			},
 		},
 		"2": {
-			planFile: "migration/12345/2.plan",
-			progressFiles: map[string]time.Time{
+			PlanFile: "migration/12345/2.plan",
+			ProgressFiles: map[string]time.Time{
 				"migration/12345/2.progress.93485345": time.Unix(93485345, 0),
 			},
-			finished: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN"), ulid.MustParse("01EE9Y140JP4T58X8FGTG5T17F")},
+			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN"), ulid.MustParse("01EE9Y140JP4T58X8FGTG5T17F")},
 		},
 		"3": {
-			planFile:  "migration/12345/3.plan",
-			errorFile: true,
+			PlanFile:  "migration/12345/3.plan",
+			ErrorFile: true,
 		},
 		"4": {
-			errorFile: true,
+			ErrorFile: true,
 		},
 		"5": {
-			progressFiles: map[string]time.Time{
+			ProgressFiles: map[string]time.Time{
 				"migration/12345/5.progress.1234234": time.Unix(1234234, 0),
 			},
 		},
 		"6": {
-			finished: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN")},
+			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN")},
 		},
 	}, plans)
 }
@@ -95,8 +95,8 @@ func TestSchedulerScan(t *testing.T) {
 
 	require.NoError(t, s.scanBucketForPlans(context.Background()))
 	require.Equal(t, []queuedPlan{
-		{dayIndex: 4, planFile: "migration/user4/4.plan"},
-		{dayIndex: 1, planFile: "migration/user1/1.plan"},
+		{DayIndex: 4, PlanFile: "migration/user4/4.plan"},
+		{DayIndex: 1, PlanFile: "migration/user1/1.plan"},
 	}, s.plansQueue)
 
 	{

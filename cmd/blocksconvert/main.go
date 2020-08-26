@@ -61,7 +61,7 @@ func main() {
 	case "builder":
 		targetService, err = builder.NewBuilder(cfg.BuilderConfig, cfg.SharedConfig, util.Logger, registry)
 	case "scheduler":
-		targetService, err = scheduler.NewScheduler(cfg.SchedulerConfig, cfg.SharedConfig, util.Logger, registry)
+		targetService, err = scheduler.NewScheduler(cfg.SchedulerConfig, cfg.SharedConfig, util.Logger, registry, serv.HTTP, serv.GRPC)
 	default:
 		err = fmt.Errorf("unknown target")
 	}

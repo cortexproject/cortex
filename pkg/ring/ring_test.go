@@ -457,6 +457,33 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 	}
 }
 
+func BenchmarkRing_ShuffleShard(b *testing.B) {
+	for _, numInstances := range []int{50, 100, 1000} {
+		for _, numZones := range []int{1, 3} {
+			for _, shardSize := range []int{3, 10, 30} {
+				b.Run(fmt.Sprintf("num instances = %d, num zones = %d, shard size = %d", numInstances, numZones, shardSize), func(b *testing.B) {
+					// Initialise the ring.
+					ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
+					ring := Ring{
+						cfg:              Config{HeartbeatTimeout: time.Hour},
+						ringDesc:         ringDesc,
+						ringTokens:       ringDesc.getTokens(),
+						ringTokensByZone: ringDesc.getTokensByZone(),
+						ringZones:        getZones(ringDesc.getTokensByZone()),
+						strategy:         &DefaultReplicationStrategy{},
+					}
+
+					b.ResetTimer()
+
+					for n := 0; n < b.N; n++ {
+						ring.ShuffleShard("tenant-1", shardSize)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestSubring(t *testing.T) {
 	r := NewDesc()
 

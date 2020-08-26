@@ -5,8 +5,6 @@ import (
 	"net"
 	"net/http"
 
-	_ "net/http/pprof" // anonymous import to get the pprof handler registered
-
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,7 +37,6 @@ func (s *InstrumentationServer) Start() error {
 
 	router := mux.NewRouter()
 	router.Handle("/metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
-	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 
 	s.srv = &http.Server{
 		Handler: router,

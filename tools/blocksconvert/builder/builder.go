@@ -367,9 +367,11 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	}
 
 	// Upload finished status file
-	if err := b.bucketClient.Upload(ctx, blocksconvert.FinishedFile(planBaseName, ulid), strings.NewReader(ulid.String())); err != nil {
+	finishedFile := blocksconvert.FinishedFile(planBaseName, ulid)
+	if err := b.bucketClient.Upload(ctx, finishedFile, strings.NewReader(ulid.String())); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}
+	level.Info(planLog).Log("msg", "uploaded finished file", "file", finishedFile)
 
 	// Stop heartbeating.
 	if err := services.StopAndAwaitTerminated(ctx, hb); err != nil {

@@ -26,17 +26,19 @@ type processor struct {
 	files   *openFiles
 	ignored *regexp.Regexp
 
-	series prometheus.Counter
+	series  prometheus.Counter
+	scanned *prometheus.CounterVec
 
 	lastKey key
 	chunks  []string
 }
 
-func newProcessor(dir string, files *openFiles, ignored *regexp.Regexp, series prometheus.Counter) *processor {
+func newProcessor(dir string, files *openFiles, ignored *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec) *processor {
 	w := &processor{
 		dir:     dir,
 		files:   files,
 		series:  series,
+		scanned: scannedEntries,
 		ignored: ignored,
 	}
 
@@ -44,7 +46,26 @@ func newProcessor(dir string, files *openFiles, ignored *regexp.Regexp, series p
 }
 
 func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
-	if !IsSeriesToChunkMapping(indexEntry.RangeValue) {
+	switch {
+	case IsMetricToSeriesMapping(indexEntry.RangeValue):
+		w.scanned.WithLabelValues("metric-to-series").Inc()
+		return nil
+
+	case IsMetricLabelToLabelValueMapping(indexEntry.RangeValue):
+		w.scanned.WithLabelValues("metric-label-to-label-value").Inc()
+		return nil
+
+	case IsSeriesToLabelValues(indexEntry.RangeValue):
+		w.scanned.WithLabelValues("series-to-label-values").Inc()
+		return nil
+
+	case IsSeriesToChunkMapping(indexEntry.RangeValue):
+		w.scanned.WithLabelValues("series-to-chunk").Inc()
+		// We will process these, don't return yet.
+
+	default:
+		// Should not happen.
+		w.scanned.WithLabelValues("unknown-" + UnknownIndexEntryType(indexEntry.RangeValue)).Inc()
 		return nil
 	}
 

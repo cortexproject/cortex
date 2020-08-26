@@ -21,9 +21,30 @@ import (
 // v11 adds:
 // <seriesID>, \0\0\0 '9' \0 -> JSON array with label values.
 
+func IsMetricToSeriesMapping(RangeValue []byte) bool {
+	return bytes.HasSuffix(RangeValue, []byte("\0007\000"))
+}
+
+func IsMetricLabelToLabelValueMapping(RangeValue []byte) bool {
+	return bytes.HasSuffix(RangeValue, []byte("\0008\000"))
+}
+
+func IsSeriesToLabelValues(RangeValue []byte) bool {
+	return bytes.HasSuffix(RangeValue, []byte("\0009\000"))
+}
+
 // Series to Chunk mapping uses \0 "3" \0 suffix of range value.
 func IsSeriesToChunkMapping(RangeValue []byte) bool {
 	return bytes.HasSuffix(RangeValue, []byte("\0003\000"))
+}
+
+func UnknownIndexEntryType(RangeValue []byte) string {
+	if len(RangeValue) < 3 {
+		return "too-short"
+	}
+
+	// Take last three characters, and report it back.
+	return fmt.Sprintf("%x", RangeValue[len(RangeValue)-2:])
 }
 
 // e.RangeValue is: "userID:d<Index>:base64(sha256(labels))". Index is integer, base64 doesn't contain ':'.

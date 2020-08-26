@@ -846,11 +846,6 @@ ruler_client:
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
 
-# Duration to delay the evaluation of rules to ensure they underlying metrics
-# have been pushed to cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[evaluation_delay_duration: <duration> | default = 0s]
-
 # How frequently to poll for rule changes
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m]
@@ -2801,6 +2796,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
+
+# Duration to delay the evaluation of rules to ensure they underlying metrics
+# have been pushed to cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[evaluation_delay_duration: <duration> | default = 0s]
 
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]

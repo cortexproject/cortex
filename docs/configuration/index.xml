@@ -2810,16 +2810,16 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Trip circuit-breaker after this number of consecutive dial failures (if zero&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># then circuit-breaker is disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.cb.failures&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.circuit-breaker-consecutive-failures&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[circuit_breaker_consecutive_failures&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Duration circuit-breaker remains open after tripping (if zero then 60 seconds&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># is used).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.cb.timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.circuit-breaker-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[circuit_breaker_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>10s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Reset circuit-breaker counts after this long (if zero then never reset).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.cb.interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.memcached.circuit-breaker-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[circuit_breaker_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>10s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="fifo_cache_config">&lt;code>fifo_cache_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>fifo_cache_config&lt;/code> configures the local in-memory cache. The supported CLI flags &lt;code>&amp;lt;prefix&amp;gt;&lt;/code> used to reference this config block are:&lt;/p>
@@ -3938,6 +3938,22 @@ The domain name after the prefix is looked up as an A/AAAA query. For example: &
 The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;h2 id="logging-of-ip-of-reverse-proxy">Logging of IP of reverse proxy&lt;/h2>
+&lt;p>If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;code>-server.log_source_ips_enabled&lt;/code>&lt;/p>
+&lt;p>Set this to &lt;code>true&lt;/code> to add logging of the IP when a Forwarded, X-Real-IP or X-Forwarded-For header is used. A field called &lt;code>sourceIPs&lt;/code> will be added to error logs when data is pushed into Cortex.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>-server.log-source-ips-header&lt;/code>&lt;/p>
+&lt;p>Header field storing the source IPs. It is only used if &lt;code>-server.log-source-ips-enabled&lt;/code> is true and if &lt;code>-server.log-source-ips-regex&lt;/code> is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>-server.log-source-ips-regex&lt;/code>&lt;/p>
+&lt;p>Regular expression for matching the source IPs. It should contain at least one capturing group the first of which will be returned. Only used if &lt;code>-server.log-source-ips-enabled&lt;/code> is true and if &lt;code>-server.log-source-ips-header&lt;/code> is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.&lt;/p>
+&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
 &lt;p>You can use the Cortex query frontend with any Prometheus-API compatible
 service, including Prometheus and Thanos. Use this config file to get

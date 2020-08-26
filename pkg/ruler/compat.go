@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -94,6 +95,7 @@ func DefaultTenantManagerFactory(
 	p Pusher,
 	q storage.Queryable,
 	engine *promql.Engine,
+	overrides *validation.Overrides,
 ) ManagerFactory {
 	return func(
 		ctx context.Context,
@@ -102,10 +104,12 @@ func DefaultTenantManagerFactory(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) *rules.Manager {
+		evaluationDelay := overrides.EvaluationDelay(userID)
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
-			QueryFunc:       engineQueryFunc(engine, q, cfg.EvaluationDelay),
+			QueryFunc:       engineQueryFunc(engine, q, evaluationDelay),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

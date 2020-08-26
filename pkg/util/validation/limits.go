@@ -62,6 +62,11 @@ type Limits struct {
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
 
+	// Ruler defaults and limits.
+	// Delay the evaluation of all rules by a set interval to give a buffer
+	// to metric that haven't been forwarded to cortex yet.
+	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
+
 	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
 	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
@@ -105,6 +110,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+
+	f.DurationVar(&l.EvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure they underlying metrics have been pushed to cortex.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -338,6 +345,11 @@ func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 // SubringSize returns the size of the subring for a given user.
 func (o *Overrides) SubringSize(userID string) int {
 	return o.getOverridesForUser(userID).SubringSize
+}
+
+// EvaluationDelay returns the rules evaluation delay for a given user.
+func (o *Overrides) EvaluationDelay(userID string) time.Duration {
+	return o.getOverridesForUser(userID).EvaluationDelay
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

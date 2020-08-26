@@ -31,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
@@ -57,7 +58,7 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, func()) {
+func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, *validation.Overrides, func()) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	cleanup := func() {
@@ -83,24 +84,29 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, cleanup
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits, nil)
+	testutil.Ok(t, err)
+
+	return engine, noopQueryable, pusher, l, overrides, cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
-	engine, noopQueryable, pusher, logger, cleanup := testSetup(t, cfg)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine), prometheus.NewRegistry(), logger)
+	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides), prometheus.NewRegistry(), logger)
 	require.NoError(t, err)
 
 	return manager, cleanup
 }
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
-	engine, noopQueryable, pusher, logger, cleanup := testSetup(t, cfg)
+	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
 	storage, err := NewRuleStorage(cfg.StoreConfig)
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()
-	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine)
+	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides)
 	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, util.Logger)
 	require.NoError(t, err)
 

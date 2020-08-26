@@ -190,6 +190,11 @@ func (b *Builder) running(ctx context.Context) error {
 			return nil
 
 		case <-ticker.C:
+			// We may get "tick" even when we should stop.
+			if ctx.Err() != nil {
+				return nil
+			}
+
 			if conn == nil {
 				opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
 				if err != nil {

@@ -364,7 +364,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if err != nil {
 		return nil, err
 	}
-	source := util.GetSourceFromOutgoingCtx(ctx)
+	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 
 	var firstPartialErr error
 	removeReplica := false
@@ -541,7 +541,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		// Get clientIP(s) from Context and add it to localCtx
-		localCtx = util.AddSourceToOutgoingContext(localCtx, source)
+		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })

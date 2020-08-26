@@ -21,8 +21,7 @@ import (
 func TestHandler_remoteWrite(t *testing.T) {
 	req := createRequest(t, createPrometheusRemoteWriteProtobuf(t))
 	resp := httptest.NewRecorder()
-	var sourceIPs *middleware.SourceIPExtractor
-	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, sourceIPs, verifyWriteRequestHandler(t, client.API))
+	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, nil, verifyWriteRequestHandler(t, client.API))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
 }

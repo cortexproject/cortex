@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -41,9 +42,8 @@ func TestGetSourceFromOutgoingCtx(t *testing.T) {
 				md := metadata.Pairs(tt.key, tt.value)
 				ctx = metadata.NewIncomingContext(ctx, md)
 			}
-			if got := GetSourceFromIncomingCtx(ctx); got != tt.want {
-				t.Errorf("GetSourceFromOutgoingCtx() = %v, want %v", got, tt.want)
-			}
+			got := GetSourceIPsFromIncomingCtx(ctx)
+			assert.Equal(t, tt.want, got)
 
 			// Test extracting from outgoing context
 			ctx = context.Background()
@@ -51,9 +51,8 @@ func TestGetSourceFromOutgoingCtx(t *testing.T) {
 				md := metadata.Pairs(tt.key, tt.value)
 				ctx = metadata.NewOutgoingContext(ctx, md)
 			}
-			if got := GetSourceFromOutgoingCtx(ctx); got != tt.want {
-				t.Errorf("GetSourceFromOutgoingCtx() = %v, want %v", got, tt.want)
-			}
+			got = GetSourceIPsFromOutgoingCtx(ctx)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

@@ -21,7 +21,7 @@ func Handler(cfg distributor.Config, sourceIPs *middleware.SourceIPExtractor, pu
 		if sourceIPs != nil {
 			source := sourceIPs.Get(r)
 			if source != "" {
-				ctx = util.AddSourceToOutgoingContext(ctx, source)
+				ctx = util.AddSourceIPsToOutgoingContext(ctx, source)
 				logger = util.WithSourceIPs(source, logger)
 			}
 		}

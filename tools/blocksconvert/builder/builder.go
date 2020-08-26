@@ -45,6 +45,7 @@ type Config struct {
 	DeleteLocalBlock bool
 
 	SchedulerEndpoint string
+	NextPlanInterval  time.Duration
 	GrpcConfig        grpcclient.ConfigWithTLS
 }
 
@@ -58,6 +59,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
 	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
 	f.StringVar(&cfg.SchedulerEndpoint, "builder.scheduler-endpoint", "", "Scheduler endpoint, where builder will ask for more plans to work on.")
+	f.DurationVar(&cfg.NextPlanInterval, "builder.next-plan-interval", 1*time.Minute, "How often to ask for next plan (when idle)")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Builder, error) {
@@ -70,6 +72,10 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	chunksCache, err := cache.New(cfg.ChunkCacheConfig, reg, l)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create chunks cache")
+	}
+
+	if cfg.SchedulerEndpoint == "" {
+		return nil, errors.Wrap(err, "no scheduler endpoint")
 	}
 
 	bucketClient, err := scfg.GetBucket(l, reg)
@@ -162,7 +168,7 @@ func (b *Builder) cleanup(_ context.Context) error {
 }
 
 func (b *Builder) running(ctx context.Context) error {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(b.cfg.NextPlanInterval)
 	defer ticker.Stop()
 
 	var schedulerClient blocksconvert.SchedulerClient
@@ -203,13 +209,21 @@ func (b *Builder) running(ctx context.Context) error {
 				continue
 			}
 
+			level.Info(b.log).Log("msg", "received plan file", "planFile", resp.PlanFile, "progressFile", resp.ProgressFile)
+
 			isPlanFile, planBaseName := blocksconvert.IsPlanFile(resp.PlanFile)
 			if !isPlanFile {
 				level.Error(b.log).Log("msg", "got invalid plan file", "planFile", resp.PlanFile)
 				continue
 			}
 
-			err = b.processPlanFile(ctx, resp.PlanFile, resp.ProgressFile, planBaseName)
+			ok, base, _ := blocksconvert.IsProgressFile(resp.ProgressFile)
+			if !ok || base != planBaseName {
+				level.Error(b.log).Log("msg", "got invalid progress file", "progressFile", resp.ProgressFile)
+				continue
+			}
+
+			err = b.processPlanFile(ctx, resp.PlanFile, planBaseName, resp.ProgressFile)
 			if err != nil {
 				level.Error(b.log).Log("msg", "failed to process plan file", "planFile", resp.PlanFile, "err", err)
 
@@ -224,9 +238,11 @@ func (b *Builder) running(ctx context.Context) error {
 }
 
 func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
+	planLog := log.With(b.log, "plan", planFile)
+
 	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
 	// context will be canceled.
-	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planBaseName, lastProgressFile)
+	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planLog, planBaseName, lastProgressFile)
 	if err != nil {
 		return err
 	}
@@ -253,7 +269,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 		return err
 	}
 
-	level.Info(b.log).Log("msg", "processing plan file", "plan", planFile, "user", userID, "dayStart", dayStart, "dayEnd", dayEnd)
+	level.Info(planLog).Log("msg", "processing plan file", "user", userID, "dayStart", dayStart, "dayEnd", dayEnd)
 	chunkClient, err := b.createChunkClientForDay(dayStart)
 	if err != nil {
 		return errors.Wrap(err, "failed to create chunk client")
@@ -266,7 +282,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	}
 	// defer fetcher.stop()
 
-	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, b.log, b.processedSeries, b.writtenSamples)
+	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, planLog, b.processedSeries, b.writtenSamples)
 	if err != nil {
 		return errors.Wrap(err, "failed to create TSDB builder")
 	}
@@ -297,17 +313,17 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 		return errors.Wrap(err, "failed to finish block building")
 	}
 
-	level.Info(b.log).Log("msg", "successfully built block for a plan", "plan", planFile, "ulid", ulid.String())
+	level.Info(planLog).Log("msg", "successfully built block for a plan", "ulid", ulid.String())
 
 	blockDir := filepath.Join(b.cfg.OutputDirectory, ulid.String())
 
 	if b.cfg.UploadBlock {
 		userBucket := cortex_tsdb.NewUserBucketClient(userID, b.bucketClient)
-		if err := block.Upload(ctx, b.log, userBucket, blockDir); err != nil {
+		if err := block.Upload(ctx, planLog, userBucket, blockDir); err != nil {
 			return errors.Wrap(err, "uploading block")
 		}
 
-		level.Info(b.log).Log("msg", "block uploaded", "ulid", ulid.String())
+		level.Info(planLog).Log("msg", "block uploaded", "ulid", ulid.String())
 
 		if b.cfg.DeleteLocalBlock {
 			if err := os.RemoveAll(blockDir); err != nil {
@@ -330,10 +346,10 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	return nil
 }
 
-func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, lastProgressFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
+func (b *Builder) setupHeartbeating(ctx context.Context, planLog log.Logger, planFileBase string, lastProgressFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
 	hbCtx, hbCancel := context.WithCancel(ctx)
 
-	hb := newHeartbeat(b.log, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastProgressFile)
+	hb := newHeartbeat(planLog, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastProgressFile)
 	if err := services.StartAndAwaitRunning(hbCtx, hb); err != nil {
 		return nil, nil, nil, err
 	}
@@ -344,7 +360,7 @@ func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, la
 		select {
 		case failure := <-fw.Chan():
 			hbCancel()
-			level.Error(b.log).Log("msg", "heartbeating failed, cancelling build", "err", failure)
+			level.Error(planLog).Log("msg", "heartbeating failed, cancelling build", "err", failure)
 		case <-hbCtx.Done():
 			return
 		}

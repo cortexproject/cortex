@@ -51,10 +51,8 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 		}
 	}
 
-	newProgressFile := ""
-
 	now := time.Now()
-	newProgressFile = blocksconvert.ProgressFile(hb.planFileBasename, now)
+	newProgressFile := blocksconvert.ProgressFile(hb.planFileBasename, now)
 	if err := hb.bucket.Upload(ctx, newProgressFile, strings.NewReader(strconv.FormatInt(now.Unix(), 10))); err != nil {
 		return errors.Wrap(err, "failed to upload new progress file")
 	}
@@ -65,7 +63,7 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 		}
 	}
 
-	level.Info(hb.log).Log("msg", "updated progress", "file", hb.lastProgressFile)
+	level.Info(hb.log).Log("msg", "updated progress", "file", newProgressFile)
 	hb.lastProgressFile = newProgressFile
 	return nil
 }

@@ -224,6 +224,7 @@ func (s *Scheduler) nextPlanNoRunningCheck(ctx context.Context) (string, string)
 		return "", ""
 	}
 
+	level.Info(s.log).Log("msg", "uploaded new progress file", "progressFile", pg)
 	return p, pg
 }
 

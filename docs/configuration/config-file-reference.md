@@ -3273,8 +3273,8 @@ tsdb:
   # CLI flag: -experimental.blocks-storage.tsdb.backfill-dir
   [backfill_dir: <string> | default = "backfill_tsdb"]
 
-  # Maximum accepted sample age by backfilling. 0 disables it. It should be in
-  # hours and align with 24h.
+  # Maximum accepted sample age by backfilling beyond what is already possible
+  # when disabled. 0 disables it. It should be in hours and align with 24h.
   # CLI flag: -experimental.blocks-storage.tsdb.backfill-max-age
   [backfill_max_age: <duration> | default = 0s]
 

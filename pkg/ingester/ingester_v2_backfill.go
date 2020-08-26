@@ -28,8 +28,8 @@ type backfillTSDB struct {
 	backfillAge time.Duration
 	metrics     *ingesterMetrics
 
-	// dbs[0] is the one which would be overlapping with the main TSDB.
-	// dbs[1] is the older TSDB among the two here.
+	// dbs[0] is the one which would be overlapping with the main TSDB. "newer" TSDB.
+	// dbs[1] is the older TSDB among the two here. "older" TSDB.
 	// If the dbs[1] goes beyond the backfill age, it will be compacted
 	// and shipped and dbs[0] is moved to dbs[1]. During this process,
 	// there is only 1 TSDB ingesting old data, so there can be gaps till the compaction
@@ -71,8 +71,8 @@ func (b *backfillTSDB) appender(
 // This _does not_ implement storage.Appender interface.
 // The methods of this appender should not be called concurrently.
 type backfillAppender struct {
-	backfillTSDB                  *backfillTSDB
-	firstAppender, secondAppender *backfillRangeAppender
+	backfillTSDB                 *backfillTSDB
+	newerAppender, olderAppender *backfillRangeAppender
 
 	// Keeping this methods of Ingester here to avoid the appender having a reference to the ingester.
 	createNewTSDB func(userID, dbDir string, minBlockDuration, maxBlockDuration int64, reg *prometheus.Registry) (*userTSDB, error)
@@ -87,7 +87,17 @@ type backfillRangeAppender struct {
 	start, end int64
 }
 
+func newBackfillRangeAppender(db *backfillTSDBWrapper) *backfillRangeAppender {
+	return &backfillRangeAppender{
+		app:   db.db.Appender(),
+		db:    db.db,
+		start: db.start,
+		end:   db.end,
+	}
+}
+
 // add requires the samples to be within the backfill age.
+// Note: This method should not be called concurrently.
 func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err error) {
 	app, db, err := a.getAppender(s)
 	if err != nil {
@@ -115,128 +125,97 @@ func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err e
 }
 
 func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *userTSDB, error) {
-	var app storage.Appender
-	var db *userTSDB
+	if !a.backfillTSDB.isWithinBackfillAge(s.TimestampMs) {
+		return nil, nil, storage.ErrOutOfBounds
+	}
 
-	// Fast path.
-	if a.firstAppender != nil && s.TimestampMs >= a.firstAppender.start && s.TimestampMs < a.firstAppender.end {
-		return a.firstAppender.app, a.firstAppender.db, nil
-	} else if a.secondAppender != nil && s.TimestampMs >= a.secondAppender.start && s.TimestampMs < a.secondAppender.end {
-		return a.secondAppender.app, a.secondAppender.db, nil
+	// Fast path to not take the lock.
+	if a.newerAppender != nil && s.TimestampMs >= a.newerAppender.start && s.TimestampMs < a.newerAppender.end {
+		return a.newerAppender.app, a.newerAppender.db, nil
+	} else if a.olderAppender != nil && s.TimestampMs >= a.olderAppender.start && s.TimestampMs < a.olderAppender.end {
+		return a.olderAppender.app, a.olderAppender.db, nil
 	}
 
 	// We could use RLock here to check the TSDBs, but because we create new TSDB if none exists,
 	// it's easier and cleaner to handle races by taking the write lock.
 	// TODO(codesome): If we see performance issues, explore ways to read lock here.
-	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in first and second.
+	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in older and newer spots.
 	a.backfillTSDB.mtx.Lock()
 	defer a.backfillTSDB.mtx.Unlock()
+
 	// Check if we already have TSDB created and use it.
 	if a.backfillTSDB.dbs[0] != nil && s.TimestampMs >= a.backfillTSDB.dbs[0].start && s.TimestampMs < a.backfillTSDB.dbs[0].end {
-		if a.firstAppender == nil {
-			a.firstAppender = &backfillRangeAppender{
-				app:   a.backfillTSDB.dbs[0].db.Appender(),
-				db:    a.backfillTSDB.dbs[0].db,
-				start: a.backfillTSDB.dbs[0].start,
-				end:   a.backfillTSDB.dbs[0].end,
-			}
-		}
-		app = a.firstAppender.app
-		db = a.backfillTSDB.dbs[0].db
+		a.newerAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[0])
+		return a.newerAppender.app, a.backfillTSDB.dbs[0].db, nil
 	} else if a.backfillTSDB.dbs[1] != nil && s.TimestampMs >= a.backfillTSDB.dbs[1].start && s.TimestampMs < a.backfillTSDB.dbs[1].end {
-		if a.secondAppender == nil {
-			a.secondAppender = &backfillRangeAppender{
-				app:   a.backfillTSDB.dbs[1].db.Appender(),
-				db:    a.backfillTSDB.dbs[1].db,
-				start: a.backfillTSDB.dbs[1].start,
-				end:   a.backfillTSDB.dbs[1].end,
-			}
-		}
-		app = a.secondAppender.app
-		db = a.backfillTSDB.dbs[1].db
-	} else if a.backfillTSDB.isWithinBackfillAge(s.TimestampMs) {
-		// The sample is in the backfill range.
-		if a.backfillTSDB.dbs[0] != nil && a.backfillTSDB.dbs[1] != nil {
-			// This can happen if the dbs[1] is running compaction/shipping.
-			return nil, nil, errors.New("cannot create another backfill TSDB, 2 already exists")
-		}
+		a.olderAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[1])
+		return a.olderAppender.app, a.backfillTSDB.dbs[1].db, nil
+	}
 
-		var err error
-		start, end := a.timeRangesForTimestamp(s.TimestampMs)
-		db, err = a.createNewTSDB(
-			a.backfillTSDB.userID,
-			filepath.Join(
-				a.backfillBlocksDir(a.backfillTSDB.userID),
-				getTSDBName(start, end),
-			),
-			(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
-		)
-		if err != nil {
-			return nil, nil, err
-		}
+	// We need to open a new TSDB.
 
-		// TODO(codesome): close db after an error below.
-		newDB := &backfillTSDBWrapper{
-			db:    db,
-			start: start,
-			end:   end,
-		}
-		if end >= mtime.Now().Add(-time.Hour).Unix()*1000 {
-			// The TSDB would touch the main TSDB. Hence this is the first TSDB.
-			if a.backfillTSDB.dbs[0] != nil {
-				// Check if we have to move this TSDB to the next position.
-				if !a.backfillTSDB.isWithinBackfillAge(a.backfillTSDB.dbs[0].start) {
-					a.backfillTSDB.dbs[1] = a.backfillTSDB.dbs[0]
-					a.backfillTSDB.dbs[0] = nil
-				} else {
-					// This should not happen.
-					return nil, nil, errors.New("cannot create another backfill TSDB, cannot move TSDB")
-				}
-			}
-			a.backfillTSDB.dbs[0] = newDB
-			app = db.Appender()
-			a.firstAppender = &backfillRangeAppender{app: app, db: db, start: start, end: end}
+	start, end := a.timeRangesForTimestamp(s.TimestampMs)
+	isNewerTSDB := end >= mtime.Now().Add(-time.Hour).Unix()*1000 // If the TSDB would touch the main TSDB.
+	if (isNewerTSDB && a.backfillTSDB.dbs[0] != nil) || (!isNewerTSDB && a.backfillTSDB.dbs[1] != nil) {
+		// The compaction needs to clean up these spots before we can create new ones.
+		// Cleaning up the spots includes compacting older TSDB and/or moving newer TSDB
+		// to older TSDB's spot.
+		if isNewerTSDB {
+			return nil, nil, errors.New("cannot create another backfill TSDB, newer TSDB already exists")
 		} else {
-			if a.backfillTSDB.dbs[1] != nil {
-				// This should not happen.
-				return nil, nil, errors.New("cannot create another backfill TSDB, older TSDB already exists")
-			}
-			a.backfillTSDB.dbs[1] = newDB
-			app = db.Appender()
-			a.secondAppender = &backfillRangeAppender{app: app, db: db, start: start, end: end}
-		}
-
-		a.backfillTSDB.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
-		if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
-			// This user did not have a backfill TSDB before.
-			a.backfillTSDB.metrics.numUsersWithBackfillTSDBs.Inc()
+			return nil, nil, errors.New("cannot create another backfill TSDB, older TSDB already exists")
 		}
 	}
-	if app == nil {
-		return nil, nil, storage.ErrOutOfBounds
+
+	db, err := a.createNewTSDB(
+		a.backfillTSDB.userID,
+		filepath.Join(
+			a.backfillBlocksDir(a.backfillTSDB.userID),
+			getTSDBName(start, end),
+		),
+		(end-start)*2, (end-start)*2, prometheus.NewRegistry(),
+	)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return app, db, nil
+	newDB := &backfillTSDBWrapper{db: db, start: start, end: end}
+	app := newBackfillRangeAppender(newDB)
+	if isNewerTSDB {
+		a.backfillTSDB.dbs[0] = newDB
+		a.newerAppender = app
+	} else {
+		a.backfillTSDB.dbs[1] = newDB
+		a.olderAppender = app
+	}
+
+	a.backfillTSDB.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
+	if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
+		// This user did not have a backfill TSDB before.
+		a.backfillTSDB.metrics.numUsersWithBackfillTSDBs.Inc()
+	}
+
+	return app.app, app.db, nil
 }
 
 func (a *backfillAppender) commit() error {
 	var merr tsdb_errors.MultiError
-	if a.firstAppender != nil {
-		merr.Add(a.firstAppender.app.Commit())
+	if a.newerAppender != nil {
+		merr.Add(a.newerAppender.app.Commit())
 	}
-	if a.secondAppender != nil {
-		merr.Add(a.secondAppender.app.Commit())
+	if a.olderAppender != nil {
+		merr.Add(a.olderAppender.app.Commit())
 	}
 	return merr.Err()
 }
 
 func (a *backfillAppender) rollback() error {
 	var merr tsdb_errors.MultiError
-	if a.firstAppender != nil {
-		merr.Add(a.firstAppender.app.Rollback())
+	if a.newerAppender != nil {
+		merr.Add(a.newerAppender.app.Rollback())
 	}
-	if a.secondAppender != nil {
-		merr.Add(a.secondAppender.app.Rollback())
+	if a.olderAppender != nil {
+		merr.Add(a.olderAppender.app.Rollback())
 	}
 	return merr.Err()
 }
@@ -291,7 +270,7 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	defer b.compactMtx.Unlock()
 
 	var merr tsdb_errors.MultiError
-	secondCompacted := false
+	moveNewerTSDB := false
 	for i := range []int{1, 0} {
 		b.mtx.RLock()
 		db := b.dbs[i]
@@ -310,7 +289,8 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		}
 
 		if i == 1 {
-			secondCompacted = true
+			// The older TSDB was compacted, hence the newer among them now becomes the oldest.
+			moveNewerTSDB = true
 		}
 
 		if err := os.RemoveAll(db.db.Dir()); err != nil {
@@ -319,10 +299,16 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		}
 	}
 
-	if secondCompacted {
+	b.mtx.RLock()
+	if b.dbs[1] == nil && b.dbs[0] != nil && !b.isWithinBackfillAge(b.dbs[0].start) {
+		// There is no older TSDB and the newer TSDB's start now crosses the backfill age, hence
+		// has to be moved to be the older TSDB.
+		moveNewerTSDB = true
+	}
+	b.mtx.RUnlock()
+
+	if moveNewerTSDB {
 		b.mtx.Lock()
-		// Move the TSDB because if the older TSDB was compacted,
-		// then the newer among them now becomes the oldest.
 		b.dbs[1] = b.dbs[0]
 		b.dbs[0] = nil
 		b.mtx.Unlock()

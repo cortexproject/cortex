@@ -157,14 +157,14 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 
 			dayIndex, err := strconv.ParseInt(base, 10, 32)
 			if err != nil {
-				level.Warn(s.log).Log("msg", "unable to parse day-index", "planFile", plan.PlanFile)
+				level.Warn(s.log).Log("msg", "unable to parse day-index", "planFile", plan.PlanFiles[0])
 				continue
 			}
 
 			mu.Lock()
 			queue = append(queue, queuedPlan{
 				DayIndex: int(dayIndex),
-				PlanFile: plan.PlanFile,
+				PlanFile: plan.PlanFiles[0],
 			})
 			mu.Unlock()
 		}
@@ -303,7 +303,7 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 		filename := fullPath[len(prefixWithSlash):]
 		if ok, base := blocksconvert.IsPlanFile(filename); ok {
 			p := plans[base]
-			p.PlanFile = fullPath
+			p.PlanFiles = append(p.PlanFiles, fullPath)
 			plans[base] = p
 		} else if ok, base, ts := blocksconvert.IsProgressFile(filename); ok {
 			p := plans[base]
@@ -341,12 +341,14 @@ var plansTemplate = template.Must(template.New("plans").Parse(`
 	</head>
 	<body>
 		<p>Current time: {{ .Now }}</p>
+		<h1>Queue</h1>
 		<ul>
 		{{ range $i, $p := .Queue }}
 			<li>{{ .DayIndex }} - {{ .PlanFile }}</li>
 		{{ end }}
 		</ul>
 
+		<h1>Users</h1>
 		{{ range $u, $up := .Plans }}
 			<h2>{{ $u }}</h2>
 
@@ -362,7 +364,7 @@ var plansTemplate = template.Must(template.New("plans").Parse(`
 					{{ range $base, $planStatus := $up }}
 						{{ with $planStatus }}
 						<tr>
-							<td>{{ .PlanFile }}</td>
+							<td>{{ range .PlanFiles }}{{ . }}<br />{{ end }}</td>
 							<td>{{ .Status }}</td>
 							<td>
 								{{ if .ErrorFile }} <strong>Error:</strong> {{ .ErrorFile }} <br />{{ end }}

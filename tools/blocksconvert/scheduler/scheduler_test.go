@@ -38,25 +38,25 @@ func TestScanForPlans(t *testing.T) {
 
 	require.Equal(t, map[string]plan{
 		"1": {
-			PlanFile: "migration/12345/1.plan",
+			PlanFiles: []string{"migration/12345/1.plan"},
 			ProgressFiles: map[string]time.Time{
 				"migration/12345/1.progress.1234567": time.Unix(1234567, 0),
 				"migration/12345/1.progress.2345678": time.Unix(2345678, 0),
 			},
 		},
 		"2": {
-			PlanFile: "migration/12345/2.plan",
+			PlanFiles: []string{"migration/12345/2.plan"},
 			ProgressFiles: map[string]time.Time{
 				"migration/12345/2.progress.93485345": time.Unix(93485345, 0),
 			},
 			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN"), ulid.MustParse("01EE9Y140JP4T58X8FGTG5T17F")},
 		},
 		"3": {
-			PlanFile:  "migration/12345/3.plan",
-			ErrorFile: true,
+			PlanFiles: []string{"migration/12345/3.plan"},
+			ErrorFile: "migration/12345/3.error",
 		},
 		"4": {
-			ErrorFile: true,
+			ErrorFile: "migration/12345/4.error",
 		},
 		"5": {
 			ProgressFiles: map[string]time.Time{

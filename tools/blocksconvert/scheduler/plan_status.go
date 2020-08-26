@@ -35,14 +35,14 @@ func (s planStatus) String() string {
 }
 
 type plan struct {
-	PlanFile      string
+	PlanFiles     []string
 	ProgressFiles map[string]time.Time
 	Blocks        []ulid.ULID
 	ErrorFile     string
 }
 
 func (ps plan) Status() planStatus {
-	if ps.PlanFile == "" || len(ps.Blocks) > 0 || (len(ps.Blocks) > 0 && ps.ErrorFile != "") {
+	if len(ps.PlanFiles) != 1 || len(ps.Blocks) > 1 || (len(ps.Blocks) > 0 && ps.ErrorFile != "") {
 		return Invalid
 	}
 

@@ -162,9 +162,8 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		// to older TSDB's spot.
 		if isNewerTSDB {
 			return nil, nil, errors.New("cannot create another backfill TSDB, newer TSDB already exists")
-		} else {
-			return nil, nil, errors.New("cannot create another backfill TSDB, older TSDB already exists")
 		}
+		return nil, nil, errors.New("cannot create another backfill TSDB, older TSDB already exists")
 	}
 
 	db, err := a.createNewTSDB(
@@ -230,19 +229,21 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 
 	u.backfillTSDB.mtx.RLock()
 	for _, db := range u.backfillTSDB.dbs {
-		if db != nil && overlapsOpenInterval(db.start, db.end, from, through) {
-			mint := db.db.Head().MinTime()
-			maxt := db.db.Head().MaxTime()
-			if overlapsOpenInterval(mint, maxt, from, through) {
-				q, err := db.db.Querier(ctx, from, through)
-				if err != nil {
-					u.backfillTSDB.mtx.RUnlock()
-					return nil, err
-				}
-
-				queriers = append(queriers, q)
-			}
+		if db == nil || !overlapsOpenInterval(db.start, db.end, from, through) {
+			continue
 		}
+		mint := db.db.Head().MinTime()
+		maxt := db.db.Head().MaxTime()
+		if !overlapsOpenInterval(mint, maxt, from, through) {
+			continue
+		}
+		q, err := db.db.Querier(ctx, from, through)
+		if err != nil {
+			u.backfillTSDB.mtx.RUnlock()
+			return nil, err
+		}
+
+		queriers = append(queriers, q)
 	}
 	u.backfillTSDB.mtx.RUnlock()
 
@@ -270,7 +271,7 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	defer b.compactMtx.Unlock()
 
 	var merr tsdb_errors.MultiError
-	moveNewerTSDB := false
+	moveNewerTSDBToOlder := false
 	for i := range []int{1, 0} {
 		b.mtx.RLock()
 		db := b.dbs[i]
@@ -290,7 +291,7 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 
 		if i == 1 {
 			// The older TSDB was compacted, hence the newer among them now becomes the oldest.
-			moveNewerTSDB = true
+			moveNewerTSDBToOlder = true
 		}
 
 		if err := os.RemoveAll(db.db.Dir()); err != nil {
@@ -303,11 +304,11 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	if b.dbs[1] == nil && b.dbs[0] != nil && !b.isWithinBackfillAge(b.dbs[0].start) {
 		// There is no older TSDB and the newer TSDB's start now crosses the backfill age, hence
 		// has to be moved to be the older TSDB.
-		moveNewerTSDB = true
+		moveNewerTSDBToOlder = true
 	}
 	b.mtx.RUnlock()
 
-	if moveNewerTSDB {
+	if moveNewerTSDBToOlder {
 		b.mtx.Lock()
 		b.dbs[1] = b.dbs[0]
 		b.dbs[0] = nil

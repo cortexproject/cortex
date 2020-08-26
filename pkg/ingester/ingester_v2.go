@@ -1149,7 +1149,6 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 			i.TSDBState.dbs[userID] = db
 			i.userStatesMtx.Unlock()
 			i.metrics.memUsers.Inc()
-
 		}(userID)
 
 		return filepath.SkipDir // Don't descend into directories

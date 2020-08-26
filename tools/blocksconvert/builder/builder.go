@@ -24,18 +24,18 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 type Config struct {
-	PlanFile string
-
 	OutputDirectory string
 	Concurrency     int
 
@@ -43,18 +43,21 @@ type Config struct {
 	HeartbeatPeriod  time.Duration
 	UploadBlock      bool
 	DeleteLocalBlock bool
+
+	SchedulerEndpoint string
+	GrpcConfig        grpcclient.ConfigWithTLS
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("chunks.", "Chunks cache", f)
-
-	f.StringVar(&cfg.PlanFile, "builder.plan-file", "", "Plan file to process. (Test only)")
+	cfg.GrpcConfig.RegisterFlagsWithPrefix("builder.client", f)
 
 	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
 	f.IntVar(&cfg.Concurrency, "builder.concurrency", 128, "Number of concurrent series processors.")
-	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan status file.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan progress file.")
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
 	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
+	f.StringVar(&cfg.SchedulerEndpoint, "builder.scheduler-endpoint", "", "Scheduler endpoint, where builder will ask for more plans to work on.")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Builder, error) {
@@ -159,23 +162,71 @@ func (b *Builder) cleanup(_ context.Context) error {
 }
 
 func (b *Builder) running(ctx context.Context) error {
-	if err := b.processPlanFile(ctx, b.cfg.PlanFile, ""); err != nil {
-		return err
-	}
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
 
-	<-ctx.Done()
-	return ctx.Err()
+	var schedulerClient blocksconvert.SchedulerClient
+	var conn *grpc.ClientConn
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		case <-ticker.C:
+			if conn == nil {
+				opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
+				if err != nil {
+					return err
+				}
+
+				conn, err = grpc.Dial(b.cfg.SchedulerEndpoint, opts...)
+				if err != nil {
+					level.Error(b.log).Log("msg", "failed to dial", "endpoint", b.cfg.SchedulerEndpoint, "err", err)
+					continue
+				}
+
+				schedulerClient = blocksconvert.NewSchedulerClient(conn)
+			}
+
+			resp, err := schedulerClient.NextPlan(ctx, &blocksconvert.NextPlanRequest{})
+			if err != nil {
+				level.Error(b.log).Log("msg", "failed to get next plan due to error, closing connection", "err", err)
+				_ = conn.Close()
+				conn = nil
+				schedulerClient = nil
+				continue
+			}
+
+			// No plan to work on, ignore.
+			if resp.PlanFile == "" {
+				continue
+			}
+
+			isPlanFile, planBaseName := blocksconvert.IsPlanFile(resp.PlanFile)
+			if !isPlanFile {
+				level.Error(b.log).Log("msg", "got invalid plan file", "planFile", resp.PlanFile)
+				continue
+			}
+
+			err = b.processPlanFile(ctx, resp.PlanFile, resp.ProgressFile, planBaseName)
+			if err != nil {
+				level.Error(b.log).Log("msg", "failed to process plan file", "planFile", resp.PlanFile, "err", err)
+
+				errorFile := blocksconvert.ErrorFile(planBaseName)
+				err = b.bucketClient.Upload(context.Background(), errorFile, strings.NewReader(err.Error()))
+				if err != nil {
+					level.Error(b.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
+				}
+			}
+		}
+	}
 }
 
-func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHeartbeatFile string) error {
-	isPlanFile, planFileBase := blocksconvert.IsPlanFile(planFile)
-	if !isPlanFile {
-		return errors.Errorf("not a plan file: %q", planFile)
-	}
-
+func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
 	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
 	// context will be canceled.
-	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planFileBase, lastHeartbeatFile)
+	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planBaseName, lastProgressFile)
 	if err != nil {
 		return err
 	}
@@ -266,7 +317,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 	}
 
 	// Upload finished status file
-	if err := b.bucketClient.Upload(ctx, blocksconvert.FinishedFile(planFileBase, ulid), strings.NewReader(ulid.String())); err != nil {
+	if err := b.bucketClient.Upload(ctx, blocksconvert.FinishedFile(planBaseName, ulid), strings.NewReader(ulid.String())); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}
 
@@ -279,10 +330,10 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile string, lastHear
 	return nil
 }
 
-func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, lastHeartbeatFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
+func (b *Builder) setupHeartbeating(ctx context.Context, planFileBase string, lastProgressFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
 	hbCtx, hbCancel := context.WithCancel(ctx)
 
-	hb := newHeartbeat(b.log, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastHeartbeatFile)
+	hb := newHeartbeat(b.log, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastProgressFile)
 	if err := services.StartAndAwaitRunning(hbCtx, hb); err != nil {
 		return nil, nil, nil, err
 	}

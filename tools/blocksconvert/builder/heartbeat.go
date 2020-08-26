@@ -22,15 +22,15 @@ type heartbeat struct {
 	bucket           objstore.Bucket
 	planFileBasename string
 
-	lastHeartbeat string
+	lastProgressFile string
 }
 
-func newHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration, planFileBasename, lastHeartbeat string) *heartbeat {
+func newHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration, planFileBasename, lastProgressFile string) *heartbeat {
 	hb := &heartbeat{
 		log:              log,
 		bucket:           bucket,
 		planFileBasename: planFileBasename,
-		lastHeartbeat:    lastHeartbeat,
+		lastProgressFile: lastProgressFile,
 	}
 
 	hb.Service = services.NewTimerService(interval, hb.heartbeat, hb.heartbeat, hb.stopping)
@@ -38,52 +38,52 @@ func newHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration
 }
 
 func (hb *heartbeat) heartbeat(ctx context.Context) error {
-	if hb.lastHeartbeat != "" {
-		ok, err := hb.bucket.Exists(ctx, hb.lastHeartbeat)
+	if hb.lastProgressFile != "" {
+		ok, err := hb.bucket.Exists(ctx, hb.lastProgressFile)
 		if err != nil {
-			level.Warn(hb.log).Log("msg", "failed to check old heartbeat file", "err", err)
-			return errors.Wrap(err, "cannot check if heartbeat file exists")
+			level.Warn(hb.log).Log("msg", "failed to check last progress file", "err", err)
+			return errors.Wrap(err, "cannot check if progress file exists")
 		}
 
 		if !ok {
-			level.Warn(hb.log).Log("msg", "previous heartbeat file doesn't exist")
-			return errors.New("previous heartbeat file doesn't exist")
+			level.Warn(hb.log).Log("msg", "previous progress file doesn't exist")
+			return errors.New("previous progress file doesn't exist")
 		}
 	}
 
-	newHeartbeat := ""
+	newProgressFile := ""
 
 	now := time.Now()
-	newHeartbeat = blocksconvert.ProgressFile(hb.planFileBasename, now)
-	if err := hb.bucket.Upload(ctx, newHeartbeat, strings.NewReader(strconv.FormatInt(now.Unix(), 10))); err != nil {
-		return errors.Wrap(err, "failed to upload new heartbeat file")
+	newProgressFile = blocksconvert.ProgressFile(hb.planFileBasename, now)
+	if err := hb.bucket.Upload(ctx, newProgressFile, strings.NewReader(strconv.FormatInt(now.Unix(), 10))); err != nil {
+		return errors.Wrap(err, "failed to upload new progress file")
 	}
 
-	if hb.lastHeartbeat != "" {
-		if err := hb.bucket.Delete(ctx, hb.lastHeartbeat); err != nil {
-			return errors.Wrap(err, "failed to delete old heartbeat file")
+	if hb.lastProgressFile != "" {
+		if err := hb.bucket.Delete(ctx, hb.lastProgressFile); err != nil {
+			return errors.Wrap(err, "failed to delete old progress file")
 		}
 	}
 
-	level.Debug(hb.log).Log("msg", "updated heartbeat", "file", hb.lastHeartbeat)
-	hb.lastHeartbeat = newHeartbeat
+	level.Info(hb.log).Log("msg", "updated progress", "file", hb.lastProgressFile)
+	hb.lastProgressFile = newProgressFile
 	return nil
 }
 
 func (hb *heartbeat) stopping(failure error) error {
-	// Only delete heartbeat file if there was no failure until now.
+	// Only delete progress file if there was no failure until now.
 	if failure != nil {
 		return nil
 	}
 
-	level.Debug(hb.log).Log("msg", "deleting last heartbeat file", "file", hb.lastHeartbeat)
+	level.Info(hb.log).Log("msg", "deleting last progress file", "file", hb.lastProgressFile)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if hb.lastHeartbeat != "" {
-		if err := hb.bucket.Delete(ctx, hb.lastHeartbeat); err != nil {
-			return errors.Wrap(err, "failed to delete old heartbeat file")
+	if hb.lastProgressFile != "" {
+		if err := hb.bucket.Delete(ctx, hb.lastProgressFile); err != nil {
+			return errors.Wrap(err, "failed to delete last progress file")
 		}
 	}
 

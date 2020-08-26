@@ -2940,16 +2940,16 @@ The `memcached_client_config` configures the client used to connect to Memcached
 
 # Trip circuit-breaker after this number of consecutive dial failures (if zero
 # then circuit-breaker is disabled).
-# CLI flag: -<prefix>.memcached.cb.failures
+# CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
 [circuit_breaker_consecutive_failures: <int> | default = 0]
 
 # Duration circuit-breaker remains open after tripping (if zero then 60 seconds
 # is used).
-# CLI flag: -<prefix>.memcached.cb.timeout
+# CLI flag: -<prefix>.memcached.circuit-breaker-timeout
 [circuit_breaker_timeout: <duration> | default = 10s]
 
 # Reset circuit-breaker counts after this long (if zero then never reset).
-# CLI flag: -<prefix>.memcached.cb.interval
+# CLI flag: -<prefix>.memcached.circuit-breaker-interval
 [circuit_breaker_interval: <duration> | default = 10s]
 ```
 

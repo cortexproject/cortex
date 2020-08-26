@@ -54,9 +54,10 @@ type Scanner struct {
 	bucketPrefix string
 	indexReader  IndexReader
 
-	series    prometheus.Counter
-	openFiles prometheus.Gauge
-	logger    log.Logger
+	series       prometheus.Counter
+	openFiles    prometheus.Gauge
+	indexEntries *prometheus.CounterVec
+	logger       log.Logger
 
 	tablePeriod time.Duration
 
@@ -149,6 +150,11 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "scanner_open_files",
 			Help: "Number of series written to the plan files",
 		}),
+
+		indexEntries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "scanner_scanned_index_entries_total",
+			Help: "Number of various index entries scanned",
+		}, []string{"type"}),
 	}
 
 	s.Service = services.NewBasicService(nil, s.running, nil)
@@ -188,7 +194,7 @@ func (s *Scanner) running(ctx context.Context) error {
 		dir := filepath.Join(s.cfg.OutputDirectory, t)
 		level.Info(s.logger).Log("msg", "scanning table", "table", t, "output", dir)
 
-		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored)
+		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries)
 		if err != nil {
 			return fmt.Errorf("failed to scan table %s and generate plan files: %w", t, err)
 		}
@@ -279,7 +285,7 @@ func findTables(logger log.Logger, tableNames []string, prefix string, period ti
 	return out
 }
 
-func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp) error {
+func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec) error {
 	err := os.RemoveAll(outDir)
 	if err != nil {
 		return fmt.Errorf("failed to delete directory %s: %w", outDir, err)
@@ -295,7 +301,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, files, ignored, series))
+		ps = append(ps, newProcessor(outDir, files, ignored, series, indexEntries))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)

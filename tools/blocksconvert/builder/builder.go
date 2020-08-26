@@ -115,9 +115,17 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "builder_written_samples_total",
 			Help: "Written samples",
 		}),
+		buildInProgress: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "builder_in_progress",
+			Help: "Build in progress",
+		}),
 		planFileReadPosition: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "builder_plan_file_position",
 			Help: "Read bytes from the plan file.",
+		}),
+		planFileSize: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "builder_plan_size",
+			Help: "Total size of plan file.",
 		}),
 	}
 	b.Service = services.NewBasicService(b.cleanup, b.running, nil)
@@ -142,6 +150,8 @@ type Builder struct {
 	writtenSamples    prometheus.Counter
 
 	planFileReadPosition prometheus.Gauge
+	planFileSize         prometheus.Gauge
+	buildInProgress      prometheus.Gauge
 }
 
 func (b *Builder) cleanup(_ context.Context) error {
@@ -209,8 +219,6 @@ func (b *Builder) running(ctx context.Context) error {
 				continue
 			}
 
-			level.Info(b.log).Log("msg", "received plan file", "planFile", resp.PlanFile, "progressFile", resp.ProgressFile)
-
 			isPlanFile, planBaseName := blocksconvert.IsPlanFile(resp.PlanFile)
 			if !isPlanFile {
 				level.Error(b.log).Log("msg", "got invalid plan file", "planFile", resp.PlanFile)
@@ -222,6 +230,8 @@ func (b *Builder) running(ctx context.Context) error {
 				level.Error(b.log).Log("msg", "got invalid progress file", "progressFile", resp.ProgressFile)
 				continue
 			}
+
+			level.Info(b.log).Log("msg", "received plan file", "planFile", resp.PlanFile, "progressFile", resp.ProgressFile)
 
 			err = b.processPlanFile(ctx, resp.PlanFile, planBaseName, resp.ProgressFile)
 			if err != nil {
@@ -238,6 +248,11 @@ func (b *Builder) running(ctx context.Context) error {
 }
 
 func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
+	b.buildInProgress.Set(1)
+	defer b.buildInProgress.Set(0)
+	defer b.planFileSize.Set(0)
+	defer b.planFileReadPosition.Set(0)
+
 	planLog := log.With(b.log, "plan", planFile)
 
 	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
@@ -247,6 +262,12 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 		return err
 	}
 	defer cancel()
+
+	attr, err := b.bucketClient.Attributes(ctx, planFile)
+	if err != nil {
+		return errors.Wrapf(err, "failed to read plan file %s", planFile)
+	}
+	b.planFileSize.Set(float64(attr.Size))
 
 	f, err := b.bucketClient.Get(ctx, planFile)
 	if err != nil {

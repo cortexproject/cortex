@@ -194,7 +194,7 @@ Updates are also propagated to other nodes.
 All nodes run the following two loops:
 
 1. Every "gossip interval", pick random "gossip nodes" number of nodes, and send recent ring updates to them.
-2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same. 
+2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.
 
 When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
 Such update will be gossiped `R * log(N+1)` times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).

@@ -94,5 +94,6 @@ ruler:
     local:
       directory: /tmp/cortex/rules
   ring:
+    num_tokens: 512
     kvstore:
       store: memberlist

@@ -243,6 +243,11 @@ func (b *Builder) running(ctx context.Context) error {
 					level.Error(b.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
 				}
 			}
+
+			err = b.cleanup(ctx)
+			if err != nil {
+				level.Error(b.log).Log("msg", "failed to cleanup working directory", "err", err)
+			}
 		}
 	}
 }

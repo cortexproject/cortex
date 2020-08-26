@@ -42,12 +42,12 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 		ok, err := hb.bucket.Exists(ctx, hb.lastProgressFile)
 		if err != nil {
 			level.Warn(hb.log).Log("msg", "failed to check last progress file", "err", err)
-			return errors.Wrap(err, "cannot check if progress file exists")
+			return errors.Wrapf(err, "cannot check if progress file exists: %s", hb.lastProgressFile)
 		}
 
 		if !ok {
 			level.Warn(hb.log).Log("msg", "previous progress file doesn't exist")
-			return errors.New("previous progress file doesn't exist")
+			return errors.Errorf("previous progress file doesn't exist: %s", hb.lastProgressFile)
 		}
 	}
 

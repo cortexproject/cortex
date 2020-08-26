@@ -47,11 +47,15 @@ func IsPlanFile(name string) (bool, string) {
 	return false, ""
 }
 
+func StartingFile(planBaseName string, t time.Time) string {
+	return fmt.Sprintf("%s.starting.%d", planBaseName, t.Unix())
+}
+
 func ProgressFile(planBaseName string, t time.Time) string {
 	return fmt.Sprintf("%s.inprogress.%d", planBaseName, t.Unix())
 }
 
-var progress = regexp.MustCompile("^(.+)\\.inprogress\\.(\\d+)$")
+var progress = regexp.MustCompile("^(.+)\\.(starting|inprogress)\\.(\\d+)$")
 
 func IsProgressFile(name string) (bool, string, time.Time) {
 	m := progress.FindStringSubmatch(name)
@@ -59,7 +63,7 @@ func IsProgressFile(name string) (bool, string, time.Time) {
 		return false, "", time.Time{}
 	}
 
-	ts, err := strconv.ParseInt(m[2], 10, 64)
+	ts, err := strconv.ParseInt(m[3], 10, 64)
 	if err != nil {
 		return false, "", time.Time{}
 	}

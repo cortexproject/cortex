@@ -217,7 +217,7 @@ func (s *Scheduler) nextPlanNoRunningCheck(ctx context.Context) (string, string)
 		return "", ""
 	}
 
-	pg := blocksconvert.ProgressFile(base, time.Now())
+	pg := blocksconvert.StartingFile(base, time.Now())
 	err := s.bucket.Upload(ctx, pg, strings.NewReader("starting"))
 	if err != nil {
 		level.Error(s.log).Log("msg", "failed to create progress file", "path", pg, "err", err)

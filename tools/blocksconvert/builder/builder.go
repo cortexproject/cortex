@@ -242,10 +242,13 @@ func (b *Builder) running(ctx context.Context) error {
 			if err != nil {
 				level.Error(b.log).Log("msg", "failed to process plan file", "planFile", resp.PlanFile, "err", err)
 
-				errorFile := blocksconvert.ErrorFile(planBaseName)
-				err = b.bucketClient.Upload(context.Background(), errorFile, strings.NewReader(err.Error()))
-				if err != nil {
-					level.Error(b.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
+				// Don't upload error file, if build failed due to our context being finished -- that's not an error.
+				if ctx.Err() == nil {
+					errorFile := blocksconvert.ErrorFile(planBaseName)
+					err = b.bucketClient.Upload(ctx, errorFile, strings.NewReader(err.Error()))
+					if err != nil {
+						level.Error(b.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
+					}
 				}
 			}
 
@@ -257,7 +260,7 @@ func (b *Builder) running(ctx context.Context) error {
 	}
 }
 
-func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
+func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) (returnErr error) {
 	b.buildInProgress.Set(1)
 	defer b.buildInProgress.Set(0)
 	defer b.planFileSize.Set(0)

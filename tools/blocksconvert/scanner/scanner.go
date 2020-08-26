@@ -165,7 +165,6 @@ func (s *Scanner) running(ctx context.Context) error {
 	var tables []string
 	if s.table == "" {
 		// Use table prefix to discover tables to scan.
-		// TODO: use min/max day
 		tableNames, err := s.indexReader.IndexTableNames(ctx)
 		if err != nil {
 			return err
@@ -297,11 +296,16 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	}
 
 	files := newOpenFiles(openFiles)
+	result := func(dir string, file string, entry blocksconvert.PlanEntry, header func() blocksconvert.PlanEntry) error {
+		return files.appendJsonEntryToFile(dir, file, entry, func() interface{} {
+			return header()
+		})
+	}
 
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, files, ignored, series, indexEntries))
+		ps = append(ps, newProcessor(outDir, result, ignored, series, indexEntries))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)

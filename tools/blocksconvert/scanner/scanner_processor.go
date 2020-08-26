@@ -12,19 +12,16 @@ import (
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
-type key struct {
-	user     string
-	dayIndex int
-	seriesID string
-}
+// Results from processor are passed to this function.
+type planEntryFn func(dir string, file string, entry blocksconvert.PlanEntry, header func() blocksconvert.PlanEntry) error
 
 // Processor implements IndexEntryProcessor. It caches chunks for single series until it finds
 // that another series has arrived, at which point it writes it to the file.
 // IndexReader guarantees correct order of entries.
 type processor struct {
-	dir     string
-	files   *openFiles
-	ignored *regexp.Regexp
+	dir          string
+	resultFn     planEntryFn
+	ignoredUsers *regexp.Regexp
 
 	series  prometheus.Counter
 	scanned *prometheus.CounterVec
@@ -33,13 +30,21 @@ type processor struct {
 	chunks  []string
 }
 
-func newProcessor(dir string, files *openFiles, ignored *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec) *processor {
+// Key is full series ID, used by processor to find out whether subsequent index entries belong to the same series
+// or not.
+type key struct {
+	user     string
+	dayIndex int
+	seriesID string
+}
+
+func newProcessor(dir string, resultFn planEntryFn, ignoredUsers *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec) *processor {
 	w := &processor{
-		dir:     dir,
-		files:   files,
-		series:  series,
-		scanned: scannedEntries,
-		ignored: ignored,
+		dir:          dir,
+		resultFn:     resultFn,
+		series:       series,
+		scanned:      scannedEntries,
+		ignoredUsers: ignoredUsers,
 	}
 
 	return w
@@ -74,7 +79,7 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 		return err
 	}
 
-	if w.ignored != nil && w.ignored.MatchString(user) {
+	if w.ignoredUsers != nil && w.ignoredUsers.MatchString(user) {
 		// Ignore this user.
 		return nil
 	}
@@ -104,10 +109,10 @@ func (w *processor) Flush() error {
 
 	k := w.lastKey
 
-	err := w.files.appendJsonEntryToFile(filepath.Join(w.dir, k.user), strconv.Itoa(k.dayIndex)+".plan", blocksconvert.PlanEntry{
+	err := w.resultFn(filepath.Join(w.dir, k.user), strconv.Itoa(k.dayIndex)+".plan", blocksconvert.PlanEntry{
 		SeriesID: w.lastKey.seriesID,
 		Chunks:   w.chunks,
-	}, func() interface{} {
+	}, func() blocksconvert.PlanEntry {
 		return blocksconvert.PlanEntry{
 			User:     k.user,
 			DayIndex: k.dayIndex,
@@ -119,6 +124,6 @@ func (w *processor) Flush() error {
 	}
 
 	w.series.Inc()
-	w.chunks = w.chunks[:0]
+	w.chunks = nil
 	return nil
 }

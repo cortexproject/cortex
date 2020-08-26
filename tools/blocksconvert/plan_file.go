@@ -55,7 +55,7 @@ func ProgressFile(planBaseName string, t time.Time) string {
 	return fmt.Sprintf("%s.inprogress.%d", planBaseName, t.Unix())
 }
 
-var progress = regexp.MustCompile("^(.+)\\.(starting|inprogress)\\.(\\d+)$")
+var progress = regexp.MustCompile("^(.+)\\.(starting|progress|inprogress)\\.(\\d+)$")
 
 func IsProgressFile(name string) (bool, string, time.Time) {
 	m := progress.FindStringSubmatch(name)

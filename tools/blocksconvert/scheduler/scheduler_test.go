@@ -17,11 +17,11 @@ import (
 func TestScanForPlans(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/1.plan", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/1.progress.1234567", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/1.progress.2345678", strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/1.starting.1234567", strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/1.inprogress.2345678", strings.NewReader("")))
 
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/2.plan", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/2.progress.93485345", strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/2.inprogress.93485345", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/2.finished.01E8GCW9J0HV0992HSZ0N6RAMN", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/2.finished.01EE9Y140JP4T58X8FGTG5T17F", strings.NewReader("")))
 
@@ -40,14 +40,14 @@ func TestScanForPlans(t *testing.T) {
 		"1": {
 			PlanFiles: []string{"migration/12345/1.plan"},
 			ProgressFiles: map[string]time.Time{
-				"migration/12345/1.progress.1234567": time.Unix(1234567, 0),
-				"migration/12345/1.progress.2345678": time.Unix(2345678, 0),
+				"migration/12345/1.starting.1234567":   time.Unix(1234567, 0),
+				"migration/12345/1.inprogress.2345678": time.Unix(2345678, 0),
 			},
 		},
 		"2": {
 			PlanFiles: []string{"migration/12345/2.plan"},
 			ProgressFiles: map[string]time.Time{
-				"migration/12345/2.progress.93485345": time.Unix(93485345, 0),
+				"migration/12345/2.inprogress.93485345": time.Unix(93485345, 0),
 			},
 			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN"), ulid.MustParse("01EE9Y140JP4T58X8FGTG5T17F")},
 		},
@@ -75,10 +75,10 @@ func TestSchedulerScan(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user1/1.plan", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), fmt.Sprintf("migration/user1/1.progress.%d", nowMinus1Hour.Unix()), strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), fmt.Sprintf("migration/user1/1.inprogress.%d", nowMinus1Hour.Unix()), strings.NewReader("")))
 
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user2/2.plan", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), fmt.Sprintf("migration/user2/2.progress.%d", now.Unix()), strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), fmt.Sprintf("migration/user2/2.inprogress.%d", now.Unix()), strings.NewReader("")))
 
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user3/3.plan", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user3/3.error", strings.NewReader("")))

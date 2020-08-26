@@ -93,10 +93,9 @@ type indexEntry struct {
 }
 
 type indexValueEntry struct {
-	value string
+	value  string
 	shards [][]model.Fingerprint
 }
-
 
 const indexValueShards = 200
 
@@ -116,7 +115,7 @@ func (c *indexValueEntry) fps() []model.Fingerprint {
 	return fps
 }
 
-func (c *indexValueEntry) delete(fp model.Fingerprint){
+func (c *indexValueEntry) delete(fp model.Fingerprint) {
 	num := c.shard(fp)
 	fps := c.shards[num]
 	j := sort.Search(len(fps), func(i int) bool {
@@ -140,7 +139,7 @@ func (c *indexValueEntry) shard(fp model.Fingerprint) int {
 	return int(math.Floor(float64(len(c.shards)) * float64(fp) / math.MaxUint64))
 }
 
-func (c *indexValueEntry) add(fp model.Fingerprint){
+func (c *indexValueEntry) add(fp model.Fingerprint) {
 	num := c.shard(fp)
 	fps := c.shards[num]
 	// Insert into the right position to keep fingerprints sorted

@@ -432,7 +432,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				ringDesc.Ingesters[newID] = newDesc
 			case remove:
 				// Remove the first one.
-				for id, _ := range ringDesc.Ingesters {
+				for id := range ringDesc.Ingesters {
 					delete(ringDesc.Ingesters, id)
 					break
 				}

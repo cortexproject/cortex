@@ -325,11 +325,11 @@ func TestChunkStore_ExcludeLabels(t *testing.T) {
 	# TYPE cortex_chunk_store_index_entries_per_chunk histogram
 	cortex_chunk_store_index_entries_per_chunk_bucket{le="1"} 4
 	cortex_chunk_store_index_entries_per_chunk_bucket{le="2"} 20
-	cortex_chunk_store_index_entries_per_chunk_bucket{le="4"} 60
+	cortex_chunk_store_index_entries_per_chunk_bucket{le="4"} 64
 	cortex_chunk_store_index_entries_per_chunk_bucket{le="8"} 72
 	cortex_chunk_store_index_entries_per_chunk_bucket{le="16"} 72
 	cortex_chunk_store_index_entries_per_chunk_bucket{le="+Inf"} 72
-	cortex_chunk_store_index_entries_per_chunk_sum 240
+	cortex_chunk_store_index_entries_per_chunk_sum 232
 	cortex_chunk_store_index_entries_per_chunk_count 72
 	`
 	fooMetric1 := labels.Labels{

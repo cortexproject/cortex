@@ -537,7 +537,7 @@ func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *
 func skipLabel(excfg util.ExcludeLabels, lb labels.Label, metricName string, userID string) bool {
 	exlbls := excfg[userID]
 	for _, lbl := range exlbls {
-		if lbl.MetricName == metricName && lbl.LabelName == lb.Value {
+		if lbl.MetricName == metricName && lbl.LabelName == lb.Name {
 			return true
 		}
 	}

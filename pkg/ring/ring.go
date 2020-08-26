@@ -500,6 +500,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	random := rand.New(rand.NewSource(seed))
 
 	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 
 	// We expect the shard size to be divisible by the number of zones, in order to
 	// have nodes balanced across zones. If it's not, we do round up.
@@ -543,8 +544,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 			}
 		}
 	}
-
-	r.mtx.RUnlock()
 
 	// Build a read-only ring for the shard.
 	shardDesc := &Desc{Ingesters: shard}

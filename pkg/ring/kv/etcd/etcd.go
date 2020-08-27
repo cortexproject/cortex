@@ -2,12 +2,15 @@ package etcd
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/pkg/transport"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -16,9 +19,13 @@ import (
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints   []string      `yaml:"endpoints"`
-	DialTimeout time.Duration `yaml:"dial_timeout"`
-	MaxRetries  int           `yaml:"max_retries"`
+	Endpoints     []string      `yaml:"endpoints"`
+	DialTimeout   time.Duration `yaml:"dial_timeout"`
+	MaxRetries    int           `yaml:"max_retries"`
+	CertFile      string        `yaml:"cert_file"`
+	KeyFile       string        `yaml:"key_file"`
+	TrustedCAFile string        `yaml:"client_ca_file"`
+	TLS           *tls.Config
 }
 
 // Client implements ring.KVClient for etcd.
@@ -34,10 +41,49 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
+	// Get certs from flag params and set config TLS, if present
+	f.StringVar(&cfg.CertFile, prefix+"etcd.cert-file", "", "The cert file dir location")
+	f.StringVar(&cfg.KeyFile, prefix+"etcd.key-file", "", "The key file dir location")
+	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.client-ca-file", "", "The trusted ca file directory location")
+}
+
+// SetTLS receives cert file locations and builds transport TLS info
+func (cfg *Config) SetTLS() error {
+	if cfg.CertFile != "" && cfg.KeyFile != "" && cfg.TrustedCAFile != "" {
+		tlsInfo := &transport.TLSInfo{
+			CertFile:      cfg.CertFile,
+			KeyFile:       cfg.KeyFile,
+			TrustedCAFile: cfg.TrustedCAFile,
+		}
+		if tlsInfo != nil {
+			err := cfg.GetTLS(tlsInfo)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	cfg.TLS = nil
+	return nil
+}
+
+// GetTLS sets the TLS config field with certs
+func (cfg *Config) GetTLS(tlsInfo *transport.TLSInfo) error {
+	tlsConfig, err := tlsInfo.ClientConfig()
+	if err != nil {
+		log.Printf("Could not set TLS info at GetTLS: %v\n", err)
+		return err
+	}
+	cfg.TLS = tlsConfig
+	return nil
 }
 
 // New makes a new Client.
 func New(cfg Config, codec codec.Codec) (*Client, error) {
+	err := cfg.SetTLS()
+	if err != nil {
+		return nil, err
+	}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,

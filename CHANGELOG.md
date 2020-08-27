@@ -14,6 +14,9 @@
 * [CHANGE] TLS server validation is now enabled by default, a new parameter `tls_insecure_skip_verify` can be set to true to skip validation optionally. #3030
 * [CHANGE] `cortex_ruler_config_update_failures_total` has been removed in favor of `cortex_ruler_config_last_reload_successful`. #3056
 * [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
+* [FEATURE] Experimental blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
+  * `cortex_bucket_stores_tenants_discovered`
+  * `cortex_bucket_stores_tenants_synced`
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018

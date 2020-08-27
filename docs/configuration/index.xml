@@ -3640,7 +3640,26 @@ The timeout for the etcd connection.&lt;/li>
 The maximum number of retries to do for failed ops.&lt;/li>
 &lt;/ul>
 &lt;h4 id="memberlist">memberlist&lt;/h4>
-&lt;p>Flags for configuring KV store based on memberlist library (works only for the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a>, not for the HA Tracker).&lt;/p>
+&lt;p>Warning: memberlist KV works only for the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a>, not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.&lt;/p>
+&lt;p>When using memberlist-based KV store, each node maintains its own copy of the hash ring.
+Updates generated locally, and received from other nodes are merged together to form the current state of the ring on the node.
+Updates are also propagated to other nodes.
+All nodes run the following two loops:&lt;/p>
+&lt;ol>
+&lt;li>Every &amp;ldquo;gossip interval&amp;rdquo;, pick random &amp;ldquo;gossip nodes&amp;rdquo; number of nodes, and send recent ring updates to them.&lt;/li>
+&lt;li>Every &amp;ldquo;push/pull sync interval&amp;rdquo;, choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.&lt;/li>
+&lt;/ol>
+&lt;p>When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
+Such update will be gossiped &lt;code>R * log(N+1)&lt;/code> times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).&lt;/p>
+&lt;p>If you find the propagation to be too slow, there are some tuning possibilities (default values are memberlist settings for LAN networks):&lt;/p>
+&lt;ul>
+&lt;li>Decrease gossip interval (default: 200ms)&lt;/li>
+&lt;li>Increase gossip nodes (default 3)&lt;/li>
+&lt;li>Decrease push/pull sync interval (default 30s)&lt;/li>
+&lt;li>Increase retransmit multiplication factor (default 4)&lt;/li>
+&lt;/ul>
+&lt;p>To find propagation delay, you can use &lt;code>cortex_ring_oldest_member_timestamp{state=&amp;quot;ACTIVE&amp;quot;}&lt;/code> metric.&lt;/p>
+&lt;p>Flags for configuring KV store based on memberlist library:&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>memberlist.nodename&lt;/code>
 Name of the node in memberlist cluster. Defaults to hostname.&lt;/li>

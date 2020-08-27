@@ -281,14 +281,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	for _, matcher := range matchers {
 		//variable to determine if matcher exists in exclude labels
 		//and should be skipped while lookup.
-		exUser := c.cfg.ExcludeLabels[userID]
-		shouldSkip := false
-		for _, lb := range exUser {
-			if lb.MetricName == metricName && lb.LabelName == matcher.Name {
-				shouldSkip = true
-			}
-		}
-		if shouldSkip {
+		exCfg := c.cfg.ExcludeLabels
+		skipLabel := exCfg.Skiplabel(matcher.Name, metricName, userID)
+
+		if skipLabel {
 			continue
 		}
 		counter++

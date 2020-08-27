@@ -534,16 +534,6 @@ func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *
 	return queries
 }
 
-func skipLabel(excfg util.ExcludeLabels, lb labels.Label, metricName string, userID string) bool {
-	exlbls := excfg[userID]
-	for _, lbl := range exlbls {
-		if lbl.MetricName == metricName && lbl.LabelName == lb.Name {
-			return true
-		}
-	}
-	return false
-}
-
 // v5 schema is an extension of v4, with the chunk end time in the
 // range key to improve query latency.  However, it did it wrong
 // so the chunk end times are ignored.
@@ -698,7 +688,7 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels l
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := skipLabel(excfg, v, metricName, userID)
+		skipLabel := excfg.Skiplabel(v.Name, metricName, userID)
 		if skipLabel {
 			continue
 		}
@@ -806,7 +796,7 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := skipLabel(excfg, v, metricName, userID)
+		skipLabel := excfg.Skiplabel(v.Name, metricName, userID)
 		if skipLabel {
 			continue
 		}
@@ -933,7 +923,7 @@ func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 		if l.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := skipLabel(excfg, l, metricName, userID)
+		skipLabel := excfg.Skiplabel(l.Name, metricName, userID)
 		if skipLabel {
 			continue
 		}

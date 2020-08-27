@@ -1904,6 +1904,17 @@ func TestIngesterV2BackfillCycle(t *testing.T) {
 
 	// Add a sample for that gap to create another TSDB.
 
+	// The TSDBs have not been moved yet.
+	userDB, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+	require.NotNil(t, userDB.backfillTSDB.dbs[0])
+	require.Nil(t, userDB.backfillTSDB.dbs[1])
+
+	// This should move the TSDBs.
+	require.NoError(t, userDB.backfillTSDB.compactAndShipAndDelete(false))
+	require.Nil(t, userDB.backfillTSDB.dbs[0])
+	require.NotNil(t, userDB.backfillTSDB.dbs[1])
+
 	// nowTime-2h.
 	ts = nowTimeDuration.Milliseconds() - 2*time.Hour.Milliseconds()
 	ingestSample(ts, 2, false)
@@ -1952,8 +1963,9 @@ func TestIngesterV2BackfillCycle(t *testing.T) {
 	//   |      X     |      Y     |
 	//   |------------|------------|
 
-	userDB, err := i.getOrCreateTSDB(userID, false)
+	userDB, err = i.getOrCreateTSDB(userID, false)
 	require.NoError(t, err)
+
 	for _, backfillDB := range userDB.backfillTSDB.dbs {
 		m := &shipperMock{}
 		m.On("Sync", mock.Anything).Return(0, nil)
@@ -1978,7 +1990,6 @@ func TestIngesterV2BackfillCycle(t *testing.T) {
 	require.Equal(t, 1, len(dbY.db.Blocks()))
 
 	// Appending a sample should create a new TSDB again.
-
 	// nowTime-2h.
 	ts = nowTimeDuration.Milliseconds() - 2*time.Hour.Milliseconds()
 	ingestSample(ts, 1, false)

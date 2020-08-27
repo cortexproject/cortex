@@ -85,6 +85,12 @@ func (cfg *StoreConfig) Validate() error {
 	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
 		return err
 	}
+	if cfg.ExcludeLabels != nil {
+		if err := cfg.ExcludeLabels.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

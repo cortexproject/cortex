@@ -479,7 +479,7 @@ func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
 	return instance.GetState(), nil
 }
 
-// Includes returns whether the ring includes the instance with the provided instanceID.
+// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 func (r *Ring) HasInstance(instanceID string) bool {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

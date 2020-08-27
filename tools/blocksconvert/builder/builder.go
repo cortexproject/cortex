@@ -244,8 +244,8 @@ func (b *Builder) running(ctx context.Context) error {
 			if err != nil {
 				level.Error(b.log).Log("msg", "failed to process plan file", "planFile", resp.PlanFile, "err", err)
 
-				// Don't upload error file, if build failed due to our context being finished -- that's not an error.
-				if ctx.Err() == nil {
+				// If context is canceled (either builder is shutting down, or due to hearbeating failure), don't upload error.
+				if !errors.Is(err, context.Canceled) {
 					errorFile := blocksconvert.ErrorFile(planBaseName)
 					err = b.bucketClient.Upload(ctx, errorFile, strings.NewReader(err.Error()))
 					if err != nil {
@@ -322,7 +322,6 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	if err != nil {
 		return errors.Wrap(err, "failed to create chunk fetcher")
 	}
-	// defer fetcher.stop()
 
 	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, planLog, b.processedSeries, b.writtenSamples)
 	if err != nil {
@@ -369,7 +368,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 		if b.cfg.DeleteLocalBlock {
 			if err := os.RemoveAll(blockDir); err != nil {
-				return errors.Wrap(err, "failed to delete local block")
+				level.Warn(planLog).Log("msg", "failed to delete local block")
 			}
 		}
 	}
@@ -383,7 +382,8 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	// Stop heartbeating.
 	if err := services.StopAndAwaitTerminated(ctx, hb); err != nil {
-		return errors.Wrap(err, "heartbeating failed")
+		// No need to report this error to caller to avoid generating error file.
+		level.Warn(planLog).Log("msg", "hearbeating failed", "err", err)
 	}
 
 	// All OK

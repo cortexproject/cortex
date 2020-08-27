@@ -262,7 +262,7 @@ func (b *Builder) running(ctx context.Context) error {
 	}
 }
 
-func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) (returnErr error) {
+func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
 	b.buildInProgress.Set(1)
 	defer b.buildInProgress.Set(0)
 	defer b.planFileSize.Set(0)
@@ -270,13 +270,19 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	planLog := log.With(b.log, "plan", planFile)
 
-	// Start heartbeating, and use returned context for the rest of the function. If heartbeating fails,
-	// context will be canceled.
-	hb, ctx, cancel, err := b.setupHeartbeating(ctx, planLog, planBaseName, lastProgressFile)
-	if err != nil {
-		return err
-	}
+	// Start heartbeating (updating of progress file). We setup new context used for the rest of the function.
+	// If hearbeating fails, we cancel this new context to abort quickly.
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	hb := newHeartbeat(planLog, b.bucketClient, b.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
+	hb.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
+		level.Error(planLog).Log("msg", "heartbeating failed, aborting build", "failure", failure)
+		cancel()
+	}))
+	if err := services.StartAndAwaitRunning(ctx, hb); err != nil {
+		return errors.Wrap(err, "failed to start heartbeating")
+	}
 
 	attr, err := b.bucketClient.Attributes(ctx, planFile)
 	if err != nil {
@@ -382,29 +388,6 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	// All OK
 	return nil
-}
-
-func (b *Builder) setupHeartbeating(ctx context.Context, planLog log.Logger, planFileBase string, lastProgressFile string) (*heartbeat, context.Context, context.CancelFunc, error) {
-	hbCtx, hbCancel := context.WithCancel(ctx)
-
-	hb := newHeartbeat(planLog, b.bucketClient, b.cfg.HeartbeatPeriod, planFileBase, lastProgressFile)
-	if err := services.StartAndAwaitRunning(hbCtx, hb); err != nil {
-		return nil, nil, nil, err
-	}
-
-	fw := services.NewFailureWatcher()
-	fw.WatchService(hb)
-	go func() {
-		select {
-		case failure := <-fw.Chan():
-			hbCancel()
-			level.Error(planLog).Log("msg", "heartbeating failed, cancelling build", "err", failure)
-		case <-hbCtx.Done():
-			return
-		}
-	}()
-
-	return hb, hbCtx, hbCancel, nil
 }
 
 func parsePlanHeader(dec *json.Decoder) (userID string, startTime, endTime time.Time, err error) {

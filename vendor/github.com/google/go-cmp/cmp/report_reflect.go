@@ -164,8 +164,6 @@ func (opts formatOptions) FormatValue(v reflect.Value, parentKind reflect.Kind, 
 			return textLine(formatHex(v.Uint()))
 		}
 		return textLine(fmt.Sprint(v.Uint()))
-	case reflect.Uintptr:
-		return textLine(formatHex(v.Uint()))
 	case reflect.Float32, reflect.Float64:
 		return textLine(fmt.Sprint(v.Float()))
 	case reflect.Complex64, reflect.Complex128:

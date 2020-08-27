@@ -63,7 +63,7 @@ type Limits struct {
 	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
 
 	// Ruler defaults and limits.
-	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
+	EvaluationDelay time.Duration `yaml:"ruler_evaluation_delay_duration"`
 
 	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`

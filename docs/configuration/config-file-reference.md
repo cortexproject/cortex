@@ -2805,7 +2805,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to cortex.
 # CLI flag: -ruler.evaluation-delay-duration
-[evaluation_delay_duration: <duration> | default = 0s]
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
 
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]

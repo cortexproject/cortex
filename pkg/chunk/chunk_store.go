@@ -717,7 +717,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 	return nil
 }
 
-func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels, excfg util.ExcludeLabels) error {
+func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	// SeriesID is something which is only used in SeriesStore so we need not do anything here
 	return nil
 }

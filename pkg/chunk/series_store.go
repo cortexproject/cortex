@@ -565,11 +565,11 @@ func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time,
 	})
 }
 
-func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels, excfg util.ExcludeLabels) error {
+func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 
 	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
 		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
-	}, excfg)
+	}, c.cfg.ExcludeLabels)
 	if err != nil {
 		return err
 	}

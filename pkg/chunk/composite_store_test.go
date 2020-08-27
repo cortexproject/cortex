@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/common/model"
@@ -42,7 +41,7 @@ func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, f
 func (m mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
 	return nil
 }
-func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels, excfg util.ExcludeLabels) error {
+func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	return nil
 }
 

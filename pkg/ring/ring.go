@@ -49,7 +49,10 @@ type ReadRing interface {
 	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
-	Subring(key uint32, n int) ReadRing
+
+	// ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
+	// and size (number of instances).
+	ShuffleShard(identifier string, size int) ReadRing
 
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool

@@ -127,6 +127,10 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "builder_plan_size",
 			Help: "Total size of plan file.",
 		}),
+		chunksNotFound: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "builder_chunks_not_found_total",
+			Help: "Number of chunks that were not found on the storage.",
+		}),
 	}
 	b.Service = services.NewBasicService(b.cleanup, b.running, nil)
 	return b, err
@@ -152,6 +156,7 @@ type Builder struct {
 	planFileReadPosition prometheus.Gauge
 	planFileSize         prometheus.Gauge
 	buildInProgress      prometheus.Gauge
+	chunksNotFound       prometheus.Counter
 }
 
 func (b *Builder) cleanup(_ context.Context) error {
@@ -326,7 +331,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	g, gctx := errgroup.WithContext(ctx)
 	for i := 0; i < b.cfg.Concurrency; i++ {
 		g.Go(func() error {
-			return fetchAndBuild(gctx, fetcher, planEntryCh, tsdbBuilder)
+			return fetchAndBuild(gctx, fetcher, planEntryCh, tsdbBuilder, b.log, b.chunksNotFound)
 		})
 	}
 
@@ -458,7 +463,7 @@ func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan b
 	return err
 }
 
-func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder) error {
+func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -475,6 +480,11 @@ func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.Pla
 				return errors.Wrapf(err, "failed to fetch chunks for series %s", e.SeriesID)
 			}
 
+			if len(e.Chunks) > len(cs) {
+				chunksNotFound.Add(float64(len(e.Chunks) - len(cs)))
+				level.Warn(log).Log("msg", "chunks for series not found", "seriesID", e.SeriesID, "expected", len(e.Chunks), "got", len(cs))
+			}
+
 			if len(cs) == 0 {
 				continue
 			}
@@ -489,7 +499,7 @@ func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.Pla
 
 func fetchAndBuildSingleSeries(ctx context.Context, fetcher *fetcher, chunksIds []string) (labels.Labels, []chunk.Chunk, error) {
 	cs, err := fetcher.fetchChunks(ctx, chunksIds)
-	if err != nil {
+	if err != nil && !errors.Is(err, chunk.ErrStorageObjectNotFound) {
 		return nil, nil, errors.Wrap(err, "fetching chunks")
 	}
 

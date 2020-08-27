@@ -2,6 +2,8 @@ package index
 
 import (
 	"fmt"
+	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -133,4 +135,44 @@ func mustParseMatcher(s string) []*labels.Matcher {
 		panic(err)
 	}
 	return ms
+}
+
+func TestIndexValueEntry(t *testing.T) {
+	const size = 100
+	c := newIndexValueEntry("value")
+	var fps []model.Fingerprint
+	for i := 0; i < size; i++ {
+		fingerprint := model.Fingerprint(rand.Uint64())
+
+		// add element into fps
+		j := sort.Search(len(fps), func(i int) bool {
+			return fps[i] >= fingerprint
+		})
+		fps = append(fps, 0)
+		copy(fps[j+1:], fps[j:])
+		fps[j] = fingerprint
+
+		c.add(fingerprint)
+
+		assert.Equal(t, fps, c.fps())
+		assert.Equal(t, len(c.fps()), c.length())
+	}
+
+	for len(fps) > 0 {
+		fp := fps[rand.Intn(len(fps))]
+
+		// delete element in fps
+		j := sort.Search(len(fps), func(i int) bool {
+			return fps[i] >= fp
+		})
+		fps = fps[:j+copy(fps[j:], fps[j+1:])]
+
+		c.delete(fp)
+
+		if len(fps) == 0 {
+			fps = nil
+		}
+
+		assert.Equal(t, fps, c.fps())
+	}
 }

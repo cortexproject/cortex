@@ -1,12 +1,15 @@
 package blocksconvert
 
 import (
+	"compress/gzip"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang/snappy"
 	"github.com/oklog/ulid"
 )
 
@@ -45,6 +48,18 @@ func IsPlanFile(name string) (bool, string) {
 	}
 
 	return false, ""
+}
+
+func PreparePlanFileReader(planFile string, in io.Reader) (io.Reader, error) {
+	switch {
+	case strings.HasSuffix(planFile, ".snappy"):
+		return snappy.NewReader(in), nil
+
+	case strings.HasSuffix(planFile, ".gz"):
+		return gzip.NewReader(in)
+	}
+
+	return in, nil
 }
 
 func StartingFile(planBaseName string, t time.Time) string {

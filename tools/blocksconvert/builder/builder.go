@@ -2,7 +2,6 @@ package builder
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"flag"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -296,7 +294,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	}()
 
 	// Use a buffer for reading plan file.
-	r, err := preparePlanFile(planFile, bufio.NewReaderSize(&readPositionReporter{r: f, g: b.planFileReadPosition}, 1*1024*1024))
+	r, err := blocksconvert.PreparePlanFileReader(planFile, bufio.NewReaderSize(&readPositionReporter{r: f, g: b.planFileReadPosition}, 1*1024*1024))
 	if err != nil {
 		return err
 	}
@@ -430,10 +428,11 @@ func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan b
 
 	var err error
 	complete := false
-	entry := &blocksconvert.PlanEntry{}
+	entry := blocksconvert.PlanEntry{}
 	for err = dec.Decode(&entry); err == nil; err = dec.Decode(&entry) {
 		if entry.Complete {
 			complete = true
+			entry.Reset()
 			continue
 		}
 
@@ -443,7 +442,7 @@ func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan b
 
 		if entry.SeriesID != "" && len(entry.Chunks) > 0 {
 			select {
-			case planEntryCh <- *entry:
+			case planEntryCh <- entry:
 				// ok
 			case <-ctx.Done():
 				return nil
@@ -516,18 +515,6 @@ func fetchAndBuildSingleSeries(ctx context.Context, fetcher *fetcher, chunksIds 
 	}
 
 	return m, cs, nil
-}
-
-func preparePlanFile(planFile string, in io.Reader) (io.Reader, error) {
-	switch {
-	case strings.HasSuffix(planFile, ".snappy"):
-		return snappy.NewReader(in), nil
-
-	case strings.HasSuffix(planFile, ".gz"):
-		return gzip.NewReader(in)
-	}
-
-	return in, nil
 }
 
 // Finds storage configuration for given day, and builds a client.

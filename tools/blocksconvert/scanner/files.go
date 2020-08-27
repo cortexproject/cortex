@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
 type file struct {
@@ -88,33 +89,23 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 	return f, nil
 }
 
-func (of *openFiles) closeAllFiles(footerFn func() interface{}) []error {
+func (of *openFiles) closeAllFiles(footerFn func() interface{}) error {
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
-	var errors []error
+	errs := errors.MultiError{}
 
 	for fn, f := range of.files {
 		delete(of.files, fn)
 		of.openFiles.Dec()
 
 		if footerFn != nil {
-			err := f.enc.Encode(footerFn())
-			if err != nil {
-				errors = append(errors, err)
-			}
+			errs.Add(f.enc.Encode(footerFn()))
 		}
 
-		err := f.comp.Close()
-		if err != nil {
-			errors = append(errors, err)
-		}
-
-		err = f.file.Close()
-		if err != nil {
-			errors = append(errors, err)
-		}
+		errs.Add(f.comp.Close())
+		errs.Add(f.file.Close())
 	}
 
-	return errors
+	return errs.Err()
 }

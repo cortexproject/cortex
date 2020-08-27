@@ -2,8 +2,10 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,9 +17,9 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -313,12 +315,94 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 		return err
 	}
 
-	errs := files.closeAllFiles(func() interface{} {
+	err = files.closeAllFiles(func() interface{} {
 		return blocksconvert.PlanEntry{Complete: true}
 	})
-	if len(errs) > 0 {
-		return errors.MultiError(errs)
+	if err != nil {
+		return errors.Wrap(err, "closing files")
 	}
 
-	return nil
+	return verifyPlanFiles(outDir)
+}
+
+func verifyPlanFiles(dir string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		ok, _ := blocksconvert.IsPlanFile(info.Name())
+		if !ok {
+			return nil
+		}
+
+		r, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open %s: %w", path, err)
+		}
+		defer func() {
+			_ = r.Close()
+		}()
+
+		pr, err := blocksconvert.PreparePlanFileReader(info.Name(), r)
+		if err != nil {
+			return fmt.Errorf("failed to prepare plan file for reading: %s: %w", path, err)
+		}
+		return errors.Wrapf(verifyPlanFile(pr), "plan file: %s", path)
+	})
+}
+
+func verifyPlanFile(r io.Reader) error {
+	dec := json.NewDecoder(r)
+
+	entry := blocksconvert.PlanEntry{}
+	if err := dec.Decode(&entry); err != nil {
+		return errors.Wrap(err, "failed to parse plan file header")
+	}
+	if entry.User == "" || entry.DayIndex == 0 {
+		return errors.New("failed to read plan file header: no user or day index found")
+	}
+
+	series := map[string]struct{}{}
+
+	var err error
+	footerFound := false
+	for err = dec.Decode(&entry); err == nil; err = dec.Decode(&entry) {
+		if entry.Complete {
+			footerFound = true
+			entry.Reset()
+			continue
+		}
+
+		if footerFound {
+			return errors.New("plan entries found after plan footer")
+		}
+
+		if entry.SeriesID == "" {
+			return errors.Errorf("plan contains entry without seriesID")
+		}
+
+		if len(entry.Chunks) == 0 {
+			return errors.Errorf("entry for seriesID %s has no chunks", entry.SeriesID)
+		}
+
+		if _, found := series[entry.SeriesID]; found {
+			return errors.Errorf("multiple entries for series %s found in plan", entry.SeriesID)
+		}
+		series[entry.SeriesID] = struct{}{}
+
+		entry.Reset()
+	}
+
+	if err == io.EOF {
+		if !footerFound {
+			return errors.New("no footer found in the plan")
+		}
+		err = nil
+	}
+	return err
 }

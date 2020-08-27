@@ -664,7 +664,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
 		Configs:        {API},
 		AlertManager:   {API},
-		Compactor:      {API},
+		Compactor:      {API, MemberlistKV},
 		StoreGateway:   {API, Overrides, MemberlistKV},
 		Purger:         {Store, DeleteRequestsStore, API},
 		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},

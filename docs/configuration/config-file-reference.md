@@ -2494,18 +2494,6 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # The maximum number of retries to do for failed ops.
 # CLI flag: -<prefix>.etcd.max-retries
 [max_retries: <int> | default = 10]
-
-# The etcd cert file directory location.
-# CLI flag: -<prefix>.etcd.cert-file
-[cert_file: <string> | default = ""]
-
-# The etcd key file directory location.
-# CLI flag: -<prefix>.etcd.key-file
-[key_file: <string> | default = ""]
-
-# The etcd trusted ca file directory location.
-# CLI flag: -<prefix>.etcd.client-ca-file
-[client_ca_file: <string> | default = ""]
 ```
 
 ### `consul_config`

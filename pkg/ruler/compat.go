@@ -14,7 +14,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -73,12 +72,21 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
+// RulesLimits is the one function we need from limits.Overrides, and
+// is here to limit coupling.
+type RulesLimits interface {
+	EvaluationDelay(usedID string) time.Duration
+}
+
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
-	orig := rules.EngineQueryFunc(engine, q)
+func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		return orig(ctx, qs, t.Add(-delay))
+		orig := rules.EngineQueryFunc(engine, q)
+		// Delay the evaluation of all rules by a set interval to give a buffer
+		// to metric that haven't been forwarded to cortex yet.
+		evaluationDelay := overrides.EvaluationDelay(userID)
+		return orig(ctx, qs, t.Add(-evaluationDelay))
 	}
 }
 
@@ -95,7 +103,7 @@ func DefaultTenantManagerFactory(
 	p Pusher,
 	q storage.Queryable,
 	engine *promql.Engine,
-	overrides *validation.Overrides,
+	overrides RulesLimits,
 ) ManagerFactory {
 	return func(
 		ctx context.Context,
@@ -104,12 +112,10 @@ func DefaultTenantManagerFactory(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) *rules.Manager {
-		evaluationDelay := overrides.EvaluationDelay(userID)
-
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
-			QueryFunc:       engineQueryFunc(engine, q, evaluationDelay),
+			QueryFunc:       engineQueryFunc(engine, q, overrides, userID),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

@@ -48,6 +48,9 @@ type Config struct {
 	ClientTLSConfig tls.ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
+	// Deprecated. Delay the evaluation of all rules by a set interval to give a buffer
+	// to metric that haven't been forwarded to cortex yet.
+	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.

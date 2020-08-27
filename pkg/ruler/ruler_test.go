@@ -31,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
@@ -58,7 +57,13 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, *validation.Overrides, func()) {
+type ruleLimits time.Duration
+
+func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
+	return time.Duration(r)
+}
+
+func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
 	dir, err := ioutil.TempDir("", t.Name())
 	testutil.Ok(t, err)
 	cleanup := func() {
@@ -84,12 +89,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits, nil)
-	testutil.Ok(t, err)
-
-	return engine, noopQueryable, pusher, l, overrides, cleanup
+	return engine, noopQueryable, pusher, l, ruleLimits(0), cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {

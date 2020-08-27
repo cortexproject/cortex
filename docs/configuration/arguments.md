@@ -186,7 +186,28 @@ prefix these flags with `distributor.ha-tracker.`
 
 #### memberlist
 
-Flags for configuring KV store based on memberlist library (works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker).
+Warning: memberlist KV works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.
+
+When using memberlist-based KV store, each node maintains its own copy of the hash ring.
+Updates generated locally, and received from other nodes are merged together to form the current state of the ring on the node.
+Updates are also propagated to other nodes.
+All nodes run the following two loops:
+
+1. Every "gossip interval", pick random "gossip nodes" number of nodes, and send recent ring updates to them.
+2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.
+
+When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
+Such update will be gossiped `R * log(N+1)` times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).
+
+If you find the propagation to be too slow, there are some tuning possibilities (default values are memberlist settings for LAN networks):
+- Decrease gossip interval (default: 200ms)
+- Increase gossip nodes (default 3)
+- Decrease push/pull sync interval (default 30s)
+- Increase retransmit multiplication factor (default 4)
+
+To find propagation delay, you can use `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
+
+Flags for configuring KV store based on memberlist library:
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.

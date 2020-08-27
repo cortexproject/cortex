@@ -136,7 +136,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 			st := plan.Status()
 			if st == InProgress {
 				for pg, t := range plan.ProgressFiles {
-					if time.Now().Sub(t) > s.cfg.MaxProgressFileAge {
+					if time.Since(t) > s.cfg.MaxProgressFileAge {
 						level.Warn(s.log).Log("msg", "deleting obsolete progress file", "path", pg)
 						err := s.bucket.Delete(ctx, pg)
 						if err != nil {
@@ -152,7 +152,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 			}
 
 			mu.Lock()
-			stats[st] += 1
+			stats[st]++
 			mu.Unlock()
 
 			if st != New {

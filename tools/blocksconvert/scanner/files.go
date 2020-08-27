@@ -36,7 +36,7 @@ func newOpenFiles(openFilesGauge prometheus.Gauge) *openFiles {
 	return of
 }
 
-func (of *openFiles) appendJsonEntryToFile(dir, filename string, data interface{}, headerFn func() interface{}) error {
+func (of *openFiles) appendJSONEntryToFile(dir, filename string, data interface{}, headerFn func() interface{}) error {
 	f, err := of.getFile(dir, filename, headerFn)
 	if err != nil {
 		return err

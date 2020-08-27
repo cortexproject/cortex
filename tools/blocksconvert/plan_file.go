@@ -70,7 +70,7 @@ func ProgressFile(planBaseName string, t time.Time) string {
 	return fmt.Sprintf("%s.inprogress.%d", planBaseName, t.Unix())
 }
 
-var progress = regexp.MustCompile("^(.+)\\.(starting|progress|inprogress)\\.(\\d+)$")
+var progress = regexp.MustCompile(`^(.+)\.(starting|progress|inprogress)\.(\d+)$`)
 
 func IsProgressFile(name string) (bool, string, time.Time) {
 	m := progress.FindStringSubmatch(name)
@@ -90,7 +90,7 @@ func FinishedFile(planBaseName string, id ulid.ULID) string {
 	return fmt.Sprintf("%s.finished.%s", planBaseName, id.String())
 }
 
-var finished = regexp.MustCompile("^(.+)\\.finished\\.([a-zA-Z0-9]+)$")
+var finished = regexp.MustCompile(`^(.+)\.finished\.([a-zA-Z0-9]+)$`)
 
 func IsFinishedFile(name string) (bool, string, ulid.ULID) {
 	m := finished.FindStringSubmatch(name)

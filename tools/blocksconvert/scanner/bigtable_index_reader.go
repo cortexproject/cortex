@@ -28,7 +28,7 @@ type bigtableIndexReader struct {
 	parsedIndexEntries prometheus.Counter
 }
 
-func NewBigtableIndexReader(project, instance string, l log.Logger, reg prometheus.Registerer) *bigtableIndexReader {
+func newBigtableIndexReader(project, instance string, l log.Logger, reg prometheus.Registerer) *bigtableIndexReader {
 	return &bigtableIndexReader{
 		log:      l,
 		project:  project,

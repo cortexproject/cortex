@@ -139,7 +139,6 @@ type Builder struct {
 
 	cfg Config
 	log log.Logger
-	reg prometheus.Registerer
 
 	bucketClient  objstore.Bucket
 	chunksCache   cache.Cache

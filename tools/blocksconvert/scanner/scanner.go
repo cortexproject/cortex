@@ -133,7 +133,7 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 
 	s := &Scanner{
 		cfg:          cfg,
-		indexReader:  NewBigtableIndexReader(bigTable.Project, bigTable.Instance, l, reg),
+		indexReader:  newBigtableIndexReader(bigTable.Project, bigTable.Instance, l, reg),
 		table:        cfg.TableName,
 		tablePrefix:  tablePrefix,
 		tablePeriod:  tablePeriod,
@@ -233,12 +233,8 @@ func (s *Scanner) running(ctx context.Context) error {
 func shouldSkipOperationBecauseFileExists(file string) bool {
 	// If file exists, we should skip the operation.
 	_, err := os.Stat(file)
-	if err != nil {
-		// Any error (including ErrNotExists) indicates operation should continue.
-		return false
-	}
-
-	return true
+	// Any error (including ErrNotExists) indicates operation should continue.
+	return err == nil
 }
 
 func findTables(logger log.Logger, tableNames []string, prefix string, period time.Duration) []string {
@@ -299,7 +295,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 
 	files := newOpenFiles(openFiles)
 	result := func(dir string, file string, entry blocksconvert.PlanEntry, header func() blocksconvert.PlanEntry) error {
-		return files.appendJsonEntryToFile(dir, file, entry, func() interface{} {
+		return files.appendJSONEntryToFile(dir, file, entry, func() interface{} {
 			return header()
 		})
 	}

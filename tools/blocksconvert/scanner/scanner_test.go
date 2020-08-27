@@ -77,13 +77,13 @@ func TestVerifyPlansDir(t *testing.T) {
 
 	of := newOpenFiles(prometheus.NewGauge(prometheus.GaugeOpts{}))
 	// This file is checked first, and no error is reported for it.
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{User: "user1", DayIndex: 123}, nil))
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c1, c2"}}, nil))
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{Complete: true}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{User: "user1", DayIndex: 123}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c1, c2"}}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user1"), "123.plan", blocksconvert.PlanEntry{Complete: true}, nil))
 
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{User: "user2", DayIndex: 456}, nil))
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c1, c2"}}, nil))
-	require.NoError(t, of.appendJsonEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c3, c4"}}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{User: "user2", DayIndex: 456}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c1, c2"}}, nil))
+	require.NoError(t, of.appendJSONEntryToFile(filepath.Join(dir, "user2"), "456.plan", blocksconvert.PlanEntry{SeriesID: "s1", Chunks: []string{"c3, c4"}}, nil))
 
 	require.NoError(t, of.closeAllFiles(nil))
 

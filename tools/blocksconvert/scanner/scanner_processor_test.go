@@ -30,7 +30,7 @@ func TestProcessorError(t *testing.T) {
 	startOfDay := model.TimeFromUnixNano(now.Truncate(24 * time.Hour).UnixNano())
 
 	pc := chunk.PeriodConfig{
-		From:       chunk.DayTime{startOfDay},
+		From:       chunk.DayTime{Time: startOfDay},
 		IndexType:  "bigtable",
 		ObjectType: "gcs",
 		Schema:     "v9",

@@ -186,7 +186,7 @@ prefix these flags with `distributor.ha-tracker.`
 
 #### memberlist
 
-Flags for configuring KV store based on memberlist library (works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker).
+Warning: memberlist KV works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.
 
 When using memberlist-based KV store, each node maintains its own copy of the hash ring.
 Updates generated locally, and received from other nodes are merged together to form the current state of the ring on the node.
@@ -206,6 +206,8 @@ If you find the propagation to be too slow, there are some tuning possibilities 
 - Increase retransmit multiplication factor (default 4)
 
 To find propagation delay, you can use `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
+
+Flags for configuring KV store based on memberlist library:
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.

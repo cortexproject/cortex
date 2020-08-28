@@ -23,9 +23,9 @@ type Config struct {
 	DialTimeout        time.Duration `yaml:"dial_timeout"`
 	MaxRetries         int           `yaml:"max_retries"`
 	EnableTLS          bool          `yaml:"tls_enabled"`
-	CertFile           string        `yaml:"tls_cert_file"`
-	KeyFile            string        `yaml:"tls_key_file"`
-	TrustedCAFile      string        `yaml:"tls_client_ca_file"`
+	CertFile           string        `yaml:"tls_cert_path"`
+	KeyFile            string        `yaml:"tls_key_path"`
+	TrustedCAFile      string        `yaml:"tls_ca_path"`
 	InsecureSkipVerify bool          `yaml:"tls_insecure_skip_verify"`
 }
 

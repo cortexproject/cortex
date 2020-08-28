@@ -46,24 +46,24 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-path", "", "The TLS certificate file path")
 	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-path", "", "The TLS private key file path")
 	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-ca-path", "", "The trusted CA file path")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating server certificate")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating client certificate")
 }
 
 // GetTLS sets the TLS config field with certs
 func (cfg *Config) GetTLS() (*tls.Config, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" && !cfg.EnableTLS {
+	if !cfg.EnableTLS {
 		return nil, nil
 	}
 	tlsInfo := &transport.TLSInfo{
-		CertFile: cfg.CertFile,
-		KeyFile:  cfg.KeyFile,
-		tlsInfo.TrustedCAFile = cfg.TrustedCAFile
+		CertFile:           cfg.CertFile,
+		KeyFile:            cfg.KeyFile,
+		TrustedCAFile:      cfg.TrustedCAFile,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
 	}
 	tlsConfig, err := tlsInfo.ClientConfig()
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig.InsecureSkipVerify = cfg.InsecureSkipVerify
 	return tlsConfig, nil
 }
 

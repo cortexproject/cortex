@@ -34,12 +34,12 @@ var (
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
 	noCacheRequest = &PrometheusRequest{
-		Path:    "/api/v1/query_range",
-		Start:   1536673680 * 1e3,
-		End:     1536716898 * 1e3,
-		Step:    120 * 1e3,
-		Query:   "sum(container_memory_rss) by (namespace)",
-		NoCache: true,
+		Path:            "/api/v1/query_range",
+		Start:           1536673680 * 1e3,
+		End:             1536716898 * 1e3,
+		Step:            120 * 1e3,
+		Query:           "sum(container_memory_rss) by (namespace)",
+		CacheDirectives: CacheDirectives{Disabled: true},
 	}
 	respHeaders = []*PrometheusResponseHeader{
 		{
@@ -130,8 +130,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{noStoreValue},
 					},
 				},
 			}),
@@ -142,8 +142,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{"foo", noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{"foo", noStoreValue},
 					},
 				},
 			}),
@@ -164,7 +164,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name: "had cacheControl header but no values",
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusResponseHeader{{Name: cachecontrolHeader}},
+				Headers: []*PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
 			expected: true,
 		},
@@ -238,8 +238,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{noStoreValue},
 					},
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
@@ -617,7 +617,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		{
 			name: "check cache based on request",
 			shouldCache: func(r Request) bool {
-				return !r.GetNoCache()
+				return !r.GetCacheDirectives().Disabled
 			},
 			requests:     []Request{noCacheRequest, noCacheRequest},
 			expectedCall: 2,

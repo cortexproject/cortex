@@ -27,8 +27,8 @@ import (
 )
 
 var (
-	// Value that cachecontrolHeader has if the response indicates that the results should not be cached.
-	noCacheValue = "no-store"
+	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
+	noStoreValue = "no-store"
 
 	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
 	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
@@ -102,6 +102,8 @@ func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
+// ShouldCacheFn checks whether the current request should go to cache
+// or not. If not, just send the request to next handler.
 type ShouldCacheFn func(r Request) bool
 
 type resultsCache struct {
@@ -210,10 +212,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
-	headerValues := getHeaderValuesWithName(r, cachecontrolHeader)
+	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
-		if v == noCacheValue {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+		if v == noStoreValue {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
 	}

@@ -688,8 +688,7 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels l
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := excfg.Skiplabel(v.Name, metricName, userID)
-		if skipLabel {
+		if excfg.SkipLabel(v.Name, metricName, userID) {
 			continue
 		}
 		valueHash := sha256bytes(v.Value)
@@ -796,8 +795,7 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := excfg.Skiplabel(v.Name, metricName, userID)
-		if skipLabel {
+		if excfg.SkipLabel(v.Name, metricName, userID) {
 			continue
 		}
 		valueHash := sha256bytes(v.Value)
@@ -923,8 +921,7 @@ func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 		if l.Name == model.MetricNameLabel {
 			continue
 		}
-		skipLabel := excfg.Skiplabel(l.Name, metricName, userID)
-		if skipLabel {
+		if excfg.SkipLabel(l.Name, metricName, userID) {
 			continue
 		}
 		labelNames = append(labelNames, l.Name)

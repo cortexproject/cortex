@@ -80,7 +80,7 @@ func TestExcludeLabels_SkipLabel(t *testing.T) {
 			inputData := testData.input
 			actualConfig, err := ParseFile(testData.input.cfg)
 			assert.NoError(t, err)
-			assert.Equal(t, testData.wantOut, actualConfig.Skiplabel(inputData.lbName, inputData.metricName, inputData.userID))
+			assert.Equal(t, testData.wantOut, actualConfig.SkipLabel(inputData.lbName, inputData.metricName, inputData.userID))
 		})
 	}
 }

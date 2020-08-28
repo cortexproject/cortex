@@ -279,12 +279,9 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	incomingErrors := make(chan error)
 
 	for _, matcher := range matchers {
-		//variable to determine if matcher exists in exclude labels
-		//and should be skipped while lookup.
+		//See if exclude labels in cfg exist and skip it
 		exCfg := c.cfg.ExcludeLabels
-		skipLabel := exCfg.Skiplabel(matcher.Name, metricName, userID)
-
-		if skipLabel {
+		if exCfg.SkipLabel(matcher.Name, metricName, userID) {
 			continue
 		}
 		counter++
@@ -298,8 +295,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			incomingIDs <- ids
 		}(matcher)
 	}
-	// Just get series for metric if there are no matchers
-	//or count of matchers after exlusion is 0
+	// Just get series for metric if there are no matchers after exclusions
 	if len(matchers) == 0 || counter == 0 {
 		indexLookupsPerQuery.Observe(float64(1))
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)

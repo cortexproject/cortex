@@ -30,7 +30,7 @@ func (excfg ExcludeLabels) Validate() error {
 	return nil
 }
 
-func (excfg ExcludeLabels) Skiplabel(lbName string, metricName string, userID string) bool {
+func (excfg ExcludeLabels) SkipLabel(lbName string, metricName string, userID string) bool {
 	exlbls := excfg[userID]
 	for _, lbl := range exlbls {
 		if lbl.MetricName == metricName && lbl.LabelName == lbName {

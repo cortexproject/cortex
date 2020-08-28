@@ -34,7 +34,7 @@ var seriesStoreSchemas = []string{"v9", "v10", "v11"}
 
 var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
 
-//using metric name 'job' as this field has only 1 value i.e 'prometheus'
+//sample exclude labels
 var excludeLblCfg = util.ExcludeLabels{
 	userID: []util.Metric{{LabelName: "bar",
 		MetricName: "foo"},
@@ -116,12 +116,18 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 func TestChunkStore_Get(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()
+
+	//This resets the indexLookupsPerQuery histogram so that it has existing observations
+	//which might hinder in tests
 	indexLookupsPerQuery = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
+
+	//This resets the indexEntriesPerChunk histogram so that it has existing observations
+	//which might hinder in tests
 	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -129,6 +135,8 @@ func TestChunkStore_Get(t *testing.T) {
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 
+	//Checks the metric `chunk_store_index_lookups_per_query` when config is missing
+	//exclude labels
 	const observableMetadataIndexLookups = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
@@ -142,6 +150,8 @@ func TestChunkStore_Get(t *testing.T) {
 	cortex_chunk_store_index_lookups_per_query_count 120
 	`
 
+	//Checks the metric `chunk_store_index_entries_per_chunk` when config is missing
+	//exclude labels
 	const observableMetadataEntriesChunk = `
 	# HELP cortex_chunk_store_index_entries_per_chunk Number of entries written to storage per chunk.
 	# TYPE cortex_chunk_store_index_entries_per_chunk histogram
@@ -292,21 +302,32 @@ func TestChunkStore_Get(t *testing.T) {
 }
 
 // TestChunkStore_ExcludeLabels tests results are returned correctly after exclusions of certain labels
+//Copied from TestChunkStore_Get()
 func TestChunkStore_ExcludeLabels(t *testing.T) {
 	ctx := context.Background()
 	now := model.Now()
+
+	//This resets the indexLookupsPerQuery histogram so that it has existing observations
+	//which might hinder in tests
 	indexLookupsPerQuery = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
+
+	//This resets the indexLookupsPerQuery histogram so that it has existing observations
+	//which might hinder in tests
 	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
+
+	//Checks the metric `chunk_store_index_lookups_per_query` when exclude labels
+	//are passed in conf
+	//These numbers are lower than TestChunkStore_Get
 	const observableMetadataIndexLookup = `
 	# HELP cortex_chunk_store_index_lookups_per_query Distribution of #index lookups per query.
 	# TYPE cortex_chunk_store_index_lookups_per_query histogram
@@ -320,6 +341,9 @@ func TestChunkStore_ExcludeLabels(t *testing.T) {
 	cortex_chunk_store_index_lookups_per_query_count 120
 	`
 
+	//Checks the metric `chunk_store_index_entries_per_chunk` when exclude labels
+	//are passed in conf
+	//These numbers are lower than TestChunkStore_Get
 	const observableMetadataEntriesChunk = `
 	# HELP cortex_chunk_store_index_entries_per_chunk Number of entries written to storage per chunk.
 	# TYPE cortex_chunk_store_index_entries_per_chunk histogram
@@ -768,7 +792,6 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					}
 				})
 			}
-
 		}
 	}
 }

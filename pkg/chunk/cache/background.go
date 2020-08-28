@@ -36,8 +36,7 @@ type backgroundCache struct {
 }
 
 type backgroundWrite struct {
-	keys []string
-	bufs [][]byte
+	data map[string][]byte
 }
 
 // NewBackground returns a new Cache that does stores on background goroutines.
@@ -81,30 +80,34 @@ func (c *backgroundCache) Stop() {
 const keysPerBatch = 100
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	for len(keys) > 0 {
-		num := keysPerBatch
-		if num > len(keys) {
-			num = len(keys)
+func (c *backgroundCache) Store(ctx context.Context, data map[string][]byte) {
+	batch := make(map[string][]byte, keysPerBatch)
+	for len(data) > 0 {
+		queueSize := 0
+		for k, v := range data {
+			if queueSize >= keysPerBatch {
+				break
+			}
+			batch[k] = v
+			delete(data, k)
+			queueSize++
 		}
 
 		bgWrite := backgroundWrite{
-			keys: keys[:num],
-			bufs: bufs[:num],
+			data: batch,
 		}
 		select {
 		case c.bgWrites <- bgWrite:
-			c.queueLength.Add(float64(num))
+			c.queueLength.Add(float64(queueSize))
 		default:
-			c.droppedWriteBack.Add(float64(num))
+			c.droppedWriteBack.Add(float64(queueSize))
 			sp := opentracing.SpanFromContext(ctx)
 			if sp != nil {
-				sp.LogFields(otlog.Int("dropped", num))
+				sp.LogFields(otlog.Int("dropped", queueSize))
 			}
 			return // queue is full; give up
 		}
-		keys = keys[num:]
-		bufs = bufs[num:]
+		batch = make(map[string][]byte, keysPerBatch)
 	}
 }
 
@@ -117,8 +120,8 @@ func (c *backgroundCache) writeBackLoop() {
 			if !ok {
 				return
 			}
-			c.queueLength.Sub(float64(len(bgWrite.keys)))
-			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			c.queueLength.Sub(float64(len(bgWrite.data)))
+			c.Cache.Store(context.Background(), bgWrite.data)
 
 		case <-c.quit:
 			return

@@ -34,12 +34,6 @@ var seriesStoreSchemas = []string{"v9", "v10", "v11"}
 
 var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
 
-//sample exclude labels
-var excludeLblCfg = util.ExcludeLabels{
-	userID: []util.Metric{{LabelName: "bar",
-		MetricName: "foo"},
-	},
-}
 var stores = []struct {
 	name     string
 	configFn configFactory
@@ -110,6 +104,13 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	err = store.addSchema(storeCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store
+}
+
+//sample exclude labels
+var excludeLblCfg = util.ExcludeLabels{
+	userID: []util.Metric{{LabelName: "bar",
+		MetricName: "foo"},
+	},
 }
 
 // TestChunkStore_Get tests results are returned correctly depending on the type of query

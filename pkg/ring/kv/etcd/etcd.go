@@ -57,8 +57,6 @@ func (cfg *Config) GetTLS() (*tls.Config, error) {
 	tlsInfo := &transport.TLSInfo{
 		CertFile: cfg.CertFile,
 		KeyFile:  cfg.KeyFile,
-	}
-	if cfg.TrustedCAFile != "" {
 		tlsInfo.TrustedCAFile = cfg.TrustedCAFile
 	}
 	tlsConfig, err := tlsInfo.ClientConfig()

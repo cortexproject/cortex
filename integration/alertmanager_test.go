@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
@@ -95,6 +96,13 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	require.Len(t, cfg.Receivers, 1)
 	require.Equal(t, "example_receiver", cfg.Receivers[0].Name)
 
+	err = c.SendAlertToAlermanager(context.Background(), &model.Alert{Labels: model.LabelSet{"foo": "bar"}})
+	require.NoError(t, err)
+
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_alerts_received_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
+
 	err = c.DeleteAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
 
@@ -106,5 +114,5 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	cfg, err = c.GetAlertmanagerConfig(context.Background())
 	require.Error(t, err)
 	require.Nil(t, cfg)
-	require.EqualError(t, err, e2ecortex.ErrNotFound.Error())
+	require.EqualError(t, err, "not found")
 }

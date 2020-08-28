@@ -99,14 +99,56 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_notification_latency_seconds_count 24
 		# HELP cortex_alertmanager_notifications_failed_total The total number of failed notifications.
 		# TYPE cortex_alertmanager_notifications_failed_total counter
-		cortex_alertmanager_notifications_failed_total{user="user1"} 28
-		cortex_alertmanager_notifications_failed_total{user="user2"} 280
-		cortex_alertmanager_notifications_failed_total{user="user3"} 2800
+		cortex_alertmanager_notifications_failed_total{integration="email",user="user1"} 0
+		cortex_alertmanager_notifications_failed_total{integration="email",user="user2"} 0
+		cortex_alertmanager_notifications_failed_total{integration="email",user="user3"} 0
+		cortex_alertmanager_notifications_failed_total{integration="opsgenie",user="user1"} 5
+		cortex_alertmanager_notifications_failed_total{integration="opsgenie",user="user2"} 50
+		cortex_alertmanager_notifications_failed_total{integration="opsgenie",user="user3"} 500
+		cortex_alertmanager_notifications_failed_total{integration="pagerduty",user="user1"} 1
+		cortex_alertmanager_notifications_failed_total{integration="pagerduty",user="user2"} 10
+		cortex_alertmanager_notifications_failed_total{integration="pagerduty",user="user3"} 100
+		cortex_alertmanager_notifications_failed_total{integration="pushover",user="user1"} 3
+		cortex_alertmanager_notifications_failed_total{integration="pushover",user="user2"} 30
+		cortex_alertmanager_notifications_failed_total{integration="pushover",user="user3"} 300
+		cortex_alertmanager_notifications_failed_total{integration="slack",user="user1"} 4
+		cortex_alertmanager_notifications_failed_total{integration="slack",user="user2"} 40
+		cortex_alertmanager_notifications_failed_total{integration="slack",user="user3"} 400
+		cortex_alertmanager_notifications_failed_total{integration="victorops",user="user1"} 7
+		cortex_alertmanager_notifications_failed_total{integration="victorops",user="user2"} 70
+		cortex_alertmanager_notifications_failed_total{integration="victorops",user="user3"} 700
+		cortex_alertmanager_notifications_failed_total{integration="webhook",user="user1"} 6
+		cortex_alertmanager_notifications_failed_total{integration="webhook",user="user2"} 60
+		cortex_alertmanager_notifications_failed_total{integration="webhook",user="user3"} 600
+		cortex_alertmanager_notifications_failed_total{integration="wechat",user="user1"} 2
+		cortex_alertmanager_notifications_failed_total{integration="wechat",user="user2"} 20
+		cortex_alertmanager_notifications_failed_total{integration="wechat",user="user3"} 200
 		# HELP cortex_alertmanager_notifications_total The total number of attempted notifications.
 		# TYPE cortex_alertmanager_notifications_total counter
-		cortex_alertmanager_notifications_total{user="user1"} 28
-		cortex_alertmanager_notifications_total{user="user2"} 280
-		cortex_alertmanager_notifications_total{user="user3"} 2800
+		cortex_alertmanager_notifications_total{integration="email",user="user1"} 0
+		cortex_alertmanager_notifications_total{integration="email",user="user2"} 0
+		cortex_alertmanager_notifications_total{integration="email",user="user3"} 0
+		cortex_alertmanager_notifications_total{integration="opsgenie",user="user1"} 5
+		cortex_alertmanager_notifications_total{integration="opsgenie",user="user2"} 50
+		cortex_alertmanager_notifications_total{integration="opsgenie",user="user3"} 500
+		cortex_alertmanager_notifications_total{integration="pagerduty",user="user1"} 1
+		cortex_alertmanager_notifications_total{integration="pagerduty",user="user2"} 10
+		cortex_alertmanager_notifications_total{integration="pagerduty",user="user3"} 100
+		cortex_alertmanager_notifications_total{integration="pushover",user="user1"} 3
+		cortex_alertmanager_notifications_total{integration="pushover",user="user2"} 30
+		cortex_alertmanager_notifications_total{integration="pushover",user="user3"} 300
+		cortex_alertmanager_notifications_total{integration="slack",user="user1"} 4
+		cortex_alertmanager_notifications_total{integration="slack",user="user2"} 40
+		cortex_alertmanager_notifications_total{integration="slack",user="user3"} 400
+		cortex_alertmanager_notifications_total{integration="victorops",user="user1"} 7
+		cortex_alertmanager_notifications_total{integration="victorops",user="user2"} 70
+		cortex_alertmanager_notifications_total{integration="victorops",user="user3"} 700
+		cortex_alertmanager_notifications_total{integration="webhook",user="user1"} 6
+		cortex_alertmanager_notifications_total{integration="webhook",user="user2"} 60
+		cortex_alertmanager_notifications_total{integration="webhook",user="user3"} 600
+		cortex_alertmanager_notifications_total{integration="wechat",user="user1"} 2
+		cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
+		cortex_alertmanager_notifications_total{integration="wechat",user="user3"} 200
 		# HELP cortex_alertmanager_silences How many silences by state.
 		# TYPE cortex_alertmanager_silences gauge
 		cortex_alertmanager_silences{state="active",user="user1"} 1

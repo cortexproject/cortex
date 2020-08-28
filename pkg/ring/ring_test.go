@@ -145,14 +145,9 @@ func TestSubring(t *testing.T) {
 		strategy:   &DefaultReplicationStrategy{},
 	}
 
-	// Subring of 0 invalid
-	_, err := ring.Subring(0, 0)
-	require.Error(t, err)
-
 	// Generate a sub ring for all possible valid ranges
 	for i := 1; i < n+2; i++ {
-		subr, err := ring.Subring(rand.Uint32(), i)
-		require.NoError(t, err)
+		subr := ring.Subring(rand.Uint32(), i)
 		subringSize := i
 		if i > n {
 			subringSize = n
@@ -204,8 +199,7 @@ func TestStableSubring(t *testing.T) {
 	key := rand.Uint32()
 	subringsize := 4
 	for i := 1; i < 4; i++ {
-		subr, err := ring.Subring(key, subringsize)
-		require.NoError(t, err)
+		subr := ring.Subring(key, subringsize)
 		require.Equal(t, subringsize, len(subr.(*Ring).ringDesc.Ingesters))
 		require.Equal(t, subringsize*128, len(subr.(*Ring).ringTokens))
 		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {

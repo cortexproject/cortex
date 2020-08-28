@@ -37,7 +37,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 			next: mockHandler(&PrometheusResponse{
 				Status: "",
 				Data: PrometheusData{
-					ResultType: parser.ValueTypeVector,
+					ResultType: string(parser.ValueTypeVector),
 					Result:     []SampleStream{},
 				},
 				ErrorType: "",
@@ -67,7 +67,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 				)
 				out, err := handler.Do(context.Background(), qry)
 				require.Nil(t, err)
-				require.Equal(t, parser.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
+				require.Equal(t, string(parser.ValueTypeMatrix), out.(*PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
 			},
 		},
@@ -119,7 +119,7 @@ func sampleMatrixResponse() *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: parser.ValueTypeMatrix,
+			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{

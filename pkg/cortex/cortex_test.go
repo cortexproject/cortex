@@ -28,9 +28,11 @@ func TestCortex(t *testing.T) {
 		},
 		Ingester: ingester.Config{
 			BlocksStorageConfig: tsdb.BlocksStorageConfig{
-				Backend: tsdb.BackendS3,
-				S3: s3.Config{
-					Endpoint: "localhost",
+				Bucket: tsdb.BucketConfig{
+					Backend: tsdb.BackendS3,
+					S3: s3.Config{
+						Endpoint: "localhost",
+					},
 				},
 			},
 			LifecyclerConfig: ring.LifecyclerConfig{
@@ -44,9 +46,11 @@ func TestCortex(t *testing.T) {
 			},
 		},
 		BlocksStorage: tsdb.BlocksStorageConfig{
-			Backend: tsdb.BackendS3,
-			S3: s3.Config{
-				Endpoint: "localhost",
+			Bucket: tsdb.BucketConfig{
+				Backend: tsdb.BackendS3,
+				S3: s3.Config{
+					Endpoint: "localhost",
+				},
 			},
 			BucketStore: tsdb.BucketStoreConfig{
 				IndexCache: tsdb.IndexCacheConfig{

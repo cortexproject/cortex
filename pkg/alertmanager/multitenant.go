@@ -135,7 +135,7 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 	m.invalidConfig = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "alertmanager_config_invalid",
-		Help:      "Whenever the Alertmanager config is invalid for a user.",
+		Help:      "Boolean set to 1 whenever the Alertmanager config is invalid for a user.",
 	}, []string{"user"})
 
 	return m
@@ -173,6 +173,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
+	}
+
+	if cfg.ExternalURL.URL == nil {
+		return nil, fmt.Errorf("unable to create Alertmanager because the external URL has not been configured")
 	}
 
 	var fallbackConfig []byte
@@ -355,26 +359,6 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	return amConfig, nil
 }
 
-func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content string) (bool, error) {
-	dir := filepath.Join(am.cfg.DataDir, "templates", userID, filepath.Dir(fn))
-	err := os.MkdirAll(dir, 0755)
-	if err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
-	}
-
-	file := filepath.Join(dir, fn)
-	// Check if the template file already exists and if it has changed
-	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
-		return false, nil
-	}
-
-	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
-	}
-
-	return true, nil
-}
-
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
@@ -386,7 +370,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := am.createTemplatesFile(cfg.User, tmpl.Filename, tmpl.Body)
+		hasChanged, err := createTemplateFile(am.cfg.DataDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -480,9 +464,10 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if !ok || !userAM.IsActive() {
-		http.Error(w, "no Alertmanager for this user ID", http.StatusNotFound)
+		http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
 		return
 	}
+
 	userAM.mux.ServeHTTP(w, req)
 }
 
@@ -505,4 +490,24 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
+	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
+	}
+
+	file := filepath.Join(dir, fn)
+	// Check if the template file already exists and if it has changed
+	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
+		return false, nil
+	}
+
+	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
+	}
+
+	return true, nil
 }

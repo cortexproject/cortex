@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestTimeFromMillis(t *testing.T) {
 	}
 
 	for i, c := range testExpr {
-		t.Run(string(i), func(t *testing.T) {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			res := TimeFromMillis(c.input)
 			require.Equal(t, c.expected, res)
 		})

@@ -69,7 +69,7 @@ ingester_client:
     # Configure the client to allow messages up to 100MB.
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
-    use_gzip_compression: true
+    grpc_compression: gzip
 
 ingester:
   lifecycler:
@@ -109,12 +109,12 @@ storage:
 ```
 
 The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is `v1.2.0`).
+to find the latest stable version tag and use it in the command below (currently it is `v1.3.0`).
 
 Run Cortex using the latest stable version:
 
 ```
-docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.2.0 -config.file=/etc/single-process-config.yaml
+docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.3.0 -config.file=/etc/single-process-config.yaml
 ```
 In case you prefer to run the master version, please follow this [documentation](../getting-started/getting-started-chunks.md) on how to build Cortex from source.
 

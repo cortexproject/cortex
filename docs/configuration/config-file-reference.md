@@ -286,6 +286,22 @@ grpc_tls_config:
 # CLI flag: -log.level
 [log_level: <string> | default = "info"]
 
+# Optionally log the source IPs.
+# CLI flag: -server.log-source-ips-enabled
+[log_source_ips_enabled: <boolean> | default = false]
+
+# Header field storing the source IPs. Only used if
+# server.log-source-ips-enabled is true. If not set the default Forwarded,
+# X-Real-IP and X-Forwarded-For headers are used
+# CLI flag: -server.log-source-ips-header
+[log_source_ips_header: <string> | default = ""]
+
+# Regex for matching the source IPs. Only used if server.log-source-ips-enabled
+# is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For
+# headers are used
+# CLI flag: -server.log-source-ips-regex
+[log_source_ips_regex: <string> | default = ""]
+
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
@@ -327,6 +343,9 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
+  # Backend storage to use for the ring. Please be aware that memberlist is not
+  # supported by the HA tracker since gossip propagation is too slow for HA
+  # purposes.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, memberlist, multi.
@@ -669,17 +688,24 @@ The `querier_config` configures the Cortex querier.
 [store_gateway_addresses: <string> | default = ""]
 
 store_gateway_client:
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -experimental.querier.store-gateway-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -experimental.querier.store-gateway-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -experimental.querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -experimental.querier.store-gateway-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Second store engine to use for querying. Empty = disabled.
 # CLI flag: -querier.second-store-engine
@@ -797,17 +823,24 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 ruler_client:
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -ruler.client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -ruler.client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -ruler.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ruler.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
@@ -1667,6 +1700,19 @@ aws:
     # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
+    backoff_config:
+      # Minimum backoff time
+      # CLI flag: -dynamodb.min-backoff
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum backoff time
+      # CLI flag: -dynamodb.max-backoff
+      [max_period: <duration> | default = 50s]
+
+      # Maximum number of times to retry an operation
+      # CLI flag: -dynamodb.max-retries
+      [max_retries: <int> | default = 20]
+
   # S3 endpoint URL with escaped Key and Secret encoded. If only region is
   # specified as a host, proper endpoint will be deduced. Use
   # inmemory:///<bucket-name> to use a mock in-memory implementation.
@@ -1861,7 +1907,7 @@ cassandra:
 
   # Replication factor to use in Cassandra.
   # CLI flag: -cassandra.replication-factor
-  [replication_factor: <int> | default = 1]
+  [replication_factor: <int> | default = 3]
 
   # Instruct the cassandra driver to not attempt to get host info from the
   # system.peers table.
@@ -2317,17 +2363,24 @@ grpc_client_config:
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
 
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -ingester.client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -ingester.client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -ingester.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ingester.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `frontend_worker_config`
@@ -2396,17 +2449,24 @@ grpc_client_config:
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
 
-  # TLS cert path for the client
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
   # CLI flag: -querier.frontend-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # TLS key path for the client
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
   # CLI flag: -querier.frontend-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # TLS CA path for the client
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
   # CLI flag: -querier.frontend-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `etcd_config`
@@ -2742,6 +2802,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set when the store-gateway sharding is enabled with the
+# shuffle-sharding strategy. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -experimental.store-gateway.tenant-shard-size
+[store_gateway_tenant_shard_size: <int> | default = 0]
+
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
 # CLI flag: -limits.per-user-override-config
@@ -2877,6 +2944,20 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
 [consistent_hash: <boolean> | default = true]
+
+# Trip circuit-breaker after this number of consecutive dial failures (if zero
+# then circuit-breaker is disabled).
+# CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+[circuit_breaker_consecutive_failures: <int> | default = 0]
+
+# Duration circuit-breaker remains open after tripping (if zero then 60 seconds
+# is used).
+# CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+[circuit_breaker_timeout: <duration> | default = 10s]
+
+# Reset circuit-breaker counts after this long (if zero then never reset).
+# CLI flag: -<prefix>.memcached.circuit-breaker-interval
+[circuit_breaker_interval: <duration> | default = 10s]
 ```
 
 ### `fifo_cache_config`
@@ -2957,17 +3038,24 @@ The `configstore_config` configures the config database storing rules and alerts
 # CLI flag: -<prefix>.configs.client-timeout
 [client_timeout: <duration> | default = 5s]
 
-# TLS cert path for the client
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.configs.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# TLS key path for the client
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
 # CLI flag: -<prefix>.configs.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# TLS CA path for the client
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.configs.tls-ca-path
 [tls_ca_path: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.configs.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`
@@ -2978,6 +3066,69 @@ The `blocks_storage_config` configures the experimental blocks storage.
 # Backend storage to use. Supported backends are: s3, gcs, azure, filesystem.
 # CLI flag: -experimental.blocks-storage.backend
 [backend: <string> | default = "s3"]
+
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -experimental.blocks-storage.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -experimental.blocks-storage.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -experimental.blocks-storage.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -experimental.blocks-storage.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -experimental.blocks-storage.s3.insecure
+  [insecure: <boolean> | default = false]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -experimental.blocks-storage.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON representing either a Google Developers Console client_credentials.json
+  # file or a Google Developers service account key file. If empty, fallback to
+  # Google default logic.
+  # CLI flag: -experimental.blocks-storage.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -experimental.blocks-storage.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -experimental.blocks-storage.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -experimental.blocks-storage.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN
+  # CLI flag: -experimental.blocks-storage.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -experimental.blocks-storage.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+filesystem:
+  # Local filesystem storage directory.
+  # CLI flag: -experimental.blocks-storage.filesystem.dir
+  [dir: <string> | default = ""]
 
 # This configures how the store-gateway synchronizes blocks stored in the
 # bucket.
@@ -3195,7 +3346,7 @@ bucket_store:
 
     # How long to cache list of blocks for each tenant.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
-    [tenant_blocks_list_ttl: <duration> | default = 15m]
+    [tenant_blocks_list_ttl: <duration> | default = 5m]
 
     # How long to cache list of chunks for a block.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
@@ -3207,7 +3358,7 @@ bucket_store:
 
     # How long to cache information that block metafile doesn't exist.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
-    [metafile_doesnt_exist_ttl: <duration> | default = 15m]
+    [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 
     # How long to cache content of the metafile.
     # CLI flag: -experimental.blocks-storage.bucket-store.metadata-cache.metafile-content-ttl
@@ -3282,69 +3433,6 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -experimental.blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
-
-s3:
-  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
-  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
-  # S3-compatible service in hostname:port format.
-  # CLI flag: -experimental.blocks-storage.s3.endpoint
-  [endpoint: <string> | default = ""]
-
-  # S3 bucket name
-  # CLI flag: -experimental.blocks-storage.s3.bucket-name
-  [bucket_name: <string> | default = ""]
-
-  # S3 secret access key
-  # CLI flag: -experimental.blocks-storage.s3.secret-access-key
-  [secret_access_key: <string> | default = ""]
-
-  # S3 access key ID
-  # CLI flag: -experimental.blocks-storage.s3.access-key-id
-  [access_key_id: <string> | default = ""]
-
-  # If enabled, use http:// for the S3 endpoint instead of https://. This could
-  # be useful in local dev/test environments while using an S3-compatible
-  # backend storage, like Minio.
-  # CLI flag: -experimental.blocks-storage.s3.insecure
-  [insecure: <boolean> | default = false]
-
-gcs:
-  # GCS bucket name
-  # CLI flag: -experimental.blocks-storage.gcs.bucket-name
-  [bucket_name: <string> | default = ""]
-
-  # JSON representing either a Google Developers Console client_credentials.json
-  # file or a Google Developers service account key file. If empty, fallback to
-  # Google default logic.
-  # CLI flag: -experimental.blocks-storage.gcs.service-account
-  [service_account: <string> | default = ""]
-
-azure:
-  # Azure storage account name
-  # CLI flag: -experimental.blocks-storage.azure.account-name
-  [account_name: <string> | default = ""]
-
-  # Azure storage account key
-  # CLI flag: -experimental.blocks-storage.azure.account-key
-  [account_key: <string> | default = ""]
-
-  # Azure storage container name
-  # CLI flag: -experimental.blocks-storage.azure.container-name
-  [container_name: <string> | default = ""]
-
-  # Azure storage endpoint suffix without schema. The account name will be
-  # prefixed to this value to create the FQDN
-  # CLI flag: -experimental.blocks-storage.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
-
-  # Number of retries for recoverable errors
-  # CLI flag: -experimental.blocks-storage.azure.max-retries
-  [max_retries: <int> | default = 20]
-
-filesystem:
-  # Local filesystem storage directory.
-  # CLI flag: -experimental.blocks-storage.filesystem.dir
-  [dir: <string> | default = ""]
 ```
 
 ### `compactor_config`
@@ -3523,6 +3611,10 @@ sharding_ring:
   # shutdown and restored at startup.
   # CLI flag: -experimental.store-gateway.tokens-file-path
   [tokens_file_path: <string> | default = ""]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -experimental.store-gateway.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 ```
 
 ### `purger_config`

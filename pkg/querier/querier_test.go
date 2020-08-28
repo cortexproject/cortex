@@ -188,7 +188,7 @@ func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time
 		_ = head.Close()
 	})
 
-	app := head.Appender()
+	app := head.Appender(context.Background())
 
 	l := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},

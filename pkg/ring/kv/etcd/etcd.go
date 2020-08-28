@@ -71,7 +71,7 @@ func (cfg *Config) GetTLS() (*tls.Config, error) {
 func New(cfg Config, codec codec.Codec) (*Client, error) {
 	tlsConfig, err := cfg.GetTLS()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to initialise TLS configuration for etcd")
 	}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,

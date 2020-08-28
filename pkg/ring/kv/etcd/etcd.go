@@ -40,7 +40,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
-	// Get certs from flag params and set config TLS, if present
 	f.StringVar(&cfg.CertFile, prefix+"etcd.cert-file", "", "The TLS certificate file path")
 	f.StringVar(&cfg.KeyFile, prefix+"etcd.key-file", "", "The TLS private key file path")
 	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.client-ca-file", "", "The trusted CA file path")

@@ -44,6 +44,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.CertFile, prefix+"etcd.cert-file", "", "The TLS certificate file path")
 	f.StringVar(&cfg.KeyFile, prefix+"etcd.key-file", "", "The TLS private key file path")
 	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.client-ca-file", "", "The trusted CA file path")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.insecure-skip-verify", false, "Skip validating server certificate")
 }
 
 // GetTLS sets the TLS config field with certs

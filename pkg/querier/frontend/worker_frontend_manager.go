@@ -28,6 +28,7 @@ type frontendManager struct {
 	server    *server.Server
 	client    FrontendClient
 	clientCfg grpcclient.ConfigWithTLS
+	querierID string
 
 	log log.Logger
 
@@ -37,7 +38,7 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.ConfigWithTLS) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
 	f := &frontendManager{
 		log:               log,
 		client:            client,
@@ -45,6 +46,7 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 		server:            server,
 		serverCtx:         serverCtx,
 		currentProcessors: atomic.NewInt32(0),
+		querierID:         querierID,
 	}
 
 	return f

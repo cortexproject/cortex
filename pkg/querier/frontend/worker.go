@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -26,6 +27,7 @@ type WorkerConfig struct {
 	Parallelism         int           `yaml:"parallelism"`
 	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
+	QuerierID           string        `yaml:"querier_id"`
 
 	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 }
@@ -36,6 +38,9 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
+
+	hostname, _ := os.Hostname()
+	f.StringVar(&cfg.QuerierID, "querier.id", hostname, "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
@@ -124,7 +129,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 					continue
 				}
 
-				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, w.cfg.GRPCClientConfig)
+				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, w.cfg.GRPCClientConfig, w.cfg.QuerierID)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)

@@ -91,7 +91,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("Testing concurrency %v", tt.concurrency), func(t *testing.T) {
-			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.ConfigWithTLS{})
+			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.ConfigWithTLS{}, "querier")
 
 			for _, c := range tt.concurrency {
 				calls.Store(0)
@@ -127,7 +127,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		failRecv: true,
 	}
 
-	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{})
+	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{}, "querier")
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)
@@ -151,7 +151,7 @@ func TestServeCancelStopsProcess(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{GRPC: grpcclient.Config{MaxSendMsgSize: 100000}})
+	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{GRPC: grpcclient.Config{MaxSendMsgSize: 100000}}, "querier")
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)

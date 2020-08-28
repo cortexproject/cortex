@@ -63,10 +63,7 @@ func (cfg *Config) GetTLS() (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Added below for self-signed certs
-	if cfg.InsecureSkipVerify {
-		tlsConfig.InsecureSkipVerify = true
-	}
+	tlsConfig.InsecureSkipVerify = cfg.InsecureSkipVerify
 	return tlsConfig, nil
 }
 

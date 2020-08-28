@@ -95,6 +95,7 @@ type indexEntry struct {
 type indexValueEntry struct {
 	value  string
 	shards [][]model.Fingerprint
+	len    int
 }
 
 const indexValueShards = 200
@@ -108,7 +109,7 @@ func newIndexValueEntry(value string) *indexValueEntry {
 }
 
 func (c *indexValueEntry) fps() []model.Fingerprint {
-	var fps []model.Fingerprint
+	fps := make([]model.Fingerprint, 0, c.length())
 	for _, shard := range c.shards {
 		fps = append(fps, shard...)
 	}
@@ -121,22 +122,26 @@ func (c *indexValueEntry) delete(fp model.Fingerprint) {
 	j := sort.Search(len(fps), func(i int) bool {
 		return fps[i] >= fp
 	})
+	if len(fps) == j {
+		return
+	}
 	c.shards[num] = fps[:j+copy(fps[j:], fps[j+1:])]
 	if len(c.shards[num]) == 0 {
 		c.shards[num] = []model.Fingerprint{}
 	}
+	c.len--
 }
 
 func (c *indexValueEntry) length() int {
-	var i int
-	for _, shard := range c.shards {
-		i += len(shard)
-	}
-	return i
+	return c.len
 }
 
 func (c *indexValueEntry) shard(fp model.Fingerprint) int {
-	return int(math.Floor(float64(len(c.shards)) * float64(fp) / math.MaxUint64))
+	n := int(math.Floor(float64(len(c.shards)) * float64(fp) / math.MaxUint64))
+	if n == len(c.shards) {
+		n = len(c.shards) - 1
+	}
+	return n
 }
 
 func (c *indexValueEntry) add(fp model.Fingerprint) {
@@ -150,6 +155,7 @@ func (c *indexValueEntry) add(fp model.Fingerprint) {
 	copy(fps[j+1:], fps[j:])
 	fps[j] = fp
 	c.shards[num] = fps
+	c.len++
 }
 
 type unlockIndex map[string]indexEntry

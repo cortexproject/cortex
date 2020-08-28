@@ -137,6 +137,43 @@ func mustParseMatcher(s string) []*labels.Matcher {
 	return ms
 }
 
+func BenchmarkIndexValueEntry_Add(b *testing.B) {
+	var fingerprintsGen = func(size int) func(i int) model.Fingerprint {
+		fps := make([]model.Fingerprint, size)
+		for i := 0; i < size; i++ {
+			fps[i] = model.Fingerprint(rand.Uint64())
+		}
+		return func(i int) model.Fingerprint {
+			if i >= size {
+				i = i % size
+			}
+			return fps[i]
+		}
+	}
+	getFingerprints := fingerprintsGen(100000)
+
+	c := newIndexValueEntry("")
+	b.Run("shard", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			c.add(getFingerprints(i))
+		}
+	})
+
+	b.Run("plain", func(b *testing.B) {
+		var fps []model.Fingerprint
+		for i := 0; i < b.N; i++ {
+			fingerprint := getFingerprints(i)
+			j := sort.Search(len(fps), func(i int) bool {
+				return fps[i] >= fingerprint
+			})
+			fps = append(fps, 0)
+			copy(fps[j+1:], fps[j:])
+			fps[j] = fingerprint
+		}
+	})
+
+}
+
 func TestIndexValueEntry(t *testing.T) {
 	const size = 100
 	c := newIndexValueEntry("value")
@@ -168,10 +205,6 @@ func TestIndexValueEntry(t *testing.T) {
 		fps = fps[:j+copy(fps[j:], fps[j+1:])]
 
 		c.delete(fp)
-
-		if len(fps) == 0 {
-			fps = nil
-		}
 
 		assert.Equal(t, fps, c.fps())
 	}

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -19,13 +18,13 @@ import (
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints     []string      `yaml:"endpoints"`
-	DialTimeout   time.Duration `yaml:"dial_timeout"`
-	MaxRetries    int           `yaml:"max_retries"`
-	CertFile      string        `yaml:"cert_file"`
-	KeyFile       string        `yaml:"key_file"`
-	TrustedCAFile string        `yaml:"client_ca_file"`
-	TLS           *tls.Config   `yaml:",omitempty"`
+	Endpoints          []string      `yaml:"endpoints"`
+	DialTimeout        time.Duration `yaml:"dial_timeout"`
+	MaxRetries         int           `yaml:"max_retries"`
+	CertFile           string        `yaml:"cert_file"`
+	KeyFile            string        `yaml:"key_file"`
+	TrustedCAFile      string        `yaml:"client_ca_file"`
+	InsecureSkipVerify bool          `yaml:"insecure_skip_verify"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -47,40 +46,32 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.client-ca-file", "", "The trusted CA file path")
 }
 
-// SetTLS receives cert file locations and builds transport TLS info
-func (cfg *Config) SetTLS() error {
-	if cfg.CertFile != "" && cfg.KeyFile != "" && cfg.TrustedCAFile != "" {
-		tlsInfo := &transport.TLSInfo{
-			CertFile:      cfg.CertFile,
-			KeyFile:       cfg.KeyFile,
-			TrustedCAFile: cfg.TrustedCAFile,
-		}
-		if tlsInfo != nil {
-			err := cfg.GetTLS(tlsInfo)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	cfg.TLS = nil
-	return nil
-}
-
 // GetTLS sets the TLS config field with certs
-func (cfg *Config) GetTLS(tlsInfo *transport.TLSInfo) error {
+func (cfg *Config) GetTLS() (*tls.Config, error) {
+	if cfg.CertFile == "" && cfg.KeyFile == "" {
+		return nil, nil
+	}
+	tlsInfo := &transport.TLSInfo{
+		CertFile: cfg.CertFile,
+		KeyFile:  cfg.KeyFile,
+	}
+	if cfg.TrustedCAFile != "" {
+		tlsInfo.TrustedCAFile = cfg.TrustedCAFile
+	}
 	tlsConfig, err := tlsInfo.ClientConfig()
 	if err != nil {
-		log.Printf("Could not set TLS info at GetTLS: %v\n", err)
-		return err
+		return nil, err
 	}
-	cfg.TLS = tlsConfig
-	return nil
+	// Added below for self-signed certs
+	if cfg.InsecureSkipVerify {
+		tlsConfig.InsecureSkipVerify = true
+	}
+	return tlsConfig, nil
 }
 
 // New makes a new Client.
 func New(cfg Config, codec codec.Codec) (*Client, error) {
-	err := cfg.SetTLS()
+	tlsConfig, err := cfg.GetTLS()
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +95,7 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 		DialKeepAliveTime:    10 * time.Second,
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
 		PermitWithoutStream:  true,
-		TLS:                  cfg.TLS,
+		TLS:                  tlsConfig,
 	})
 	if err != nil {
 		return nil, err

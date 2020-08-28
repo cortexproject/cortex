@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/transport"
 
@@ -21,10 +22,11 @@ type Config struct {
 	Endpoints          []string      `yaml:"endpoints"`
 	DialTimeout        time.Duration `yaml:"dial_timeout"`
 	MaxRetries         int           `yaml:"max_retries"`
-	CertFile           string        `yaml:"cert_file"`
-	KeyFile            string        `yaml:"key_file"`
-	TrustedCAFile      string        `yaml:"client_ca_file"`
-	InsecureSkipVerify bool          `yaml:"insecure_skip_verify"`
+	EnableTLS          bool          `yaml:"tls_enabled"`
+	CertFile           string        `yaml:"tls_cert_file"`
+	KeyFile            string        `yaml:"tls_key_file"`
+	TrustedCAFile      string        `yaml:"tls_client_ca_file"`
+	InsecureSkipVerify bool          `yaml:"tls_insecure_skip_verify"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -40,15 +42,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
-	f.StringVar(&cfg.CertFile, prefix+"etcd.cert-file", "", "The TLS certificate file path")
-	f.StringVar(&cfg.KeyFile, prefix+"etcd.key-file", "", "The TLS private key file path")
-	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.client-ca-file", "", "The trusted CA file path")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.insecure-skip-verify", false, "Skip validating server certificate")
+	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS")
+	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-file", "", "The TLS certificate file path")
+	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-file", "", "The TLS private key file path")
+	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-client-ca-file", "", "The trusted CA file path")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating server certificate")
 }
 
 // GetTLS sets the TLS config field with certs
 func (cfg *Config) GetTLS() (*tls.Config, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" {
+	if cfg.CertFile == "" && cfg.KeyFile == "" && !cfg.EnableTLS {
 		return nil, nil
 	}
 	tlsInfo := &transport.TLSInfo{

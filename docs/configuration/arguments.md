@@ -183,12 +183,16 @@ prefix these flags with `distributor.ha-tracker.`
    The timeout for the etcd connection.
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
-- `etcd.cert-file`
-   The etcd cert file directory location.
-- `etcd.key-file`
-   The etcd key file directory location.
-- `etcd.client-ca-file`
-   The etcd trusted ca file directory location.
+- `etcd.tls-enabled`
+   Enable TLS.
+- `etcd.tls-cert-file`
+   The TLS certificate file path.
+- `etcd.tls-key-file`
+   The TLS private key file path.
+- `etcd.tls-client-ca-file`
+   The trusted CA file path.
+- `etcd.tls-insecure-skip-verify`
+   Skip validating server certificate.
 
 #### memberlist
 

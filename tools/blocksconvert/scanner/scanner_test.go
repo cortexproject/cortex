@@ -87,7 +87,7 @@ func TestVerifyPlansDir(t *testing.T) {
 
 	require.NoError(t, of.closeAllFiles(nil))
 
-	err = verifyPlanFiles(dir)
+	err = verifyPlanFiles(nil, dir, nil)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "456.plan"))
 	require.True(t, strings.Contains(err.Error(), "multiple entries for series s1 found in plan"))

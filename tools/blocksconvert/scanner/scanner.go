@@ -73,7 +73,7 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	bigTable := scfg.StorageConfig.GCPStorageConfig
 
 	if bigTable.Project == "" || bigTable.Instance == "" {
-		return nil, fmt.Errorf("missing BigTable configuration")
+		return nil, errors.New("missing BigTable configuration")
 	}
 
 	tablePrefix := ""
@@ -81,31 +81,31 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	if cfg.TableName == "" {
 		err := scfg.SchemaConfig.Load()
 		if err != nil {
-			return nil, fmt.Errorf("no table name provided, and schema failed to load: %w", err)
+			return nil, errors.Wrap(err, "no table name provided, and schema failed to load")
 		}
 
 		for _, c := range scfg.SchemaConfig.Configs {
 			if c.IndexTables.Period%(24*time.Hour) != 0 {
-				return nil, fmt.Errorf("invalid index table period: %v", c.IndexTables.Period)
+				return nil, errors.Errorf("invalid index table period: %v", c.IndexTables.Period)
 			}
 
 			if c.Schema != "v9" && c.Schema != "v10" && c.Schema != "v11" {
-				return nil, fmt.Errorf("unsupported schema version: %v", c.Schema)
+				return nil, errors.Errorf("unsupported schema version: %v", c.Schema)
 			}
 
 			if tablePrefix == "" {
 				tablePrefix = c.IndexTables.Prefix
 				tablePeriod = c.IndexTables.Period
 			} else if tablePrefix != c.IndexTables.Prefix {
-				return nil, fmt.Errorf("multiple index table prefixes found in schema: %v, %v", tablePrefix, c.IndexTables.Prefix)
+				return nil, errors.Errorf("multiple index table prefixes found in schema: %v, %v", tablePrefix, c.IndexTables.Prefix)
 			} else if tablePeriod != c.IndexTables.Period {
-				return nil, fmt.Errorf("multiple index table periods found in schema: %v, %v", tablePeriod, c.IndexTables.Period)
+				return nil, errors.Errorf("multiple index table periods found in schema: %v, %v", tablePeriod, c.IndexTables.Period)
 			}
 		}
 	}
 
 	if cfg.OutputDirectory == "" {
-		return nil, fmt.Errorf("no output directory")
+		return nil, errors.Errorf("no output directory")
 	}
 
 	var bucketClient objstore.Bucket
@@ -121,14 +121,14 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	if cfg.IgnoredUserPattern != "" {
 		re, err := regexp.Compile(cfg.IgnoredUserPattern)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compile ignored user regex: %w", err)
+			return nil, errors.Wrap(err, "failed to compile ignored user regex")
 		}
 		ignoredUserRegex = re
 	}
 
 	err := os.MkdirAll(cfg.OutputDirectory, os.FileMode(0700))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new output directory %s: %w", cfg.OutputDirectory, err)
+		return nil, errors.Wrapf(err, "failed to create new output directory %s", cfg.OutputDirectory)
 	}
 
 	s := &Scanner{
@@ -197,7 +197,12 @@ func (s *Scanner) running(ctx context.Context) error {
 
 		err := scanSingleTable(ctx, s.indexReader, t, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries)
 		if err != nil {
-			return fmt.Errorf("failed to scan table %s and generate plan files: %w", t, err)
+			return errors.Wrapf(err, "failed to scan table %s and generate plan files", t)
+		}
+
+		err = verifyPlanFiles(ctx, dir, s.logger)
+		if err != nil {
+			return errors.Wrap(err, "failed to verify plans")
 		}
 
 		if s.bucket != nil {
@@ -205,20 +210,20 @@ func (s *Scanner) running(ctx context.Context) error {
 
 			err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.bucketPrefix)
 			if err != nil {
-				return fmt.Errorf("failed to upload plan files for table %s to bucket: %w", t, err)
+				return errors.Wrapf(err, "failed to upload plan files for table %s to bucket", t)
 			}
 
 			level.Info(s.logger).Log("msg", "uploaded generated files for table", "table", t)
 			if !s.cfg.KeepFiles {
 				if err := os.RemoveAll(dir); err != nil {
-					return fmt.Errorf("failed to delete uploaded plan files for table %s: %w", t, err)
+					return errors.Wrapf(err, "failed to delete uploaded plan files for table %s", t)
 				}
 			}
 		}
 
 		err = ioutil.WriteFile(tableProcessedFile, []byte("Finished on "+time.Now().String()+"\n"), 0600)
 		if err != nil {
-			return fmt.Errorf("failed to create file %s: %w", tableProcessedFile, err)
+			return errors.Wrapf(err, "failed to create file %s", tableProcessedFile)
 		}
 
 		level.Info(s.logger).Log("msg", "done scanning table", "table", t)
@@ -285,12 +290,12 @@ func findTables(logger log.Logger, tableNames []string, prefix string, period ti
 func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec) error {
 	err := os.RemoveAll(outDir)
 	if err != nil {
-		return fmt.Errorf("failed to delete directory %s: %w", outDir, err)
+		return errors.Wrapf(err, "failed to delete directory %s", outDir)
 	}
 
 	err = os.MkdirAll(outDir, os.FileMode(0700))
 	if err != nil {
-		return fmt.Errorf("failed to prepare directory %s: %w", outDir, err)
+		return errors.Wrapf(err, "failed to prepare directory %s", outDir)
 	}
 
 	files := newOpenFiles(openFiles)
@@ -314,16 +319,15 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	err = files.closeAllFiles(func() interface{} {
 		return blocksconvert.PlanEntry{Complete: true}
 	})
-	if err != nil {
-		return errors.Wrap(err, "closing files")
-	}
-
-	return verifyPlanFiles(outDir)
+	return errors.Wrap(err, "closing files")
 }
 
-func verifyPlanFiles(dir string) error {
+func verifyPlanFiles(ctx context.Context, dir string, logger log.Logger) error {
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 
@@ -338,7 +342,7 @@ func verifyPlanFiles(dir string) error {
 
 		r, err := os.Open(path)
 		if err != nil {
-			return fmt.Errorf("failed to open %s: %w", path, err)
+			return errors.Wrapf(err, "failed to open %s", path)
 		}
 		defer func() {
 			_ = r.Close()
@@ -346,8 +350,10 @@ func verifyPlanFiles(dir string) error {
 
 		pr, err := blocksconvert.PreparePlanFileReader(info.Name(), r)
 		if err != nil {
-			return fmt.Errorf("failed to prepare plan file for reading: %s: %w", path, err)
+			return errors.Wrapf(err, "failed to prepare plan file for reading: %s", path)
 		}
+
+		level.Info(logger).Log("msg", "verifying plan", "path", path)
 		return errors.Wrapf(verifyPlanFile(pr), "plan file: %s", path)
 	})
 }

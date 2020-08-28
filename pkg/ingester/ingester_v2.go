@@ -25,7 +25,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
@@ -450,8 +449,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds &&
 				i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge > 0 &&
-				s.TimestampMs > mtime.Now().Add(-i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge-time.Hour).Unix()*1000 {
-				// The -time.Hour comes from the main TSDB.
+				db.backfillTSDB.isWithinBackfillAge(s.TimestampMs) {
 				if backfillApp == nil {
 					backfillApp = db.backfillTSDB.appender(i.createNewTSDB, i.cfg.BlocksStorageConfig.TSDB.BackfillBlocksDir)
 				}

@@ -148,7 +148,6 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 
 	// We could use RLock here to check the TSDBs, but because we create new TSDB if none exists,
 	// it's easier and cleaner to handle races by taking the write lock.
-	// TODO(codesome): If we see performance issues, explore ways to read lock here.
 	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in older and newer spots.
 	a.backfillTSDB.dbsMtx.Lock()
 	defer a.backfillTSDB.dbsMtx.Unlock()
@@ -198,10 +197,10 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		a.olderAppender = app
 	}
 
-	a.backfillTSDB.metrics.numBackfillTSDBsPerUser.WithLabelValues(a.backfillTSDB.userID).Inc()
+	a.backfillTSDB.metrics.backfillTSDBsPerTenant.WithLabelValues(a.backfillTSDB.userID).Inc()
 	if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
 		// This user did not have a backfill TSDB before.
-		a.backfillTSDB.metrics.numUsersWithBackfillTSDBs.Inc()
+		a.backfillTSDB.metrics.tenatsWithBackfillTSDBs.Inc()
 	}
 
 	return app.app, app.db, nil
@@ -305,7 +304,6 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		}
 
 		if err := os.RemoveAll(db.db.Dir()); err != nil {
-			// TODO(codesome): Add a metric for this to alert on.
 			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compact", "user", db.db.userID, "dir", db.db.Dir())
 		}
 	}
@@ -363,10 +361,10 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 			b.dbs[idx] = db
 		} else {
 			if b.dbs[0] == nil && b.dbs[1] == nil {
-				b.metrics.numBackfillTSDBsPerUser.DeleteLabelValues(b.userID)
-				b.metrics.numUsersWithBackfillTSDBs.Dec()
+				b.metrics.backfillTSDBsPerTenant.DeleteLabelValues(b.userID)
+				b.metrics.tenatsWithBackfillTSDBs.Dec()
 			} else {
-				b.metrics.numBackfillTSDBsPerUser.WithLabelValues(b.userID).Dec()
+				b.metrics.backfillTSDBsPerTenant.WithLabelValues(b.userID).Dec()
 			}
 		}
 		b.dbsMtx.Unlock()
@@ -374,12 +372,14 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 
 	h := db.db.Head()
 	if err := db.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
+		b.metrics.backfillTSDBCompactionsFailedTotal.Inc()
 		return errors.Wrapf(err, "compact backfill TSDB, dir:%s", db.db.Dir())
 	}
 
 	if db.db.shipper != nil {
 		uploaded, err := db.db.shipper.Sync(context.Background())
 		if err != nil {
+			b.metrics.backfillTSDBShippingFailedTotal.Inc()
 			return errors.Wrapf(err, "ship backfill TSDB, uploaded:%d, dir:%s", uploaded, db.db.Dir())
 		}
 		level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.db.userID, "uploaded", uploaded, "backfill_dir", db.db.Dir())
@@ -425,7 +425,6 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 		}
 
 		if err := os.RemoveAll(db.db.Dir()); err != nil {
-			// TODO(codesome): Add a metric for this to alert on.
 			level.Error(util.Logger).Log("msg", "failed to delete backfill TSDB dir in compactAndShipIdleTSDBs", "user", db.db.userID, "dir", db.db.Dir())
 		}
 	}

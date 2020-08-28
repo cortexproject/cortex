@@ -55,8 +55,10 @@ type ingesterMetrics struct {
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 
 	// Metrics for TSDB blocks.
-	numUsersWithBackfillTSDBs prometheus.Gauge
-	numBackfillTSDBsPerUser   *prometheus.GaugeVec
+	tenatsWithBackfillTSDBs            prometheus.Gauge
+	backfillTSDBsPerTenant             *prometheus.GaugeVec
+	backfillTSDBCompactionsFailedTotal prometheus.Counter
+	backfillTSDBShippingFailedTotal    prometheus.Counter
 }
 
 func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -208,14 +210,22 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 	}
 
 	if !createMetricsConflictingWithTSDB {
-		m.numUsersWithBackfillTSDBs = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		m.tenatsWithBackfillTSDBs = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_backfill_tsdb_tenants",
 			Help: "Total number of tenants with backfill TSDBs open",
 		})
-		m.numBackfillTSDBsPerUser = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+		m.backfillTSDBsPerTenant = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ingester_backfill_tsdb_open",
 			Help: "Total number of backfill TSDBs open per tenant.",
 		}, []string{"user"})
+		m.backfillTSDBCompactionsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_backfill_tsdb_compactions_failed_total",
+			Help: "Total number of backfill TSDB compactions failed.",
+		})
+		m.backfillTSDBShippingFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_backfill_tsdb_shipping_failed_total",
+			Help: "Total number of backfill TSDB shipping failed.",
+		})
 	}
 
 	return m

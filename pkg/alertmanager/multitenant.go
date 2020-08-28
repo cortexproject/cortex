@@ -463,31 +463,36 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
 
-	if !ok && am.fallbackConfig != "" {
-		userAM, err = am.alertmanagerFromFallbackConfig(userID)
-		if err != nil {
-			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
+	if ok {
+		if !userAM.IsActive() {
+			http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+			return
 		}
-	}
 
-	if !userAM.IsActive() {
-		http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+		userAM.mux.ServeHTTP(w, req)
 		return
 	}
 
-	userAM.mux.ServeHTTP(w, req)
+	if am.fallbackConfig != "" {
+		userAM, err = am.alertmanagerFromFallbackConfig(userID)
+		if err != nil {
+			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
+			return
+		}
+
+		userAM.mux.ServeHTTP(w, req)
+		return
+	}
+
+	http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
 }
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
-	// There's a potential race condition here. If a tenant:
-	// a) uploads a config and b) receives an alert or access the UI
-	// before we're able the start the new manager we'll replace that config with an empty
-	// config.
+	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
 	cfg := &UserConfig{AlertmanagerConfig: ""}
 	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
 	err := am.store.SetAlertConfig(context.Background(), cfgDesc)
 	if err != nil {
-		level.Error(am.logger).Log("msg", "unable to store fallback configuration", "user", userID, "err", err.Error())
 		return nil, err
 	}
 
@@ -497,7 +502,6 @@ func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string)
 		return nil, err
 	}
 
-	// We need to check again in case they've had a new alertmanager started by the time we're ready
 	am.alertmanagersMtx.Lock()
 	defer am.alertmanagersMtx.Unlock()
 	return am.alertmanagers[userID], nil

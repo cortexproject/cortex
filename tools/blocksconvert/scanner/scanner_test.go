@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
@@ -87,7 +89,7 @@ func TestVerifyPlansDir(t *testing.T) {
 
 	require.NoError(t, of.closeAllFiles(nil))
 
-	err = verifyPlanFiles(nil, dir, nil)
+	err = verifyPlanFiles(context.Background(), dir, util.Logger)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "456.plan"))
 	require.True(t, strings.Contains(err.Error(), "multiple entries for series s1 found in plan"))

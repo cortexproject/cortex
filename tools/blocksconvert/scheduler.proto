@@ -14,7 +14,9 @@ service Scheduler {
   rpc NextPlan(NextPlanRequest) returns (NextPlanResponse) {};
 }
 
-message NextPlanRequest {}
+message NextPlanRequest {
+  string builderName = 1;
+}
 
 message NextPlanResponse {
   string planFile = 1;

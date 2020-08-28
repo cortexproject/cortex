@@ -199,12 +199,15 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 }
 
 // Returns next plan that builder should work on.
-func (s *Scheduler) NextPlan(ctx context.Context, _ *blocksconvert.NextPlanRequest) (*blocksconvert.NextPlanResponse, error) {
+func (s *Scheduler) NextPlan(ctx context.Context, req *blocksconvert.NextPlanRequest) (*blocksconvert.NextPlanResponse, error) {
 	if s.State() != services.Running {
 		return &blocksconvert.NextPlanResponse{}, nil
 	}
 
 	plan, progress := s.nextPlanNoRunningCheck(ctx)
+	if plan != "" {
+		level.Info(s.log).Log("msg", "sending plan file to builder", "plan", plan, "builder", req.BuilderName)
+	}
 	return &blocksconvert.NextPlanResponse{
 		PlanFile:     plan,
 		ProgressFile: progress,

@@ -34,6 +34,7 @@ import (
 )
 
 type Config struct {
+	BuilderName     string
 	OutputDirectory string
 	Concurrency     int
 
@@ -51,7 +52,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("chunks.", "Chunks cache", f)
 	cfg.GrpcConfig.RegisterFlagsWithPrefix("builder.client", f)
 
-	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
+	host, _ := os.Hostname()
+	f.StringVar(&cfg.BuilderName, "builder.name", host, "Builder name, defaults to hostname.")
+	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be created, if doesn't exist).")
 	f.IntVar(&cfg.Concurrency, "builder.concurrency", 128, "Number of concurrent series processors.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan progress file.")
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
@@ -212,7 +215,7 @@ func (b *Builder) running(ctx context.Context) error {
 				schedulerClient = blocksconvert.NewSchedulerClient(conn)
 			}
 
-			resp, err := schedulerClient.NextPlan(ctx, &blocksconvert.NextPlanRequest{})
+			resp, err := schedulerClient.NextPlan(ctx, &blocksconvert.NextPlanRequest{BuilderName: b.cfg.BuilderName})
 			if err != nil {
 				level.Error(b.log).Log("msg", "failed to get next plan due to error, closing connection", "err", err)
 				_ = conn.Close()
@@ -333,7 +336,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	g, gctx := errgroup.WithContext(ctx)
 	for i := 0; i < b.cfg.Concurrency; i++ {
 		g.Go(func() error {
-			return fetchAndBuild(gctx, fetcher, planEntryCh, tsdbBuilder, b.log, b.chunksNotFound)
+			return fetchAndBuild(gctx, fetcher, planEntryCh, tsdbBuilder, planLog, b.chunksNotFound)
 		})
 	}
 

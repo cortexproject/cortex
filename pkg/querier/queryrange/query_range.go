@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -209,7 +210,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Path = r.URL.Path
 
 	for _, value := range r.Header.Values(cacheControlHeader) {
-		if value == noStoreValue {
+		if strings.Contains(value, noStoreValue) {
 			result.CacheDirectives.Disabled = true
 			break
 		}

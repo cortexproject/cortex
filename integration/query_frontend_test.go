@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
 	"crypto/x509"

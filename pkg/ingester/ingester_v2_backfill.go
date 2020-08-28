@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"sync"
 	"time"
 
@@ -24,9 +24,10 @@ import (
 )
 
 type backfillTSDB struct {
-	userID      string
-	backfillAge time.Duration
-	metrics     *ingesterMetrics
+	userID             string
+	backfillAge        time.Duration
+	metrics            *ingesterMetrics
+	mainTSDBBlockRange time.Duration
 
 	// dbs[0] is the one which would be overlapping with the main TSDB. "newer" TSDB.
 	// dbs[1] is the older TSDB among the two here. "older" TSDB.
@@ -35,10 +36,10 @@ type backfillTSDB struct {
 	// there is only 1 TSDB ingesting old data, so there can be gaps till the compaction
 	// and shipping is going on.
 	// TODO(codesome): Avoid gaps by using a separate queue to compact and ship blocks.
-	dbs [2]*backfillTSDBWrapper
+	dbs    [2]*backfillTSDBWrapper
+	dbsMtx sync.RWMutex
 
-	mtx sync.RWMutex
-	// We need this lock to safeguard force compactions from moving around of TSDBs between dbs array.
+	// We need this lock to safeguard compactions from moving around of TSDBs between dbs array.
 	compactMtx sync.Mutex
 }
 
@@ -48,11 +49,16 @@ type backfillTSDBWrapper struct {
 	start, end int64
 }
 
-func newBackfillTSDB(userID string, backfillAge time.Duration, metrics *ingesterMetrics) *backfillTSDB {
+func (b *backfillTSDBWrapper) within(ts int64) bool {
+	return ts >= b.start && ts < b.end
+}
+
+func newBackfillTSDB(userID string, backfillAge time.Duration, mainTSDBBlockRange int64, metrics *ingesterMetrics) *backfillTSDB {
 	return &backfillTSDB{
-		userID:      userID,
-		backfillAge: backfillAge,
-		metrics:     metrics,
+		userID:             userID,
+		backfillAge:        backfillAge,
+		metrics:            metrics,
+		mainTSDBBlockRange: time.Duration(mainTSDBBlockRange) * time.Millisecond,
 	}
 }
 
@@ -85,6 +91,10 @@ type backfillRangeAppender struct {
 	app        storage.Appender
 	db         *userTSDB
 	start, end int64
+}
+
+func (a *backfillRangeAppender) within(ts int64) bool {
+	return ts >= a.start && ts < a.end
 }
 
 func newBackfillRangeAppender(db *backfillTSDBWrapper) *backfillRangeAppender {
@@ -130,9 +140,9 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	}
 
 	// Fast path to not take the lock.
-	if a.newerAppender != nil && s.TimestampMs >= a.newerAppender.start && s.TimestampMs < a.newerAppender.end {
+	if a.newerAppender != nil && a.newerAppender.within(s.TimestampMs) {
 		return a.newerAppender.app, a.newerAppender.db, nil
-	} else if a.olderAppender != nil && s.TimestampMs >= a.olderAppender.start && s.TimestampMs < a.olderAppender.end {
+	} else if a.olderAppender != nil && a.olderAppender.within(s.TimestampMs) {
 		return a.olderAppender.app, a.olderAppender.db, nil
 	}
 
@@ -140,14 +150,14 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	// it's easier and cleaner to handle races by taking the write lock.
 	// TODO(codesome): If we see performance issues, explore ways to read lock here.
 	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in older and newer spots.
-	a.backfillTSDB.mtx.Lock()
-	defer a.backfillTSDB.mtx.Unlock()
+	a.backfillTSDB.dbsMtx.Lock()
+	defer a.backfillTSDB.dbsMtx.Unlock()
 
 	// Check if we already have TSDB created and use it.
-	if a.backfillTSDB.dbs[0] != nil && s.TimestampMs >= a.backfillTSDB.dbs[0].start && s.TimestampMs < a.backfillTSDB.dbs[0].end {
+	if a.backfillTSDB.dbs[0] != nil && a.backfillTSDB.dbs[0].within(s.TimestampMs) {
 		a.newerAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[0])
 		return a.newerAppender.app, a.backfillTSDB.dbs[0].db, nil
-	} else if a.backfillTSDB.dbs[1] != nil && s.TimestampMs >= a.backfillTSDB.dbs[1].start && s.TimestampMs < a.backfillTSDB.dbs[1].end {
+	} else if a.backfillTSDB.dbs[1] != nil && a.backfillTSDB.dbs[1].within(s.TimestampMs) {
 		a.olderAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[1])
 		return a.olderAppender.app, a.backfillTSDB.dbs[1].db, nil
 	}
@@ -155,7 +165,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	// We need to open a new TSDB.
 
 	start, end := a.timeRangesForTimestamp(s.TimestampMs)
-	isNewerTSDB := end >= mtime.Now().Add(-time.Hour).Unix()*1000 // If the TSDB would touch the main TSDB.
+	isNewerTSDB := end >= mtime.Now().Add(-a.backfillTSDB.mainTSDBBlockRange/2).Unix()*1000 // If the TSDB would touch the main TSDB.
 	if (isNewerTSDB && a.backfillTSDB.dbs[0] != nil) || (!isNewerTSDB && a.backfillTSDB.dbs[1] != nil) {
 		// The compaction needs to clean up these spots before we can create new ones.
 		// Cleaning up the spots includes compacting older TSDB and/or moving newer TSDB
@@ -227,7 +237,7 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 		}
 	}()
 
-	u.backfillTSDB.mtx.RLock()
+	u.backfillTSDB.dbsMtx.RLock()
 	for _, db := range u.backfillTSDB.dbs {
 		if db == nil || !overlapsOpenInterval(db.start, db.end, from, through) {
 			continue
@@ -239,13 +249,13 @@ func (u *userTSDB) backfillSelect(ctx context.Context, from, through int64, matc
 		}
 		q, err := db.db.Querier(ctx, from, through)
 		if err != nil {
-			u.backfillTSDB.mtx.RUnlock()
+			u.backfillTSDB.dbsMtx.RUnlock()
 			return nil, err
 		}
 
 		queriers = append(queriers, q)
 	}
-	u.backfillTSDB.mtx.RUnlock()
+	u.backfillTSDB.dbsMtx.RUnlock()
 
 	if len(queriers) == 0 {
 		return nil, nil
@@ -273,9 +283,9 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 	var merr tsdb_errors.MultiError
 	moveNewerTSDBToOlder := false
 	for i := range []int{1, 0} {
-		b.mtx.RLock()
+		b.dbsMtx.RLock()
 		db := b.dbs[i]
-		b.mtx.RUnlock()
+		b.dbsMtx.RUnlock()
 
 		if db == nil || (!force && b.isWithinBackfillAge(db.end)) {
 			// DB is either nil or not outside backfill age yet.
@@ -300,19 +310,19 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 		}
 	}
 
-	b.mtx.RLock()
+	b.dbsMtx.RLock()
 	if b.dbs[1] == nil && b.dbs[0] != nil && !b.isWithinBackfillAge(b.dbs[0].start) {
 		// There is no older TSDB and the newer TSDB's start now crosses the backfill age, hence
 		// has to be moved to be the older TSDB.
 		moveNewerTSDBToOlder = true
 	}
-	b.mtx.RUnlock()
+	b.dbsMtx.RUnlock()
 
 	if moveNewerTSDBToOlder {
-		b.mtx.Lock()
+		b.dbsMtx.Lock()
 		b.dbs[1] = b.dbs[0]
 		b.dbs[0] = nil
-		b.mtx.Unlock()
+		b.dbsMtx.Unlock()
 	}
 
 	return merr.Err()
@@ -321,24 +331,25 @@ func (b *backfillTSDB) compactAndShipAndDelete(force bool) (err error) {
 // isWithinBackfillAge returns true if the given timestamp is within the backfill age.
 func (b *backfillTSDB) isWithinBackfillAge(ts int64) bool {
 	// The backfillAge is backfill time beyond what is already possible by main TSDB.
-	// Hence the -time.Hour.
-	return ts > mtime.Now().Add(-b.backfillAge-time.Hour).Unix()*1000
+	// Hence the -(b.mainTSDBBlockRange/2) where (b.mainTSDBBlockRange/2) is the time
+	// already handled by the main TSDB.
+	return ts > mtime.Now().Add(-b.backfillAge-(b.mainTSDBBlockRange/2)).Unix()*1000
 }
 
 // compactAndShipDB compacts and ships the backfill TSDB if it is beyond the backfill age.
 // If there was an error, the boolean is always false.
 // NOTE: This is intended to be used by member functions of backfillTSDB only.
 func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
-	b.mtx.Lock()
+	b.dbsMtx.Lock()
 	db := b.dbs[idx]
 	if db == nil {
 		// While the caller does the nil check, we have this check here to avoid any regression.
-		b.mtx.Unlock()
+		b.dbsMtx.Unlock()
 		return nil
 	}
 	// So that we don't get any samples after compaction.
 	b.dbs[idx] = nil
-	b.mtx.Unlock()
+	b.dbsMtx.Unlock()
 
 	defer func() {
 		if err == nil {
@@ -347,7 +358,7 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 			}
 		}
 
-		b.mtx.Lock()
+		b.dbsMtx.Lock()
 		if err != nil {
 			b.dbs[idx] = db
 		} else {
@@ -358,7 +369,7 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 				b.metrics.numBackfillTSDBsPerUser.WithLabelValues(b.userID).Dec()
 			}
 		}
-		b.mtx.Unlock()
+		b.dbsMtx.Unlock()
 	}()
 
 	h := db.db.Head()
@@ -378,8 +389,8 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 }
 
 func (b *backfillTSDB) isIdle(timeout time.Duration) bool {
-	b.mtx.RLock()
-	defer b.mtx.RUnlock()
+	b.dbsMtx.RLock()
+	defer b.dbsMtx.RUnlock()
 
 	idle := false
 	for i := 0; i < 2; i++ {
@@ -394,18 +405,18 @@ func (b *backfillTSDB) compactAndShipIdleTSDBs(timeout time.Duration) error {
 	b.compactMtx.Lock()
 	defer b.compactMtx.Unlock()
 
-	b.mtx.RLock()
-	defer b.mtx.RUnlock()
+	b.dbsMtx.RLock()
+	defer b.dbsMtx.RUnlock()
 
 	var merr tsdb_errors.MultiError
 	for i := 0; i < 2; i++ {
-		b.mtx.RLock()
+		b.dbsMtx.RLock()
 		if b.dbs[i] == nil || !b.dbs[i].db.isIdle(mtime.Now(), timeout) {
-			b.mtx.RUnlock()
+			b.dbsMtx.RUnlock()
 			continue
 		}
 		db := b.dbs[i]
-		b.mtx.RUnlock()
+		b.dbsMtx.RUnlock()
 
 		err := b.compactAndShipAndCloseDB(i)
 		if err != nil {
@@ -447,53 +458,21 @@ func overlapsOpenInterval(mint1, maxt1, mint2, maxt2 int64) bool {
 }
 
 func getBackfillTSDBRanges(tsdbName string) (int64, int64, error) {
-	// TODO(codesome) use time.Parse.
-
 	// YYYY_MM_DD_HH_YYYY_MM_DD_HH
-	// 012345678901234567890123456
-	if len(tsdbName) != 27 {
+	r := regexp.MustCompile(`^(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{4})_(\d{2})_(\d{2})_(\d{2})$`)
+	items := r.FindStringSubmatch(tsdbName)
+	if len(items) != 9 {
 		return 0, 0, errors.New("Invalid bucket name")
 	}
 
-	startYYYY, err := strconv.Atoi(tsdbName[0:4])
+	startTime, err := time.Parse(time.RFC3339, fmt.Sprintf("%s-%s-%sT%s:00:00+00:00", items[1], items[2], items[3], items[4]))
 	if err != nil {
 		return 0, 0, err
 	}
-	startMM, err := strconv.Atoi(tsdbName[5:7])
-	if err != nil {
-		return 0, 0, err
-	}
-	startDD, err := strconv.Atoi(tsdbName[8:10])
-	if err != nil {
-		return 0, 0, err
-	}
-	startHH, err := strconv.Atoi(tsdbName[11:13])
+	endTime, err := time.Parse(time.RFC3339, fmt.Sprintf("%s-%s-%sT%s:00:00+00:00", items[5], items[6], items[7], items[8]))
 	if err != nil {
 		return 0, 0, err
 	}
 
-	endYYYY, err := strconv.Atoi(tsdbName[14:18])
-	if err != nil {
-		return 0, 0, err
-	}
-	endMM, err := strconv.Atoi(tsdbName[19:21])
-	if err != nil {
-		return 0, 0, err
-	}
-	endDD, err := strconv.Atoi(tsdbName[22:24])
-	if err != nil {
-		return 0, 0, err
-	}
-	endHH, err := strconv.Atoi(tsdbName[25:27])
-	if err != nil {
-		return 0, 0, err
-	}
-
-	startTime := time.Date(startYYYY, time.Month(startMM), startDD, startHH, 0, 0, 0, time.UTC)
-	endTime := time.Date(endYYYY, time.Month(endMM), endDD, endHH, 0, 0, 0, time.UTC)
-
-	start := startTime.Unix() * 1000
-	end := endTime.Unix() * 1000
-
-	return start, end, nil
+	return startTime.Unix() * 1000, endTime.Unix() * 1000, nil
 }

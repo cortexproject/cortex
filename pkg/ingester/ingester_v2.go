@@ -974,14 +974,16 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		blockRanges[len(blockRanges)-1],
 		tsdbPromReg,
 	)
-	if err == nil {
-		// We set the limiter here because we don't want to limit
-		// series during WAL replay.
-		userDB.limiter = i.limiter
-		i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
+	if err != nil {
+		return nil, err
 	}
 
-	return userDB, err
+	// We set the limiter here because we don't want to limit
+	// series during WAL replay.
+	userDB.limiter = i.limiter
+	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
+
+	return userDB, nil
 }
 
 // createNewTSDB creates a TSDB for a given userID and data directory.
@@ -995,7 +997,7 @@ func (i *Ingester) createNewTSDB(userID, dbDir string, minBlockDuration, maxBloc
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		lastUpdate:          atomic.NewInt64(0),
-		backfillTSDB:        newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge, i.metrics),
+		backfillTSDB:        newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge, minBlockDuration, i.metrics),
 	}
 
 	// Create a new user database
@@ -1195,7 +1197,7 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 		return start, end, userDB, nil
 	}
 
-	db.backfillTSDB.mtx.Lock()
+	db.backfillTSDB.dbsMtx.Lock()
 	// TODO(codesome): Dont load TSDB if the block range is not same as current configured. Compact and ship them instead.
 	for i := range []int{0, 1} {
 		if len(backfillTSDBDirs) <= i {
@@ -1211,7 +1213,7 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 			end:   end,
 		}
 	}
-	db.backfillTSDB.mtx.Unlock()
+	db.backfillTSDB.dbsMtx.Unlock()
 }
 
 // numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.

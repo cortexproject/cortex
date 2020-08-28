@@ -209,12 +209,12 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 
 	if !createMetricsConflictingWithTSDB {
 		m.numUsersWithBackfillTSDBs = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_tsdb_users_with_backfill_tsdb",
-			Help: "Total number of users with backfill TSDBs",
+			Name: "cortex_ingester_backfill_tsdb_tenants",
+			Help: "Total number of tenants with backfill TSDBs open",
 		})
 		m.numBackfillTSDBsPerUser = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_ingester_tsdb_backfill_tsdb_per_user",
-			Help: "Total number of backfill TSDBs per user",
+			Name: "cortex_ingester_backfill_tsdb_open",
+			Help: "Total number of backfill TSDBs open per tenant.",
 		}, []string{"user"})
 	}
 

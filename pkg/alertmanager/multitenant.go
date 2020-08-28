@@ -463,12 +463,44 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
 
-	if !ok || !userAM.IsActive() {
+	if !ok && am.fallbackConfig != "" {
+		userAM, err = am.alertmanagerFromFallbackConfig(userID)
+		if err != nil {
+			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
+		}
+	}
+
+	if !userAM.IsActive() {
 		http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
 		return
 	}
 
 	userAM.mux.ServeHTTP(w, req)
+}
+
+func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
+	// There's a potential race condition here. If a tenant:
+	// a) uploads a config and b) receives an alert or access the UI
+	// before we're able the start the new manager we'll replace that config with an empty
+	// config.
+	cfg := &UserConfig{AlertmanagerConfig: ""}
+	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	err := am.store.SetAlertConfig(context.Background(), cfgDesc)
+	if err != nil {
+		level.Error(am.logger).Log("msg", "unable to store fallback configuration", "user", userID, "err", err.Error())
+		return nil, err
+	}
+
+	// Calling setConfig with an empty configuration will use the fallback config.
+	err = am.setConfig(cfgDesc)
+	if err != nil {
+		return nil, err
+	}
+
+	// We need to check again in case they've had a new alertmanager started by the time we're ready
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	return am.alertmanagers[userID], nil
 }
 
 // GetStatusHandler returns the status handler for this multi-tenant

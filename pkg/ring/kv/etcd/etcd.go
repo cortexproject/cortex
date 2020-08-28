@@ -25,7 +25,7 @@ type Config struct {
 	CertFile      string        `yaml:"cert_file"`
 	KeyFile       string        `yaml:"key_file"`
 	TrustedCAFile string        `yaml:"client_ca_file"`
-	TLS           *tls.Config
+	TLS           *tls.Config   `yaml:",omitempty"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -104,6 +104,7 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 		DialKeepAliveTime:    10 * time.Second,
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
 		PermitWithoutStream:  true,
+		TLS:                  cfg.TLS,
 	})
 	if err != nil {
 		return nil, err

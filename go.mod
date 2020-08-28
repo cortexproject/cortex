@@ -22,7 +22,7 @@ require (
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.10.0
-	github.com/go-redis/redis/v8 v8.0.0-beta.7
+	github.com/go-redis/redis/v8 v8.0.0-beta.8.0.20200827055157-9b831b0427ab
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
@@ -49,7 +49,6 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.11.1
 	github.com/prometheus/prometheus v1.8.2-0.20200819132913-cb830b0a9c78
-	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
@@ -57,6 +56,7 @@ require (
 	github.com/thanos-io/thanos v0.13.1-0.20200807203500-9b578afb4763
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20200820123129-280614068c5e
+	github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da // indirect
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.6.0

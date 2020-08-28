@@ -29,8 +29,8 @@ type RedisConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server or Redis Sentinel endpoint. A comma-separated list of endpoints for Redis Cluster. If empty, no redis will be used.")
-	f.StringVar(&cfg.MasterName, prefix+"redis.master_name", "", description+"Redis Sentinel master group name. An empty string for Redis Server or Redis Cluster.")
+	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server endpoint to use for caching. A comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If empty, no redis will be used.")
+	f.StringVar(&cfg.MasterName, prefix+"redis.master_name", "", description+"Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
@@ -48,33 +48,17 @@ type RedisClient interface {
 	Close() error
 }
 
-type redisCommander interface {
-	Ping(ctx context.Context) *redis.StatusCmd
-	TxPipeline() redis.Pipeliner
-	MGet(ctx context.Context, keys ...string) *redis.SliceCmd
-	Close() error
+type redisClient struct {
+	expiration time.Duration
+	timeout    time.Duration
+	rdb        redis.UniversalClient
 }
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) RedisClient {
-	if len(cfg.MasterName) > 0 {
-		return newRedisSentinelClient(cfg)
-	}
-	if addrs := strings.Split(cfg.Endpoint, ","); len(addrs) > 1 {
-		return newRedisClusterClient(cfg, addrs)
-	}
-	return newRedisServerClient(cfg)
-}
-
-type redisBasicClient struct {
-	expiration time.Duration
-	timeout    time.Duration
-	rdb        redisCommander
-}
-
-func newRedisServerClient(cfg *RedisConfig) *redisBasicClient {
-	opt := &redis.Options{
-		Addr:        cfg.Endpoint,
+	opt := &redis.UniversalOptions{
+		Addrs:       strings.Split(cfg.Endpoint, ","),
+		MasterName:  cfg.MasterName,
 		Password:    cfg.Password.Value,
 		PoolSize:    cfg.PoolSize,
 		IdleTimeout: cfg.IdleTimeout,
@@ -83,32 +67,14 @@ func newRedisServerClient(cfg *RedisConfig) *redisBasicClient {
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{}
 	}
-	return &redisBasicClient{
+	return &redisClient{
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
-		rdb:        redis.NewClient(opt),
+		rdb:        redis.NewUniversalClient(opt),
 	}
 }
 
-func newRedisClusterClient(cfg *RedisConfig, addrs []string) *redisBasicClient {
-	opt := &redis.ClusterOptions{
-		Addrs:       addrs,
-		Password:    cfg.Password.Value,
-		PoolSize:    cfg.PoolSize,
-		IdleTimeout: cfg.IdleTimeout,
-		MaxConnAge:  cfg.MaxConnAge,
-	}
-	if cfg.EnableTLS {
-		opt.TLSConfig = &tls.Config{}
-	}
-	return &redisBasicClient{
-		expiration: cfg.Expiration,
-		timeout:    cfg.Timeout,
-		rdb:        redis.NewClusterClient(opt),
-	}
-}
-
-func (c *redisBasicClient) Ping(ctx context.Context) error {
+func (c *redisClient) Ping(ctx context.Context) error {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -125,7 +91,7 @@ func (c *redisBasicClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (c *redisBasicClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
+func (c *redisClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -140,7 +106,7 @@ func (c *redisBasicClient) MSet(ctx context.Context, keys []string, values [][]b
 	return err
 }
 
-func (c *redisBasicClient) MGet(ctx context.Context, keys []string) ([][]byte, error) {
+func (c *redisClient) MGet(ctx context.Context, keys []string) ([][]byte, error) {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -161,98 +127,7 @@ func (c *redisBasicClient) MGet(ctx context.Context, keys []string) ([][]byte, e
 	return ret, nil
 }
 
-func (c *redisBasicClient) Close() error {
-	return c.rdb.Close()
-}
-
-type redisSentinelClient struct {
-	masterName string
-	expiration time.Duration
-	timeout    time.Duration
-	rdb        *redis.SentinelClient
-	opt        *redis.Options
-}
-
-func newRedisSentinelClient(cfg *RedisConfig) *redisSentinelClient {
-	opt := &redis.Options{
-		Addr:        cfg.Endpoint,
-		Password:    cfg.Password.Value,
-		PoolSize:    cfg.PoolSize,
-		IdleTimeout: cfg.IdleTimeout,
-		MaxConnAge:  cfg.MaxConnAge,
-	}
-	if cfg.EnableTLS {
-		opt.TLSConfig = &tls.Config{}
-	}
-	return &redisSentinelClient{
-		masterName: cfg.MasterName,
-		expiration: cfg.Expiration,
-		timeout:    cfg.Timeout,
-		rdb:        redis.NewSentinelClient(opt),
-		opt:        opt,
-	}
-}
-
-func (c *redisSentinelClient) getMaster(ctx context.Context) (*redisBasicClient, error) {
-	// expected: info = []string{<host>, <port>}
-	info, err := c.rdb.GetMasterAddrByName(ctx, c.masterName).Result()
-	if err != nil {
-		return nil, err
-	}
-	switch len(info) {
-	case 0:
-		return nil, fmt.Errorf("redis: no master")
-	case 2:
-		return &redisBasicClient{
-			expiration: c.expiration,
-			timeout:    c.timeout,
-			rdb: redis.NewClient(&redis.Options{
-				Addr:        fmt.Sprintf("%s:%s", info[0], info[1]),
-				Password:    c.opt.Password,
-				PoolSize:    c.opt.PoolSize,
-				IdleTimeout: c.opt.IdleTimeout,
-				MaxConnAge:  c.opt.MaxConnAge,
-			}),
-		}, nil
-	default:
-		return nil, fmt.Errorf("redis: unexpected master info format %v", info)
-	}
-}
-
-func (c *redisSentinelClient) Ping(ctx context.Context) error {
-	var cancel context.CancelFunc
-	if c.timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-	}
-
-	pong, err := c.rdb.Ping(ctx).Result()
-	if err != nil {
-		return err
-	}
-	if pong != "PONG" {
-		return fmt.Errorf("redis: Unexpected PING response %q", pong)
-	}
-	return nil
-}
-
-func (c *redisSentinelClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
-	master, err := c.getMaster(ctx)
-	if err != nil {
-		return err
-	}
-	return master.MSet(ctx, keys, values)
-}
-
-func (c *redisSentinelClient) MGet(ctx context.Context, keys []string) ([][]byte, error) {
-	master, err := c.getMaster(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return master.MGet(ctx, keys)
-}
-
-func (c *redisSentinelClient) Close() error {
+func (c *redisClient) Close() error {
 	return c.rdb.Close()
 }
 

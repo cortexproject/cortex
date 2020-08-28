@@ -12,15 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
-* The oterror package provides unified error interactions in OpenTelemetry.
-* This includes providing standardized errors common to OpenTelemetry (APIs,
-* SDKs, and exporters). Additionally it provides an API for unified error
-* handling in OpenTelemetry.
-*
-* The unified error handling interface is used for any error that
-* OpenTelemetry component are not able to remediate on their own, instead
-* handling them in a uniform and user-defined way.
- */
-
-package oterror
+// Package label provides key and value labels.
+package label // import "go.opentelemetry.io/otel/label"

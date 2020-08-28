@@ -12,11 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package oterror
-
-// Handler handles irremediable events.
-type Handler interface {
-	// Handle handles any error deemed irremediable by an OpenTelemetry
-	// component.
-	Handle(error)
-}
+package otel // import "go.opentelemetry.io/otel"

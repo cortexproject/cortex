@@ -2856,13 +2856,12 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 &nbsp;
 
 ```yaml
-# Redis Server or Redis Sentinel endpoint. A comma-separated list of endpoints
-# for Redis Cluster. If empty, no redis will be used.
+# Redis Server endpoint to use for caching. A comma-separated list of endpoints
+# for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
 # CLI flag: -<prefix>.redis.endpoint
 [endpoint: <string> | default = ""]
 
-# Redis Sentinel master group name. An empty string for Redis Server or Redis
-# Cluster.
+# Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
 # CLI flag: -<prefix>.redis.master_name
 [master_name: <string> | default = ""]
 

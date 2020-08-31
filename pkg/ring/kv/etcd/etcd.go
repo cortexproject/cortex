@@ -60,11 +60,7 @@ func (cfg *Config) GetTLS() (*tls.Config, error) {
 		TrustedCAFile:      cfg.TrustedCAFile,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 	}
-	tlsConfig, err := tlsInfo.ClientConfig()
-	if err != nil {
-		return nil, err
-	}
-	return tlsConfig, nil
+	return tlsInfo.ClientConfig()
 }
 
 // New makes a new Client.

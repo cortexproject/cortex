@@ -221,7 +221,7 @@ func (p *Purger) retryFailedRequests() {
 	for _, userID := range userIDsWithFailedRequest {
 		deleteRequest := p.inProcessRequests.get(userID)
 		if deleteRequest == nil {
-			level.Error(util.Logger).Log("msg", "expected an in-process delete request", "user-id", userID)
+			level.Error(util.Logger).Log("msg", "expected an in-process delete request", "user", userID)
 			continue
 		}
 
@@ -229,7 +229,7 @@ func (p *Purger) retryFailedRequests() {
 		err := p.resumeStalledRequest(*deleteRequest)
 		if err != nil {
 			reqWithLogger := makeDeleteRequestWithLogger(*deleteRequest, util.Logger)
-			level.Error(reqWithLogger.logger).Log("msg", "failed to resume failed request")
+			level.Error(reqWithLogger.logger).Log("msg", "failed to resume failed request", "err", err)
 		}
 	}
 }

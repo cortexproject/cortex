@@ -58,7 +58,7 @@ func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string
 		bucketPrefix: bucketPrefix,
 
 		planStatus: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "scheduler_scanned_plans",
+			Name: "cortex_blocksconvert_scheduler_scanned_plans",
 			Help: "Number of plans in different status",
 		}, []string{"status"}),
 	}
@@ -119,6 +119,9 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	var mu sync.Mutex
 	allPlans := map[string]map[string]plan{}
 	stats := map[planStatus]int{}
+	for _, k := range []planStatus{New, InProgress, Finished, Error, Invalid} {
+		stats[k] = 0
+	}
 	var queue []queuedPlan
 
 	runConcurrently(ctx, s.cfg.PlanScanConcurrency, users, func(user string) {

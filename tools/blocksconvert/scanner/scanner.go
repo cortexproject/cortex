@@ -116,30 +116,30 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		ignored:      ignoredUserRegex,
 
 		indexReaderRowsRead: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "bigtable_read_rows_total",
+			Name: "cortex_blocksconvert_bigtable_read_rows_total",
 			Help: "Number of rows read from BigTable",
 		}),
 		indexReaderParsedIndexEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "bigtable_parsed_index_entries_total",
+			Name: "cortex_blocksconvert_bigtable_parsed_index_entries_total",
 			Help: "Number of parsed index entries",
 		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "scanner_series_written_total",
+			Name: "cortex_blocksconvert_scanner_series_written_total",
 			Help: "Number of series written to the plan files",
 		}),
 
 		openFiles: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "scanner_open_files",
+			Name: "cortex_blocksconvert_scanner_open_files",
 			Help: "Number of series written to the plan files",
 		}),
 
 		indexEntries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "scanner_scanned_index_entries_total",
+			Name: "cortex_blocksconvert_scanner_scanned_index_entries_total",
 			Help: "Number of various index entries scanned",
 		}, []string{"type"}),
 		ignoredEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "scanner_ignored_index_entries_total",
+			Name: "cortex_blocksconvert_scanner_ignored_index_entries_total",
 			Help: "Number of ignored index entries because of ignoring users.",
 		}),
 	}

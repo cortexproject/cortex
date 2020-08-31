@@ -277,35 +277,37 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 }
 
 func (s *Scanner) processTable(ctx context.Context, table string, indexReader IndexReader) error {
+	tableLog := log.With(s.logger, "table", table)
+
 	tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, table+".processed")
 
 	if shouldSkipOperationBecauseFileExists(tableProcessedFile) {
-		level.Info(s.logger).Log("msg", "skipping table because it was already scanned", "table", table)
+		level.Info(tableLog).Log("msg", "skipping table because it was already scanned")
 		return nil
 	}
 
 	dir := filepath.Join(s.cfg.OutputDirectory, table)
-	level.Info(s.logger).Log("msg", "scanning table", "table", table, "output", dir)
+	level.Info(tableLog).Log("msg", "scanning table", "output", dir)
 
 	err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries)
 	if err != nil {
 		return errors.Wrapf(err, "failed to scan table %s and generate plan files", table)
 	}
 
-	err = verifyPlanFiles(ctx, dir, s.logger)
+	err = verifyPlanFiles(ctx, dir, tableLog)
 	if err != nil {
 		return errors.Wrap(err, "failed to verify plans")
 	}
 
 	if s.bucket != nil {
-		level.Info(s.logger).Log("msg", "uploading generated plan files for table", "table", table, "source", dir)
+		level.Info(tableLog).Log("msg", "uploading generated plan files for table", "source", dir)
 
-		err := objstore.UploadDir(ctx, s.logger, s.bucket, dir, s.bucketPrefix)
+		err := objstore.UploadDir(ctx, tableLog, s.bucket, dir, s.bucketPrefix)
 		if err != nil {
 			return errors.Wrapf(err, "failed to upload plan files for table %s to bucket", table)
 		}
 
-		level.Info(s.logger).Log("msg", "uploaded generated files for table", "table", table)
+		level.Info(tableLog).Log("msg", "uploaded generated files for table")
 		if !s.cfg.KeepFiles {
 			if err := os.RemoveAll(dir); err != nil {
 				return errors.Wrapf(err, "failed to delete uploaded plan files for table %s", table)
@@ -318,7 +320,7 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 		return errors.Wrapf(err, "failed to create file %s", tableProcessedFile)
 	}
 
-	level.Info(s.logger).Log("msg", "done processing table", "table", table)
+	level.Info(tableLog).Log("msg", "done processing table")
 	return nil
 }
 

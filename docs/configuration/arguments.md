@@ -192,7 +192,7 @@ prefix these flags with `distributor.ha-tracker.`
 - `etcd.tls-ca-path`
    The trusted CA file path.
 - `etcd.tls-insecure-skip-verify`
-   Skip validating client certificate.
+   Skip validating server certificate.
 
 #### memberlist
 

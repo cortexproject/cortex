@@ -87,5 +87,5 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, serviceMap[Server])
 	require.NotNil(t, serviceMap[Ingester])
 	require.NotNil(t, serviceMap[Ring])
-	require.NotNil(t, serviceMap[Distributor])
+	require.NotNil(t, serviceMap[DistributorService])
 }

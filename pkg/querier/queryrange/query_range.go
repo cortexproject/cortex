@@ -73,8 +73,8 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
-	// GetCacheDirectives returns the cache directives.
-	GetCacheDirectives() CacheDirectives
+	// GetCachingOptions returns the caching options.
+	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
 	// WithQuery clone the current request with a different query.
@@ -211,7 +211,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	for _, value := range r.Header.Values(cacheControlHeader) {
 		if strings.Contains(value, noStoreValue) {
-			result.CacheDirectives.Disabled = true
+			result.CachingOptions.Disabled = true
 			break
 		}
 	}

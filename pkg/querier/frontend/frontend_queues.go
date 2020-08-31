@@ -10,9 +10,9 @@ type queueRecord struct {
 }
 
 // queueIterator provides round robin access to a collection of chan *request.  It is used to
-//  iterate fairly over the frontend per tenant request queues.  It uses a combination of a
-//  linked list and map to provide O(1) complexity on the getNextQueue(), deleteQueue(), and
-//  getOrAddQueue() operations.
+// iterate fairly over the frontend per tenant request queues.  It uses a combination of a
+// linked list and map to provide O(1) complexity on the getNextQueue(), deleteQueue(), and
+// getOrAddQueue() operations.
 type queueIterator struct {
 	l          *list.List
 	next       *list.Element

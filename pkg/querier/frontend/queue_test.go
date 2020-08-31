@@ -59,13 +59,13 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	}
 
 	// the first request shouldnt be expired
-	req, err := f.getNextRequest(ctx)
+	req, err := f.getNextRequestForQuerier(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
 	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID)))
 
 	// the next unexpired request should be the 5th index
-	req, err = f.getNextRequest(ctx)
+	req, err = f.getNextRequestForQuerier(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
 	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
@@ -76,7 +76,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.Nil(t, err)
 
 	// there should be no more unexpired requests in queue until the second tenant enqueues one.
-	req, err = f.getNextRequest(ctx)
+	req, err = f.getNextRequestForQuerier(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, req)
 
@@ -109,7 +109,7 @@ func TestRoundRobinQueues(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
-		req, err := f.getNextRequest(ctx)
+		req, err := f.getNextRequestForQuerier(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, req)
 
@@ -156,7 +156,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
-			_, err := frontends[i].getNextRequest(ctx)
+			_, err := frontends[i].getNextRequestForQuerier(ctx)
 			if err != nil {
 				b.Fatal(err)
 			}

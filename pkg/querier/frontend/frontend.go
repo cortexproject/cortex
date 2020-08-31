@@ -79,9 +79,9 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request  *ProcessRequest
+	request  *httpgrpc.HTTPRequest
 	err      chan error
-	response chan *ProcessResponse
+	response chan *httpgrpc.HTTPResponse
 }
 
 // New creates a new frontend.
@@ -225,19 +225,17 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	resp, err := f.RoundTripGRPC(r.Context(), &ProcessRequest{
-		HttpRequest: req,
-	})
+	resp, err := f.RoundTripGRPC(r.Context(), req)
 	if err != nil {
 		return nil, err
 	}
 
 	httpResp := &http.Response{
-		StatusCode: int(resp.HttpResponse.Code),
-		Body:       ioutil.NopCloser(bytes.NewReader(resp.HttpResponse.Body)),
+		StatusCode: int(resp.Code),
+		Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
 		Header:     http.Header{},
 	}
-	for _, h := range resp.HttpResponse.Headers {
+	for _, h := range resp.Headers {
 		httpResp.Header[h.Key] = h.Values
 	}
 	return httpResp, nil
@@ -253,11 +251,11 @@ func (c *httpgrpcHeadersCarrier) Set(key, val string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
-		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
+		carrier := (*httpgrpcHeadersCarrier)(req)
 		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 	}
 
@@ -269,7 +267,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 		// of the Process stream, even if this goroutine goes away due to
 		// client context cancellation.
 		err:      make(chan error, 1),
-		response: make(chan *ProcessResponse, 1),
+		response: make(chan *httpgrpc.HTTPResponse, 1),
 	}
 
 	if err := f.queueRequest(ctx, &request); err != nil {
@@ -290,11 +288,34 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	err := server.Send(&FrontendToClient{
+		Type: GET_ID,
+		// Old queriers don't support GET_ID, and will try to use the request.
+		// To avoid confusing them, include dummy request.
+		HttpRequest: &httpgrpc.HTTPRequest{
+			Method: "GET",
+			Url:    "/invalid_request_sent_by_frontend",
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	idResp, err := server.Recv()
+	if err != nil {
+		return err
+	}
+
+	// Old queriers will return empty string, which is fine. All old queriers will be
+	// treated as single querier with lot of connections.
+	querierID := idResp.ClientID
+
 	f.connectedClients.Inc()
 	defer f.connectedClients.Dec()
 
 	// If the downstream request(from querier -> frontend) is cancelled,
-	// we need to ping the condition variable to unblock getNextRequest.
+	// we need to ping the condition variable to unblock getNextRequestForQuerier.
 	// Ideally we'd have ctx aware condition variables...
 	go func() {
 		<-server.Context().Done()
@@ -302,17 +323,20 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	}()
 
 	for {
-		req, err := f.getNextRequest(server.Context())
+		req, err := f.getNextRequestForQuerier(server.Context(), querierID)
 		if err != nil {
 			return err
 		}
 
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
-		resps := make(chan *ProcessResponse, 1)
+		resps := make(chan *httpgrpc.HTTPResponse, 1)
 		errs := make(chan error, 1)
 		go func() {
-			err = server.Send(req.request)
+			err = server.Send(&FrontendToClient{
+				Type:        HTTP_REQUEST,
+				HttpRequest: req.request,
+			})
 			if err != nil {
 				errs <- err
 				return
@@ -324,7 +348,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 				return
 			}
 
-			resps <- resp
+			resps <- resp.HttpResponse
 		}()
 
 		select {
@@ -373,7 +397,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 // getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
-func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
+func (f *Frontend) getNextRequestForQuerier(ctx context.Context, querierID string) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 

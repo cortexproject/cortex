@@ -366,7 +366,7 @@ func verifyPlanFiles(ctx context.Context, dir string, logger log.Logger) error {
 			return nil
 		}
 
-		ok, _ := blocksconvert.IsPlanFile(info.Name())
+		ok, _ := blocksconvert.IsPlanFilename(info.Name())
 		if !ok {
 			return nil
 		}

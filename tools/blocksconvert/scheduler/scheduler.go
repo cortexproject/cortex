@@ -224,14 +224,14 @@ func (s *Scheduler) nextPlanNoRunningCheck(ctx context.Context) (string, string)
 	defer s.dequeueWG.Done()
 
 	// Before we return plan file, we create progress file.
-	ok, base := blocksconvert.IsPlanFile(p)
+	ok, base := blocksconvert.IsPlanFilename(p)
 	if !ok {
 		// Should not happen
 		level.Error(s.log).Log("msg", "enqueued file is not a plan file", "path", p)
 		return "", ""
 	}
 
-	pg := blocksconvert.StartingFile(base, time.Now())
+	pg := blocksconvert.StartingFilename(base, time.Now())
 	err := s.bucket.Upload(ctx, pg, strings.NewReader("starting"))
 	if err != nil {
 		level.Error(s.log).Log("msg", "failed to create progress file", "path", pg, "err", err)
@@ -315,22 +315,22 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 		}
 
 		filename := fullPath[len(prefixWithSlash):]
-		if ok, base := blocksconvert.IsPlanFile(filename); ok {
+		if ok, base := blocksconvert.IsPlanFilename(filename); ok {
 			p := plans[base]
 			p.PlanFiles = append(p.PlanFiles, fullPath)
 			plans[base] = p
-		} else if ok, base, ts := blocksconvert.IsProgressFile(filename); ok {
+		} else if ok, base, ts := blocksconvert.IsProgressFilename(filename); ok {
 			p := plans[base]
 			if p.ProgressFiles == nil {
 				p.ProgressFiles = map[string]time.Time{}
 			}
 			p.ProgressFiles[fullPath] = ts
 			plans[base] = p
-		} else if ok, base, id := blocksconvert.IsFinishedFile(filename); ok {
+		} else if ok, base, id := blocksconvert.IsFinishedFilename(filename); ok {
 			p := plans[base]
 			p.Blocks = append(p.Blocks, id)
 			plans[base] = p
-		} else if ok, base := blocksconvert.IsErrorFile(filename); ok {
+		} else if ok, base := blocksconvert.IsErrorFilename(filename); ok {
 			p := plans[base]
 			p.ErrorFile = fullPath
 			plans[base] = p

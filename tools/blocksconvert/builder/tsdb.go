@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
-	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -239,11 +238,6 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 
 	if err := indexWriter.Close(); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "closing index writer")
-	}
-
-	// Create an empty tombstones file.
-	if _, err := tombstones.WriteFile(d.log, d.tmpBlockDir, tombstones.NewMemTombstones()); err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "writing tombstones")
 	}
 
 	if err := metadata.Write(d.log, d.tmpBlockDir, meta); err != nil {

@@ -234,13 +234,13 @@ func (b *Builder) running(ctx context.Context) error {
 				continue
 			}
 
-			isPlanFile, planBaseName := blocksconvert.IsPlanFile(resp.PlanFile)
+			isPlanFile, planBaseName := blocksconvert.IsPlanFilename(resp.PlanFile)
 			if !isPlanFile {
 				level.Error(b.log).Log("msg", "got invalid plan file", "planFile", resp.PlanFile)
 				continue
 			}
 
-			ok, base, _ := blocksconvert.IsProgressFile(resp.ProgressFile)
+			ok, base, _ := blocksconvert.IsProgressFilename(resp.ProgressFile)
 			if !ok || base != planBaseName {
 				level.Error(b.log).Log("msg", "got invalid progress file", "progressFile", resp.ProgressFile)
 				continue
@@ -254,7 +254,7 @@ func (b *Builder) running(ctx context.Context) error {
 
 				// If context is canceled (either builder is shutting down, or due to hearbeating failure), don't upload error.
 				if !errors.Is(err, context.Canceled) {
-					errorFile := blocksconvert.ErrorFile(planBaseName)
+					errorFile := blocksconvert.ErrorFilename(planBaseName)
 					err = b.bucketClient.Upload(ctx, errorFile, strings.NewReader(err.Error()))
 					if err != nil {
 						level.Error(b.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
@@ -387,7 +387,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	}
 
 	// Upload finished status file
-	finishedFile := blocksconvert.FinishedFile(planBaseName, ulid)
+	finishedFile := blocksconvert.FinishedFilename(planBaseName, ulid)
 	if err := b.bucketClient.Upload(ctx, finishedFile, strings.NewReader(ulid.String())); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}

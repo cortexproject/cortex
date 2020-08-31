@@ -35,7 +35,7 @@ func (pe *PlanEntry) Reset() {
 }
 
 // Returns true and "base name" or false and empty string.
-func IsPlanFile(name string) (bool, string) {
+func IsPlanFilename(name string) (bool, string) {
 	switch {
 	case strings.HasSuffix(name, ".plan.gz"):
 		return true, name[:len(name)-len(".plan.gz")]
@@ -62,17 +62,17 @@ func PreparePlanFileReader(planFile string, in io.Reader) (io.Reader, error) {
 	return in, nil
 }
 
-func StartingFile(planBaseName string, t time.Time) string {
+func StartingFilename(planBaseName string, t time.Time) string {
 	return fmt.Sprintf("%s.starting.%d", planBaseName, t.Unix())
 }
 
-func ProgressFile(planBaseName string, t time.Time) string {
+func ProgressFilename(planBaseName string, t time.Time) string {
 	return fmt.Sprintf("%s.inprogress.%d", planBaseName, t.Unix())
 }
 
 var progress = regexp.MustCompile(`^(.+)\.(starting|progress|inprogress)\.(\d+)$`)
 
-func IsProgressFile(name string) (bool, string, time.Time) {
+func IsProgressFilename(name string) (bool, string, time.Time) {
 	m := progress.FindStringSubmatch(name)
 	if len(m) == 0 {
 		return false, "", time.Time{}
@@ -86,13 +86,13 @@ func IsProgressFile(name string) (bool, string, time.Time) {
 	return true, m[1], time.Unix(ts, 0)
 }
 
-func FinishedFile(planBaseName string, id ulid.ULID) string {
+func FinishedFilename(planBaseName string, id ulid.ULID) string {
 	return fmt.Sprintf("%s.finished.%s", planBaseName, id.String())
 }
 
 var finished = regexp.MustCompile(`^(.+)\.finished\.([a-zA-Z0-9]+)$`)
 
-func IsFinishedFile(name string) (bool, string, ulid.ULID) {
+func IsFinishedFilename(name string) (bool, string, ulid.ULID) {
 	m := finished.FindStringSubmatch(name)
 	if len(m) == 0 {
 		return false, "", ulid.ULID{}
@@ -106,11 +106,11 @@ func IsFinishedFile(name string) (bool, string, ulid.ULID) {
 	return true, m[1], id
 }
 
-func ErrorFile(planBaseName string) string {
+func ErrorFilename(planBaseName string) string {
 	return planBaseName + ".error"
 }
 
-func IsErrorFile(name string) (bool, string) {
+func IsErrorFilename(name string) (bool, string) {
 	if strings.HasSuffix(name, ".error") {
 		return true, name[:len(name)-len(".error")]
 	}

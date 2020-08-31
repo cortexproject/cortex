@@ -52,7 +52,7 @@ func (hb *heartbeat) heartbeat(ctx context.Context) error {
 	}
 
 	now := time.Now()
-	newProgressFile := blocksconvert.ProgressFile(hb.planFileBasename, now)
+	newProgressFile := blocksconvert.ProgressFilename(hb.planFileBasename, now)
 	if newProgressFile == hb.lastProgressFile {
 		// when scheduler creates progress file, it can have the same timestamp.
 		return nil

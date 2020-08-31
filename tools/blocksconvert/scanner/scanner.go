@@ -42,7 +42,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
-	f.StringVar(&cfg.OutputDirectory, "scanner.local-dir", "", "Local directory used for storing temporary plan files (will be deleted and recreated!).")
+	f.StringVar(&cfg.OutputDirectory, "scanner.output-dir", "", "Local directory used for storing temporary plan files (will be created if missing).")
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")

@@ -53,7 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	host, _ := os.Hostname()
 	f.StringVar(&cfg.BuilderName, "builder.name", host, "Builder name, defaults to hostname.")
-	f.StringVar(&cfg.OutputDirectory, "builder.local-dir", "", "Local directory used for storing temporary plan files (will be created, if doesn't exist).")
+	f.StringVar(&cfg.OutputDirectory, "builder.output-dir", "", "Local directory used for storing temporary plan files (will be created, if missing).")
 	f.IntVar(&cfg.Concurrency, "builder.concurrency", 128, "Number of concurrent series processors.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "builder.heartbeat", 5*time.Minute, "How often to update plan progress file.")
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")

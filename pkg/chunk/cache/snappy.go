@@ -21,27 +21,26 @@ func NewSnappy(next Cache, logger log.Logger) Cache {
 	}
 }
 
-func (s *snappyCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	cs := make([][]byte, 0, len(bufs))
-	for _, buf := range bufs {
-		c := snappy.Encode(nil, buf)
-		cs = append(cs, c)
+func (s *snappyCache) Store(ctx context.Context, data map[string][]byte) {
+	cs := make(map[string][]byte, len(data))
+	for k, v := range data {
+		c := snappy.Encode(nil, v)
+		cs[k] = c
 	}
-	s.next.Store(ctx, keys, cs)
+	s.next.Store(ctx, cs)
 }
 
-func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string) {
-	found, bufs, missing := s.next.Fetch(ctx, keys)
-	ds := make([][]byte, 0, len(bufs))
-	for _, buf := range bufs {
-		d, err := snappy.Decode(nil, buf)
+func (s *snappyCache) Fetch(ctx context.Context, keys []string) (map[string][]byte, []string) {
+	found, missing := s.next.Fetch(ctx, keys)
+	for k, v := range found {
+		d, err := snappy.Decode(nil, v)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to decode cache entry", "err", err)
-			return nil, nil, keys
+			return nil, keys
 		}
-		ds = append(ds, d)
+		found[k] = d
 	}
-	return found, ds, missing
+	return found, missing
 }
 
 func (s *snappyCache) Stop() {

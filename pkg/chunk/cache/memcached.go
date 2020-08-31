@@ -91,7 +91,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				res := &result{
 					batchID: input.batchID,
 				}
-				res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
+				res.found, res.missed = c.fetch(input.ctx, input.keys)
 				input.resultCh <- res
 			}
 
@@ -110,8 +110,7 @@ type work struct {
 }
 
 type result struct {
-	found   []string
-	bufs    [][]byte
+	found   map[string][]byte
 	missed  []string
 	batchID int // For ordering results.
 }
@@ -131,20 +130,20 @@ func memcacheStatusCode(err error) string {
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) Fetch(ctx context.Context, keys []string) (found map[string][]byte, missing []string) {
 	_ = instr.CollectedRequest(ctx, "Memcache.Get", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		if c.cfg.BatchSize == 0 {
-			found, bufs, missed = c.fetch(ctx, keys)
+			found, missing = c.fetch(ctx, keys)
 			return nil
 		}
 
-		found, bufs, missed = c.fetchKeysBatched(ctx, keys)
+		found, missing = c.fetchKeysBatched(ctx, keys)
 		return nil
 	})
 	return
 }
 
-func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) fetch(ctx context.Context, keys []string) (found map[string][]byte, missed []string) {
 	var items map[string]*memcache.Item
 	const method = "Memcache.GetMulti"
 	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
@@ -165,14 +164,13 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	})
 
 	if err != nil {
-		return found, bufs, keys
+		return found, keys
 	}
 
 	for _, key := range keys {
 		item, ok := items[key]
 		if ok {
-			found = append(found, key)
-			bufs = append(bufs, item.Value)
+			found[key] = item.Value
 		} else {
 			missed = append(missed, key)
 		}
@@ -180,7 +178,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found map[string][]byte, missed []string) {
 	resultsCh := make(chan *result)
 	batchSize := c.cfg.BatchSize
 
@@ -212,8 +210,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	close(resultsCh)
 
 	for _, result := range results {
-		found = append(found, result.found...)
-		bufs = append(bufs, result.bufs...)
+		found = result.found
 		missed = append(missed, result.missed...)
 	}
 
@@ -221,12 +218,12 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 }
 
 // Store stores the key in the cache.
-func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	for i := range keys {
+func (c *Memcached) Store(ctx context.Context, data map[string][]byte) {
+	for k, v := range data {
 		err := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
-				Key:        keys[i],
-				Value:      bufs[i],
+				Key:        k,
+				Value:      v,
 				Expiration: int32(c.cfg.Expiration.Seconds()),
 			}
 			return c.memcache.Set(&item)

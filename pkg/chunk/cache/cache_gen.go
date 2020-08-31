@@ -21,19 +21,16 @@ func NewCacheGenNumMiddleware(downstreamCache Cache) Cache {
 }
 
 // Store adds cache gen number to keys before calling Store method of downstream cache.
-func (c GenNumMiddleware) Store(ctx context.Context, keys []string, buf [][]byte) {
-	keys = addCacheGenNumToCacheKeys(ctx, keys)
-	c.downstreamCache.Store(ctx, keys, buf)
+func (c GenNumMiddleware) Store(ctx context.Context, data map[string][]byte) {
+	c.downstreamCache.Store(ctx, addCacheGenNumToCacheData(ctx, data))
 }
 
 // Fetch adds cache gen number to keys before calling Fetch method of downstream cache.
 // It also removes gen number before responding back with found and missing keys to make sure consumer of response gets to see same keys.
-func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
-	keys = addCacheGenNumToCacheKeys(ctx, keys)
+func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string) (found map[string][]byte, missing []string) {
+	found, missing = c.downstreamCache.Fetch(ctx, addCacheGenNumToCacheKeys(ctx, keys))
 
-	found, bufs, missing = c.downstreamCache.Fetch(ctx, keys)
-
-	found = removeCacheGenNumFromKeys(ctx, found)
+	found = removeCacheGenNumFromData(ctx, found)
 	missing = removeCacheGenNumFromKeys(ctx, missing)
 
 	return
@@ -74,6 +71,20 @@ func addCacheGenNumToCacheKeys(ctx context.Context, keys []string) []string {
 	return prefixedKeys
 }
 
+// addCacheGenNumToCacheData adds gen number to keys as prefix.
+func addCacheGenNumToCacheData(ctx context.Context, data map[string][]byte) map[string][]byte {
+	cacheGen := ExtractCacheGenNumber(ctx)
+	if cacheGen == "" {
+		return data
+	}
+	for k, v := range data {
+		data[cacheGen+k] = v
+		delete(data, k)
+	}
+
+	return data
+}
+
 // removeCacheGenNumFromKeys removes prefixed gen number from keys.
 func removeCacheGenNumFromKeys(ctx context.Context, keys []string) []string {
 	cacheGen := ExtractCacheGenNumber(ctx)
@@ -89,4 +100,19 @@ func removeCacheGenNumFromKeys(ctx context.Context, keys []string) []string {
 	}
 
 	return unprefixedKeys
+}
+
+// removeCacheGenNumFromData removes prefixed gen number from keys.
+func removeCacheGenNumFromData(ctx context.Context, data map[string][]byte) map[string][]byte {
+	cacheGen := ExtractCacheGenNumber(ctx)
+	if cacheGen == "" {
+		return data
+	}
+
+	for k, v := range data {
+		data[k[len(cacheGen):]] = v
+		delete(data, k)
+	}
+
+	return data
 }

@@ -33,8 +33,8 @@ type IndexClient interface {
 type Client interface {
 	Stop()
 
-	PutChunks(ctx context.Context, chunks []Chunk) error
-	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
+	PutChunks(ctx context.Context, chunks map[string]Chunk) error
+	GetChunks(ctx context.Context, chunks map[string]Chunk) (map[string]Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
 }
 

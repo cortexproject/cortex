@@ -10,22 +10,21 @@ type mockCache struct {
 	cache map[string][]byte
 }
 
-func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) {
+func (m *mockCache) Store(_ context.Context, data map[string][]byte) {
 	m.Lock()
 	defer m.Unlock()
-	for i := range keys {
-		m.cache[keys[i]] = bufs[i]
+	for k, v := range data {
+		m.cache[k] = v
 	}
 }
 
-func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (m *mockCache) Fetch(ctx context.Context, keys []string) (found map[string][]byte, missing []string) {
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {
 		buf, ok := m.cache[key]
 		if ok {
-			found = append(found, key)
-			bufs = append(bufs, buf)
+			found[key] = buf
 		} else {
 			missing = append(missing, key)
 		}

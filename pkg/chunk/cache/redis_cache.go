@@ -95,29 +95,28 @@ func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool, logger log.Lo
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found map[string][]byte, missing []string) {
 	data, err := c.mget(ctx, keys)
 
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to get from redis", "name", c.name, "err", err)
-		missed = make([]string, len(keys))
-		copy(missed, keys)
+		missing = make([]string, len(keys))
+		copy(missing, keys)
 		return
 	}
 	for i, key := range keys {
 		if data[i] != nil {
-			found = append(found, key)
-			bufs = append(bufs, data[i])
+			found[key] = data[i]
 		} else {
-			missed = append(missed, key)
+			missing = append(missing, key)
 		}
 	}
 	return
 }
 
 // Store stores the key in the cache.
-func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	err := c.mset(ctx, keys, bufs, c.expiration)
+func (c *RedisCache) Store(ctx context.Context, data map[string][]byte) {
+	err := c.mset(ctx, data, c.expiration)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
 	}
@@ -129,15 +128,15 @@ func (c *RedisCache) Stop() {
 }
 
 // mset adds key-value pairs to the cache.
-func (c *RedisCache) mset(_ context.Context, keys []string, bufs [][]byte, ttl int) error {
+func (c *RedisCache) mset(_ context.Context, data map[string][]byte, ttl int) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
 	if err := conn.Send("MULTI"); err != nil {
 		return err
 	}
-	for i := range keys {
-		if err := conn.Send("SETEX", keys[i], ttl, bufs[i]); err != nil {
+	for k, v := range data {
+		if err := conn.Send("SETEX", k, ttl, v); err != nil {
 			return err
 		}
 	}

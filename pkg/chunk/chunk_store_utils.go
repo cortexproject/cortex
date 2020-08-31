@@ -16,18 +16,18 @@ import (
 
 const chunkDecodeParallelism = 16
 
-func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
-	filtered := make([]Chunk, 0, len(chunks))
+func filterChunksByTime(from, through model.Time, chunks []Chunk) map[string]Chunk {
+	filtered := make(map[string]Chunk, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
 		}
-		filtered = append(filtered, chunk)
+		filtered[chunk.ExternalKey()] = chunk
 	}
 	return filtered
 }
 
-func keysFromChunks(chunks []Chunk) []string {
+func keysFromChunks(chunks map[string]Chunk) []string {
 	keys := make([]string, 0, len(chunks))
 	for _, chk := range chunks {
 		keys = append(keys, chk.ExternalKey())
@@ -36,7 +36,7 @@ func keysFromChunks(chunks []Chunk) []string {
 	return keys
 }
 
-func labelNamesFromChunks(chunks []Chunk) []string {
+func labelNamesFromChunks(chunks map[string]Chunk) []string {
 	var result UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
@@ -46,8 +46,8 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	return result.Strings()
 }
 
-func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
-	filtered := make([]Chunk, 0, len(chunks))
+func filterChunksByUniqueFingerprint(chunks map[string]Chunk) (map[string]Chunk, []string) {
+	filtered := make(map[string]Chunk, len(chunks))
 	keys := make([]string, 0, len(chunks))
 	uniqueFp := map[model.Fingerprint]struct{}{}
 
@@ -55,14 +55,14 @@ func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
 		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
 			continue
 		}
-		filtered = append(filtered, chunk)
+		filtered[chunk.ExternalKey()] = chunk
 		keys = append(keys, chunk.ExternalKey())
 		uniqueFp[chunk.Fingerprint] = struct{}{}
 	}
 	return filtered, keys
 }
 
-func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {
+func filterChunksByMatchers(chunks map[string]Chunk, filters []*labels.Matcher) []Chunk {
 	filteredChunks := make([]Chunk, 0, len(chunks))
 outer:
 	for _, chunk := range chunks {
@@ -139,19 +139,19 @@ func (c *Fetcher) worker() {
 
 // FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
 // lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
-func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks map[string]Chunk, keys []string) (map[string]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.FetchChunks")
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
-	cacheHits, cacheBufs, _ := c.cache.Fetch(ctx, keys)
+	cacheHits, _ := c.cache.Fetch(ctx, keys)
 
-	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
 
-	var fromStorage []Chunk
+	var fromStorage map[string]Chunk
 	if len(missing) > 0 {
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
 	}
@@ -166,37 +166,37 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 		return nil, promql.ErrStorage{Err: err}
 	}
 
-	allChunks := append(fromCache, fromStorage...)
-	return allChunks, nil
+	for k, v := range fromStorage {
+		fromCache[k] = v
+	}
+	return fromCache, nil
 }
 
-func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
-	keys := make([]string, 0, len(chunks))
-	bufs := make([][]byte, 0, len(chunks))
-	for i := range chunks {
+func (c *Fetcher) writeBackCache(ctx context.Context, chunks map[string]Chunk) error {
+	chks := make(map[string][]byte, len(chunks))
+	for k, _ := range chunks {
 		var encoded []byte
 		var err error
 		if !c.cacheStubs {
-			encoded, err = chunks[i].Encoded()
+			encoded, err = chunks[k].Encoded()
 			// TODO don't fail, just log and continue?
 			if err != nil {
 				return err
 			}
 		}
 
-		keys = append(keys, chunks[i].ExternalKey())
-		bufs = append(bufs, encoded)
+		chks[chunks[k].ExternalKey()] = encoded
 	}
 
-	c.cache.Store(ctx, keys, bufs)
+	c.cache.Store(ctx, chks)
 	return nil
 }
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
-func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
+func (c *Fetcher) processCacheResponse(ctx context.Context, chunks map[string]Chunk, data map[string][]byte) (map[string]Chunk, map[string]Chunk, error) {
 	var (
-		requests  = make([]decodeRequest, 0, len(keys))
+		requests  = make([]decodeRequest, 0, len(data))
 		responses = make(chan decodeResponse)
 		missing   []Chunk
 	)
@@ -204,10 +204,10 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 	defer log.Span.Finish()
 
 	i, j := 0, 0
-	for i < len(chunks) && j < len(keys) {
+	for i < len(chunks) && j < len(data) {
 		chunkKey := chunks[i].ExternalKey()
 
-		if chunkKey < keys[j] {
+		if _, ok := data[chunkKey]; !ok {
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {

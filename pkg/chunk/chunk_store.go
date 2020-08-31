@@ -151,7 +151,9 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
-	chunks := []Chunk{chunk}
+	chunks := map[string]Chunk{
+		chunk.ExternalKey(): chunk,
+	}
 
 	err := c.fetcher.storage.PutChunks(ctx, chunks)
 	if err != nil {
@@ -648,7 +650,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		return ErrParialDeleteChunkNoOverlap
 	}
 
-	chunks, err := c.fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
+	chunks, err := c.fetcher.FetchChunks(ctx, map[string]Chunk{chunk.ExternalKey(): chunk}, []string{chunkID})
 	if err != nil {
 		if err == ErrStorageObjectNotFound {
 			return nil
@@ -660,7 +662,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		return fmt.Errorf("expected to get 1 chunk from storage got %d instead", len(chunks))
 	}
 
-	chunk = chunks[0]
+	chunk = chunks[chunkID]
 	var newChunks []*Chunk
 	if partiallyDeletedInterval.Start > chunk.From {
 		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)

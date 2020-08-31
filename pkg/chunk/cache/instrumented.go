@@ -64,24 +64,23 @@ type instrumentedCache struct {
 	requestDuration                   *instr.HistogramCollector
 }
 
-func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	for j := range bufs {
-		i.storedValueSize.Observe(float64(len(bufs[j])))
+func (i *instrumentedCache) Store(ctx context.Context, data map[string][]byte) {
+	for _, v := range data {
+		i.storedValueSize.Observe(float64(len(v)))
 	}
 
 	method := i.name + ".store"
 	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys", len(keys)))
-		i.Cache.Store(ctx, keys, bufs)
+		sp.LogFields(otlog.Int("keys", len(data)))
+		i.Cache.Store(ctx, data)
 		return nil
 	})
 }
 
-func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) (map[string][]byte, []string) {
 	var (
-		found   []string
-		bufs    [][]byte
+		found   = make(map[string][]byte)
 		missing []string
 		method  = i.name + ".fetch"
 	)
@@ -90,18 +89,18 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
-		found, bufs, missing = i.Cache.Fetch(ctx, keys)
+		found, missing = i.Cache.Fetch(ctx, keys)
 		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
 		return nil
 	})
 
 	i.fetchedKeys.Add(float64(len(keys)))
 	i.hits.Add(float64(len(found)))
-	for j := range bufs {
-		i.fetchedValueSize.Observe(float64(len(bufs[j])))
+	for _, v := range found {
+		i.fetchedValueSize.Observe(float64(len(v)))
 	}
 
-	return found, bufs, missing
+	return found, missing
 }
 
 func (i *instrumentedCache) Stop() {

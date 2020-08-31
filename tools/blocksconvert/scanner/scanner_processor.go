@@ -19,12 +19,15 @@ type planEntryFn func(dir string, file string, entry blocksconvert.PlanEntry, he
 // that another series has arrived, at which point it writes it to the file.
 // IndexReader guarantees correct order of entries.
 type processor struct {
-	dir          string
-	resultFn     planEntryFn
-	ignoredUsers *regexp.Regexp
+	dir      string
+	resultFn planEntryFn
 
 	series  prometheus.Counter
 	scanned *prometheus.CounterVec
+
+	ignoredUsersRegex *regexp.Regexp
+	ignoredUsers      map[string]struct{}
+	ignoredEntries    prometheus.Counter
 
 	lastKey key
 	chunks  []string
@@ -38,13 +41,16 @@ type key struct {
 	seriesID string
 }
 
-func newProcessor(dir string, resultFn planEntryFn, ignoredUsers *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec) *processor {
+func newProcessor(dir string, resultFn planEntryFn, ignoredUsers *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) *processor {
 	w := &processor{
-		dir:          dir,
-		resultFn:     resultFn,
-		series:       series,
-		scanned:      scannedEntries,
-		ignoredUsers: ignoredUsers,
+		dir:      dir,
+		resultFn: resultFn,
+		series:   series,
+		scanned:  scannedEntries,
+
+		ignoredUsersRegex: ignoredUsers,
+		ignoredUsers:      map[string]struct{}{},
+		ignoredEntries:    ignoredEntries,
 	}
 
 	return w
@@ -79,8 +85,9 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 		return err
 	}
 
-	if w.ignoredUsers != nil && w.ignoredUsers.MatchString(user) {
-		// Ignore this user.
+	if w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user) {
+		w.ignoredEntries.Inc()
+		w.ignoredUsers[user] = struct{}{}
 		return nil
 	}
 

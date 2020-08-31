@@ -67,6 +67,7 @@ type Scanner struct {
 	indexEntries                  *prometheus.CounterVec
 	indexReaderRowsRead           prometheus.Counter
 	indexReaderParsedIndexEntries prometheus.Counter
+	ignoredEntries                prometheus.Counter
 
 	schema  chunk.SchemaConfig
 	ignored *regexp.Regexp
@@ -137,6 +138,10 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "scanner_scanned_index_entries_total",
 			Help: "Number of various index entries scanned",
 		}, []string{"type"}),
+		ignoredEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "scanner_ignored_index_entries_total",
+			Help: "Number of ignored index entries because of ignoring users.",
+		}),
 	}
 
 	s.Service = services.NewBasicService(nil, s.running, nil)
@@ -289,10 +294,12 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	dir := filepath.Join(s.cfg.OutputDirectory, table)
 	level.Info(tableLog).Log("msg", "scanning table", "output", dir)
 
-	err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries)
+	ignoredUsers, err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries, s.ignoredEntries)
 	if err != nil {
 		return errors.Wrapf(err, "failed to scan table %s and generate plan files", table)
 	}
+
+	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", ignoredUsers)
 
 	err = verifyPlanFiles(ctx, dir, tableLog)
 	if err != nil {
@@ -331,15 +338,15 @@ func shouldSkipOperationBecauseFileExists(file string) bool {
 	return err == nil
 }
 
-func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec) error {
+func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) ([]string, error) {
 	err := os.RemoveAll(outDir)
 	if err != nil {
-		return errors.Wrapf(err, "failed to delete directory %s", outDir)
+		return nil, errors.Wrapf(err, "failed to delete directory %s", outDir)
 	}
 
 	err = os.MkdirAll(outDir, os.FileMode(0700))
 	if err != nil {
-		return errors.Wrapf(err, "failed to prepare directory %s", outDir)
+		return nil, errors.Wrapf(err, "failed to prepare directory %s", outDir)
 	}
 
 	files := newOpenFiles(openFiles)
@@ -352,18 +359,30 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, result, ignored, series, indexEntries))
+		ps = append(ps, newProcessor(outDir, result, ignored, series, indexEntries, ignoredEntries))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	ignoredUsersMap := map[string]struct{}{}
+	for _, p := range ps {
+		for u := range p.(*processor).ignoredUsers {
+			ignoredUsersMap[u] = struct{}{}
+		}
+	}
+
+	var ignoredUsers []string
+	for u := range ignoredUsersMap {
+		ignoredUsers = append(ignoredUsers, u)
 	}
 
 	err = files.closeAllFiles(func() interface{} {
 		return blocksconvert.PlanEntry{Complete: true}
 	})
-	return errors.Wrap(err, "closing files")
+	return ignoredUsers, errors.Wrap(err, "closing files")
 }
 
 func verifyPlanFiles(ctx context.Context, dir string, logger log.Logger) error {

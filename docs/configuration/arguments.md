@@ -183,6 +183,16 @@ prefix these flags with `distributor.ha-tracker.`
    The timeout for the etcd connection.
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
+- `etcd.tls-enabled`
+   Enable TLS.
+- `etcd.tls-cert-path`
+   The TLS certificate file path.
+- `etcd.tls-key-path`
+   The TLS private key file path.
+- `etcd.tls-ca-path`
+   The trusted CA file path.
+- `etcd.tls-insecure-skip-verify`
+   Skip validating server certificate.
 
 #### memberlist
 
@@ -526,4 +536,3 @@ If a reverse proxy is used in front of Cortex it might be diffult to troubleshoo
 - `-server.log-source-ips-regex`
 
   Regular expression for matching the source IPs. It should contain at least one capturing group the first of which will be returned. Only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-header` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
-

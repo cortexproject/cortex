@@ -28,6 +28,7 @@
 * [ENHANCEMENT] Add "integration" as a label for `cortex_alertmanager_notifications_total` and `cortex_alertmanager_notifications_failed_total` metrics. #3056
 * [ENHANCEMENT] Add `cortex_ruler_config_last_reload_successful` and `cortex_ruler_config_last_reload_successful_seconds` to check status of users rule manager. #3056
 * [ENHANCEMENT] Memcached dial() calls now have an optional circuit-breaker to avoid hammering a broken cache #3051
+* [ENHANCEMENT] Add TLS support to etcd client. #3102
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035

@@ -132,7 +132,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 		}
 
 		mu.Lock()
-		allPlans[user] = userPlans
+		allPlans[user] = map[string]plan{}
 		mu.Unlock()
 
 		for base, plan := range userPlans {
@@ -155,6 +155,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 			}
 
 			mu.Lock()
+			allPlans[user][base] = plan
 			stats[st]++
 			mu.Unlock()
 

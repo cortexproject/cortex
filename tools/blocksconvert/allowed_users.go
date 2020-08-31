@@ -3,6 +3,7 @@ package blocksconvert
 import (
 	"bufio"
 	"os"
+	"strings"
 )
 
 type AllowedUsers map[string]struct{}
@@ -32,7 +33,7 @@ func (a AllowedUsers) GetAllowedUsers(users []string) []string {
 	return allowed
 }
 
-func ParseAllowedUsers(file string) (AllowedUsers, error) {
+func ParseAllowedUsersFromFile(file string) (AllowedUsers, error) {
 	result := map[string]struct{}{}
 
 	f, err := os.Open(file)
@@ -47,4 +48,16 @@ func ParseAllowedUsers(file string) (AllowedUsers, error) {
 		result[s.Text()] = struct{}{}
 	}
 	return result, s.Err()
+}
+
+func ParseAllowedUsers(commaSeparated string) AllowedUsers {
+	result := map[string]struct{}{}
+
+	us := strings.Split(commaSeparated, ",")
+	for _, u := range us {
+		u = strings.TrimSpace(u)
+		result[u] = struct{}{}
+	}
+
+	return result
 }

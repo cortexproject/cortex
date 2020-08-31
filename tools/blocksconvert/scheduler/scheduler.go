@@ -30,14 +30,14 @@ type Config struct {
 	ScanInterval        time.Duration
 	PlanScanConcurrency int
 	MaxProgressFileAge  time.Duration
-	AllowedUsersFile    string
+	AllowedUsers        string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ScanInterval, "scheduler.scan-interval", 5*time.Minute, "How often to scan for plans and their status.")
 	f.IntVar(&cfg.PlanScanConcurrency, "scheduler.plan-scan-concurrency", 5, "Limit of concurrent plan scans.")
 	f.DurationVar(&cfg.MaxProgressFileAge, "scheduler.max-progress-file-age", 30*time.Minute, "Progress files older than this duration are deleted.")
-	f.StringVar(&cfg.AllowedUsersFile, "scheduler.allowed-users-file", "", "File with users that can be converted, one user per line.")
+	f.StringVar(&cfg.AllowedUsers, "scheduler.allowed-users", "", "Allowed users that can be converted, comma-separated")
 }
 
 func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer, http *mux.Router, grpcServ *grpc.Server) (*Scheduler, error) {
@@ -47,11 +47,8 @@ func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg
 	}
 
 	var users = blocksconvert.AllowAllUsers
-	if cfg.AllowedUsersFile != "" {
-		users, err = blocksconvert.ParseAllowedUsers(cfg.AllowedUsersFile)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse allowed users")
-		}
+	if cfg.AllowedUsers != "" {
+		users = blocksconvert.ParseAllowedUsers(cfg.AllowedUsers)
 	}
 
 	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, users, cfg, reg)

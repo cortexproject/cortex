@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -28,20 +27,14 @@ type bigtableIndexReader struct {
 	parsedIndexEntries prometheus.Counter
 }
 
-func newBigtableIndexReader(project, instance string, l log.Logger, reg prometheus.Registerer) *bigtableIndexReader {
+func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead prometheus.Counter, parsedIndexEntries prometheus.Counter) *bigtableIndexReader {
 	return &bigtableIndexReader{
 		log:      l,
 		project:  project,
 		instance: instance,
 
-		rowsRead: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "bigtable_read_rows_total",
-			Help: "Number of rows read from BigTable",
-		}),
-		parsedIndexEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "bigtable_parsed_index_entries_total",
-			Help: "Number of parsed index entries",
-		}),
+		rowsRead:           rowsRead,
+		parsedIndexEntries: parsedIndexEntries,
 	}
 }
 
@@ -63,12 +56,12 @@ func (r *bigtableIndexReader) IndexTableNames(ctx context.Context) ([]string, er
 //    - Value: entry.Value
 //
 // 2) newStorageClientColumnKey ("gcp-columnkey", "bigtable", "bigtable-hashed"), which has two possibilities:
-//    - RowKey = entry.HashValue OR (if distribute key flag is enabled) hashPrefix(entry.HashValue) + "-" + entry.HashValue, where hashPrefix is 64-bit FNV64a hash, encoded as little-endian
+//    - RowKey = entry.HashValue OR (if distribute key flag is enabled) hashPrefix(entry.HashValue) + "-" + entry.HashValue, where hashPrefix is 64-bit FNV64a hash, encoded as little-endian hex value
 //    - Column: entry.RangeValue (in family "f")
 //    - Value: entry.Value
 //
 // Index entries are returned in HashValue, RangeValue order.
-// Entries for the same HashValue and RangeValue
+// Entries for the same HashValue and RangeValue are passed to the same processor.
 func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []IndexEntryProcessor) error {
 	client, err := bigtable.NewClient(ctx, r.project, r.instance)
 	if err != nil {
@@ -151,6 +144,8 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 func parseRowKey(row bigtable.Row, tableName string) ([]chunk.IndexEntry, error) {
 	var entries []chunk.IndexEntry
 
+	rowKey := row.Key()
+
 	rangeInRowKey := false
 	hashValue := row.Key()
 	rangeValue := ""
@@ -159,6 +154,11 @@ func parseRowKey(row bigtable.Row, tableName string) ([]chunk.IndexEntry, error)
 	if len(hashValue) > 16 && hashValue[16] == '-' && hashValue[:16] == gcp.HashPrefix(hashValue[17:]) {
 		hashValue = hashValue[17:]
 	} else if ix := strings.IndexByte(hashValue, 0); ix > 0 {
+		// newStorageClientV1 uses
+		//    - RowKey: entry.HashValue + \0 + entry.RangeValue
+		//    - Column: "c" (in family "f")
+		//    - Value: entry.Value
+
 		rangeInRowKey = true
 		rangeValue = hashValue[ix+1:]
 		hashValue = hashValue[:ix]
@@ -170,6 +170,10 @@ func parseRowKey(row bigtable.Row, tableName string) ([]chunk.IndexEntry, error)
 		}
 
 		for _, colVal := range columns {
+			if colVal.Row != rowKey {
+				return nil, fmt.Errorf("rowkey mismatch: %q, %q", colVal.Row, rowKey)
+			}
+
 			if rangeInRowKey {
 				if colVal.Column != "f:c" {
 					return nil, fmt.Errorf("found rangeValue in RowKey, but column is not 'f:c': %q", colVal.Column)

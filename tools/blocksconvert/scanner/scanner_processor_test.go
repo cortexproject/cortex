@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"fmt"
 	"path"
 	"testing"
 	"time"
@@ -110,6 +111,8 @@ func TestProcessorError(t *testing.T) {
 
 func passEntriesToProcessor(t *testing.T, p *processor, es []chunk.IndexEntry) {
 	for _, ie := range es {
+		fmt.Printf("%q %q %q\n", ie.HashValue, ie.RangeValue, ie.Value)
+
 		require.NoError(t, p.ProcessIndexEntry(ie))
 	}
 }

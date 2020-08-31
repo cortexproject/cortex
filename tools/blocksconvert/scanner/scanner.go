@@ -62,9 +62,11 @@ type Scanner struct {
 	logger log.Logger
 	reg    prometheus.Registerer
 
-	series       prometheus.Counter
-	openFiles    prometheus.Gauge
-	indexEntries *prometheus.CounterVec
+	series                        prometheus.Counter
+	openFiles                     prometheus.Gauge
+	indexEntries                  *prometheus.CounterVec
+	indexReaderRowsRead           prometheus.Counter
+	indexReaderParsedIndexEntries prometheus.Counter
 
 	schema  chunk.SchemaConfig
 	ignored *regexp.Regexp
@@ -112,6 +114,15 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		reg:          reg,
 		ignored:      ignoredUserRegex,
 
+		indexReaderRowsRead: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "bigtable_read_rows_total",
+			Help: "Number of rows read from BigTable",
+		}),
+		indexReaderParsedIndexEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "bigtable_parsed_index_entries_total",
+			Help: "Number of parsed index entries",
+		}),
+
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "scanner_series_written_total",
 			Help: "Number of series written to the plan files",
@@ -156,7 +167,7 @@ func (s *Scanner) running(ctx context.Context) error {
 				continue
 			}
 
-			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.reg)
+			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue

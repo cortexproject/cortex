@@ -30,12 +30,14 @@ type Config struct {
 	ScanInterval        time.Duration
 	PlanScanConcurrency int
 	MaxProgressFileAge  time.Duration
+	AllowedUsersFile    string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ScanInterval, "scheduler.scan-interval", 5*time.Minute, "How often to scan for plans and their status.")
 	f.IntVar(&cfg.PlanScanConcurrency, "scheduler.plan-scan-concurrency", 5, "Limit of concurrent plan scans.")
 	f.DurationVar(&cfg.MaxProgressFileAge, "scheduler.max-progress-file-age", 30*time.Minute, "Progress files older than this duration are deleted.")
+	f.StringVar(&cfg.AllowedUsersFile, "scheduler.allowed-users-file", "", "File with users that can be converted, one user per line.")
 }
 
 func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer, http *mux.Router, grpcServ *grpc.Server) (*Scheduler, error) {
@@ -44,18 +46,27 @@ func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg
 		return nil, errors.Wrap(err, "create bucket")
 	}
 
-	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, cfg, reg)
+	var users = blocksconvert.AllowAllUsers
+	if cfg.AllowedUsersFile != "" {
+		users, err = blocksconvert.ParseAllowedUsers(cfg.AllowedUsersFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse allowed users")
+		}
+	}
+
+	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, users, cfg, reg)
 	blocksconvert.RegisterSchedulerServer(grpcServ, s)
 	http.HandleFunc("/plans", s.httpPlans)
 	return s, nil
 }
 
-func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, cfg Config, reg prometheus.Registerer) *Scheduler {
+func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, users blocksconvert.AllowedUsers, cfg Config, reg prometheus.Registerer) *Scheduler {
 	s := &Scheduler{
 		log:          l,
 		cfg:          cfg,
 		bucket:       b,
 		bucketPrefix: bucketPrefix,
+		allowedUsers: users,
 
 		planStatus: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_scheduler_scanned_plans",
@@ -71,6 +82,8 @@ type Scheduler struct {
 	services.Service
 	cfg Config
 	log log.Logger
+
+	allowedUsers blocksconvert.AllowedUsers
 
 	bucket       objstore.Bucket
 	bucketPrefix string
@@ -114,7 +127,10 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 		return nil
 	}
 
-	level.Info(s.log).Log("msg", "found users", "count", len(users))
+	allUsers := len(users)
+	users = s.allowedUsers.GetAllowedUsers(users)
+
+	level.Info(s.log).Log("msg", "found users", "all", allUsers, "allowed", len(users))
 
 	var mu sync.Mutex
 	allPlans := map[string]map[string]plan{}

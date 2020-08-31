@@ -3,9 +3,9 @@ package blocksconvert
 import (
 	"context"
 	"flag"
-	"fmt"
 
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -23,8 +23,8 @@ type SharedConfig struct {
 }
 
 func (cfg *SharedConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.SchemaConfig.RegisterFlags(flag.CommandLine)
-	cfg.Bucket.RegisterFlags(flag.CommandLine)
+	cfg.SchemaConfig.RegisterFlags(f)
+	cfg.Bucket.RegisterFlags(f)
 	cfg.StorageConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.BucketPrefix, "blocksconvert.bucket-prefix", "migration", "Prefix in the bucket for storing plan files.")
@@ -32,12 +32,12 @@ func (cfg *SharedConfig) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *SharedConfig) GetBucket(l log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
 	if err := cfg.Bucket.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid bucket config: %w", err)
+		return nil, errors.Wrap(err, "invalid bucket config")
 	}
 
 	bucket, err := tsdb.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create bucket: %w", err)
+		return nil, errors.Wrap(err, "failed to create bucket")
 	}
 
 	return bucket, nil

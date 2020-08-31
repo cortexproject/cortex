@@ -1,11 +1,11 @@
 package scanner
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -93,7 +93,7 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 	if w.lastKey != k && len(w.chunks) > 0 {
 		err := w.Flush()
 		if err != nil {
-			return fmt.Errorf("failed to flush chunks: %w", err)
+			return errors.Wrap(err, "failed to flush chunks")
 		}
 	}
 

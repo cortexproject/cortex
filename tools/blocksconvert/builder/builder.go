@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -546,12 +545,12 @@ func (b *Builder) createChunkClientForDay(dayStart time.Time) (chunk.Client, err
 		// No registerer, to avoid problems with registering same metrics multiple times.
 		chunks, err := storage.NewChunkClient(objectStoreType, b.storageConfig, b.schemaConfig, nil)
 		if err != nil {
-			return nil, fmt.Errorf("error creating object client: %w", err)
+			return nil, errors.Wrap(err, "error creating object client")
 		}
 		return chunks, nil
 	}
 
-	return nil, fmt.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
+	return nil, errors.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
 }
 
 type readPositionReporter struct {

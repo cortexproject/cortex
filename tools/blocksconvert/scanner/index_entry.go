@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // v9 (hashValue, rangeRange -> value)
@@ -54,19 +56,19 @@ func GetSeriesToChunkMapping(HashValue string, RangeValue []byte) (user string, 
 
 	parts := strings.Split(HashValue, ":")
 	if len(parts) < 3 {
-		err = fmt.Errorf("not enough parts: %d", len(parts))
+		err = errors.Errorf("not enough parts: %d", len(parts))
 		return
 	}
 
 	seriesID = parts[len(parts)-1]
 	indexStr := parts[len(parts)-2]
 	if !strings.HasPrefix(indexStr, "d") { // Schema v9 and later uses "day" buckets, prefixed with "d"
-		err = fmt.Errorf("invalid index prefix")
+		err = errors.Errorf("invalid index prefix")
 		return
 	}
 	index, err = strconv.Atoi(indexStr[1:])
 	if err != nil {
-		err = fmt.Errorf("failed to parse index: %w", err)
+		err = errors.Wrapf(err, "failed to parse index")
 		return
 	}
 	user = strings.Join(parts[:len(parts)-2], ":")

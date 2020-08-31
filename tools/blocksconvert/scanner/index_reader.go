@@ -14,7 +14,7 @@ type IndexEntryProcessor interface {
 	Flush() error
 }
 
-// IndexReader parses index entries and passed them to the IndexEntryProcessor.
+// IndexReader parses index entries and passes them to the IndexEntryProcessor.
 type IndexReader interface {
 	IndexTableNames(ctx context.Context) ([]string, error)
 

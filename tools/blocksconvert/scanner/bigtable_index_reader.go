@@ -3,7 +3,6 @@ package scanner
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"sort"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
@@ -41,7 +41,7 @@ func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead pro
 func (r *bigtableIndexReader) IndexTableNames(ctx context.Context) ([]string, error) {
 	client, err := bigtable.NewAdminClient(ctx, r.project, r.instance)
 	if err != nil {
-		return nil, fmt.Errorf("create bigtable client failed: %w", err)
+		return nil, errors.Wrap(err, "create bigtable client failed")
 	}
 	defer closeCloser(r.log, "bigtable admin client", client)
 
@@ -65,7 +65,7 @@ func (r *bigtableIndexReader) IndexTableNames(ctx context.Context) ([]string, er
 func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []IndexEntryProcessor) error {
 	client, err := bigtable.NewClient(ctx, r.project, r.instance)
 	if err != nil {
-		return fmt.Errorf("create bigtable client failed: %w", err)
+		return errors.Wrap(err, "create bigtable client failed")
 	}
 	defer closeCloser(r.log, "bigtable client", client)
 
@@ -108,7 +108,7 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 
 					entries, err := parseRowKey(row, tableName)
 					if err != nil {
-						innerErr = fmt.Errorf("failed to parse row: %s: %w", row.Key(), err)
+						innerErr = errors.Wrapf(err, "failed to parse row: %s", row.Key())
 						return false
 					}
 
@@ -117,7 +117,7 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 					for _, e := range entries {
 						err := p.ProcessIndexEntry(e)
 						if err != nil {
-							innerErr = fmt.Errorf("processor error: %w", err)
+							innerErr = errors.Wrap(err, "processor error")
 							return false
 						}
 					}
@@ -166,22 +166,22 @@ func parseRowKey(row bigtable.Row, tableName string) ([]chunk.IndexEntry, error)
 
 	for family, columns := range row {
 		if family != "f" {
-			return nil, fmt.Errorf("unknown family: %s", family)
+			return nil, errors.Errorf("unknown family: %s", family)
 		}
 
 		for _, colVal := range columns {
 			if colVal.Row != rowKey {
-				return nil, fmt.Errorf("rowkey mismatch: %q, %q", colVal.Row, rowKey)
+				return nil, errors.Errorf("rowkey mismatch: %q, %q", colVal.Row, rowKey)
 			}
 
 			if rangeInRowKey {
 				if colVal.Column != "f:c" {
-					return nil, fmt.Errorf("found rangeValue in RowKey, but column is not 'f:c': %q", colVal.Column)
+					return nil, errors.Errorf("found rangeValue in RowKey, but column is not 'f:c': %q", colVal.Column)
 				}
 				// we already have rangeValue
 			} else {
 				if !strings.HasPrefix(colVal.Column, "f:") {
-					return nil, fmt.Errorf("invalid column prefix: %q", colVal.Column)
+					return nil, errors.Errorf("invalid column prefix: %q", colVal.Column)
 				}
 				rangeValue = colVal.Column[2:] // With "f:" part removed
 			}

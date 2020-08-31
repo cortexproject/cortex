@@ -42,11 +42,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
-	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS")
-	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-path", "", "The TLS certificate file path")
-	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-path", "", "The TLS private key file path")
-	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-ca-path", "", "The trusted CA file path")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating client certificate")
+	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
+	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-path", "", "The TLS certificate file path.")
+	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-path", "", "The TLS private key file path.")
+	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-ca-path", "", "The trusted CA file path.")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating client certificate.")
 }
 
 // GetTLS sets the TLS config field with certs

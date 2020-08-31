@@ -178,7 +178,7 @@ func (s *Scanner) running(ctx context.Context) error {
 			continue
 		}
 
-		toTimestamp := int64(0)
+		toTimestamp := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour).Unix()
 		if ix < len(s.schema.Configs)-1 {
 			toTimestamp = s.schema.Configs[ix+1].From.Unix()
 		}
@@ -273,7 +273,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 			}
 		}
 
-		if tp.start.Unix() >= fromUnixTimestamp && (toUnixTimestamp <= 0 || tp.start.Unix() < toUnixTimestamp) {
+		if fromUnixTimestamp <= tp.start.Unix() && tp.start.Unix() < toUnixTimestamp {
 			result = append(result, tp)
 		}
 	}

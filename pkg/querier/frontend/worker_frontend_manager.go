@@ -116,39 +116,53 @@ func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient)
 			return err
 		}
 
-		// Handle the request on a "background" goroutine, so we go back to
-		// blocking on c.Recv().  This allows us to detect the stream closing
-		// and cancel the query.  We don't actally handle queries in parallel
-		// here, as we're running in lock step with the server - each Recv is
-		// paired with a Send.
-		go func() {
-			response, err := f.server.Handle(ctx, request.HttpRequest)
+		switch request.Type {
+		case HTTP_REQUEST:
+			// Handle the request on a "background" goroutine, so we go back to
+			// blocking on c.Recv().  This allows us to detect the stream closing
+			// and cancel the query.  We don't actually handle queries in parallel
+			// here, as we're running in lock step with the server - each Recv is
+			// paired with a Send.
+			go f.runRequest(ctx, request.HttpRequest, func(response *httpgrpc.HTTPResponse) error {
+				return c.Send(&ClientToFrontend{HttpResponse: response})
+			})
+
+		case GET_ID:
+			err := c.Send(&ClientToFrontend{ClientID: f.querierID})
 			if err != nil {
-				var ok bool
-				response, ok = httpgrpc.HTTPResponseFromError(err)
-				if !ok {
-					response = &httpgrpc.HTTPResponse{
-						Code: http.StatusInternalServerError,
-						Body: []byte(err.Error()),
-					}
-				}
+				return err
 			}
 
-			// Ensure responses that are too big are not retried.
-			if len(response.Body) >= f.clientCfg.GRPC.MaxSendMsgSize {
-				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.GRPC.MaxSendMsgSize)
-				response = &httpgrpc.HTTPResponse{
-					Code: http.StatusRequestEntityTooLarge,
-					Body: []byte(errMsg),
-				}
-				level.Error(f.log).Log("msg", "error processing query", "err", errMsg)
-			}
+		default:
+			return fmt.Errorf("unknown request type: %v", request.Type)
+		}
+	}
+}
 
-			if err := c.Send(&ProcessResponse{
-				HttpResponse: response,
-			}); err != nil {
-				level.Error(f.log).Log("msg", "error processing requests", "err", err)
+func (f *frontendManager) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHttpResponse func(response *httpgrpc.HTTPResponse) error) {
+	response, err := f.server.Handle(ctx, request)
+	if err != nil {
+		var ok bool
+		response, ok = httpgrpc.HTTPResponseFromError(err)
+		if !ok {
+			response = &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
 			}
-		}()
+		}
+	}
+
+	// Ensure responses that are too big are not retried.
+	if len(response.Body) >= f.clientCfg.GRPC.MaxSendMsgSize {
+		errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.GRPC.MaxSendMsgSize)
+		response = &httpgrpc.HTTPResponse{
+			Code: http.StatusRequestEntityTooLarge,
+			Body: []byte(errMsg),
+		}
+		level.Error(f.log).Log("msg", "error processing query", "err", errMsg)
+	}
+
+	if err := sendHttpResponse(response); err != nil {
+		level.Error(f.log).Log("msg", "error processing requests", "err", err)
 	}
 }

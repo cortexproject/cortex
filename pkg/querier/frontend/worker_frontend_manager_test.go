@@ -38,11 +38,11 @@ type mockFrontendProcessClient struct {
 	wg       sync.WaitGroup
 }
 
-func (m *mockFrontendProcessClient) Send(*ProcessResponse) error {
+func (m *mockFrontendProcessClient) Send(*ClientToFrontend) error {
 	m.wg.Done()
 	return nil
 }
-func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
+func (m *mockFrontendProcessClient) Recv() (*FrontendToClient, error) {
 	m.wg.Wait()
 	m.wg.Add(1)
 
@@ -54,7 +54,7 @@ func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
 		return nil, errors.New("wups")
 	}
 
-	return &ProcessRequest{
+	return &FrontendToClient{
 		HttpRequest: &httpgrpc.HTTPRequest{},
 	}, nil
 }

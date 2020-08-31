@@ -299,7 +299,7 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 		return errors.Wrapf(err, "failed to scan table %s and generate plan files", table)
 	}
 
-	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", ignoredUsers)
+	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", strings.Join(ignoredUsers, ","))
 
 	err = verifyPlanFiles(ctx, dir, tableLog)
 	if err != nil {

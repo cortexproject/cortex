@@ -272,7 +272,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	if shard != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
 	}
-	counter := 0
+	matchersCount := 0
 
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
@@ -284,7 +284,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		if exCfg.SkipLabel(matcher.Name, metricName, userID) {
 			continue
 		}
-		counter++
+		matchersCount++
 
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
@@ -296,7 +296,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		}(matcher)
 	}
 	// Just get series for metric if there are no matchers after exclusions
-	if len(matchers) == 0 || counter == 0 {
+	if matchersCount == 0 {
 		indexLookupsPerQuery.Observe(float64(1))
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
@@ -305,7 +305,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		}
 		return series, err
 	}
-	indexLookupsPerQuery.Observe(float64(counter))
+	indexLookupsPerQuery.Observe(float64(matchersCount))
 	// Receive series IDs from all matchers, intersect as we go.
 	var ids []string
 	var preIntersectionCount int
@@ -313,7 +313,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	var cardinalityExceededErrors int
 	var cardinalityExceededError CardinalityExceededError
 	var initialized bool
-	for i := 0; i < counter; i++ {
+	for i := 0; i < matchersCount; i++ {
 		select {
 		case incoming := <-incomingIDs:
 			preIntersectionCount += len(incoming)
@@ -338,7 +338,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
-	if cardinalityExceededErrors == counter && counter != 0 {
+	if cardinalityExceededErrors == matchersCount && matchersCount != 0 {
 		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr

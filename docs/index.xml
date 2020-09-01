@@ -8061,6 +8061,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Add &lt;code>cortex_ruler_config_last_reload_successful&lt;/code> and &lt;code>cortex_ruler_config_last_reload_successful_seconds&lt;/code> to check status of users rule manager. &lt;a href="https://github.com/cortexproject/cortex/pull/3056">#3056&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Memcached dial() calls now have an optional circuit-breaker to avoid hammering a broken cache &lt;a href="https://github.com/cortexproject/cortex/pull/3051">#3051&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add TLS support to etcd client. &lt;a href="https://github.com/cortexproject/cortex/pull/3102">#3102&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] When a tenant accesses the Alertmanager UI or its API, if we have valid &lt;code>-alertmanager.configs.fallback&lt;/code> we&amp;rsquo;ll use that to start the manager and avoid failing the request. &lt;a href="https://github.com/cortexproject/cortex/pull/3073">#3073&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. &lt;a href="https://github.com/cortexproject/cortex/pull/3013">#3013&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>

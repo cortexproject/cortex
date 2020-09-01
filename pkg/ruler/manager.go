@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -245,4 +246,26 @@ func (r *DefaultMultiTenantManager) Stop() {
 	wg.Wait()
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
+}
+
+func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
+	var errs []error
+	for i, r := range g.Rules {
+		for _, err := range r.Validate() {
+			var ruleName string
+			if r.Alert.Value != "" {
+				ruleName = r.Alert.Value
+			} else {
+				ruleName = r.Record.Value
+			}
+			errs = append(errs, &rulefmt.Error{
+				Group:    g.Name,
+				Rule:     i,
+				RuleName: ruleName,
+				Err:      err,
+			})
+		}
+	}
+
+	return errs
 }

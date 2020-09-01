@@ -27,7 +27,7 @@ type WorkerConfig struct {
 	Parallelism         int           `yaml:"parallelism"`
 	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
-	QuerierID           string        `yaml:"querier_id"`
+	QuerierID           string        `yaml:"id"`
 
 	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 }
@@ -38,9 +38,7 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
-
-	hostname, _ := os.Hostname()
-	f.StringVar(&cfg.QuerierID, "querier.id", hostname, "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
+	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
@@ -66,6 +64,14 @@ func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Serve
 	if cfg.Address == "" {
 		level.Info(log).Log("msg", "no address specified, not starting worker")
 		return nil, nil
+	}
+
+	if cfg.QuerierID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return nil, err
+		}
+		cfg.QuerierID = hostname
 	}
 
 	resolver, err := naming.NewDNSResolverWithFreq(cfg.DNSLookupDuration)

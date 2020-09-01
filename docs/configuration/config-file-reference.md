@@ -2414,6 +2414,11 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.dns-lookup-period
 [dns_lookup_duration: <duration> | default = 10s]
 
+# Querier ID, sent to frontend service to identify requests from the same
+# querier. Defaults to hostname.
+# CLI flag: -querier.id
+[id: <string> | default = ""]
+
 grpc_client_config:
   # gRPC client max receive message size (bytes).
   # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
@@ -2835,6 +2840,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
 [ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# Maximum number of queriers that can handle requests for single user. If set to
+# 0, or value less than number of available queriers, all queriers will handle
+# given user's requests. Each frontend will select the same queriers (if they
+# are connected to all frontends).
+# CLI flag: -frontend.max-queriers-per-user
+[max_queries_per_user: <int> | default = 0]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

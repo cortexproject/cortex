@@ -8028,6 +8028,7 @@ __replica__: replica2
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
 &lt;ul>
+&lt;li>[CHANGE] Distributor API endpoints are no longer served unless target is set to &lt;code>distributor&lt;/code> or &lt;code>all&lt;/code>. &lt;a href="https://github.com/cortexproject/cortex/pull/3112">#3112&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Increase the default Cassandra client replication factor to 3. &lt;a href="https://github.com/cortexproject/cortex/pull/3007">#3007&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: &lt;a href="https://github.com/cortexproject/cortex/pull/2996">#2996&lt;/a>
 &lt;ul>

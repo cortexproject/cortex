@@ -92,13 +92,14 @@ func TestQueuesWithQueriers(t *testing.T) {
 		uid := fmt.Sprintf("user-%d", u)
 		getOrAdd(t, uq, uid, 3)
 
-		// Verify it has 3 queriers assigned now.
+		// Verify it has maxQueriersPerUser queriers assigned now.
 		qs := uq.userQueues[uid].queriers
 		assert.Equal(t, maxQueriersPerUser, len(qs))
 	}
 
-	// After adding all users, verify results. For each querier, find out how many different users it handles.
-	serversMap := make(map[string]int)
+	// After adding all users, verify results. For each querier, find out how many different users it handles,
+	// and compute mean and stdDev.
+	queriersMap := make(map[string]int)
 
 	for q := 0; q < queriers; q++ {
 		qid := fmt.Sprintf("querier-%d", q)
@@ -110,22 +111,22 @@ func TestQueuesWithQueriers(t *testing.T) {
 				break
 			}
 			lastUid = newUid
-			serversMap[qid] += 1
+			queriersMap[qid] += 1
 		}
 	}
 
 	mean := float64(0)
-	for _, c := range serversMap {
+	for _, c := range queriersMap {
 		mean += float64(c)
 	}
-	mean = mean / float64(len(serversMap))
+	mean = mean / float64(len(queriersMap))
 
 	stdDev := float64(0)
-	for _, c := range serversMap {
+	for _, c := range queriersMap {
 		d := float64(c) - mean
 		stdDev += (d * d)
 	}
-	stdDev = math.Sqrt(stdDev / float64(len(serversMap)))
+	stdDev = math.Sqrt(stdDev / float64(len(queriersMap)))
 
 	assert.InDelta(t, users*maxQueriersPerUser/queriers, mean, 1)
 	assert.InDelta(t, stdDev, 0, 5)
@@ -198,7 +199,7 @@ func isConsistent(uq *queues) error {
 			return fmt.Errorf("user %s doesn't have queue", u)
 		}
 		if u == "" && q != nil {
-			return fmt.Errorf("user %s doesn't have queue", u)
+			return fmt.Errorf("user %s shouldn't have queue", u)
 		}
 		if u == "" {
 			continue

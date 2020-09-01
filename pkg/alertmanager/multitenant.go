@@ -489,8 +489,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
 	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
-	cfg := &UserConfig{AlertmanagerConfig: ""}
-	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	cfgDesc := alerts.ToProto("", nil, userID)
 	err := am.store.SetAlertConfig(context.Background(), cfgDesc)
 	if err != nil {
 		return nil, err

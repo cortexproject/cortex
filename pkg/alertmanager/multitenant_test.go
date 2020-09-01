@@ -270,11 +270,10 @@ receivers:
 `
 
 	// Create the Multitenant Alertmanager.
-	reg := prometheus.NewPedanticRegistry()
 	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
 		ExternalURL: externalURL,
 		DataDir:     tempDir,
-	}, nil, nil, mockStore, log.NewNopLogger(), reg)
+	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 	am.fallbackConfig = fallbackCfg
 
 	// Request when no user configuration is present.

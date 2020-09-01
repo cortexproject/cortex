@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -25,10 +26,11 @@ var (
 )
 
 type frontendManager struct {
-	server    *server.Server
-	client    FrontendClient
-	clientCfg grpcclient.ConfigWithTLS
-	querierID string
+	server     *server.Server
+	connection io.Closer
+	client     FrontendClient
+	clientCfg  grpcclient.ConfigWithTLS
+	querierID  string
 
 	log log.Logger
 
@@ -38,9 +40,10 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, connection io.Closer, client FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
 	f := &frontendManager{
 		log:               log,
+		connection:        connection,
 		client:            client,
 		clientCfg:         clientCfg,
 		server:            server,
@@ -55,6 +58,7 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 func (f *frontendManager) stop() {
 	f.concurrentRequests(0)
 	f.wg.Wait()
+	_ = f.connection.Close()
 }
 
 func (f *frontendManager) concurrentRequests(n int) {

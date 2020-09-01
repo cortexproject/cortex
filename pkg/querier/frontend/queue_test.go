@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -16,7 +17,7 @@ import (
 func setupFrontend(config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, logger, nil)
+	frontend, err := New(config, limits{}, logger, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +30,7 @@ func testReq(ctx context.Context) *request {
 	return &request{
 		originalCtx: ctx,
 		err:         make(chan error, 1),
-		response:    make(chan *ProcessResponse, 1),
+		response:    make(chan *httpgrpc.HTTPResponse, 1),
 	}
 }
 
@@ -58,17 +59,17 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	// the first request shouldnt be expired
-	req, err := f.getNextRequestForQuerier(ctx)
+	// the first request shouldn't be expired
+	req, idx, err := f.getNextRequestForQuerier(ctx, -1, "")
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID)))
+	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID, 0)))
 
 	// the next unexpired request should be the 5th index
-	req, err = f.getNextRequestForQuerier(ctx)
+	req, idx, err = f.getNextRequestForQuerier(ctx, idx, "")
 	require.Nil(t, err)
 	require.NotNil(t, req)
-	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
+	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID, 0)))
 
 	// add one request to a second tenant queue
 	ctx2 := user.InjectOrgID(context.Background(), userID2)
@@ -76,18 +77,18 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.Nil(t, err)
 
 	// there should be no more unexpired requests in queue until the second tenant enqueues one.
-	req, err = f.getNextRequestForQuerier(ctx)
+	req, idx, err = f.getNextRequestForQuerier(ctx, idx, "")
 	require.Nil(t, err)
 	require.NotNil(t, req)
 
 	// ensure either one or two queues are fully drained, depending on which was requested first
-	_, ok := f.queues.userLookup[userID]
+	_, ok := f.queues.userQueues[userID]
 	if ok {
 		// if the second user's queue was chosen for the last request,
 		// the first queue should still contain 4 (expired) requests.
-		require.Equal(t, 4, len(f.queues.getOrAddQueue(userID)))
+		require.Equal(t, 4, len(f.queues.getOrAddQueue(userID, 0)))
 	}
-	_, ok = f.queues.userLookup[userID2]
+	_, ok = f.queues.userQueues[userID2]
 	require.Equal(t, false, ok)
 }
 
@@ -108,10 +109,12 @@ func TestRoundRobinQueues(t *testing.T) {
 	}
 
 	ctx := context.Background()
+	idx := -1
 	for i := 0; i < 100; i++ {
-		req, err := f.getNextRequestForQuerier(ctx)
+		req, nidx, err := f.getNextRequestForQuerier(ctx, idx, "")
 		require.NoError(t, err)
 		require.NotNil(t, req)
+		idx = nidx
 
 		userID, err := user.ExtractOrgID(req.originalCtx)
 		require.NoError(t, err)
@@ -155,11 +158,13 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		idx := -1
 		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
-			_, err := frontends[i].getNextRequestForQuerier(ctx)
+			_, nidx, err := frontends[i].getNextRequestForQuerier(ctx, idx, "")
 			if err != nil {
 				b.Fatal(err)
 			}
+			idx = nidx
 		}
 	}
 }

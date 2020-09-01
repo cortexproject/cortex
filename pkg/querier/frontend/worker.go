@@ -123,13 +123,13 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 			switch update.Op {
 			case naming.Add:
 				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
-				client, err := w.connect(servCtx, update.Addr)
+				conn, err := w.connect(servCtx, update.Addr)
 				if err != nil {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 					continue
 				}
 
-				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, w.cfg.GRPCClientConfig, w.cfg.QuerierID)
+				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, conn, NewFrontendClient(conn), w.cfg.GRPCClientConfig, w.cfg.QuerierID)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
@@ -147,7 +147,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 	}
 }
 
-func (w *worker) connect(ctx context.Context, address string) (FrontendClient, error) {
+func (w *worker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	opts, err := w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (w *worker) connect(ctx context.Context, address string) (FrontendClient, e
 	if err != nil {
 		return nil, err
 	}
-	return NewFrontendClient(conn), nil
+	return conn, nil
 }
 
 func (w *worker) resetConcurrency() {

@@ -83,7 +83,7 @@ func TestResetConcurrency(t *testing.T) {
 			}
 
 			for i := 0; i < tt.numManagers; i++ {
-				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.ConfigWithTLS{})
+				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), mockCloser{}, &mockFrontendClient{}, grpcclient.ConfigWithTLS{}, "querier")
 			}
 
 			w.resetConcurrency()

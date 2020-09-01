@@ -56,16 +56,22 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
+type Limits interface {
+	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
+	QueriersForUser(user string) int
+}
+
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
 	cfg          Config
 	log          log.Logger
 	roundTripper http.RoundTripper
+	limits       Limits
 
 	mtx    sync.Mutex
-	cond   *sync.Cond
-	queues *queueIterator
+	cond   *sync.Cond // Notified when request is enqueued or dequeued, or querier is disconnected.
+	queues *queues
 
 	connectedClients *atomic.Int32
 
@@ -85,11 +91,12 @@ type request struct {
 }
 
 // New creates a new frontend.
-func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
+		limits: limits,
+		queues: newUserQueues(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -288,31 +295,16 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
-	err := server.Send(&FrontendToClient{
-		Type: GET_ID,
-		// Old queriers don't support GET_ID, and will try to use the request.
-		// To avoid confusing them, include dummy request.
-		HttpRequest: &httpgrpc.HTTPRequest{
-			Method: "GET",
-			Url:    "/invalid_request_sent_by_frontend",
-		},
-	})
-
+	querierID, err := getQuerierId(server)
 	if err != nil {
 		return err
 	}
-
-	idResp, err := server.Recv()
-	if err != nil {
-		return err
-	}
-
-	// Old queriers will return empty string, which is fine. All old queriers will be
-	// treated as single querier with lot of connections.
-	querierID := idResp.ClientID
 
 	f.connectedClients.Inc()
 	defer f.connectedClients.Dec()
+
+	f.registerQuerierConnection(querierID)
+	defer f.unregisterQuerierConnection(querierID)
 
 	// If the downstream request(from querier -> frontend) is cancelled,
 	// we need to ping the condition variable to unblock getNextRequestForQuerier.
@@ -322,11 +314,14 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 		f.cond.Broadcast()
 	}()
 
+	lastUserIndex := -1
+
 	for {
-		req, err := f.getNextRequestForQuerier(server.Context(), querierID)
+		req, idx, err := f.getNextRequestForQuerier(server.Context(), lastUserIndex, querierID)
 		if err != nil {
 			return err
 		}
+		lastUserIndex = idx
 
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
@@ -371,6 +366,29 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	}
 }
 
+func getQuerierId(server Frontend_ProcessServer) (string, error) {
+	err := server.Send(&FrontendToClient{
+		Type: GET_ID,
+		// Old queriers don't support GET_ID, and will try to use the request.
+		// To avoid confusing them, include dummy request.
+		HttpRequest: &httpgrpc.HTTPRequest{
+			Method: "GET",
+			Url:    "/invalid_request_sent_by_frontend",
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := server.Recv()
+
+	// Old queriers will return empty string, which is fine. All old queriers will be
+	// treated as single querier with lot of connections.
+	// (Note: if resp is nil, GetClientID() returns "")
+	return resp.GetClientID(), err
+}
+
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -380,10 +398,12 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
+	maxQueriers := f.limits.QueriersForUser(userID)
+
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue := f.queues.getOrAddQueue(userID)
+	queue := f.queues.getOrAddQueue(userID, maxQueriers)
 
 	select {
 	case queue <- req:
@@ -397,7 +417,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 // getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
-func (f *Frontend) getNextRequestForQuerier(ctx context.Context, querierID string) (*request, error) {
+func (f *Frontend) getNextRequestForQuerier(ctx context.Context, lastUserIndex int, querierID string) (*request, int, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
@@ -407,11 +427,12 @@ FindQueue:
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, lastUserIndex, err
 	}
 
 	for {
-		queue, userID := f.queues.getNextQueue()
+		queue, userID, idx := f.queues.getNextQueueForQuerier(lastUserIndex, querierID)
+		lastUserIndex = idx
 		if queue == nil {
 			break
 		}
@@ -445,7 +466,7 @@ FindQueue:
 
 			// Ensure the request has not already expired.
 			if request.originalCtx.Err() == nil {
-				return request, nil
+				return request, lastUserIndex, nil
 			}
 
 			// Stop iterating on this queue if we've just consumed the last request.
@@ -478,4 +499,16 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", connectedClients)
 	level.Info(f.log).Log("msg", msg)
 	return errors.New(msg)
+}
+
+func (f *Frontend) registerQuerierConnection(querier string) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.queues.addQuerierConnection(querier)
+}
+
+func (f *Frontend) unregisterQuerierConnection(querier string) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.queues.removeQuerierConnection(querier)
 }

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Ingester: Removed deprecated untyped record from chunks WAL. Only if you are running `v1.0` or below, it is recommended to first upgrade to `v1.1`/`v1.2`/`v1.3` and run it for a day before upgrading to `v1.4` to avoid data loss. #3115
 * [CHANGE] Increase the default Cassandra client replication factor to 3. #3007
 * [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
   * `cortex_ingester_sent_files`

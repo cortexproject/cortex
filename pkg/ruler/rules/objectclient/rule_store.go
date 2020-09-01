@@ -149,6 +149,29 @@ func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespac
 	return err
 }
 
+// DeleteNamespace deletes all the rule groups in the specified namespace
+func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""))
+	if err != nil {
+		return err
+	}
+
+	if len(ruleGroupObjects) == 0 {
+		return rules.ErrGroupNamespaceNotFound
+	}
+
+	//TODO: Probably collect individual errors and aggregate them into a single one?
+	for _, obj := range ruleGroupObjects {
+		level.Debug(util.Logger).Log("msg", "deleting rule group", "namespace", namespace, "key", obj.Key)
+		err = o.client.DeleteObject(ctx, obj.Key)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to delete rule group from namespace", "err", err, "namespace", namespace, "key", obj.Key)
+		}
+	}
+
+	return nil
+}
+
 func generateRuleObjectKey(id, namespace, name string) string {
 	if id == "" {
 		return rulePrefix

@@ -317,6 +317,29 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	return nil
 }
 
+func (c *Client) DeleteNamespace(namespace string) error {
+	// Create HTTP request
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/yaml")
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+	return nil
+}
+
 // userConfig is used to communicate a users alertmanager configs
 type userConfig struct {
 	TemplateFiles      map[string]string `yaml:"template_files"`

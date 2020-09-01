@@ -234,6 +234,7 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
 		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
 		// Legacy Prometheus Rule API Routes
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
@@ -245,10 +246,11 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 	}
 }
 
-// // RegisterRing registers the ring UI page associated with the distributor for writes.
+// RegisterRing registers the ring UI page associated with the distributor for writes.
 func (a *API) RegisterRing(r *ring.Ring) {
 	a.RegisterRoute("/ingester/ring", r, false)
 

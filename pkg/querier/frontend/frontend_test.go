@@ -316,6 +316,6 @@ type limits struct {
 	queriers int
 }
 
-func (l limits) QueriersForUser(_ string) int {
+func (l limits) MaxQueriersPerUser(_ string) int {
 	return l.queriers
 }

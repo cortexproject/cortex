@@ -58,7 +58,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	QueriersForUser(user string) int
+	MaxQueriersPerUser(user string) int
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -398,7 +398,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	maxQueriers := f.limits.QueriersForUser(userID)
+	maxQueriers := f.limits.MaxQueriersPerUser(userID)
 
 	f.mtx.Lock()
 	defer f.mtx.Unlock()

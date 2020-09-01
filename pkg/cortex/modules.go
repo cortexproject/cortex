@@ -405,7 +405,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		}
 	}
 
-	t.Frontend, err = frontend.New(t.Cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
+	t.Frontend, err = frontend.New(t.Cfg.Frontend, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

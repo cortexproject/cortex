@@ -50,7 +50,6 @@ const (
 	Server              string = "server"
 	Distributor         string = "distributor"
 	DistributorService  string = "distributor-service"
-	DistributorAPI      string = "distributor-api"
 	Ingester            string = "ingester"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
@@ -168,7 +167,7 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	return t.Distributor, nil
 }
 
-func (t *Cortex) initDistributorAPI() (serv services.Service, err error) {
+func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
 
 	return nil, nil
@@ -637,8 +636,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, nil)
-	mm.RegisterModule(DistributorAPI, t.initDistributorAPI)
-	mm.RegisterModule(DistributorService, t.initDistributorService)
+	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -661,8 +659,7 @@ func (t *Cortex) setupModuleManager() error {
 		API:                {Server},
 		Ring:               {API, RuntimeConfig, MemberlistKV},
 		Overrides:          {RuntimeConfig},
-		Distributor:        {DistributorService, DistributorAPI},
-		DistributorAPI:     {DistributorService, API},
+		Distributor:        {DistributorService, API},
 		DistributorService: {Ring, Overrides},
 		Store:              {Overrides, DeleteRequestsStore},
 		Ingester:           {Overrides, Store, API, RuntimeConfig, MemberlistKV},

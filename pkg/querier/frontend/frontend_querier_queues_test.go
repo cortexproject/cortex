@@ -15,43 +15,43 @@ func TestQueues(t *testing.T) {
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
-	q, u, lastUid := uq.getNextQueueForQuerier(-1, "querier-1")
+	q, u, lastUserIndex := uq.getNextQueueForQuerier(-1, "querier-1")
 	assert.Nil(t, q)
 	assert.Equal(t, "", u)
 
 	// Add queues: [one]
 	qOne := getOrAdd(t, uq, "one", 0)
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qOne, qOne)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qOne, qOne)
 
 	// [one two]
 	qTwo := getOrAdd(t, uq, "two", 0)
 	assert.NotEqual(t, qOne, qTwo)
 
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qTwo, qOne, qTwo, qOne)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qOne, qTwo, qOne)
 	confirmOrderForQuerier(t, uq, "querier-2", -1, qOne, qTwo, qOne)
 
 	// [one two three]
 	// confirm fifo by adding a third queue and iterating to it
 	qThree := getOrAdd(t, uq, "three", 0)
 
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qTwo, qThree, qOne)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qOne)
 
 	// Remove one: ["" two three]
 	uq.deleteQueue("one")
 	assert.NoError(t, isConsistent(uq))
 
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qTwo, qThree, qTwo)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qTwo)
 
 	// "four" is added at the beginning of the list: [four two three]
 	qFour := getOrAdd(t, uq, "four", 0)
 
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qThree, qFour, qTwo, qThree)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qThree, qFour, qTwo, qThree)
 
 	// Remove two: [four "" three]
 	uq.deleteQueue("two")
 	assert.NoError(t, isConsistent(uq))
 
-	lastUid = confirmOrderForQuerier(t, uq, "querier-1", lastUid, qFour, qThree, qFour)
+	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qFour, qThree, qFour)
 
 	// Remove three: [four]
 	uq.deleteQueue("three")
@@ -61,7 +61,7 @@ func TestQueues(t *testing.T) {
 	uq.deleteQueue("four")
 	assert.NoError(t, isConsistent(uq))
 
-	q, _, _ = uq.getNextQueueForQuerier(lastUid, "querier-1")
+	q, _, _ = uq.getNextQueueForQuerier(lastUserIndex, "querier-1")
 	assert.Nil(t, q)
 }
 
@@ -104,14 +104,14 @@ func TestQueuesWithQueriers(t *testing.T) {
 	for q := 0; q < queriers; q++ {
 		qid := fmt.Sprintf("querier-%d", q)
 
-		lastUid := -1
+		lastUserIndex := -1
 		for {
-			_, _, newUid := uq.getNextQueueForQuerier(lastUid, qid)
-			if newUid < lastUid {
+			_, _, newIx := uq.getNextQueueForQuerier(lastUserIndex, qid)
+			if newIx < lastUserIndex {
 				break
 			}
-			lastUid = newUid
-			queriersMap[qid] += 1
+			lastUserIndex = newIx
+			queriersMap[qid]++
 		}
 	}
 
@@ -139,7 +139,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 
-	lastUids := map[string]int{}
+	lastUserIndexes := map[string]int{}
 
 	for i := 0; i < 1000; i++ {
 		switch r.Int() % 6 {
@@ -147,8 +147,8 @@ func TestQueuesConsistency(t *testing.T) {
 			assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3))
 		case 1:
 			qid := generateQuerier(r)
-			_, _, luid := uq.getNextQueueForQuerier(lastUids[qid], qid)
-			lastUids[qid] = luid
+			_, _, luid := uq.getNextQueueForQuerier(lastUserIndexes[qid], qid)
+			lastUserIndexes[qid] = luid
 		case 2:
 			uq.deleteQueue(generateTenant(r))
 		case 3:
@@ -177,14 +177,14 @@ func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan *re
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUid int, qs ...chan *request) int {
+func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...chan *request) int {
 	var n chan *request
 	for _, q := range qs {
-		n, _, lastUid = uq.getNextQueueForQuerier(lastUid, querier)
+		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)
 		assert.NoError(t, isConsistent(uq))
 	}
-	return lastUid
+	return lastUserIndex
 }
 
 func isConsistent(uq *queues) error {

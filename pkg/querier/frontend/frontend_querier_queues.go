@@ -128,7 +128,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan
 		uid = uid + 1
 
 		// Don't use "mod len(q.users)", as that could skip users at the beginning of the list
-		// for example when q.users has shrinked since last call.
+		// for example when q.users has shrunk since last call.
 		if uid >= len(q.users) {
 			uid = 0
 		}
@@ -210,7 +210,7 @@ func (q *queues) selectQueriersForUser(userSeed int64, allSortedQueriers []strin
 
 func getSeedForUser(user string) int64 {
 	d := md5.New()
-	d.Write([]byte(user))
+	_, _ = d.Write([]byte(user))
 	buf := d.Sum(nil)
 	return int64(binary.BigEndian.Uint64(buf[:8]) ^ binary.BigEndian.Uint64(buf[8:]))
 }

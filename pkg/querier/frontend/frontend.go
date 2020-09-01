@@ -295,7 +295,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
-	querierID, err := getQuerierId(server)
+	querierID, err := getQuerierID(server)
 	if err != nil {
 		return err
 	}
@@ -366,7 +366,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	}
 }
 
-func getQuerierId(server Frontend_ProcessServer) (string, error) {
+func getQuerierID(server Frontend_ProcessServer) (string, error) {
 	err := server.Send(&FrontendToClient{
 		Type: GET_ID,
 		// Old queriers don't support GET_ID, and will try to use the request.

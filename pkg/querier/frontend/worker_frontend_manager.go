@@ -98,7 +98,7 @@ func (f *frontendManager) runOne(ctx context.Context) {
 			continue
 		}
 
-		if err := f.process(ctx, c); err != nil {
+		if err := f.process(c); err != nil {
 			level.Error(f.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -109,7 +109,7 @@ func (f *frontendManager) runOne(ctx context.Context) {
 }
 
 // process loops processing requests on an established stream.
-func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient) error {
+func (f *frontendManager) process(c Frontend_ProcessClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
@@ -143,7 +143,7 @@ func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient)
 	}
 }
 
-func (f *frontendManager) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHttpResponse func(response *httpgrpc.HTTPResponse) error) {
+func (f *frontendManager) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHTTPResponse func(response *httpgrpc.HTTPResponse) error) {
 	response, err := f.server.Handle(ctx, request)
 	if err != nil {
 		var ok bool
@@ -166,7 +166,7 @@ func (f *frontendManager) runRequest(ctx context.Context, request *httpgrpc.HTTP
 		level.Error(f.log).Log("msg", "error processing query", "err", errMsg)
 	}
 
-	if err := sendHttpResponse(response); err != nil {
+	if err := sendHTTPResponse(response); err != nil {
 		level.Error(f.log).Log("msg", "error processing requests", "err", err)
 	}
 }

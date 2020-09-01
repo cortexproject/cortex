@@ -77,7 +77,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.Nil(t, err)
 
 	// there should be no more unexpired requests in queue until the second tenant enqueues one.
-	req, idx, err = f.getNextRequestForQuerier(ctx, idx, "")
+	req, _, err = f.getNextRequestForQuerier(ctx, idx, "")
 	require.Nil(t, err)
 	require.NotNil(t, req)
 

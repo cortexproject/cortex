@@ -297,9 +297,8 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type FrontendClient interface {
-	// This method is similar to Process in that after client calls FrontendLoop,
-	// it waits for "FrontendToClient" message and replies with single "ClientToFrontend" message.
-	// "protocol" between the client and frontend is extended.
+	// After calling this method, client enters a loop, in which it waits for
+	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error)
 }
 
@@ -344,9 +343,8 @@ func (x *frontendProcessClient) Recv() (*FrontendToClient, error) {
 
 // FrontendServer is the server API for Frontend service.
 type FrontendServer interface {
-	// This method is similar to Process in that after client calls FrontendLoop,
-	// it waits for "FrontendToClient" message and replies with single "ClientToFrontend" message.
-	// "protocol" between the client and frontend is extended.
+	// After calling this method, client enters a loop, in which it waits for
+	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(Frontend_ProcessServer) error
 }
 

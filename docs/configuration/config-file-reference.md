@@ -2844,9 +2844,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Maximum number of queriers that can handle requests for single user. If set to
 # 0, or value less than number of available queriers, all queriers will handle
 # given user's requests. Each frontend will select the same queriers (if they
-# are connected to all frontends).
+# are connected to all frontends). Note that this only works with queriers
+# connecting to the query-frontend, not when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-user
-[max_queries_per_user: <int> | default = 0]
+[max_queriers_per_user: <int> | default = 0]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

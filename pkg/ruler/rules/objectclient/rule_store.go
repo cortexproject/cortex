@@ -160,7 +160,6 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 		return rules.ErrGroupNamespaceNotFound
 	}
 
-	//TODO: Probably collect individual errors and aggregate them into a single one?
 	for _, obj := range ruleGroupObjects {
 		level.Debug(util.Logger).Log("msg", "deleting rule group", "namespace", namespace, "key", obj.Key)
 		err = o.client.DeleteObject(ctx, obj.Key)

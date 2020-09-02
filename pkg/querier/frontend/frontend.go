@@ -300,9 +300,6 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 		return err
 	}
 
-	f.connectedClients.Inc()
-	defer f.connectedClients.Dec()
-
 	f.registerQuerierConnection(querierID)
 	defer f.unregisterQuerierConnection(querierID)
 
@@ -507,12 +504,16 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 }
 
 func (f *Frontend) registerQuerierConnection(querier string) {
+	f.connectedClients.Inc()
+
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.queues.addQuerierConnection(querier)
 }
 
 func (f *Frontend) unregisterQuerierConnection(querier string) {
+	f.connectedClients.Dec()
+
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.queues.removeQuerierConnection(querier)

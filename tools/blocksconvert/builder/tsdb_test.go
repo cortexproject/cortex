@@ -117,18 +117,18 @@ func TestTsdbBuilder(t *testing.T) {
 	m, err := metadata.Read(filepath.Join(dir, id.String()))
 	require.NoError(t, err)
 
-	otherId := ulid.MustNew(ulid.Now(), nil)
+	otherID := ulid.MustNew(ulid.Now(), nil)
 
 	// Make sure that deduplicate filter doesn't remove this block (thanks to correct sources).
 	df := block.NewDeduplicateFilter()
 	inp := map[ulid.ULID]*metadata.Meta{
-		otherId: {
+		otherID: {
 			BlockMeta: tsdb.BlockMeta{
-				ULID:    otherId,
+				ULID:    otherID,
 				MinTime: 0,
 				MaxTime: 0,
 				Compaction: tsdb.BlockMetaCompaction{
-					Sources: []ulid.ULID{otherId},
+					Sources: []ulid.ULID{otherID},
 				},
 				Version: 0,
 			},

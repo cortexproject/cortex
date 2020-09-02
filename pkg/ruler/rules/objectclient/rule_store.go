@@ -176,11 +176,18 @@ func generateRuleObjectKey(id, namespace, name string) string {
 	if id == "" {
 		return rulePrefix
 	}
+
 	prefix := rulePrefix + id + "/"
 	if namespace == "" {
 		return prefix
 	}
-	return prefix + base64.URLEncoding.EncodeToString([]byte(namespace)) + "/" + base64.URLEncoding.EncodeToString([]byte(name))
+
+	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + "/"
+	if name == "" {
+		return prefix + ns
+	}
+
+	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(name))
 }
 
 func decomposeRuleObjectKey(handle string) string {

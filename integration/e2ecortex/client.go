@@ -317,6 +317,7 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	return nil
 }
 
+// DeleteNamespace deletes all the rule groups (and the namespace itself).
 func (c *Client) DeleteNamespace(namespace string) error {
 	// Create HTTP request
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), nil)
@@ -324,19 +325,17 @@ func (c *Client) DeleteNamespace(namespace string) error {
 		return err
 	}
 
-	req.Header.Set("Content-Type", "application/yaml")
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	// Execute HTTP request
-	res, err := c.httpClient.Do(req.WithContext(ctx))
+	_, err := c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
 
-	defer res.Body.Close()
 	return nil
 }
 

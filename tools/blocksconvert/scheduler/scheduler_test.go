@@ -12,6 +12,8 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 func TestScanForPlans(t *testing.T) {
@@ -87,7 +89,7 @@ func TestSchedulerScan(t *testing.T) {
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user4/5.error", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user4/6.finished.01E8GCW9J0HV0992HSZ0N6RAMN", strings.NewReader("")))
 
-	s := newSchedulerWithBucket(log.NewLogfmtLogger(os.Stdout), bucket, "migration", Config{
+	s := newSchedulerWithBucket(log.NewLogfmtLogger(os.Stdout), bucket, "migration", blocksconvert.AllowAllUsers, Config{
 		ScanInterval:        10 * time.Second,
 		PlanScanConcurrency: 5,
 		MaxProgressFileAge:  5 * time.Minute,

@@ -112,7 +112,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
-		uq.queriers = q.selectQueriersForUser(uq.seed, q.sortedQueriers, maxQueriers)
+		uq.queriers = q.shuffleQueriersForUser(uq.seed, q.sortedQueriers, maxQueriers, nil)
 	}
 
 	return uq.ch
@@ -186,12 +186,15 @@ func (q *queues) removeQuerierConnection(querier string) {
 }
 
 func (q *queues) recomputeUserQueriers() {
+	scratchpad := make([]string, 0, len(q.sortedQueriers))
+
 	for _, uq := range q.userQueues {
-		uq.queriers = q.selectQueriersForUser(uq.seed, q.sortedQueriers, uq.maxQueriers)
+		uq.queriers = q.shuffleQueriersForUser(uq.seed, q.sortedQueriers, uq.maxQueriers, scratchpad)
 	}
 }
 
-func (q *queues) selectQueriersForUser(userSeed int64, allSortedQueriers []string, maxQueriers int) map[string]struct{} {
+// Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
+func (q *queues) shuffleQueriersForUser(userSeed int64, allSortedQueriers []string, maxQueriers int, scratchpad []string) map[string]struct{} {
 	if maxQueriers == 0 || len(allSortedQueriers) <= maxQueriers {
 		// All queriers can be used.
 		return nil
@@ -200,9 +203,15 @@ func (q *queues) selectQueriersForUser(userSeed int64, allSortedQueriers []strin
 	result := make(map[string]struct{}, maxQueriers)
 	rnd := rand.New(rand.NewSource(userSeed))
 
-	for len(result) < maxQueriers {
-		ix := rnd.Intn(len(allSortedQueriers))
-		result[allSortedQueriers[ix]] = struct{}{}
+	scratchpad = scratchpad[:0]
+	scratchpad = append(scratchpad, allSortedQueriers...)
+
+	rnd.Shuffle(len(scratchpad), func(i, j int) {
+		scratchpad[i], scratchpad[j] = scratchpad[j], scratchpad[i]
+	})
+
+	for _, q := range scratchpad[:maxQueriers] {
+		result[q] = struct{}{}
 	}
 
 	return result

@@ -78,6 +78,7 @@ func TestTsdbBuilder(t *testing.T) {
 	blocks := db.Blocks()
 	require.Equal(t, 1, len(blocks))
 	require.Equal(t, id, blocks[0].Meta().ULID)
+	require.Equal(t, id, blocks[0].Meta().Compaction.Sources[0])
 	require.Equal(t, uint64(seriesCount), blocks[0].Meta().Stats.NumSeries)
 	require.Equal(t, uint64(totalSamples.Load()), blocks[0].Meta().Stats.NumSamples)
 

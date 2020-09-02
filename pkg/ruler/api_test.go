@@ -231,6 +231,14 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusAccepted, w.Code)
 	require.Equal(t, "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}", w.Body.String())
+
+	// On Partial failures
+	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace2", nil, "user1")
+	w = httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.Equal(t, "{\"status\":\"error\",\"data\":null,\"errorType\":\"server_error\",\"error\":\"unable to delete rg\"}", w.Body.String())
 }
 
 func requestFor(t *testing.T, method string, url string, body io.Reader, userID string) *http.Request {

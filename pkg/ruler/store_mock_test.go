@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -34,8 +35,8 @@ var (
 				Interval: interval,
 			},
 			&rules.RuleGroupDesc{
-				Name:      "group2",
-				Namespace: "namespace1",
+				Name:      "fail",
+				Namespace: "namespace2",
 				User:      "user1",
 				Rules: []*rules.RuleDesc{
 					{
@@ -243,6 +244,12 @@ func (m *mockRuleStore) DeleteNamespace(ctx context.Context, userID, namespace s
 
 	for i, rg := range userRules {
 		if rg.Namespace == namespace {
+
+			// Only here to assert on partial failures.
+			if rg.Name == "fail" {
+				return fmt.Errorf("unable to delete rg")
+			}
+
 			m.rules[userID] = append(userRules[:i], userRules[i+1:]...)
 		}
 	}

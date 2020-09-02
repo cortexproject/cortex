@@ -165,6 +165,7 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 		err = o.client.DeleteObject(ctx, obj.Key)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to delete rule group from namespace", "err", err, "namespace", namespace, "key", obj.Key)
+			return err
 		}
 	}
 

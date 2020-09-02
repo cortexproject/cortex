@@ -120,7 +120,12 @@ func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules
 
 	copy := make(map[string]rules.RuleGroupList)
 	for k, v := range m.rules {
-		copy[k] = v
+		rgl := make(rules.RuleGroupList, 0, len(v))
+		for _, rgc := range v {
+			rgl = append(rgl, rgc)
+		}
+
+		copy[k] = rgl
 	}
 
 	return copy, nil

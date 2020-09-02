@@ -331,7 +331,7 @@ func (c *Client) DeleteNamespace(namespace string) error {
 	defer cancel()
 
 	// Execute HTTP request
-	_, err := c.httpClient.Do(req.WithContext(ctx))
+	_, err = c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}

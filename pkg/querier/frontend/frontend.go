@@ -421,8 +421,12 @@ func (f *Frontend) getNextRequestForQuerier(ctx context.Context, lastUserIndex i
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
+	querierWait := false
+
 FindQueue:
-	for f.queues.len() == 0 && ctx.Err() == nil {
+	// We need to wait if there are no users, or no pending requests for given querier.
+	for (f.queues.len() == 0 || querierWait) && ctx.Err() == nil {
+		querierWait = false
 		f.cond.Wait()
 	}
 
@@ -478,6 +482,7 @@ FindQueue:
 
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
+	querierWait = true
 	goto FindQueue
 }
 

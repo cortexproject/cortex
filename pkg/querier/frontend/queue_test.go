@@ -17,7 +17,7 @@ import (
 func setupFrontend(config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{}, logger, nil)
+	frontend, err := New(config, limits{queriers: 3}, logger, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +131,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	config.MaxOutstandingPerTenant = 2
 
 	const numTenants = 50
+	const queriers = 5
 
 	frontends := make([]*Frontend, 0, b.N)
 
@@ -138,6 +139,10 @@ func BenchmarkGetNextRequest(b *testing.B) {
 		f, err := setupFrontend(config)
 		if err != nil {
 			b.Fatal(err)
+		}
+
+		for ix := 0; ix < queriers; ix++ {
+			f.registerQuerierConnection(fmt.Sprintf("querier-%d", ix))
 		}
 
 		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
@@ -160,7 +165,17 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		idx := -1
 		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
-			_, nidx, err := frontends[i].getNextRequestForQuerier(ctx, idx, "")
+			querier := ""
+		b:
+			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
+			for _, q := range frontends[i].queues.userQueues {
+				for qid := range q.queriers {
+					querier = qid
+					break b
+				}
+			}
+
+			_, nidx, err := frontends[i].getNextRequestForQuerier(ctx, idx, querier)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -175,6 +190,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	config.MaxOutstandingPerTenant = 2
 
 	const numTenants = 50
+	const queriers = 5
 
 	frontends := make([]*Frontend, 0, b.N)
 	contexts := make([]context.Context, 0, numTenants)
@@ -185,6 +201,11 @@ func BenchmarkQueueRequest(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+
+		for ix := 0; ix < queriers; ix++ {
+			f.registerQuerierConnection(fmt.Sprintf("querier-%d", ix))
+		}
+
 		frontends = append(frontends, f)
 
 		for j := 0; j < numTenants; j++ {

@@ -113,7 +113,7 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 }
 
 // GetTempDirectory creates a temporary directory for shared integration
-// test files, either in the working directoy or a directory referenced by
+// test files, either in the working directory or a directory referenced by
 // the E2E_TEMP_DIR environment variable
 func GetTempDirectory() (string, error) {
 	var (

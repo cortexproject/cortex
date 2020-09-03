@@ -42,6 +42,7 @@
 * [BUGFIX] Fixes `flag needs an argument: -config.expand-env` error. #3087
 * [BUGFIX] An index optimisation actually slows things down when using caching. Moved it to the right location. #2973
 * [BUGFIX] Ingester: If push request contained both valid and invalid samples, valid samples were ingested but not stored to WAL of the chunks storage. This has been fixed. #3067
+* [BUGFIX] Index page now uses configured HTTP path prefix when creating links. #3126
 
 ## 1.3.0 / 2020-08-21
 

@@ -80,7 +80,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 
 	t.API = a
 
-	t.API.RegisterAPI(t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
 
 	return nil, nil
 }

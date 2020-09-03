@@ -49,6 +49,7 @@ const (
 	Overrides           string = "overrides"
 	Server              string = "server"
 	Distributor         string = "distributor"
+	DistributorService  string = "distributor-service"
 	Ingester            string = "ingester"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
@@ -150,7 +151,7 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 	return nil, err
 }
 
-func (t *Cortex) initDistributor() (serv services.Service, err error) {
+func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// Check whether the distributor can join the distributors ring, which is
@@ -163,9 +164,13 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 		return
 	}
 
+	return t.Distributor, nil
+}
+
+func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
 
-	return t.Distributor, nil
+	return nil, nil
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
@@ -631,6 +636,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -650,24 +656,25 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:            {Server},
-		Ring:           {API, RuntimeConfig, MemberlistKV},
-		Overrides:      {RuntimeConfig},
-		Distributor:    {Ring, API, Overrides},
-		Store:          {Overrides, DeleteRequestsStore},
-		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		Flusher:        {Store, API},
-		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable, MemberlistKV},
-		StoreQueryable: {Overrides, Store},
-		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
-		TableManager:   {API},
-		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
-		Configs:        {API},
-		AlertManager:   {API},
-		Compactor:      {API, MemberlistKV},
-		StoreGateway:   {API, Overrides, MemberlistKV},
-		Purger:         {Store, DeleteRequestsStore, API},
-		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:                {Server},
+		Ring:               {API, RuntimeConfig, MemberlistKV},
+		Overrides:          {RuntimeConfig},
+		Distributor:        {DistributorService, API},
+		DistributorService: {Ring, Overrides},
+		Store:              {Overrides, DeleteRequestsStore},
+		Ingester:           {Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Flusher:            {Store, API},
+		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		StoreQueryable:     {Overrides, Store},
+		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
+		TableManager:       {API},
+		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Configs:            {API},
+		AlertManager:       {API},
+		Compactor:          {API, MemberlistKV},
+		StoreGateway:       {API, Overrides, MemberlistKV},
+		Purger:             {Store, DeleteRequestsStore, API},
+		All:                {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

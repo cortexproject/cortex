@@ -7317,7 +7317,9 @@ Data stays in the index indefinitely or until it is evicted by newer entries.&lt
 &lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;br />
 Docker image used to run Cortex in integration tests (defaults to &lt;code>quay.io/cortexproject/cortex:latest&lt;/code>)&lt;/li>
 &lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;br />
-The absolute path of the Cortex repository local checkout (defaults to &lt;code>$GOPATH/src/github.com/cortexproject/cortex&lt;/code>)&lt;/li>
+The absolute path of the Cortex repository local checkout (defaults to &lt;code>$GOPATH/src/github.com/cortexproject/cortex&lt;/code>)
+&amp;ndash; &lt;strong>&lt;code>E2E_TEMP_DIR&lt;/code>&lt;/strong>&lt;br />
+The absolute path to a directory where the integration test will create an additional temporary directory to store files generated during the test.&lt;/li>
 &lt;/ul>
 &lt;h3 id="the-requires_docker-tag">The &lt;code>requires_docker&lt;/code> tag&lt;/h3>
 &lt;p>Integration tests have &lt;code>requires_docker&lt;/code> tag (&lt;code>// +build requires_docker&lt;/code> line followed by empty line on top of Go files), to avoid running them unintentionally as they require Docker, e.g. by running &lt;code>go test ./...&lt;/code> in main Cortex package.&lt;/p>

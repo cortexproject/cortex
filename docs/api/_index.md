@@ -45,6 +45,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get rule group](#get-rule-group) | Ruler | `GET /api/v1/rules/{namespace}/{groupName}` |
 | [Set rule group](#set-rule-group) | Ruler | `POST /api/v1/rules/{namespace}` |
 | [Delete rule group](#delete-rule-group) | Ruler | `DELETE /api/v1/rules/{namespace}/{groupName}` |
+| [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
@@ -553,6 +554,17 @@ DELETE <legacy-http-prefix>/rules/{namespace}/{groupName}
 ```
 
 Deletes a rule group by namespace and group name. This endpoints returns `202` on success.
+
+### Delete namespace
+
+```
+DELETE /api/v1/rules/{namespace}
+
+# Legacy
+DELETE <legacy-http-prefix>/rules/{namespace}
+```
+
+Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 

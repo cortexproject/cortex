@@ -8064,6 +8064,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Add TLS support to etcd client. &lt;a href="https://github.com/cortexproject/cortex/pull/3102">#3102&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] When a tenant accesses the Alertmanager UI or its API, if we have valid &lt;code>-alertmanager.configs.fallback&lt;/code> we&amp;rsquo;ll use that to start the manager and avoid failing the request. &lt;a href="https://github.com/cortexproject/cortex/pull/3073">#3073&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add &lt;code>DELETE api/v1/rules/{namespace}&lt;/code> to the Ruler. It allows all the rule groups of a namespace to be deleted. &lt;a href="https://github.com/cortexproject/cortex/pull/3120">#3120&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Experimental Delete Series: Retry processing of Delete requests during failures. &lt;a href="https://github.com/cortexproject/cortex/pull/2926">#2926&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. &lt;a href="https://github.com/cortexproject/cortex/pull/3013">#3013&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>

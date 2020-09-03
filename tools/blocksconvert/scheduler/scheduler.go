@@ -74,11 +74,11 @@ func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string
 			Help: "Number of queued plans",
 		}),
 		oldestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_blocksconvert_oldest_plan_seconds",
+			Name: "cortex_blocksconvert_scheduler_oldest_queued_plan_seconds",
 			Help: "Unix timestamp of oldest plan.",
 		}),
 		newestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_blocksconvert_newest_plan_seconds",
+			Name: "cortex_blocksconvert_scheduler_newest_queued_plan_seconds",
 			Help: "Unix timestamp of newest plan",
 		}),
 	}
@@ -153,7 +153,9 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	var queue []queuedPlan
 
 	runConcurrently(ctx, s.cfg.PlanScanConcurrency, users, func(user string) {
-		userPlans, err := scanForPlans(ctx, s.bucket, s.bucketPrefix, user)
+		userPrefix := path.Join(s.bucketPrefix, user) + "/"
+
+		userPlans, err := scanForPlans(ctx, s.bucket, userPrefix)
 		if err != nil {
 			level.Error(s.log).Log("msg", "failed to scan plans for user", "user", user, "err", err)
 			return
@@ -166,7 +168,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 		for base, plan := range userPlans {
 			st := plan.Status()
 			if st == InProgress {
-				s.deleteObsoleteProgressFiles(&plan, ctx, base)
+				s.deleteObsoleteProgressFiles(ctx, &plan, path.Join(userPrefix, base))
 
 				// After deleting old progress files, status might have changed from InProgress to Error.
 				st = plan.Status()
@@ -221,14 +223,13 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	return nil
 }
 
-func (s *Scheduler) deleteObsoleteProgressFiles(plan *plan, ctx context.Context, base string) {
+func (s *Scheduler) deleteObsoleteProgressFiles(ctx context.Context, plan *plan, planBaseName string) {
 	for pg, t := range plan.ProgressFiles {
 		if time.Since(t) > s.cfg.MaxProgressFileAge {
-			level.Warn(s.log).Log("msg", "deleting obsolete progress file", "path", pg)
+			level.Warn(s.log).Log("msg", "found obsolete progress file, will be deleted and error uploaded", "path", pg)
 
-			errFile := blocksconvert.ErrorFilename(base)
-
-			if err := s.bucket.Upload(ctx, blocksconvert.ErrorFilename(base), strings.NewReader("Obsolete progress file found: "+pg)); err != nil {
+			errFile := blocksconvert.ErrorFilename(planBaseName)
+			if err := s.bucket.Upload(ctx, blocksconvert.ErrorFilename(planBaseName), strings.NewReader("Obsolete progress file found: "+pg)); err != nil {
 				level.Error(s.log).Log("msg", "failed to create error for obsolete progress file", "err", err)
 				continue
 			}
@@ -351,18 +352,18 @@ func scanForUsers(ctx context.Context, bucket objstore.Bucket, bucketPrefix stri
 	return users, err
 }
 
-func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, user string) (map[string]plan, error) {
-	prefix := path.Join(bucketPrefix, user)
-	prefixWithSlash := prefix + "/"
-
+// Returns map of "base name" -> plan. Base name is object name of the plan, with removed prefix
+// and also stripped from suffixes. Scanner-produced base names are day indexes.
+// Individual paths in plan struct are full paths.
+func scanForPlans(ctx context.Context, bucket objstore.Bucket, prefix string) (map[string]plan, error) {
 	plans := map[string]plan{}
 
 	err := bucket.Iter(ctx, prefix, func(fullPath string) error {
-		if !strings.HasPrefix(fullPath, prefixWithSlash) {
+		if !strings.HasPrefix(fullPath, prefix) {
 			return errors.Errorf("invalid prefix: %v", fullPath)
 		}
 
-		filename := fullPath[len(prefixWithSlash):]
+		filename := fullPath[len(prefix):]
 		if ok, base := blocksconvert.IsPlanFilename(filename); ok {
 			p := plans[base]
 			p.PlanFiles = append(p.PlanFiles, fullPath)
@@ -388,7 +389,7 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 	})
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get plan status for user %s", user)
+		return nil, err
 	}
 
 	return plans, nil

@@ -8063,6 +8063,7 @@ __replica__: replica2
 &lt;li>[ENHANCEMENT] Memcached dial() calls now have an optional circuit-breaker to avoid hammering a broken cache &lt;a href="https://github.com/cortexproject/cortex/pull/3051">#3051&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] Add TLS support to etcd client. &lt;a href="https://github.com/cortexproject/cortex/pull/3102">#3102&lt;/a>&lt;/li>
 &lt;li>[ENHANCEMENT] When a tenant accesses the Alertmanager UI or its API, if we have valid &lt;code>-alertmanager.configs.fallback&lt;/code> we&amp;rsquo;ll use that to start the manager and avoid failing the request. &lt;a href="https://github.com/cortexproject/cortex/pull/3073">#3073&lt;/a>&lt;/li>
+&lt;li>[ENHANCEMENT] Add &lt;code>DELETE api/v1/rules/{namespace}&lt;/code> to the Ruler. It allows all the rule groups of a namespace to be deleted. &lt;a href="https://github.com/cortexproject/cortex/pull/3120">#3120&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. &lt;a href="https://github.com/cortexproject/cortex/pull/2990">#2990&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. &lt;a href="https://github.com/cortexproject/cortex/pull/3013">#3013&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Querier: query /series from ingesters regardless the &lt;code>-querier.query-ingesters-within&lt;/code> setting. &lt;a href="https://github.com/cortexproject/cortex/pull/3035">#3035&lt;/a>&lt;/li>
@@ -8074,6 +8075,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Fixes &lt;code>flag needs an argument: -config.expand-env&lt;/code> error. &lt;a href="https://github.com/cortexproject/cortex/pull/3087">#3087&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] An index optimisation actually slows things down when using caching. Moved it to the right location. &lt;a href="https://github.com/cortexproject/cortex/pull/2973">#2973&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ingester: If push request contained both valid and invalid samples, valid samples were ingested but not stored to WAL of the chunks storage. This has been fixed. &lt;a href="https://github.com/cortexproject/cortex/pull/3067">#3067&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ruler: Config API would return both the &lt;code>record&lt;/code> and &lt;code>alert&lt;/code> in &lt;code>YAML&lt;/code> response keys even when one of them must be empty. &lt;a href="https://github.com/cortexproject/cortex/pull/3120">#3120&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>
 &lt;ul>

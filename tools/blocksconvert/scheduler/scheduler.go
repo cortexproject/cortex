@@ -69,6 +69,18 @@ func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string
 			Name: "cortex_blocksconvert_scheduler_scanned_plans",
 			Help: "Number of plans in different status",
 		}, []string{"status"}),
+		queuedPlansGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scheduler_queued_plans",
+			Help: "Number of queued plans",
+		}),
+		oldestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_oldest_plan_seconds",
+			Help: "Unix timestamp of oldest plan.",
+		}),
+		newestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_newest_plan_seconds",
+			Help: "Unix timestamp of newest plan",
+		}),
 	}
 
 	s.Service = services.NewTimerService(cfg.ScanInterval, s.scanBucketForPlans, s.scanBucketForPlans, nil)
@@ -85,7 +97,10 @@ type Scheduler struct {
 	bucket       objstore.Bucket
 	bucketPrefix string
 
-	planStatus *prometheus.GaugeVec
+	planStatus          *prometheus.GaugeVec
+	queuedPlansGauge    prometheus.Gauge
+	oldestPlanTimestamp prometheus.Gauge
+	newestPlanTimestamp prometheus.Gauge
 
 	// Used to avoid scanning while there is dequeuing happening.
 	dequeueWG sync.WaitGroup
@@ -193,6 +208,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	s.scanMu.Lock()
 	s.allUserPlans = allPlans
 	s.plansQueue = queue
+	s.updateQueuedPlansMetrics()
 	s.scanMu.Unlock()
 
 	totalPlans := 0
@@ -287,6 +303,7 @@ func (s *Scheduler) getNextPlanAndIncreaseDequeuingWG() string {
 
 	var p string
 	p, s.plansQueue = s.plansQueue[0].PlanFile, s.plansQueue[1:]
+	s.updateQueuedPlansMetrics()
 
 	s.dequeueWG.Add(1)
 	return p
@@ -442,4 +459,18 @@ func (s *Scheduler) httpPlans(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	util.RenderHTTPResponse(writer, data, plansTemplate, req)
+}
+
+// This function runs with lock.
+func (s *Scheduler) updateQueuedPlansMetrics() {
+	s.queuedPlansGauge.Set(float64(len(s.plansQueue)))
+
+	if len(s.plansQueue) > 0 {
+		daySeconds := 24 * time.Hour.Seconds()
+		s.oldestPlanTimestamp.Set(float64(s.plansQueue[len(s.plansQueue)-1].DayIndex) * daySeconds)
+		s.newestPlanTimestamp.Set(float64(s.plansQueue[0].DayIndex) * daySeconds)
+	} else {
+		s.oldestPlanTimestamp.Set(0)
+		s.newestPlanTimestamp.Set(0)
+	}
 }

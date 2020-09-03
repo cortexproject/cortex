@@ -25,6 +25,7 @@ type processor struct {
 	series  prometheus.Counter
 	scanned *prometheus.CounterVec
 
+	allowedUsers      blocksconvert.AllowedUsers
 	ignoredUsersRegex *regexp.Regexp
 	ignoredUsers      map[string]struct{}
 	ignoredEntries    prometheus.Counter
@@ -41,13 +42,14 @@ type key struct {
 	seriesID string
 }
 
-func newProcessor(dir string, resultFn planEntryFn, ignoredUsers *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) *processor {
+func newProcessor(dir string, resultFn planEntryFn, allowed blocksconvert.AllowedUsers, ignoredUsers *regexp.Regexp, series prometheus.Counter, scannedEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) *processor {
 	w := &processor{
 		dir:      dir,
 		resultFn: resultFn,
 		series:   series,
 		scanned:  scannedEntries,
 
+		allowedUsers:      allowed,
 		ignoredUsersRegex: ignoredUsers,
 		ignoredUsers:      map[string]struct{}{},
 		ignoredEntries:    ignoredEntries,
@@ -85,7 +87,7 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 		return err
 	}
 
-	if w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user) {
+	if !w.allowedUsers.IsAllowed(user) || (w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user)) {
 		w.ignoredEntries.Inc()
 		w.ignoredUsers[user] = struct{}{}
 		return nil

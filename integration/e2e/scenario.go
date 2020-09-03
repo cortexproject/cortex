@@ -2,9 +2,7 @@ package e2e
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -34,17 +32,9 @@ type Scenario struct {
 func NewScenario(networkName string) (*Scenario, error) {
 	s := &Scenario{networkName: networkName}
 
-	dir, err := os.Getwd()
+	var err error
+	s.sharedDir, err = GetTempDirectory()
 	if err != nil {
-		return nil, err
-	}
-	tmpDir, err := ioutil.TempDir(dir, "e2e_integration_test")
-	if err != nil {
-		return nil, err
-	}
-	s.sharedDir, err = filepath.Abs(tmpDir)
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return nil, err
 	}
 

@@ -166,9 +166,9 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 }
 
 // RegisterAPI registers the standard endpoints associated with a running Cortex.
-func (a *API) RegisterAPI(cfg interface{}) {
+func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
 	a.RegisterRoute("/config", configHandler(cfg), false)
-	a.RegisterRoute("/", http.HandlerFunc(indexHandler), false)
+	a.RegisterRoute("/", indexHandler(httpPathPrefix), false)
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

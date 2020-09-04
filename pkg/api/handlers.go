@@ -23,21 +23,21 @@ var indexPageContent = template.Must(template.New("main").Parse(`
 		<h1>Cortex</h1>
 		<p>Admin Endpoints:</p>
 		<ul>
-			<li><a href="{{ .JoinPath "/config" }}">Current Config</a></li>
-			<li><a href="{{ .JoinPath "/distributor/all_user_stats" }}">Usage Statistics</a></li>
-			<li><a href="{{ .JoinPath "/distributor/ha_tracker" }}">HA Tracking Status</a></li>
-			<li><a href="{{ .JoinPath "/multitenant_alertmanager/status" }}">Alertmanager Status</a></li>
-			<li><a href="{{ .JoinPath "/ingester/ring" }}">Ingester Ring Status</a></li>
-			<li><a href="{{ .JoinPath "/ruler/ring" }}">Ruler Ring Status</a></li>
-			<li><a href="{{ .JoinPath "/services" }}">Service Status</a></li>
-			<li><a href="{{ .JoinPath "/compactor/ring" }}">Compactor Ring Status (experimental blocks storage)</a></li>
-			<li><a href="{{ .JoinPath "/store-gateway/ring" }}">Store Gateway Ring (experimental blocks storage)</a></li>
+			<li><a href="{{ .AddPathPrefix "/config" }}">Current Config</a></li>
+			<li><a href="{{ .AddPathPrefix "/distributor/all_user_stats" }}">Usage Statistics</a></li>
+			<li><a href="{{ .AddPathPrefix "/distributor/ha_tracker" }}">HA Tracking Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/multitenant_alertmanager/status" }}">Alertmanager Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/ring" }}">Ingester Ring Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/ruler/ring" }}">Ruler Ring Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/services" }}">Service Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/compactor/ring" }}">Compactor Ring Status (experimental blocks storage)</a></li>
+			<li><a href="{{ .AddPathPrefix "/store-gateway/ring" }}">Store Gateway Ring (experimental blocks storage)</a></li>
 		</ul>
 
 		<p>Dangerous:</p>
 		<ul>
-			<li><a href="{{ .JoinPath "/ingester/flush" }}">Trigger a Flush</a></li>
-			<li><a href="{{ .JoinPath "/ingester/shutdown" }}">Trigger Ingester Shutdown</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/flush" }}">Trigger a Flush</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/shutdown" }}">Trigger Ingester Shutdown</a></li>
 		</ul>
 	</body>
 </html>`))
@@ -46,7 +46,7 @@ type indexPageInput struct {
 	pathPrefix string
 }
 
-func (i indexPageInput) JoinPath(p string) string {
+func (i indexPageInput) AddPathPrefix(p string) string {
 	return path.Join(i.pathPrefix, p)
 }
 

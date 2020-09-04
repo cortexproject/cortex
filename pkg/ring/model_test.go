@@ -240,3 +240,68 @@ func TestDesc_getTokensByZone(t *testing.T) {
 		})
 	}
 }
+
+func TestDesc_RingsCompare(t *testing.T) {
+	tests := map[string]struct {
+		r1, r2   *Desc
+		expected CompareResult
+	}{
+		"nil rings": {
+			r1:       nil,
+			r2:       nil,
+			expected: Equal,
+		},
+		"one nil, one empty ring": {
+			r1:       nil,
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{}},
+			expected: Equal,
+		},
+		"two empty rings": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{}},
+			expected: Equal,
+		},
+		"same single ingester": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
+			expected: Equal,
+		},
+		"same single ingester, different timestamp": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
+			expected: Ingesters,
+		},
+		"same single ingester, different state": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: JOINING}}},
+			expected: Ingesters,
+		},
+		"ingester in different zone": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "one"}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
+			expected: Different,
+		},
+		"more ingesters in one ring": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}, "ing2": {Addr: "ing2"}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
+			expected: Different,
+		},
+		"different tokens": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
+			expected: Different,
+		},
+		"different tokens 2": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			expected: Different,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expected, testData.r1.RingCompare(testData.r2))
+			assert.Equal(t, testData.expected, testData.r2.RingCompare(testData.r1))
+		})
+	}
+}

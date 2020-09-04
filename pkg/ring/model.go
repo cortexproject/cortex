@@ -431,6 +431,79 @@ func (d *Desc) getTokensByZone() map[string][]TokenDesc {
 	return zones
 }
 
+type CompareResult int
+
+const (
+	Equal CompareResult = iota
+	Ingesters
+	Different
+)
+
+// RingCompare compares this ring against another one and returns:
+// - Equal: If both rings contain same ingesters, tokens, states and timestamps
+// - Ingesters: If both rings contain the same ingesters and tokens, but states and timestamps differ.
+// - Different: If rings have different set of ingesters, or their tokens don't match.
+func (d *Desc) RingCompare(o *Desc) CompareResult {
+	if d == nil {
+		if o == nil || len(o.Ingesters) == 0 {
+			return Equal
+		} else {
+			return Different
+		}
+	}
+	if o == nil {
+		if len(d.Ingesters) == 0 {
+			return Equal
+		}
+		return Different
+	}
+
+	if len(d.Ingesters) != len(o.Ingesters) {
+		return Different
+	}
+
+	equalStatesAndTimestamps := true
+
+	for name, ing := range d.Ingesters {
+		oing, ok := o.Ingesters[name]
+		if !ok {
+			return Different
+		}
+
+		if ing.Addr != oing.Addr {
+			return Different
+		}
+
+		if ing.Zone != oing.Zone {
+			return Different
+		}
+
+		if len(ing.Tokens) != len(oing.Tokens) {
+			return Different
+		}
+
+		for ix, t := range ing.Tokens {
+			if oing.Tokens[ix] != t {
+				return Different
+			}
+		}
+
+		if ing.Timestamp != oing.Timestamp {
+			equalStatesAndTimestamps = false
+		}
+
+		if ing.State != oing.State {
+			equalStatesAndTimestamps = false
+		}
+	}
+
+	if equalStatesAndTimestamps {
+		return Equal
+	} else {
+		return Ingesters
+	}
+}
+
 func GetOrCreateRingDesc(d interface{}) *Desc {
 	if d == nil {
 		return NewDesc()

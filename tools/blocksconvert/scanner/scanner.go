@@ -48,8 +48,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
-	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated")
-	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-user", "", "Regex pattern with ignored users. Only used if all -scanner.allowed-users is not set.")
+	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
+	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
 }
 
 type Scanner struct {

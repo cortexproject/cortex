@@ -2494,6 +2494,26 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # The maximum number of retries to do for failed ops.
 # CLI flag: -<prefix>.etcd.max-retries
 [max_retries: <int> | default = 10]
+
+# Enable TLS.
+# CLI flag: -<prefix>.etcd.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# The TLS certificate file path.
+# CLI flag: -<prefix>.etcd.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# The TLS private key file path.
+# CLI flag: -<prefix>.etcd.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# The trusted CA file path.
+# CLI flag: -<prefix>.etcd.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `consul_config`
@@ -2801,6 +2821,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set when the store-gateway sharding is enabled with the
+# shuffle-sharding strategy. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -experimental.store-gateway.tenant-shard-size
+[store_gateway_tenant_shard_size: <int> | default = 0]
 
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
@@ -3604,6 +3631,10 @@ sharding_ring:
   # shutdown and restored at startup.
   # CLI flag: -experimental.store-gateway.tokens-file-path
   [tokens_file_path: <string> | default = ""]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -experimental.store-gateway.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 ```
 
 ### `purger_config`

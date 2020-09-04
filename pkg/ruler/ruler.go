@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -137,6 +138,8 @@ type MultiTenantManager interface {
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
 	Stop()
+	// ValidateRuleGroup validates a rulegroup
+	ValidateRuleGroup(rulefmt.RuleGroup) []error
 }
 
 // Ruler evaluates rules.

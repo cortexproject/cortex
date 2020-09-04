@@ -35,6 +35,19 @@ Blocks can be replicated across multiple store-gateway instances based on a repl
 
 This feature can be enabled via `-experimental.store-gateway.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-experimental.store-gateway.sharding-ring.*` flags (or their respective YAML config options).
 
+### Sharding strategies
+
+The store-gateway supports two sharding strategies:
+
+- `default`
+- `shuffle-sharding`
+
+The **`default`** sharding strategy spreads the blocks of each tenant across all store-gateway instances. It's the easiest form of sharding supported, but doesn't provide any workload isolation between different tenants.
+
+The **`shuffle-sharding`** strategy spreads the blocks of a tenant across a subset of store-gateway instances. This way, the number of store-gateway instances loading blocks of a single tenant is limited and the blast radius of any issue that could be introduced by the ternant's workload is limited to its shard instances.
+
+The shuffle sharding strategy can be enabled via `-experimental.store-gateway.sharding-strategy=shuffle-sharding` and requires the `-experimental.store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
+
 ### Auto-forget
 
 When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.
@@ -193,6 +206,11 @@ store_gateway:
     # shutdown and restored at startup.
     # CLI flag: -experimental.store-gateway.tokens-file-path
     [tokens_file_path: <string> | default = ""]
+
+  # The sharding strategy to use. Supported values are: default,
+  # shuffle-sharding.
+  # CLI flag: -experimental.store-gateway.sharding-strategy
+  [sharding_strategy: <string> | default = "default"]
 ```
 
 ### `blocks_storage_config`

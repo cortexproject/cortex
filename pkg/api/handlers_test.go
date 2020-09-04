@@ -15,9 +15,9 @@ func TestIndexHandlerPrefix(t *testing.T) {
 	}{
 		{prefix: "", toBeFound: "<a href=\"/ingester/ring\">"},
 		{prefix: "/test", toBeFound: "<a href=\"/test/ingester/ring\">"},
+		// All the extra slashed are cleaned up in the result.
 		{prefix: "///test///", toBeFound: "<a href=\"/test/ingester/ring\">"},
 	} {
-		// All the extra slashed are cleaned up in the result.
 		h := indexHandler(tc.prefix)
 
 		req := httptest.NewRequest("GET", "/", nil)

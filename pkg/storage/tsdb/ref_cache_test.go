@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRefCache_GetAndSetReferences(t *testing.T) {
@@ -82,7 +83,13 @@ func TestRefCache_Purge(t *testing.T) {
 			c.SetRef(now.Add(time.Duration(-i)*time.Second), series[i], uint64(i))
 		}
 
-		c.Purge(now.Add(time.Duration(-ttl) * time.Second))
+		entries := c.Purge(now.Add(time.Duration(-ttl) * time.Second))
+		expEntries := ttl + 1
+		if expEntries > len(series) {
+			expEntries = len(series)
+		}
+
+		require.Equal(t, entries, expEntries)
 
 		// Check retained and purged entries
 		for i := 0; i <= ttl && i < len(series); i++ {

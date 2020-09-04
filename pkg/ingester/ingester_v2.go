@@ -140,6 +140,7 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	refCachePurgeDuration  prometheus.Histogram
+	refCacheEntriesPerUser *prometheus.GaugeVec
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -179,6 +180,10 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
 			Buckets: prometheus.DefBuckets,
 		}),
+		refCacheEntriesPerUser: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_tsdb_refcache_user_entries",
+			Help: "Number of entries per user in RefCache -- this roughly corresponds to active series per user.",
+		}, []string{"user"}),
 	}
 }
 
@@ -353,8 +358,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				}
 
 				startTime := time.Now()
-				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
+				entries := userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
+				i.TSDBState.refCacheEntriesPerUser.WithLabelValues(userID).Set(float64(entries))
 			}
 		case <-ctx.Done():
 			return nil

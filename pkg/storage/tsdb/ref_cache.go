@@ -74,11 +74,14 @@ func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 }
 
 // Purge removes expired entries from the cache. This function should be called
-// periodically to avoid memory leaks.
-func (c *RefCache) Purge(keepUntil time.Time) {
+// periodically to avoid memory leaks. Purge returns number of entries
+// after purging.
+func (c *RefCache) Purge(keepUntil time.Time) int {
+	entries := 0
 	for s := 0; s < numRefCacheStripes; s++ {
-		c.stripes[s].purge(keepUntil)
+		entries += c.stripes[s].purge(keepUntil)
 	}
+	return entries
 }
 
 func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
@@ -123,18 +126,22 @@ func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fi
 	s.refs[fp] = append(s.refs[fp], refCacheEntry)
 }
 
-func (s *refCacheStripe) purge(keepUntil time.Time) {
+// Purge returns number of entries after purging.
+func (s *refCacheStripe) purge(keepUntil time.Time) int {
 	s.refsMu.Lock()
 	defer s.refsMu.Unlock()
 
 	keepUntilNanos := keepUntil.UnixNano()
 
+	result := 0
 	for fp, entries := range s.refs {
 		// Since we do expect very few fingerprint collisions, we
 		// have an optimized implementation for the common case.
 		if len(entries) == 1 {
 			if entries[0].touchedAt.Load() < keepUntilNanos {
 				delete(s.refs, fp)
+			} else {
+				result++
 			}
 
 			continue
@@ -154,7 +161,9 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 		if len(entries) == 0 {
 			delete(s.refs, fp)
 		} else {
+			result += len(entries)
 			s.refs[fp] = entries
 		}
 	}
+	return result
 }

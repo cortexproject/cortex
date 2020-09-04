@@ -225,24 +225,26 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 
 func (s *Scheduler) deleteObsoleteProgressFiles(ctx context.Context, plan *plan, planBaseName string) {
 	for pg, t := range plan.ProgressFiles {
-		if time.Since(t) > s.cfg.MaxProgressFileAge {
-			level.Warn(s.log).Log("msg", "found obsolete progress file, will be deleted and error uploaded", "path", pg)
-
-			errFile := blocksconvert.ErrorFilename(planBaseName)
-			if err := s.bucket.Upload(ctx, blocksconvert.ErrorFilename(planBaseName), strings.NewReader("Obsolete progress file found: "+pg)); err != nil {
-				level.Error(s.log).Log("msg", "failed to create error for obsolete progress file", "err", err)
-				continue
-			}
-
-			plan.ErrorFile = errFile
-
-			if err := s.bucket.Delete(ctx, pg); err != nil {
-				level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
-				continue
-			}
-
-			delete(plan.ProgressFiles, pg)
+		if time.Since(t) < s.cfg.MaxProgressFileAge {
+			continue
 		}
+
+		level.Warn(s.log).Log("msg", "found obsolete progress file, will be deleted and error uploaded", "path", pg)
+
+		errFile := blocksconvert.ErrorFilename(planBaseName)
+		if err := s.bucket.Upload(ctx, blocksconvert.ErrorFilename(planBaseName), strings.NewReader("Obsolete progress file found: "+pg)); err != nil {
+			level.Error(s.log).Log("msg", "failed to create error for obsolete progress file", "err", err)
+			continue
+		}
+
+		plan.ErrorFile = errFile
+
+		if err := s.bucket.Delete(ctx, pg); err != nil {
+			level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
+			continue
+		}
+
+		delete(plan.ProgressFiles, pg)
 	}
 }
 

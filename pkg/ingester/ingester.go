@@ -276,7 +276,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:      limits,
 	}
 
-	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil
 }
 
@@ -296,6 +296,18 @@ func (i *Ingester) startingForFlusher(ctx context.Context) error {
 
 	i.startFlushLoops()
 	return nil
+}
+
+func (i *Ingester) loopForFlusher(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		case err := <-i.subservicesWatcher.Chan():
+			return errors.Wrap(err, "ingester subservice failed")
+		}
+	}
 }
 
 func (i *Ingester) loop(ctx context.Context) error {

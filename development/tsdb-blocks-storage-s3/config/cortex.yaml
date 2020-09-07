@@ -10,7 +10,7 @@ ingester_client:
     # Configure the client to allow messages up to 100MB.
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
-    use_gzip_compression: true
+    grpc_compression: gzip
 
 ingester:
   lifecycler:
@@ -27,6 +27,8 @@ ingester:
       replication_factor: 1
 
 querier:
+  query_ingesters_within: 3h
+
   # Used when the blocks sharding is disabled.
   store_gateway_addresses: store-gateway-1:9008,store-gateway-2:9009
 

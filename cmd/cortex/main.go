@@ -80,7 +80,7 @@ func main() {
 
 	// Ignore -config.file and -config.expand-env here, since it was already parsed, but it's still present on command line.
 	flagext.IgnoredFlag(flag.CommandLine, configFileOption, "Configuration file to load.")
-	flagext.IgnoredFlag(flag.CommandLine, configExpandENV, "Expands ${var} or $var in config according to the values of the environment variables.")
+	_ = flag.CommandLine.Bool(configExpandENV, false, "Expands ${var} or $var in config according to the values of the environment variables.")
 
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")

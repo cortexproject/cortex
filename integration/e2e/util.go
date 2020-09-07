@@ -1,10 +1,13 @@
 package e2e
 
 import (
+	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -107,4 +110,35 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 	})
 
 	return
+}
+
+// GetTempDirectory creates a temporary directory for shared integration
+// test files, either in the working directory or a directory referenced by
+// the E2E_TEMP_DIR environment variable
+func GetTempDirectory() (string, error) {
+	var (
+		dir string
+		err error
+	)
+	// If a temp dir is referenced, return that
+	if os.Getenv("E2E_TEMP_DIR") != "" {
+		dir = os.Getenv("E2E_TEMP_DIR")
+	} else {
+		dir, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	tmpDir, err := ioutil.TempDir(dir, "e2e_integration_test")
+	if err != nil {
+		return "", err
+	}
+	absDir, err := filepath.Abs(tmpDir)
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", err
+	}
+
+	return absDir, nil
 }

@@ -150,11 +150,13 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 ### Ring/HA Tracker Store
 
-The KVStore client is used by both the Ring and HA Tracker.
+The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't support memberlist as KV store).
 - `{ring,distributor.ha-tracker}.prefix`
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`
-   Backend storage to use for the ring (consul, etcd, inmemory, memberlist, multi).
+   Backend storage to use for the HA Tracker (consul, etcd, inmemory, multi).
+- `{ring,distributor.ring}.store`
+   Backend storage to use for the Ring (consul, etcd, inmemory, memberlist, multi).
 
 #### Consul
 
@@ -181,10 +183,41 @@ prefix these flags with `distributor.ha-tracker.`
    The timeout for the etcd connection.
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
+- `etcd.tls-enabled`
+   Enable TLS.
+- `etcd.tls-cert-path`
+   The TLS certificate file path.
+- `etcd.tls-key-path`
+   The TLS private key file path.
+- `etcd.tls-ca-path`
+   The trusted CA file path.
+- `etcd.tls-insecure-skip-verify`
+   Skip validating server certificate.
 
 #### memberlist
 
-Flags for configuring KV store based on memberlist library.
+Warning: memberlist KV works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.
+
+When using memberlist-based KV store, each node maintains its own copy of the hash ring.
+Updates generated locally, and received from other nodes are merged together to form the current state of the ring on the node.
+Updates are also propagated to other nodes.
+All nodes run the following two loops:
+
+1. Every "gossip interval", pick random "gossip nodes" number of nodes, and send recent ring updates to them.
+2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.
+
+When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
+Such update will be gossiped `R * log(N+1)` times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).
+
+If you find the propagation to be too slow, there are some tuning possibilities (default values are memberlist settings for LAN networks):
+- Decrease gossip interval (default: 200ms)
+- Increase gossip nodes (default 3)
+- Decrease push/pull sync interval (default 30s)
+- Increase retransmit multiplication factor (default 4)
+
+To find propagation delay, you can use `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
+
+Flags for configuring KV store based on memberlist library:
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
@@ -278,7 +311,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 - `distributor.ha-tracker.failover-timeout`
    If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
 - `distributor.ha-tracker.store`
-   Backend storage to use for the ring (consul, etcd, inmemory). (default "consul")
+   Backend storage to use for the ring (consul, etcd, inmemory, multi). Inmemory only works if there is a single distributor and ingester running in the same process (for testing purposes). (default "consul")
 - `distributor.ha-tracker.update-timeout`
    Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
 
@@ -487,3 +520,19 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
   The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: `dnssrv+memcached.namespace.svc.cluster.local`
 - **`dnssrvnoa+`**<br />
   The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+memcached.namespace.svc.cluster.local`
+
+## Logging of IP of reverse proxy
+
+If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
+
+- `-server.log_source_ips_enabled`
+
+  Set this to `true` to add logging of the IP when a Forwarded, X-Real-IP or X-Forwarded-For header is used. A field called `sourceIPs` will be added to error logs when data is pushed into Cortex.
+
+- `-server.log-source-ips-header`
+
+  Header field storing the source IPs. It is only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-regex` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
+
+- `-server.log-source-ips-regex`
+
+  Regular expression for matching the source IPs. It should contain at least one capturing group the first of which will be returned. Only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-header` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.

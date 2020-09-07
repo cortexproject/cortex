@@ -750,7 +750,7 @@ type blocksStoreSetMock struct {
 	nextResult      int
 }
 
-func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID, _ map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	if m.nextResult >= len(m.mockedResponses) {
 		panic("not enough mocked results")
 	}
@@ -815,11 +815,16 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 }
 
 type blocksStoreLimitsMock struct {
-	maxChunksPerQuery int
+	maxChunksPerQuery           int
+	storeGatewayTenantShardSize int
 }
 
 func (m *blocksStoreLimitsMock) MaxChunksPerQuery(_ string) int {
 	return m.maxChunksPerQuery
+}
+
+func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(userID string) int {
+	return m.storeGatewayTenantShardSize
 }
 
 func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *storepb.SeriesResponse {

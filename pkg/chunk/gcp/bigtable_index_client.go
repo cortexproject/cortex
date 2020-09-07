@@ -13,13 +13,13 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/go-kit/kit/log"
 	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const (
@@ -116,7 +116,7 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {
-				hashValue = hashPrefix(hashValue) + "-" + hashValue
+				hashValue = HashPrefix(hashValue) + "-" + hashValue
 			}
 
 			return hashValue, string(rangeValue)
@@ -124,9 +124,9 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 	}
 }
 
-// hashPrefix calculates a 64bit hash of the input string and hex-encodes
+// HashPrefix calculates a 64bit hash of the input string and hex-encodes
 // the result, taking care to zero pad etc.
-func hashPrefix(input string) string {
+func HashPrefix(input string) string {
 	prefix := hashAdd(hashNew(), input)
 	var encodedUint64 [8]byte
 	binary.LittleEndian.PutUint64(encodedUint64[:], prefix)
@@ -324,8 +324,8 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
-	defer sp.Finish()
+	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	defer log.Finish()
 
 	table := s.client.Open(query.TableName)
 
@@ -358,7 +358,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 		return true
 	})
 	if err != nil {
-		sp.LogFields(otlog.String("error", err.Error()))
+		log.Error(err)
 		return errors.WithStack(err)
 	}
 	return nil

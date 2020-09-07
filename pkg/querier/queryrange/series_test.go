@@ -12,7 +12,7 @@ import (
 func Test_ResponseToSamples(t *testing.T) {
 	input := &PrometheusResponse{
 		Data: PrometheusData{
-			ResultType: parser.ValueTypeMatrix,
+			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{

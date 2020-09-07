@@ -80,7 +80,7 @@ func TestNewBucketClient(t *testing.T) {
 			require.NoError(t, err)
 
 			// Instance a new bucket client from the config
-			bucketClient, err := NewBucketClient(context.Background(), cfg, "test", util.Logger, nil)
+			bucketClient, err := NewBucketClient(context.Background(), cfg.Bucket, "test", util.Logger, nil)
 			require.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

@@ -12,6 +12,7 @@ import (
 	prom_storage "github.com/prometheus/prometheus/storage"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -48,6 +49,7 @@ const (
 	Overrides           string = "overrides"
 	Server              string = "server"
 	Distributor         string = "distributor"
+	DistributorService  string = "distributor-service"
 	Ingester            string = "ingester"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
@@ -71,14 +73,14 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
-	a, err := api.New(t.Cfg.API, t.Server, util.Logger)
+	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	t.API = a
 
-	t.API.RegisterAPI(t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
 
 	return nil, nil
 }
@@ -111,7 +113,6 @@ func (t *Cortex) initServer() (services.Service, error) {
 
 func (t *Cortex) initRing() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
@@ -150,9 +151,8 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 	return nil, err
 }
 
-func (t *Cortex) initDistributor() (serv services.Service, err error) {
+func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -164,9 +164,13 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 		return
 	}
 
+	return t.Distributor, nil
+}
+
+func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
 
-	return t.Distributor, nil
+	return nil, nil
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
@@ -181,9 +185,29 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		Buckets:   instrument.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
 
+	receivedMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_request_message_bytes",
+		Help:      "Size (in bytes) of messages received in the request to the querier.",
+		Buckets:   middleware.BodySizeBuckets,
+	}, []string{"method", "route"})
+
+	sentMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_response_message_bytes",
+		Help:      "Size (in bytes) of messages sent in response by the querier.",
+		Buckets:   middleware.BodySizeBuckets,
+	}, []string{"method", "route"})
+
+	inflightRequests := promauto.With(prometheus.DefaultRegisterer).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "querier_inflight_requests",
+		Help:      "Current number of inflight requests to the querier.",
+	}, []string{"method", "route"})
+
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := t.Cfg.Target != All
-	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration)
+	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration, receivedMessageSize, sentMessageSize, inflightRequests)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -276,7 +300,6 @@ func (t *Cortex) tsdbIngesterConfig() {
 
 func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.tsdbIngesterConfig()
@@ -483,18 +506,18 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
+	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine)
+	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util.Logger)
+	if err != nil {
+		return nil, err
+	}
+
 	t.Ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
-		ruler.DefaultTenantManagerFactory(
-			t.Cfg.Ruler,
-			t.Distributor,
-			queryable,
-			engine,
-		),
+		manager,
 		prometheus.DefaultRegisterer,
 		util.Logger,
 		t.RulerStorage,
@@ -535,7 +558,6 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -553,7 +575,6 @@ func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 	}
 
 	t.Cfg.StoreGateway.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.StoreGateway, err = storegateway.NewStoreGateway(t.Cfg.StoreGateway, t.Cfg.BlocksStorage, t.Overrides, t.Cfg.Server.LogLevel, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -572,6 +593,14 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV)
+
+	// Update the config.
+	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
 	return t.MemberlistKV, nil
 }
 
@@ -607,6 +636,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -626,24 +656,25 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:            {Server},
-		Ring:           {API, RuntimeConfig, MemberlistKV},
-		Overrides:      {RuntimeConfig},
-		Distributor:    {Ring, API, Overrides},
-		Store:          {Overrides, DeleteRequestsStore},
-		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		Flusher:        {Store, API},
-		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
-		StoreQueryable: {Overrides, Store},
-		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
-		TableManager:   {API},
-		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
-		Configs:        {API},
-		AlertManager:   {API},
-		Compactor:      {API},
-		StoreGateway:   {API, Overrides},
-		Purger:         {Store, DeleteRequestsStore, API},
-		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:                {Server},
+		Ring:               {API, RuntimeConfig, MemberlistKV},
+		Overrides:          {RuntimeConfig},
+		Distributor:        {DistributorService, API},
+		DistributorService: {Ring, Overrides},
+		Store:              {Overrides, DeleteRequestsStore},
+		Ingester:           {Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Flusher:            {Store, API},
+		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		StoreQueryable:     {Overrides, Store},
+		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
+		TableManager:       {API},
+		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Configs:            {API},
+		AlertManager:       {API},
+		Compactor:          {API, MemberlistKV},
+		StoreGateway:       {API, Overrides, MemberlistKV},
+		Purger:             {Store, DeleteRequestsStore, API},
+		All:                {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

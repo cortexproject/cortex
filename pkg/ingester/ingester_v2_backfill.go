@@ -110,9 +110,9 @@ func (a *backfillRangeAppender) within(ts int64) bool {
 	return ts >= a.start && ts < a.end
 }
 
-func newBackfillRangeAppender(db *backfillTSDBWrapper) *backfillRangeAppender {
+func newBackfillRangeAppender(ctx context.Context, db *backfillTSDBWrapper) *backfillRangeAppender {
 	return &backfillRangeAppender{
-		app:   db.db.Appender(),
+		app:   db.db.Appender(ctx),
 		db:    db.db,
 		start: db.start,
 		end:   db.end,
@@ -121,8 +121,8 @@ func newBackfillRangeAppender(db *backfillTSDBWrapper) *backfillRangeAppender {
 
 // add requires the samples to be within the backfill age.
 // Note: This method should not be called concurrently.
-func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err error) {
-	app, db, err := a.getAppender(s)
+func (a *backfillAppender) add(ctx context.Context, la []client.LabelAdapter, s client.Sample) (err error) {
+	app, db, err := a.getAppender(ctx, s)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (a *backfillAppender) add(la []client.LabelAdapter, s client.Sample) (err e
 	return err
 }
 
-func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *userTSDB, error) {
+func (a *backfillAppender) getAppender(ctx context.Context, s client.Sample) (storage.Appender, *userTSDB, error) {
 	if !a.backfillTSDB.isWithinBackfillAge(s.TimestampMs) {
 		return nil, nil, storage.ErrOutOfBounds
 	}
@@ -172,13 +172,13 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		if a.newerAppender != nil {
 			return nil, nil, errors.New("newer appender already in place, TSDB moved by compaction")
 		}
-		a.newerAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[0])
+		a.newerAppender = newBackfillRangeAppender(ctx, a.backfillTSDB.dbs[0])
 		return a.newerAppender.app, a.backfillTSDB.dbs[0].db, nil
 	} else if a.backfillTSDB.dbs[1] != nil && a.backfillTSDB.dbs[1].within(s.TimestampMs) {
 		if a.olderAppender != nil {
 			return nil, nil, errors.New("older appender already in place, TSDB moved by compaction")
 		}
-		a.olderAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[1])
+		a.olderAppender = newBackfillRangeAppender(ctx, a.backfillTSDB.dbs[1])
 		return a.olderAppender.app, a.backfillTSDB.dbs[1].db, nil
 	}
 
@@ -209,7 +209,7 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 	}
 
 	newDB := &backfillTSDBWrapper{db: db, start: start, end: end}
-	app := newBackfillRangeAppender(newDB)
+	app := newBackfillRangeAppender(ctx, newDB)
 	if isNewerTSDB {
 		a.backfillTSDB.dbs[0] = newDB
 		a.newerAppender = app

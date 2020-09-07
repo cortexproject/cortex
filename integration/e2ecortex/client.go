@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	alertConfig "github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/types"
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -154,18 +156,24 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 	return res, body, nil
 }
 
+// Series finds series by label matchers.
+func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSet, error) {
+	result, _, err := c.querierClient.Series(context.Background(), matches, start, end)
+	return result, err
+}
+
 // LabelValues gets label values
 func (c *Client) LabelValues(label string) (model.LabelValues, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
+	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames() ([]string, error) {
 	// Cortex currently doesn't support start/end time.
-	value, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
-	return value, err
+	result, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
+	return result, err
 }
 
 type addOrgIDRoundTripper struct {
@@ -203,6 +211,10 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	var ss *ServerStatus
@@ -305,6 +317,28 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	return nil
 }
 
+// DeleteNamespace deletes all the rule groups (and the namespace itself).
+func (c *Client) DeleteNamespace(namespace string) error {
+	// Create HTTP request
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	_, err = c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // userConfig is used to communicate a users alertmanager configs
 type userConfig struct {
 	TemplateFiles      map[string]string `yaml:"template_files"`
@@ -367,4 +401,42 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SendAlertToAlermanager sends alerts to the Alertmanager API
+func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert) error {
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/alerts", nil)
+
+	data, err := json.Marshal([]types.Alert{{Alert: *alert}})
+	if err != nil {
+		return fmt.Errorf("error marshaling the alert: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("sending alert failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	client := &http.Client{Timeout: c.timeout}
+	return client.Do(req)
 }

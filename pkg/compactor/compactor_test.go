@@ -760,7 +760,7 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 	for i, ts := range []int64{minT, maxT - 1} {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
-		app := db.Appender()
+		app := db.Appender(context.Background())
 		_, err := app.Add(lbls, ts, float64(i))
 		require.NoError(t, err)
 

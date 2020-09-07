@@ -1,27 +1,28 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
-	"os/exec"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-)
-
-const (
-	integrationHomeFolder = "integration/"
 )
 
 type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
@@ -88,21 +89,38 @@ func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
-		// setup tls
-		cmd := exec.Command("bash", "certs/genCerts.sh", "certs", "1")
-		require.NoError(t, cmd.Run())
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientCertFile, clientCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+clientKeyFile, clientKeyFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+caCertFile, caCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverCertFile, serverCertFile))
-		require.NoError(t, copyFileToSharedDir(s, integrationHomeFolder+serverKeyFile, serverKeyFile))
+		// set the ca
+		ca := ca.New("Cortex Test")
+
+		// Ensure the entire path of directories exist.
+		require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
+
+		require.NoError(t, ca.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
+
+		// server certificate
+		require.NoError(t, ca.WriteCertificate(
+			&x509.Certificate{
+				Subject:     pkix.Name{CommonName: "client"},
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			},
+			filepath.Join(s.SharedDir(), clientCertFile),
+			filepath.Join(s.SharedDir(), clientKeyFile),
+		))
+		require.NoError(t, ca.WriteCertificate(
+			&x509.Certificate{
+				Subject:     pkix.Name{CommonName: "server"},
+				DNSNames:    []string{"querier.frontend-client", "ingester.client"},
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			},
+			filepath.Join(s.SharedDir(), serverCertFile),
+			filepath.Join(s.SharedDir(), serverKeyFile),
+		))
 
 		return "", mergeFlags(
 			BlocksStorageFlags,
 			getServerTLSFlags(),
 			getClientTLSFlagsWithPrefix("ingester.client"),
 			getClientTLSFlagsWithPrefix("querier.frontend-client"),
-			getClientTLSFlagsWithPrefix("ingester.client"),
 		)
 	})
 }
@@ -124,6 +142,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
+		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 	})
 
@@ -199,6 +218,18 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 			assert.Equal(t, model.Time(1595846750806), matrix[0].Values[2].Timestamp)
 		}
 
+		// In this test we do ensure that the /series start/end time is ignored and Cortex
+		// always returns series in ingesters memory. No need to repeat it for each user.
+		if userID == 0 {
+			start := now.Add(-1000 * time.Hour)
+			end := now.Add(-999 * time.Hour)
+
+			result, err := c.Series([]string{"series_1"}, start, end)
+			require.NoError(t, err)
+			require.Len(t, result, 1)
+			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()
@@ -213,7 +244,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 
 	wg.Wait()
 
-	extra := float64(1)
+	extra := float64(2)
 	if testMissingMetricName {
 		extra++
 	}

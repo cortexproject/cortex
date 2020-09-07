@@ -190,7 +190,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -237,7 +237,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -408,7 +408,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	startAppend := time.Now()
 
 	// Walk the samples, appending them to the users database
-	app := db.Appender()
+	app := db.Appender(ctx)
 	var backfillApp *backfillAppender
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
@@ -457,7 +457,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				if backfillApp == nil {
 					backfillApp = db.backfillTSDB.appender(i.createNewTSDB, i.cfg.BlocksStorageConfig.TSDB.BackfillBlocksDir)
 				}
-				err := backfillApp.add(ts.Labels, s)
+				err := backfillApp.add(ctx, ts.Labels, s)
 				if err == nil {
 					succeededSamplesCount++
 					continue
@@ -592,7 +592,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	}
 
 	if len(backfillSSs) > 0 {
-		ss = tsdb.NewMergedVerticalSeriesSet(tsdb.NewMergedSeriesSet(backfillSSs), ss)
+		ss = storage.NewMergeSeriesSet(append(backfillSSs, ss), storage.ChainedSeriesMerge)
 	}
 
 	numSamples := 0
@@ -707,11 +707,8 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 	defer q.Close()
 
-	// Run a query for each matchers set and collect all the results
-	added := map[string]struct{}{}
-	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0),
-	}
+	// Run a query for each matchers set and collect all the results.
+	var sets []storage.SeriesSet
 
 	for _, matchers := range matchersSet {
 		// Interrupt if the context has been canceled.
@@ -719,38 +716,25 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 			return nil, ctx.Err()
 		}
 
-		seriesSet := q.Select(false, nil, matchers...)
-		if seriesSet.Err() != nil {
-			return nil, seriesSet.Err()
+		seriesSet := q.Select(true, nil, matchers...)
+		sets = append(sets, seriesSet)
+	}
+
+	// Generate the response merging all series sets.
+	result := &client.MetricsForLabelMatchersResponse{
+		Metric: make([]*client.Metric, 0),
+	}
+
+	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	for mergedSet.Next() {
+		// Interrupt if the context has been canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
-		for seriesSet.Next() {
-			// Interrupt if the context has been canceled.
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-
-			// Given the same series can be matched by multiple matchers and we want to
-			// return the unique set of matching series, we do check if the series has
-			// already been added to the result
-			ls := seriesSet.At().Labels()
-			key := ls.String()
-			if _, ok := added[key]; ok {
-				continue
-			}
-
-			result.Metric = append(result.Metric, &client.Metric{
-				Labels: client.FromLabelsToLabelAdapters(ls),
-			})
-
-			added[key] = struct{}{}
-		}
-
-		// In case of any error while iterating the series, we break
-		// the execution and return it
-		if err := seriesSet.Err(); err != nil {
-			return nil, err
-		}
+		result.Metric = append(result.Metric, &client.Metric{
+			Labels: client.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
+		})
 	}
 
 	return result, nil
@@ -799,6 +783,8 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 	}
 }
 
+const queryStreamBatchMessageSize = 1 * 1024 * 1024
+
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
 	log, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
@@ -840,11 +826,11 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	if len(backfillSSs) > 0 {
-		ss = tsdb.NewMergedVerticalSeriesSet(tsdb.NewMergedSeriesSet(backfillSSs), ss)
+		ss = storage.NewMergeSeriesSet(append(backfillSSs, ss), storage.ChainedSeriesMerge)
 	}
 
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
-	batchSize := 0
+	batchSizeBytes := 0
 	numSamples := 0
 	numSeries := 0
 	for ss.Next() {
@@ -861,11 +847,12 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 		numSamples += len(ts.Samples)
-
-		timeseries = append(timeseries, ts)
 		numSeries++
-		batchSize++
-		if batchSize >= queryStreamBatchSize {
+		tsSize := ts.Size()
+
+		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
+			// Adding this series to the batch would make it too big,
+			// flush the data and add it to new batch instead.
 			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 				Timeseries: timeseries,
 			})
@@ -873,9 +860,12 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 				return err
 			}
 
-			batchSize = 0
+			batchSizeBytes = 0
 			timeseries = timeseries[:0]
 		}
+
+		timeseries = append(timeseries, ts)
+		batchSizeBytes += tsSize
 	}
 
 	// Ensure no error occurred while iterating the series set.
@@ -884,7 +874,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	// Final flush any existing metrics
-	if batchSize != 0 {
+	if batchSizeBytes != 0 {
 		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 			Timeseries: timeseries,
 		})

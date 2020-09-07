@@ -30,7 +30,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o -name packaging -prune -o
+DONT_FIND := -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o -name packaging -prune -o
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
@@ -68,6 +68,7 @@ pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
+tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
 
 all: $(UPTODATE_FILES)
 test: protos
@@ -239,10 +240,10 @@ dist dist/cortex-linux-amd64 dist/cortex-darwin-amd64 dist/query-tee-linux-amd64
 	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
 	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-linux-amd64   ./cmd/query-tee
 	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-darwin-amd64  ./cmd/query-tee
-	shasum -a 256 ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
-	shasum -a 256 ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
-	shasum -a 256 ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
-	shasum -a 256 ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256
+	sha256sum ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
+	sha256sum ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
+	sha256sum ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
+	sha256sum ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256
 
 # Generate packages for a Cortex release.
 FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
@@ -277,6 +278,7 @@ dist/%.deb: dist/cortex-linux-amd64 $(wildcard packaging/deb/**)
 		--package $@ $(FPM_ARGS) \
 		packaging/deb/default/cortex=/etc/default/cortex \
 		packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service
+	sha256sum ./dist/cortex-$(VERSION).deb | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).deb-sha-256
 
 dist/%.rpm: dist/cortex-linux-amd64 $(wildcard packaging/rpm/**)
 	$(FPM_OPTS) -t rpm  \
@@ -285,6 +287,7 @@ dist/%.rpm: dist/cortex-linux-amd64 $(wildcard packaging/rpm/**)
 		--package $@ $(FPM_ARGS) \
 		packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
 		packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service
+	sha256sum ./dist/cortex-$(VERSION).rpm | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).rpm-sha-256
 endif
 
 .PHONY: test-packages

@@ -8,9 +8,15 @@ slug: ingesters-migration
 - Author: @pstibrany
 - Reviewers:
 - Date: June 2020
-- Status: Proposed
+- Status: Replaced with [migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md).
 
-# Migrating ingesters from chunks to blocks
+## Warning
+
+Suggestions from this proposal were implemented, but general procedure outlined here doesn't quite work in
+Kubernetes environment. Please see [chunks to blocks migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md)
+instead.
+
+## Introduction
 
 This short document describes the first step in full migration of the Cortex cluster from using chunks storage to using blocks storage, specifically switching ingesters to using blocks, and modification of queriers to query both chunks and blocks storage.
 

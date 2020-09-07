@@ -12,12 +12,12 @@ import (
 // RedisCache type caches chunks in redis
 type RedisCache struct {
 	name   string
-	redis  RedisClient
+	redis  *RedisClient
 	logger log.Logger
 }
 
 // NewRedisCache creates a new RedisCache
-func NewRedisCache(name string, redisClient RedisClient, logger log.Logger) *RedisCache {
+func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger) *RedisCache {
 	util.WarnExperimentalUse("Redis cache")
 	cache := &RedisCache{
 		name:   name,

@@ -40,22 +40,14 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
 }
 
-// RedisClient is a generic Redis client interface
-type RedisClient interface {
-	Ping(context.Context) error
-	MSet(context.Context, []string, [][]byte) error
-	MGet(context.Context, []string) ([][]byte, error)
-	Close() error
-}
-
-type redisClient struct {
+type RedisClient struct {
 	expiration time.Duration
 	timeout    time.Duration
 	rdb        redis.UniversalClient
 }
 
 // NewRedisClient creates Redis client
-func NewRedisClient(cfg *RedisConfig) RedisClient {
+func NewRedisClient(cfg *RedisConfig) *RedisClient {
 	opt := &redis.UniversalOptions{
 		Addrs:       strings.Split(cfg.Endpoint, ","),
 		MasterName:  cfg.MasterName,
@@ -67,14 +59,14 @@ func NewRedisClient(cfg *RedisConfig) RedisClient {
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{}
 	}
-	return &redisClient{
+	return &RedisClient{
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
 	}
 }
 
-func (c *redisClient) Ping(ctx context.Context) error {
+func (c *RedisClient) Ping(ctx context.Context) error {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -91,7 +83,7 @@ func (c *redisClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (c *redisClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
+func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -106,7 +98,7 @@ func (c *redisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 	return err
 }
 
-func (c *redisClient) MGet(ctx context.Context, keys []string) ([][]byte, error) {
+func (c *RedisClient) MGet(ctx context.Context, keys []string) ([][]byte, error) {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -127,7 +119,7 @@ func (c *redisClient) MGet(ctx context.Context, keys []string) ([][]byte, error)
 	return ret, nil
 }
 
-func (c *redisClient) Close() error {
+func (c *RedisClient) Close() error {
 	return c.rdb.Close()
 }
 

@@ -321,6 +321,7 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 		t.Cfg.Flusher,
 		t.Cfg.Ingester,
 		t.Store,
+		t.Overrides,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {

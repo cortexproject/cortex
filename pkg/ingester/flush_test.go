@@ -217,8 +217,11 @@ func TestIssue3139(t *testing.T) {
 	require.Equal(t, 0, st.samples)
 	require.Equal(t, 1, st.errorsToGenerate) // no error was "consumed"
 
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
 	// Start new ingester, for flushing only
-	ing, err = NewForFlusher(cfg, st, nil)
+	ing, err = NewForFlusher(cfg, st, overrides, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	t.Cleanup(func() {

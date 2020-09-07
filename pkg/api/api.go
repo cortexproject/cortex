@@ -13,6 +13,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -169,6 +170,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
 	a.RegisterRoute("/config", configHandler(cfg), false)
 	a.RegisterRoute("/", indexHandler(httpPathPrefix), false)
+	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false)
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

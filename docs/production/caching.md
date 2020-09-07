@@ -100,7 +100,7 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
     For Redis Server - Redis service endpoint
     For Redis Cluster - comma-separated list of Redis node's endpoints
     For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
--<prefix>.redis.master_name
+-<prefix>.redis.master-name
     Redis Sentinel master group name.
     An empty string for Redis Server or Redis Cluster
 -<prefix>.redis.enable-tls

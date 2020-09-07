@@ -2862,7 +2862,7 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 [endpoint: <string> | default = ""]
 
 # Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
-# CLI flag: -<prefix>.redis.master_name
+# CLI flag: -<prefix>.redis.master-name
 [master_name: <string> | default = ""]
 
 # Maximum time to wait before giving up on redis requests.

@@ -434,15 +434,12 @@ func (d *Desc) getTokensByZone() map[string][]TokenDesc {
 type CompareResult int
 
 const (
-	Equal CompareResult = iota
-	Ingesters
-	Different
+	Equal                   CompareResult = iota // Both rings contain same ingesters, tokens, states and timestamps.
+	EqualIngestersAndTokens                      // Both rings contain the same ingesters and tokens, but states and timestamps differ.
+	Different                                    // Rings have different set of ingesters, or their tokens don't match.
 )
 
-// RingCompare compares this ring against another one and returns:
-// - Equal: If both rings contain same ingesters, tokens, states and timestamps
-// - Ingesters: If both rings contain the same ingesters and tokens, but states and timestamps differ.
-// - Different: If rings have different set of ingesters, or their tokens don't match.
+// RingCompare compares this ring against another one and returns one of Equal, Ingesters or Different.
 func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {
@@ -500,7 +497,7 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if equalStatesAndTimestamps {
 		return Equal
 	} else {
-		return Ingesters
+		return EqualIngestersAndTokens
 	}
 }
 

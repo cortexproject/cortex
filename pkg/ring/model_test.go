@@ -269,12 +269,12 @@ func TestDesc_RingsCompare(t *testing.T) {
 		"same single ingester, different timestamp": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
-			expected: Ingesters,
+			expected: EqualIngestersAndTokens,
 		},
 		"same single ingester, different state": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: JOINING}}},
-			expected: Ingesters,
+			expected: EqualIngestersAndTokens,
 		},
 		"ingester in different zone": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "one"}}},

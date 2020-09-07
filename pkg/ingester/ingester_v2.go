@@ -126,6 +126,8 @@ type TSDBState struct {
 	dbs    map[string]*userTSDB // tsdb sharded by userID
 	bucket objstore.Bucket
 
+	wg sync.WaitGroup
+
 	// Value used by shipper as external label.
 	shipperIngesterID string
 
@@ -300,6 +302,7 @@ func (i *Ingester) stoppingV2ForFlusher(_ error) error {
 	if !i.cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown {
 		i.closeAllTSDB()
 	}
+	i.TSDBState.wg.Wait()
 	return nil
 }
 
@@ -321,6 +324,7 @@ func (i *Ingester) stoppingV2(_ error) error {
 	if !i.cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown {
 		i.closeAllTSDB()
 	}
+	i.TSDBState.wg.Wait()
 	return nil
 }
 
@@ -588,9 +592,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	}
 
 	if len(backfillSSs) > 0 {
-		// TODO(codesome): If any TSDB in backfill buckets were overlapping
-		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
-		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
+		ss = tsdb.NewMergedVerticalSeriesSet(tsdb.NewMergedSeriesSet(backfillSSs), ss)
 	}
 
 	numSamples := 0
@@ -838,9 +840,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	if len(backfillSSs) > 0 {
-		// TODO(codesome): If any TSDB in backfill buckets were overlapping
-		// with main TSDB, then use tsdb.NewMergedVerticalSeriesSet
-		ss = tsdb.NewMergedSeriesSet(append(backfillSSs, ss))
+		ss = tsdb.NewMergedVerticalSeriesSet(tsdb.NewMergedSeriesSet(backfillSSs), ss)
 	}
 
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
@@ -1072,6 +1072,10 @@ func (i *Ingester) closeAllTSDB() {
 				level.Warn(util.Logger).Log("msg", "unable to close TSDB", "err", err, "user", userID)
 				return
 			}
+			if err := db.backfillTSDB.close(); err != nil {
+				level.Warn(util.Logger).Log("msg", "unable to close backfill TSDBs", "err", err, "user", userID)
+				return
+			}
 
 			// Now that the TSDB has been closed, we should remove it from the
 			// set of open ones. This lock acquisition doesn't deadlock with the
@@ -1172,11 +1176,22 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 		return
 	}
 
-	// There can be upto 2 TSDBs and anything old will be shipped and deleted.
-	// TODO(codesome): Handle changing of the backfill age and just compact and ship old TSDBs in that case.
-	if len(backfillTSDBDirs) > 2 {
-		// TODO(codesome): This should not happen. If it did for some reason, we should compact and ship the older TSDBs.
-		level.Warn(util.Logger).Log("msg", "found more than two backfill TSDBs", "user", userID, "path", userPath, "dirs", backfillTSDBDirs)
+	// Remove and ship directories which have different block sizes than one configured.
+	var backfillTSDBDirsFiltered, backfillTSDBDirsToShip []os.FileInfo
+	for _, dir := range backfillTSDBDirs {
+		start, end, err := getBackfillTSDBRanges(dir.Name())
+		if err != nil {
+			continue
+		}
+		if end-start == i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge.Milliseconds() {
+			backfillTSDBDirsFiltered = append(backfillTSDBDirsFiltered, dir)
+		} else {
+			backfillTSDBDirsToShip = append(backfillTSDBDirsToShip, dir)
+		}
+	}
+	if len(backfillTSDBDirsFiltered) > 2 {
+		// If there were more TSDBs for some reason, we should compact and ship the older TSDBs.
+		backfillTSDBDirsToShip = append(backfillTSDBDirsToShip, backfillTSDBDirsFiltered[:len(backfillTSDBDirsFiltered)-2]...)
 	}
 
 	openBackfillTSDB := func(name string) (int64, int64, *userTSDB, error) {
@@ -1195,21 +1210,33 @@ func (i *Ingester) openExistingBackfillTSDBFor(userID string, db *userTSDB) {
 		return start, end, userDB, nil
 	}
 
+	// Compact and ship the non-usable directories in the background.
+	i.TSDBState.wg.Add(1)
+	go func() {
+		defer i.TSDBState.wg.Done()
+		for _, dir := range backfillTSDBDirsToShip {
+			start, end, userDB, err := openBackfillTSDB(dir.Name())
+			if err != nil {
+				continue
+			}
+			backfillTSDB := newBackfillTSDB(userID, i.cfg.BlocksStorageConfig.TSDB.BackfillMaxAge, 0, nil)
+			backfillTSDB.dbs[1] = &backfillTSDBWrapper{db: userDB, start: start, end: end}
+			if err := backfillTSDB.compactAndShipAndDelete(true); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to compact and ship backfill TSDBs in background", "err", err, "user", userID, "dir", dir.Name())
+			}
+		}
+	}()
+
 	db.backfillTSDB.dbsMtx.Lock()
-	// TODO(codesome): Dont load TSDB if the block range is not same as current configured. Compact and ship them instead.
 	for i := range []int{0, 1} {
-		if len(backfillTSDBDirs) <= i {
+		if len(backfillTSDBDirsFiltered) <= i {
 			break
 		}
-		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirs[len(backfillTSDBDirs)-i-1].Name())
+		start, end, userDB, err := openBackfillTSDB(backfillTSDBDirsFiltered[len(backfillTSDBDirsFiltered)-i-1].Name())
 		if err != nil {
 			continue
 		}
-		db.backfillTSDB.dbs[i] = &backfillTSDBWrapper{
-			db:    userDB,
-			start: start,
-			end:   end,
-		}
+		db.backfillTSDB.dbs[i] = &backfillTSDBWrapper{db: userDB, start: start, end: end}
 	}
 	db.backfillTSDB.dbsMtx.Unlock()
 }

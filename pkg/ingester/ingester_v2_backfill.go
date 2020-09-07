@@ -73,6 +73,19 @@ func (b *backfillTSDB) appender(
 	}
 }
 
+func (b *backfillTSDB) close() error {
+	b.dbsMtx.Lock()
+	defer b.dbsMtx.Unlock()
+
+	var merr tsdb_errors.MultiError
+	for _, i := range []int{0, 1} {
+		if b.dbs[i] != nil {
+			merr.Add(b.dbs[i].db.Close())
+		}
+	}
+	return merr.Err()
+}
+
 // backfillAppender is an appender to ingest old data.
 // This _does not_ implement storage.Appender interface.
 // The methods of this appender should not be called concurrently.
@@ -148,15 +161,23 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 
 	// We could use RLock here to check the TSDBs, but because we create new TSDB if none exists,
 	// it's easier and cleaner to handle races by taking the write lock.
-	// TODO(codesome): IMPORTANT: fix the issue where the compaction moves the TSDB around between 2 appends to avoid using wrong appenders in older and newer spots.
+	// The TSDBs underneath could move (older goes out of backfill age and/or newer TSDB is moved to
+	// older TSDB's spot) while the appenders don't move. This is fine and will only lead to some 5xx
+	// which will be re-tried by Prometheus.
 	a.backfillTSDB.dbsMtx.Lock()
 	defer a.backfillTSDB.dbsMtx.Unlock()
 
 	// Check if we already have TSDB created and use it.
 	if a.backfillTSDB.dbs[0] != nil && a.backfillTSDB.dbs[0].within(s.TimestampMs) {
+		if a.newerAppender != nil {
+			return nil, nil, errors.New("newer appender already in place, TSDB moved by compaction")
+		}
 		a.newerAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[0])
 		return a.newerAppender.app, a.backfillTSDB.dbs[0].db, nil
 	} else if a.backfillTSDB.dbs[1] != nil && a.backfillTSDB.dbs[1].within(s.TimestampMs) {
+		if a.olderAppender != nil {
+			return nil, nil, errors.New("older appender already in place, TSDB moved by compaction")
+		}
 		a.olderAppender = newBackfillRangeAppender(a.backfillTSDB.dbs[1])
 		return a.olderAppender.app, a.backfillTSDB.dbs[1].db, nil
 	}
@@ -197,10 +218,12 @@ func (a *backfillAppender) getAppender(s client.Sample) (storage.Appender, *user
 		a.olderAppender = app
 	}
 
-	a.backfillTSDB.metrics.backfillTSDBsPerTenant.WithLabelValues(a.backfillTSDB.userID).Inc()
-	if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
-		// This user did not have a backfill TSDB before.
-		a.backfillTSDB.metrics.tenatsWithBackfillTSDBs.Inc()
+	if a.backfillTSDB.metrics != nil {
+		a.backfillTSDB.metrics.backfillTSDBsPerTenant.WithLabelValues(a.backfillTSDB.userID).Inc()
+		if a.backfillTSDB.dbs[0] == nil || a.backfillTSDB.dbs[1] == nil {
+			// This user did not have a backfill TSDB before.
+			a.backfillTSDB.metrics.tenatsWithBackfillTSDBs.Inc()
+		}
 	}
 
 	return app.app, app.db, nil
@@ -359,7 +382,7 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 		b.dbsMtx.Lock()
 		if err != nil {
 			b.dbs[idx] = db
-		} else {
+		} else if b.metrics != nil {
 			if b.dbs[0] == nil && b.dbs[1] == nil {
 				b.metrics.backfillTSDBsPerTenant.DeleteLabelValues(b.userID)
 				b.metrics.tenatsWithBackfillTSDBs.Dec()
@@ -372,14 +395,18 @@ func (b *backfillTSDB) compactAndShipAndCloseDB(idx int) (err error) {
 
 	h := db.db.Head()
 	if err := db.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime())); err != nil {
-		b.metrics.backfillTSDBCompactionsFailedTotal.Inc()
+		if b.metrics != nil {
+			b.metrics.backfillTSDBCompactionsFailedTotal.Inc()
+		}
 		return errors.Wrapf(err, "compact backfill TSDB, dir:%s", db.db.Dir())
 	}
 
 	if db.db.shipper != nil {
 		uploaded, err := db.db.shipper.Sync(context.Background())
 		if err != nil {
-			b.metrics.backfillTSDBShippingFailedTotal.Inc()
+			if b.metrics != nil {
+				b.metrics.backfillTSDBShippingFailedTotal.Inc()
+			}
 			return errors.Wrapf(err, "ship backfill TSDB, uploaded:%d, dir:%s", uploaded, db.db.Dir())
 		}
 		level.Debug(util.Logger).Log("msg", "shipper successfully synchronized backfill TSDB blocks with storage", "user", db.db.userID, "uploaded", uploaded, "backfill_dir", db.db.Dir())

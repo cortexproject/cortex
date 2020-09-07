@@ -46,6 +46,7 @@
 * [BUGFIX] Ingester: If push request contained both valid and invalid samples, valid samples were ingested but not stored to WAL of the chunks storage. This has been fixed. #3067
 * [BUGFIX] Ruler: Config API would return both the `record` and `alert` in `YAML` response keys even when one of them must be empty. #3120
 * [BUGFIX] Index page now uses configured HTTP path prefix when creating links. #3126
+* [BUGFIX] Fixed panic in flusher job, when error writing chunks to the store would cause "idle" chunks to be flushed, which triggered panic. #3140
 
 ## 1.3.0 / 2020-08-21
 

@@ -5,8 +5,10 @@ package integration
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -16,8 +18,17 @@ type storeConfig struct {
 	From, IndexStore string
 }
 
+// Docker networks must be uniquely named. In order to run parallel integration
+// tests on the same docker host, a network name is generated using the current
+// timestamp in milliseconds.
+var networkName string
+
+func init() {
+	nowMillis := int(time.Now().UnixNano() / 1000)
+	networkName = "e2e-cortex-test-" + strconv.Itoa(nowMillis)
+}
+
 const (
-	networkName            = "e2e-cortex-test"
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"

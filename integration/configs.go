@@ -4,8 +4,8 @@ package integration
 
 import (
 	"fmt"
+	"math/rand"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -18,17 +18,8 @@ type storeConfig struct {
 	From, IndexStore string
 }
 
-// Docker networks must be uniquely named. In order to run parallel integration
-// tests on the same docker host, a network name is generated using the current
-// timestamp in milliseconds.
-var networkName string
-
-func init() {
-	nowMillis := int(time.Now().UnixNano() / 1000)
-	networkName = "e2e-cortex-test-" + strconv.Itoa(nowMillis)
-}
-
 const (
+	networkNamePrefix      = "e2e-cortex-test-"
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
@@ -38,7 +29,24 @@ const (
 	caCertFile             = "certs/root.crt"
 	serverCertFile         = "certs/server.crt"
 	serverKeyFile          = "certs/server.key"
-	storeConfigTemplate    = `
+)
+
+// Generate a 6 character (a-z,0-9) id for the test being run.
+// This ID is used to generate a network name for the test
+func genUniqueTestID() string {
+	rand.Seed(time.Now().UnixNano())
+	chars := []rune("abcdefghijklmnopqrstuvwxyz" + "0123456789")
+	length := 6
+	var b strings.Builder
+	for i := 0; i < length; i++ {
+		b.WriteRune(chars[rand.Intn(len(chars))])
+	}
+	return b.String() // E.g. "ExcbsVQs"
+}
+
+var (
+	networkName         = networkNamePrefix + genUniqueTestID()
+	storeConfigTemplate = `
 - from: {{.From}}
   store: {{.IndexStore}}
   schema: v9

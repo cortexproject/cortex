@@ -316,7 +316,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor)
 
-	return t.Ingester, nil
+	return nil, nil
 }
 
 func (t *Cortex) initFlusher() (serv services.Service, err error) {

@@ -45,6 +45,10 @@ func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time
 	return nil
 }
 
+func (m mockStore) GetChunkFetcher(chunk Chunk) *Fetcher {
+	return nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {
@@ -243,6 +247,60 @@ func TestCompositeStoreLabels(t *testing.T) {
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong label values - %s", test.Diff(tc.want, have))
 			}
+		})
+	}
+
+}
+
+type mockStoreGetChunkFetcher struct {
+	mockStore
+	chunkFetcher *Fetcher
+}
+
+func (m mockStoreGetChunkFetcher) GetChunkFetcher(chunk Chunk) *Fetcher {
+	return m.chunkFetcher
+}
+
+func TestCompositeStore_GetChunkFetcher(t *testing.T) {
+	cs := compositeStore{
+		stores: []compositeStoreEntry{
+			{model.TimeFromUnix(10), mockStoreGetChunkFetcher{mockStore(0), &Fetcher{}}},
+			{model.TimeFromUnix(20), mockStoreGetChunkFetcher{mockStore(1), &Fetcher{}}},
+		},
+	}
+
+	for _, tc := range []struct {
+		name            string
+		chunkThrough    model.Time
+		expectedFetcher *Fetcher
+	}{
+		{
+			name:         "no matching store",
+			chunkThrough: model.TimeFromUnix(0),
+		},
+		{
+			name:            "first store",
+			chunkThrough:    model.TimeFromUnix(10),
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "still first store",
+			chunkThrough:    model.TimeFromUnix(11),
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "second store",
+			chunkThrough:    model.TimeFromUnix(20),
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "still second store",
+			chunkThrough:    model.TimeFromUnix(21),
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(Chunk{Through: tc.chunkThrough}))
 		})
 	}
 

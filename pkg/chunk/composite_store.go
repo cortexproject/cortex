@@ -32,6 +32,7 @@ type Store interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	GetChunkFetcher(chunk Chunk) *Fetcher
 
 	// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
 	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
@@ -172,6 +173,22 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 		return nil
 	})
 	return chunkIDs, fetchers, err
+}
+
+func (c compositeStore) GetChunkFetcher(chunk Chunk) *Fetcher {
+	// next, find the schema with the lowest start _after_ through
+	j := sort.Search(len(c.stores), func(j int) bool {
+		return c.stores[j].start > chunk.Through
+	})
+
+	// reduce it by 1 because we want a schema with start <= through
+	j--
+
+	if j >= 0 && len(c.stores) > j {
+		return c.stores[j].GetChunkFetcher(chunk)
+	}
+
+	return nil
 }
 
 // DeleteSeriesIDs deletes series IDs from index in series store

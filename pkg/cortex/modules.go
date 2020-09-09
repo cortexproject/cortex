@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -124,6 +125,19 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
+	// We need to modify LimitsConfig before calling SetDefaultLimitsForYAMLUnmarshalling later in this method
+	// but also if runtime-config is not used, for setting limits used by initOverrides.
+	// TODO: Remove this in Cortex 1.6.
+	if t.Cfg.Ruler.EvaluationDelay != 0 && t.Cfg.LimitsConfig.RulerEvaluationDelay == 0 {
+		t.Cfg.LimitsConfig.RulerEvaluationDelay = t.Cfg.Ruler.EvaluationDelay
+
+		// No need to report if this field isn't going to be used.
+		if t.Cfg.Target == All || t.Cfg.Target == Ruler {
+			flagext.DeprecatedFlagsUsed.Inc()
+			level.Warn(util.Logger).Log("msg", "Using DEPRECATED flag config YAML flag: ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
+		}
+	}
+
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
 		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod

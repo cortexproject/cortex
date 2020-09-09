@@ -17,6 +17,7 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.10.0
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7

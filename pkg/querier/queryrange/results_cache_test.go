@@ -33,6 +33,14 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
+	noCacheRequest = &PrometheusRequest{
+		Path:           "/api/v1/query_range",
+		Start:          1536673680 * 1e3,
+		End:            1536716898 * 1e3,
+		Step:           120 * 1e3,
+		Query:          "sum(container_memory_rss) by (namespace)",
+		CachingOptions: CachingOptions{Disabled: true},
+	}
 	respHeaders = []*PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
@@ -122,8 +130,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{noStoreValue},
 					},
 				},
 			}),
@@ -134,8 +142,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{"foo", noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{"foo", noStoreValue},
 					},
 				},
 			}),
@@ -156,7 +164,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name: "had cacheControl header but no values",
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusResponseHeader{{Name: cachecontrolHeader}},
+				Headers: []*PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
 			expected: true,
 		},
@@ -230,8 +238,8 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   cachecontrolHeader,
-						Values: []string{noCacheValue},
+						Name:   cacheControlHeader,
+						Values: []string{noStoreValue},
 					},
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
@@ -342,7 +350,9 @@ func TestPartiton(t *testing.T) {
 	}
 }
 
-type fakeLimits struct{}
+type fakeLimits struct {
+	maxCacheFreshness time.Duration
+}
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
 	return 0 // Disable.
@@ -352,8 +362,8 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 	return 14 // Flag default.
 }
 
-func (fakeLimits) MaxCacheFreshness(string) time.Duration {
-	return time.Duration(0)
+func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
+	return f.maxCacheFreshness
 }
 
 type fakeLimitsHighMaxCacheFreshness struct {
@@ -378,6 +388,7 @@ func TestResultsCache(t *testing.T) {
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -419,6 +430,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -448,22 +460,18 @@ func TestResultsCacheRecent(t *testing.T) {
 func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
-		legacyMaxCacheFreshness time.Duration
-		fakeLimits              Limits
-		Handler                 HandlerFunc
-		expectedResponse        *PrometheusResponse
+		fakeLimits       Limits
+		Handler          HandlerFunc
+		expectedResponse *PrometheusResponse
 	}{
 		{
-			// should lookup cache because legacy cache max freshness will be applied
-			legacyMaxCacheFreshness: 5 * time.Second,
-			fakeLimits:              fakeLimits{},
-			Handler:                 nil,
-			expectedResponse:        mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
+			fakeLimits:       fakeLimits{maxCacheFreshness: 5 * time.Second},
+			Handler:          nil,
+			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
 			// should not lookup cache because per-tenant override will be applied
-			legacyMaxCacheFreshness: time.Duration(0),
-			fakeLimits:              fakeLimitsHighMaxCacheFreshness{},
+			fakeLimits: fakeLimitsHighMaxCacheFreshness{},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
 			}),
@@ -475,8 +483,6 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
 
-			cfg.LegacyMaxCacheFreshness = tc.legacyMaxCacheFreshness
-
 			fakeLimits := tc.fakeLimits
 			rcm, _, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
@@ -485,6 +491,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				fakeLimits,
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
+				nil,
 				nil,
 				nil,
 			)
@@ -521,6 +528,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		fakeLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -577,6 +585,71 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestResultsCacheShouldCacheFunc(t *testing.T) {
+	testcases := []struct {
+		name         string
+		shouldCache  ShouldCacheFn
+		requests     []Request
+		expectedCall int
+	}{
+		{
+			name:         "normal",
+			shouldCache:  nil,
+			requests:     []Request{parsedRequest, parsedRequest},
+			expectedCall: 1,
+		},
+		{
+			name: "always no cache",
+			shouldCache: func(r Request) bool {
+				return false
+			},
+			requests:     []Request{parsedRequest, parsedRequest},
+			expectedCall: 2,
+		},
+		{
+			name: "check cache based on request",
+			shouldCache: func(r Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			requests:     []Request{noCacheRequest, noCacheRequest},
+			expectedCall: 2,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			var cfg ResultsCacheConfig
+			flagext.DefaultValues(&cfg)
+			cfg.CacheConfig.Cache = cache.NewMockCache()
+			rcm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				constSplitter(day),
+				fakeLimitsHighMaxCacheFreshness{},
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+				tc.shouldCache,
+				nil,
+			)
+			require.NoError(t, err)
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				calls++
+				return parsedResponse, nil
+			}))
+
+			for _, req := range tc.requests {
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := rc.Do(ctx, req)
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedCall, calls)
 		})
 	}
 }

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"html/template"
 	"net/http"
+	"path"
 
 	"github.com/go-kit/kit/log/level"
 	"gopkg.in/yaml.v2"
@@ -10,7 +12,7 @@ import (
 )
 
 // TODO: Update this content to be a template that is dynamic based on how Cortex is run.
-const indexPageContent = `
+var indexPageContent = template.Must(template.New("main").Parse(`
 <!DOCTYPE html>
 <html>
 	<head>
@@ -21,29 +23,39 @@ const indexPageContent = `
 		<h1>Cortex</h1>
 		<p>Admin Endpoints:</p>
 		<ul>
-			<li><a href="/config">Current Config</a></li>
-			<li><a href="/distributor/all_user_stats">Usage Statistics</a></li>
-			<li><a href="/distributor/ha_tracker">HA Tracking Status</a></li>
-			<li><a href="/multitenant_alertmanager/status">Alertmanager Status</a></li>
-			<li><a href="/ingester/ring">Ingester Ring Status</a></li>
-			<li><a href="/ruler/ring">Ruler Ring Status</a></li>
-			<li><a href="/services">Service Status</a></li>
-			<li><a href="/compactor/ring">Compactor Ring Status (experimental blocks storage)</a></li
-			<li><a href="/store-gateway/ring">Store Gateway Ring (experimental blocks storage)</a></li>
+			<li><a href="{{ .AddPathPrefix "/config" }}">Current Config</a></li>
+			<li><a href="{{ .AddPathPrefix "/distributor/all_user_stats" }}">Usage Statistics</a></li>
+			<li><a href="{{ .AddPathPrefix "/distributor/ha_tracker" }}">HA Tracking Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/multitenant_alertmanager/status" }}">Alertmanager Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/ring" }}">Ingester Ring Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/ruler/ring" }}">Ruler Ring Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/services" }}">Service Status</a></li>
+			<li><a href="{{ .AddPathPrefix "/compactor/ring" }}">Compactor Ring Status (experimental blocks storage)</a></li>
+			<li><a href="{{ .AddPathPrefix "/store-gateway/ring" }}">Store Gateway Ring (experimental blocks storage)</a></li>
 		</ul>
 
 		<p>Dangerous:</p>
 		<ul>
-			<li><a href="/ingester/flush">Trigger a Flush</a></li>
-			<li><a href="/ingester/shutdown">Trigger Ingester Shutdown</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/flush" }}">Trigger a Flush</a></li>
+			<li><a href="{{ .AddPathPrefix "/ingester/shutdown" }}">Trigger Ingester Shutdown</a></li>
 		</ul>
 	</body>
-</html>`
+</html>`))
 
-func indexHandler(w http.ResponseWriter, _ *http.Request) {
-	if _, err := w.Write([]byte(indexPageContent)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+type indexPageInput struct {
+	pathPrefix string
+}
+
+func (i indexPageInput) AddPathPrefix(p string) string {
+	return path.Join(i.pathPrefix, p)
+}
+
+func indexHandler(httpPathPrefix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := indexPageContent.Execute(w, indexPageInput{pathPrefix: httpPathPrefix})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 }
 

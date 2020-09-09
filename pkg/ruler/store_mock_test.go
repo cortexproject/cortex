@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -14,8 +15,44 @@ type mockRuleStore struct {
 }
 
 var (
-	interval, _ = time.ParseDuration("1m")
-	mockRules   = map[string]rules.RuleGroupList{
+	interval, _         = time.ParseDuration("1m")
+	mockRulesNamespaces = map[string]rules.RuleGroupList{
+		"user1": {
+			&rules.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "namespace1",
+				User:      "user1",
+				Rules: []*rules.RuleDesc{
+					{
+						Record: "UP_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP_ALERT",
+						Expr:  "up < 1",
+					},
+				},
+				Interval: interval,
+			},
+			&rules.RuleGroupDesc{
+				Name:      "fail",
+				Namespace: "namespace2",
+				User:      "user1",
+				Rules: []*rules.RuleDesc{
+					{
+						Record: "UP2_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP2_ALERT",
+						Expr:  "up < 1",
+					},
+				},
+				Interval: interval,
+			},
+		},
+	}
+	mockRules = map[string]rules.RuleGroupList{
 		"user1": {
 			&rules.RuleGroupDesc{
 				Name:      "group1",
@@ -84,7 +121,9 @@ func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules
 
 	copy := make(map[string]rules.RuleGroupList)
 	for k, v := range m.rules {
-		copy[k] = v
+		rgl := make(rules.RuleGroupList, 0, len(v))
+		rgl = append(rgl, v...)
+		copy[k] = rgl
 	}
 
 	return copy, nil
@@ -183,6 +222,35 @@ func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, name
 		if rg.Namespace == namespace && rg.Name == group {
 			m.rules[userID] = append(userRules[:i], userRules[:i+1]...)
 			return nil
+		}
+	}
+
+	return nil
+}
+
+func (m *mockRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	userRules, exists := m.rules[userID]
+	if !exists {
+		userRules = rules.RuleGroupList{}
+		m.rules[userID] = userRules
+	}
+
+	if namespace == "" {
+		return rules.ErrGroupNamespaceNotFound
+	}
+
+	for i, rg := range userRules {
+		if rg.Namespace == namespace {
+
+			// Only here to assert on partial failures.
+			if rg.Name == "fail" {
+				return fmt.Errorf("unable to delete rg")
+			}
+
+			m.rules[userID] = append(userRules[:i], userRules[i+1:]...)
 		}
 	}
 

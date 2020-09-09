@@ -4,9 +4,11 @@ package integration
 
 import (
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -17,7 +19,7 @@ type storeConfig struct {
 }
 
 const (
-	networkName            = "e2e-cortex-test"
+	networkNamePrefix      = "e2e-cortex-test-"
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
@@ -27,7 +29,24 @@ const (
 	caCertFile             = "certs/root.crt"
 	serverCertFile         = "certs/server.crt"
 	serverKeyFile          = "certs/server.key"
-	storeConfigTemplate    = `
+)
+
+// Generate a 6 character (a-z,0-9) id for the test being run.
+// This ID is used to generate a network name for the test
+func genUniqueTestID() string {
+	rand.Seed(time.Now().UnixNano())
+	chars := []rune("abcdefghijklmnopqrstuvwxyz" + "0123456789")
+	length := 6
+	var b strings.Builder
+	for i := 0; i < length; i++ {
+		b.WriteRune(chars[rand.Intn(len(chars))])
+	}
+	return b.String() // E.g. "ExcbsVQs"
+}
+
+var (
+	networkName         = networkNamePrefix + genUniqueTestID()
+	storeConfigTemplate = `
 - from: {{.From}}
   store: {{.IndexStore}}
   schema: v9

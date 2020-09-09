@@ -51,6 +51,7 @@ const (
 	Distributor         string = "distributor"
 	DistributorService  string = "distributor-service"
 	Ingester            string = "ingester"
+	IngesterService     string = "ingester-service"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
 	StoreQueryable      string = "store-queryable"
@@ -298,7 +299,7 @@ func (t *Cortex) tsdbIngesterConfig() {
 	t.Cfg.Ingester.BlocksStorageConfig = t.Cfg.BlocksStorage
 }
 
-func (t *Cortex) initIngester() (serv services.Service, err error) {
+func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
@@ -309,9 +310,13 @@ func (t *Cortex) initIngester() (serv services.Service, err error) {
 		return
 	}
 
+	return t.Ingester, nil
+}
+
+func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor)
 
-	return t.Ingester, nil
+	return nil, nil
 }
 
 func (t *Cortex) initFlusher() (serv services.Service, err error) {
@@ -640,6 +645,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
@@ -662,7 +668,8 @@ func (t *Cortex) setupModuleManager() error {
 		Distributor:        {DistributorService, API},
 		DistributorService: {Ring, Overrides},
 		Store:              {Overrides, DeleteRequestsStore},
-		Ingester:           {Overrides, Store, API, RuntimeConfig, MemberlistKV},
+		Ingester:           {IngesterService, API},
+		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
 		Flusher:            {Store, API},
 		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
 		StoreQueryable:     {Overrides, Store},

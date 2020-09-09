@@ -152,7 +152,7 @@ type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
 
-	// for testing
+	// for testing and for extending the ingester by adding calls to the client
 	IngesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
 	// when true the distributor does not validate the label name, Cortex doesn't directly use
@@ -782,7 +782,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
-	// Not using d.forAllIngesters(), so we can fail after first error.
+	// Not using d.ForAllIngesters(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err

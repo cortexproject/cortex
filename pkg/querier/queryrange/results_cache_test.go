@@ -350,7 +350,9 @@ func TestPartiton(t *testing.T) {
 	}
 }
 
-type fakeLimits struct{}
+type fakeLimits struct {
+	maxCacheFreshness time.Duration
+}
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
 	return 0 // Disable.
@@ -360,8 +362,8 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 	return 14 // Flag default.
 }
 
-func (fakeLimits) MaxCacheFreshness(string) time.Duration {
-	return time.Duration(0)
+func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
+	return f.maxCacheFreshness
 }
 
 type fakeLimitsHighMaxCacheFreshness struct {
@@ -458,22 +460,18 @@ func TestResultsCacheRecent(t *testing.T) {
 func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
-		legacyMaxCacheFreshness time.Duration
-		fakeLimits              Limits
-		Handler                 HandlerFunc
-		expectedResponse        *PrometheusResponse
+		fakeLimits       Limits
+		Handler          HandlerFunc
+		expectedResponse *PrometheusResponse
 	}{
 		{
-			// should lookup cache because legacy cache max freshness will be applied
-			legacyMaxCacheFreshness: 5 * time.Second,
-			fakeLimits:              fakeLimits{},
-			Handler:                 nil,
-			expectedResponse:        mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
+			fakeLimits:       fakeLimits{maxCacheFreshness: 5 * time.Second},
+			Handler:          nil,
+			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
 			// should not lookup cache because per-tenant override will be applied
-			legacyMaxCacheFreshness: time.Duration(0),
-			fakeLimits:              fakeLimitsHighMaxCacheFreshness{},
+			fakeLimits: fakeLimitsHighMaxCacheFreshness{},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
 			}),
@@ -484,8 +482,6 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-
-			cfg.LegacyMaxCacheFreshness = tc.legacyMaxCacheFreshness
 
 			fakeLimits := tc.fakeLimits
 			rcm, _, err := NewResultsCacheMiddleware(

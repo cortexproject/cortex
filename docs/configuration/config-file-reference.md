@@ -846,8 +846,7 @@ ruler_client:
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
 
-# Deprecated. Duration to delay the evaluation of rules to ensure they
-# underlying metrics have been pushed to cortex.
+# Deprecated. Please use -ruler.evaluation-delay-duration instead.
 # CLI flag: -ruler.evaluation-delay-duration-deprecated
 [evaluation_delay_duration: <duration> | default = 0s]
 
@@ -2803,7 +2802,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_cache_freshness: <duration> | default = 1m]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to cortex.
+# have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
 [ruler_evaluation_delay_duration: <duration> | default = 0s]
 

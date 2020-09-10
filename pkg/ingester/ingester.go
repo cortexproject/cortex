@@ -72,8 +72,10 @@ type Config struct {
 	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
 	// Use blocks storage.
-	BlocksStorageEnabled bool                     `yaml:"-"`
-	BlocksStorageConfig  tsdb.BlocksStorageConfig `yaml:"-"`
+	BlocksStorageEnabled    bool                     `yaml:"-"`
+	BlocksStorageConfig     tsdb.BlocksStorageConfig `yaml:"-"`
+	ActiveSeriesPurgePeriod time.Duration            `yaml:"active_series_purge_period"`
+	ActiveSeriesIdle        time.Duration            `yaml:"active_series_idle"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -103,6 +105,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.DurationVar(&cfg.ActiveSeriesPurgePeriod, "ingester.active-series-purge-period", 5*time.Minute, "How often to purge inactive series (blocks engine).")
+	f.DurationVar(&cfg.ActiveSeriesIdle, "ingester.active-series-idle", 15*time.Minute, "After what time is series considered to be inactive (blocks engine).")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

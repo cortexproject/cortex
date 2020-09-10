@@ -136,7 +136,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 		// No need to report if this field isn't going to be used.
 		if t.Cfg.Target == All || t.Cfg.Target == Ruler {
 			flagext.DeprecatedFlagsUsed.Inc()
-			level.Warn(util.Logger).Log("msg", "Using DEPRECATED flag config YAML flag: ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
+			level.Warn(util.Logger).Log("msg", "Using DEPRECATED YAML config field ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
 		}
 	}
 

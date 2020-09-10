@@ -126,3 +126,18 @@ func TestIsUserVisibleModule(t *testing.T) {
 	result = sut.IsUserVisibleModule("ghost")
 	assert.False(t, result, "expects result be false when module does not exist")
 }
+
+func TestDependenciesForModule(t *testing.T) {
+	m := NewManager()
+	m.RegisterModule("test", nil)
+	m.RegisterModule("dep1", nil)
+	m.RegisterModule("dep2", nil)
+	m.RegisterModule("dep3", nil)
+
+	require.NoError(t, m.AddDependency("test", "dep2", "dep1"))
+	require.NoError(t, m.AddDependency("dep1", "dep2"))
+	require.NoError(t, m.AddDependency("dep2", "dep3"))
+
+	deps := m.DependenciesForModule("test")
+	assert.Equal(t, []string{"dep1", "dep2", "dep3"}, deps)
+}

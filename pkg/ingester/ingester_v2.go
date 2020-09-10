@@ -334,7 +334,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
 	defer refCachePurgeTicker.Stop()
 
-	activeSeriesPurgeTicker := time.NewTicker(i.cfg.ActiveSeriesPurgePeriod)
+	activeSeriesPurgeTicker := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
 	defer activeSeriesPurgeTicker.Stop()
 
 	// Similarly to the above, this is a hardcoded value.

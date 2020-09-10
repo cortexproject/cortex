@@ -613,6 +613,14 @@ lifecycler:
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
+
+# How often to update active series metrics (blocks engine only).
+# CLI flag: -ingester.active-series-update-period
+[active_series_update_period: <duration> | default = 5m]
+
+# After what time is series considered to be inactive (blocks engine only).
+# CLI flag: -ingester.active-series-idle
+[active_series_idle: <duration> | default = 15m]
 ```
 
 ### `querier_config`

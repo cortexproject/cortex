@@ -846,9 +846,8 @@ ruler_client:
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
 
-# Duration to delay the evaluation of rules to ensure they underlying metrics
-# have been pushed to cortex.
-# CLI flag: -ruler.evaluation-delay-duration
+# Deprecated. Please use -ruler.evaluation-delay-duration instead.
+# CLI flag: -ruler.evaluation-delay-duration-deprecated
 [evaluation_delay_duration: <duration> | default = 0s]
 
 # How frequently to poll for rule changes
@@ -2821,6 +2820,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
+
+# Duration to delay the evaluation of rules to ensure the underlying metrics
+# have been pushed to Cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

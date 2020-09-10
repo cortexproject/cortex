@@ -52,8 +52,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Use "-modules" command line flag to get a list of
-# available options.
+# The Cortex module to run. Use "-modules" command line flag to get a list of
+# available modules, and to see which modules are included in "All".
 # CLI flag: -target
 [target: <string> | default = "all"]
 

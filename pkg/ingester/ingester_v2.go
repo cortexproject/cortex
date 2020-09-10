@@ -364,22 +364,26 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
 		case <-activeSeriesPurgeTicker.C:
-			for _, userID := range i.getTSDBUsers() {
-				userDB := i.getTSDB(userID)
-				if userDB == nil {
-					continue
-				}
-
-				now := time.Now()
-				userDB.activeSeries.Purge(now.Add(-i.cfg.ActiveSeriesIdle))
-				i.TSDBState.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
-			}
+			i.updateActiveSeries()
 
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ingester subservice failed")
 		}
+	}
+}
+
+func (i *Ingester) updateActiveSeries() {
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		now := time.Now()
+		userDB.activeSeries.Purge(now.Add(-i.cfg.ActiveSeriesIdle))
+		i.TSDBState.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 	}
 }
 

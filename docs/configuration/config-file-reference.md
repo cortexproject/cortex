@@ -2836,11 +2836,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
-
 # Maximum number of queriers that can handle requests for a single user. If set
 # to 0 or value higher than number of available queriers, *all* queriers will
 # handle requests for the user. Each frontend will select the same set of
@@ -2849,6 +2844,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # query-frontend, not when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-user
 [max_queriers_per_user: <int> | default = 0]
+
+# Duration to delay the evaluation of rules to ensure the underlying metrics
+# have been pushed to Cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

@@ -686,7 +686,7 @@ func (t *Cortex) setupModuleManager() error {
 		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
 		Flusher:            {Store, API},
 		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
-		StoreQueryable:     {Overrides, Store},
+		StoreQueryable:     {Overrides, Store, MemberlistKV},
 		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
 		TableManager:       {API},
 		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},

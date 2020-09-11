@@ -44,6 +44,12 @@ func TestApiStatusCodes(t *testing.T) {
 		},
 
 		{
+			err:            querier.UserError("limit exceeded"),
+			expectedString: "limit exceeded",
+			expectedCode:   422,
+		},
+
+		{
 			err:            promql.ErrTooManySamples("query execution"),
 			expectedString: "too many samples",
 			expectedCode:   422,

@@ -553,6 +553,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	querierFlags := mergeFlags(flags, map[string]string{
 		"-store.index-cache-read.memcached.addresses":  "dns+memcached0:11211",
 		"-store.index-cache-write.memcached.addresses": "dns+memcached1:11211",
+		"-store.max-query-length":                      "240h",
 	})
 
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), querierFlags, "")
@@ -592,9 +593,33 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 
 	wg.Wait()
 
+	c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-0")
+	require.NoError(t, err)
+
+	// Ensure limit errors on ranged queries don't return 500s.
+	start := now.Add(-264 * time.Hour)
+	end := now
+	step := 264 * time.Hour
+
+	r, body, err := c.QueryRangeRaw("series_1", start, end, step)
+	require.NoError(t, err)
+	require.Equal(t, 422, r.StatusCode)
+	expected := `
+	{
+		"error":"expanding series: the query time range exceeds the limit (query length: 264h5m0s, limit: 240h0m0s)",
+		"errorType":"execution",
+		"status":"error"
+	}
+	`
+	require.JSONEq(t, expected, string(body))
+
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
 	assertServiceMetricsPrefixes(t, Ingester, ingester)
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, TableManager, tableManager)
+}
+
+func formatTime(t time.Time) string {
+	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }

@@ -2873,6 +2873,10 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.expiration
 [expiration: <duration> | default = 0s]
 
+# Database index.
+# CLI flag: -<prefix>.redis.db
+[db: <int> | default = 0]
+
 # Maximum number of connections in the pool.
 # CLI flag: -<prefix>.redis.pool-size
 [pool_size: <int> | default = 0]

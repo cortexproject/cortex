@@ -20,6 +20,7 @@ type RedisConfig struct {
 	MasterName  string         `yaml:"master_name"`
 	Timeout     time.Duration  `yaml:"timeout"`
 	Expiration  time.Duration  `yaml:"expiration"`
+	DB          int            `yaml:"db"`
 	PoolSize    int            `yaml:"pool_size"`
 	Password    flagext.Secret `yaml:"password"`
 	EnableTLS   bool           `yaml:"enable_tls"`
@@ -33,6 +34,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.StringVar(&cfg.MasterName, prefix+"redis.master-name", "", description+"Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
+	f.IntVar(&cfg.DB, prefix+"redis.db", 0, description+"Database index.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
 	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
@@ -52,6 +54,7 @@ func NewRedisClient(cfg *RedisConfig) *RedisClient {
 		Addrs:       strings.Split(cfg.Endpoint, ","),
 		MasterName:  cfg.MasterName,
 		Password:    cfg.Password.Value,
+		DB:          cfg.DB,
 		PoolSize:    cfg.PoolSize,
 		IdleTimeout: cfg.IdleTimeout,
 		MaxConnAge:  cfg.MaxConnAge,

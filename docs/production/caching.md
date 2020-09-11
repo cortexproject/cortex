@@ -107,6 +107,8 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
     Enables connecting to redis with TLS.
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
+-<prefix>.redis.db int
+    Database index. (default 0)
 -<prefix>.redis.pool-size int
     Maximum number of socket connections in pool.
 -<prefix>.redis.password value

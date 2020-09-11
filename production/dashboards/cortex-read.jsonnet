@@ -92,10 +92,10 @@ g.dashboard(
         title='QPS',
         type='stack',
         targets=[{
-            query: 'sum(rate(cortex_cache_request_duration_seconds_count{method="memcache.fetch", status_code=~"2.*"}[1m]))',
+            query: 'sum(rate(cortex_cache_request_duration_seconds_count{method="Memcache.Get", status_code=~"2.*"}[1m]))',
             legendFormat: '2xx',
         }, {
-            query: 'sum(rate(cortex_cache_request_duration_seconds_count{method="memcache.fetch", status_code=~"5.*"}[1m]))',
+            query: 'sum(rate(cortex_cache_request_duration_seconds_count{method="Memcache.Get", status_code=~"5.*"}[1m]))',
             legendFormat: '5xx',
         }],
     ) + {
@@ -109,13 +109,13 @@ g.dashboard(
     g.graphPanel(
         title='Latency',
         targets=[{
-            query: 'histogram_quantile(0.5, sum(rate(cortex_cache_request_duration_seconds_bucket{method="memcache.fetch"}[1m])) by (le))',
+            query: 'histogram_quantile(0.5, sum(rate(cortex_cache_request_duration_seconds_bucket{method="Memcache.Get"}[1m])) by (le))',
             legendFormat: 'p50',
         }, {
-            query: 'histogram_quantile(0.95, sum(rate(cortex_cache_request_duration_seconds_bucket{method="memcache.fetch"}[1m])) by (le))',
+            query: 'histogram_quantile(0.95, sum(rate(cortex_cache_request_duration_seconds_bucket{method="Memcache.Get"}[1m])) by (le))',
             legendFormat: 'p95',
         }, {
-            query: 'histogram_quantile(0.99, sum(rate(cortex_cache_request_duration_seconds_bucket{method="memcache.fetch"}[1m])) by (le))',
+            query: 'histogram_quantile(0.99, sum(rate(cortex_cache_request_duration_seconds_bucket{method="Memcache.Get"}[1m])) by (le))',
             legendFormat: 'p99',
         }],
     )

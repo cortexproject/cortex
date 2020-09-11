@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -19,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -214,7 +212,7 @@ func TestBasicGetAndCas(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv := NewKV(cfg)
+	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
@@ -270,7 +268,7 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 		Codecs:       []codec.Codec{c},
 	}
 
-	mkv := NewKV(cfg)
+	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
 
@@ -414,7 +412,7 @@ func TestMultipleCAS(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv := NewKV(cfg)
+	mkv := NewKV(cfg, log.NewNopLogger())
 	mkv.maxCasRetries = 20
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
@@ -521,7 +519,7 @@ func TestMultipleClients(t *testing.T) {
 			Codecs: []codec.Codec{c},
 		}
 
-		mkv := NewKV(cfg)
+		mkv := NewKV(cfg, log.NewNopLogger())
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 
 		kv, err := NewClient(mkv, c)
@@ -674,7 +672,7 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 			time.Sleep(1 * time.Second)
 		}
 
-		mkv := NewKV(cfg) // Not started yet.
+		mkv := NewKV(cfg, log.NewNopLogger()) // Not started yet.
 		watcher.WatchService(mkv)
 
 		kv, err := NewClient(mkv, c)
@@ -748,7 +746,7 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 		Codecs: []codec.Codec{c},
 	}
 
-	mkv := NewKV(cfg)
+	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
 
 	ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -910,7 +908,7 @@ func TestMultipleCodecs(t *testing.T) {
 		},
 	}
 
-	mkv1 := NewKV(cfg)
+	mkv1 := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 
@@ -953,7 +951,7 @@ func TestMultipleCodecs(t *testing.T) {
 	require.NoError(t, err)
 
 	// We will read values from second KV, which will join the first one
-	mkv2 := NewKV(cfg)
+	mkv2 := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
 
@@ -986,8 +984,6 @@ func TestGenerateRandomSuffix(t *testing.T) {
 }
 
 func TestRejoin(t *testing.T) {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
-
 	ports, err := getFreePorts(2)
 	require.NoError(t, err)
 
@@ -1007,11 +1003,11 @@ func TestRejoin(t *testing.T) {
 	cfg2.JoinMembers = []string{fmt.Sprintf("localhost:%d", ports[0])}
 	cfg2.RejoinInterval = 1 * time.Second
 
-	mkv1 := NewKV(cfg1)
+	mkv1 := NewKV(cfg1, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 
-	mkv2 := NewKV(cfg2)
+	mkv2 := NewKV(cfg2, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
 
@@ -1028,7 +1024,7 @@ func TestRejoin(t *testing.T) {
 	test.Poll(t, 5*time.Second, 1, membersFunc)
 
 	// Let's start first KV again. It is not configured to join the cluster, but KV2 is rejoining.
-	mkv1 = NewKV(cfg1)
+	mkv1 = NewKV(cfg1, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
 	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 

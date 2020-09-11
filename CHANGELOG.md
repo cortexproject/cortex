@@ -25,6 +25,7 @@
 * [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
   - The following changes have been made in Redis configuration:
    - `-redis.master_name` added
+   - `-redis.db` added
    - `-redis.max-active-conns` changed to `-redis.pool-size`
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed

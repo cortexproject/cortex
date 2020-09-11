@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQueues(t *testing.T) {
@@ -70,9 +71,9 @@ func TestQueuesWithQueriers(t *testing.T) {
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
-	queriers := 10
-	users := 100
-	maxQueriersPerUser := 3
+	queriers := 30
+	users := 1000
+	maxQueriersPerUser := 5
 
 	// Add some queriers.
 	for ix := 0; ix < queriers; ix++ {
@@ -90,7 +91,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	// Add user queues.
 	for u := 0; u < users; u++ {
 		uid := fmt.Sprintf("user-%d", u)
-		getOrAdd(t, uq, uid, 3)
+		getOrAdd(t, uq, uid, maxQueriersPerUser)
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
 		qs := uq.userQueues[uid].queriers
@@ -127,9 +128,10 @@ func TestQueuesWithQueriers(t *testing.T) {
 		stdDev += (d * d)
 	}
 	stdDev = math.Sqrt(stdDev / float64(len(queriersMap)))
+	t.Log("mean:", mean, "stddev:", stdDev)
 
 	assert.InDelta(t, users*maxQueriersPerUser/queriers, mean, 1)
-	assert.InDelta(t, stdDev, 0, 5)
+	assert.InDelta(t, stdDev, 0, mean*0.2)
 }
 
 func TestQueuesConsistency(t *testing.T) {
@@ -229,4 +231,19 @@ func isConsistent(uq *queues) error {
 	}
 
 	return nil
+}
+
+func TestShuffleQueriers(t *testing.T) {
+	allQueriers := []string{"a", "b", "c", "d", "e"}
+
+	require.Nil(t, shuffleQueriersForUser(12345, 10, allQueriers, nil))
+	require.Nil(t, shuffleQueriersForUser(12345, len(allQueriers), allQueriers, nil))
+
+	r1 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
+	require.Equal(t, 3, len(r1))
+
+	// Same input produces same output.
+	r2 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
+	require.Equal(t, 3, len(r2))
+	require.Equal(t, r1, r2)
 }

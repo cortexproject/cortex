@@ -112,7 +112,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
-		uq.queriers = q.selectQueriersForUser(uq.seed, q.sortedQueriers, maxQueriers)
+		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
 	return uq.ch
@@ -186,23 +186,34 @@ func (q *queues) removeQuerierConnection(querier string) {
 }
 
 func (q *queues) recomputeUserQueriers() {
+	scratchpad := make([]string, 0, len(q.sortedQueriers))
+
 	for _, uq := range q.userQueues {
-		uq.queriers = q.selectQueriersForUser(uq.seed, q.sortedQueriers, uq.maxQueriers)
+		uq.queriers = shuffleQueriersForUser(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
 	}
 }
 
-func (q *queues) selectQueriersForUser(userSeed int64, allSortedQueriers []string, maxQueriers int) map[string]struct{} {
-	if maxQueriers == 0 || len(allSortedQueriers) <= maxQueriers {
-		// All queriers can be used.
+// Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
+// shuffleQueriersForUser returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
+// In that case *all* queriers should be used.
+func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
 		return nil
 	}
 
-	result := make(map[string]struct{}, maxQueriers)
+	result := make(map[string]struct{}, queriersToSelect)
 	rnd := rand.New(rand.NewSource(userSeed))
 
-	for len(result) < maxQueriers {
-		ix := rnd.Intn(len(allSortedQueriers))
-		result[allSortedQueriers[ix]] = struct{}{}
+	scratchpad = scratchpad[:0]
+	scratchpad = append(scratchpad, allSortedQueriers...)
+
+	last := len(scratchpad) - 1
+	for i := 0; i < queriersToSelect; i++ {
+		r := rnd.Intn(last + 1)
+		result[scratchpad[r]] = struct{}{}
+		// move selected item to the end, it won't be selected anymore.
+		scratchpad[r], scratchpad[last] = scratchpad[last], scratchpad[r]
+		last--
 	}
 
 	return result

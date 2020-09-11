@@ -33,7 +33,7 @@ Scanner is started by running `blocksconvert -target=scanner`. Scanner requires 
 - `-experimental.blocks-storage.backend` and corresponding `-experimental.blocks-storage.*` options for storing plan files
 - `-scanner.local-dir` – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.
 - `-scanner.allowed-users` – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.
-- `-scanner.ignore-user` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped. 
+- `-scanner.ignore-user` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
 - `-scanner.tables-limit` – How many tables should be scanner? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.
 
 Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
@@ -48,7 +48,7 @@ Scanner does the scanning of multiple table subranges concurrently.
 
 Scanner exposes metrics with `cortex_blocksconvert_scanner_` prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn't close currently plan files until entire table has been scanned), scanned BigTable rows and parsed index entries.
 
-**Scanner only supports schema version v9, v10 and v11. Earlier schema versions are currently not supported.** 
+**Scanner only supports schema version v9, v10 and v11. Earlier schema versions are currently not supported.**
 
 ### Scheduler
 

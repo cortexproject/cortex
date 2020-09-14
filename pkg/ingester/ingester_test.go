@@ -843,19 +843,9 @@ func BenchmarkIngesterPushErrors(b *testing.B) {
 	benchmarkIngesterPush(b, limits, true)
 }
 
-func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
-	cfg := defaultIngesterTestConfig()
-	clientCfg := defaultClientTestConfig()
-
-	const (
-		series  = 100
-		samples = 100
-	)
-
-	// Construct a set of realistic-looking samples, all with slightly different label sets
-	var allLabels []labels.Labels
-	var allSamples []client.Sample
-	for j := 0; j < series; j++ {
+// Construct a set of realistic-looking samples, all with slightly different label sets
+func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []client.Sample) {
+	for j := 0; j < nSeries; j++ {
 		labels := chunk.BenchmarkLabels.Copy()
 		for i := range labels {
 			if labels[i].Name == "cpu" {
@@ -865,6 +855,19 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		allLabels = append(allLabels, labels)
 		allSamples = append(allSamples, client.Sample{TimestampMs: 0, Value: float64(j)})
 	}
+	return
+}
+
+func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
+	cfg := defaultIngesterTestConfig()
+	clientCfg := defaultClientTestConfig()
+
+	const (
+		series  = 100
+		samples = 100
+	)
+
+	allLabels, allSamples := benchmarkData(series)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	encodings := []struct {

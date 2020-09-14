@@ -710,6 +710,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	numSeries, numChunks := 0, 0
+	reuseWireChunks := [queryStreamBatchSize][]client.Chunk{}
 	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	// We'd really like to have series in label order, not FP order, so we
 	// can iteratively merge them with entries coming from the chunk store.  But
@@ -728,10 +729,12 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numSeries++
-		wireChunks, err := toWireChunks(chunks, nil)
+		reusePos := len(batch)
+		wireChunks, err := toWireChunks(chunks, reuseWireChunks[reusePos])
 		if err != nil {
 			return err
 		}
+		reuseWireChunks[reusePos] = wireChunks
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{

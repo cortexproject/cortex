@@ -298,30 +298,20 @@ Maximum number of entries in the cache.
 &lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#fifo-cache-config">&lt;code>fifo_cache_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
 &lt;h3 id="redis-experimental">Redis (Experimental)&lt;/h3>
 &lt;p>You can also use &lt;a href="https://redis.io/">Redis&lt;/a> for out-of-process caching; this is a relatively new addition to Cortex and is under active development.&lt;/p>
-&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.endpoint string
-Redis endpoint to use when caching chunks. If empty, no redis will be used.
-For Redis Server - Redis service endpoint
-For Redis Cluster - comma-separated list of Redis node's endpoints
-For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
--&amp;lt;prefix&amp;gt;.redis.master-name
-Redis Sentinel master group name.
-An empty string for Redis Server or Redis Cluster
--&amp;lt;prefix&amp;gt;.redis.enable-tls
+&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.enable-tls
 Enables connecting to redis with TLS.
+-&amp;lt;prefix&amp;gt;.redis.endpoint string
+Redis service endpoint to use when caching chunks. If empty, no redis will be used.
 -&amp;lt;prefix&amp;gt;.redis.expiration duration
 How long keys stay in the redis.
--&amp;lt;prefix&amp;gt;.redis.db int
-Database index. (default 0)
--&amp;lt;prefix&amp;gt;.redis.pool-size int
-Maximum number of socket connections in pool.
+-&amp;lt;prefix&amp;gt;.redis.max-active-conns int
+Maximum number of active connections in pool.
+-&amp;lt;prefix&amp;gt;.redis.max-idle-conns int
+Maximum number of idle connections in pool. (default 80)
 -&amp;lt;prefix&amp;gt;.redis.password value
 Password to use when connecting to redis.
 -&amp;lt;prefix&amp;gt;.redis.timeout duration
 Maximum time to wait before giving up on redis requests. (default 100ms)
--&amp;lt;prefix&amp;gt;.redis.idle-timeout duration
-Amount of time after which client closes idle connections.
--&amp;lt;prefix&amp;gt;.redis.max-connection-age duration
-Amount of time after which client closes connections.
 &lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#redis-config">&lt;code>redis_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
 &lt;h2 id="cortex-caching-opportunities">Cortex Caching Opportunities&lt;/h2>
 &lt;h3 id="chunks-cache">Chunks Cache&lt;/h3>

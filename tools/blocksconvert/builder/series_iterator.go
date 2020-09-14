@@ -1,11 +1,11 @@
 package builder
 
 import (
-	"bufio"
 	"encoding/json"
 	"io"
 	"os"
 
+	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
@@ -116,8 +116,8 @@ type seriesFile struct {
 }
 
 func newSeriesFile(f *os.File) *seriesFile {
-	buf := bufio.NewReader(f)
-	dec := json.NewDecoder(buf)
+	sn := snappy.NewReader(f)
+	dec := json.NewDecoder(sn)
 
 	return &seriesFile{
 		f:   f,

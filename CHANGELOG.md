@@ -19,6 +19,14 @@
 * [CHANGE] Removed obsolete `results_cache.max_freshness` from YAML config (deprecated since Cortex 1.2). #3145
 * [CHANGE] Removed obsolete `-promql.lookback-delta` option (deprecated since Cortex 1.2, replaced with `-querier.lookback-delta`). #3144
 * [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
+* [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
+  - The following changes have been made in Redis configuration:
+   - `-redis.master_name` added
+   - `-redis.db` added
+   - `-redis.max-active-conns` changed to `-redis.pool-size`
+   - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
+   - `-redis.max-idle-conns` removed
+   - `-redis.wait-on-pool-exhaustion` removed
 * [FEATURE] Experimental blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`

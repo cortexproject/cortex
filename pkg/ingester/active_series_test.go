@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -124,31 +125,35 @@ func BenchmarkActiveSeriesTest_single_label(b *testing.B) {
 func benchmarkActiveSeriesConcurrency(b *testing.B, series []labels.Labels, goroutines int) {
 	c := NewActiveSeries()
 
-	fn := func(wg *sync.WaitGroup, start chan struct{}, step int) {
-		defer wg.Done()
-		<-start
-
-		for i := 0; i < b.N; i++ {
-			now := time.Now()
-
-			for s := 0; s < len(series); s += step {
-				c.UpdateSeries(series[s], now, copyFn)
-			}
-		}
+	r := rand.New(rand.NewSource(123456789))
+	ch := make(chan int, b.N)
+	for i := 0; i < b.N; i++ {
+		ch <- r.Intn(len(series))
 	}
+	close(ch)
 
-	start := make(chan struct{})
 	wg := &sync.WaitGroup{}
+	start := make(chan struct{})
+
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
-		go fn(wg, start, 1+(i%10))
+		go func() {
+			defer wg.Done()
+			<-start
+
+			now := time.Now()
+
+			for ix := range ch {
+				now = now.Add(time.Duration(ix) * time.Millisecond)
+
+				c.UpdateSeries(series[ix], now, copyFn)
+			}
+		}()
 	}
 
 	b.ResetTimer()
 	close(start)
 	wg.Wait()
-
-	require.Equal(b, len(series), c.Active())
 }
 
 func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {

@@ -150,7 +150,7 @@ func (sl *seriesList) flushSeriesNoLock(force bool) error {
 
 	// No error so far, let's write symbols too.
 	sortedSymbols := make([]string, 0, len(symbols))
-	for k, _ := range symbols {
+	for k := range symbols {
 		sortedSymbols = append(sortedSymbols, k)
 	}
 

@@ -176,7 +176,7 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 }
 
 func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
-	// next, find the schema with the lowest start _after_ tm
+	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {
 		return c.stores[j].start > tm
 	})

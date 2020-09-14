@@ -3,7 +3,6 @@ package ingester
 import (
 	"fmt"
 	"math"
-	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -104,33 +103,22 @@ func TestActiveSeries_PurgeOpt(t *testing.T) {
 
 var activeSeriesTestGoroutines = []int{50, 100, 500}
 
-func BenchmarkActiveSeriesTest_single_label(b *testing.B) {
-	const seriesCount = 1e5
-
-	series := make([]labels.Labels, seriesCount)
-
-	for s := 0; s < len(series); s++ {
-		series[s] = labels.Labels{
-			{Name: "a", Value: strconv.Itoa(s)},
-		}
-	}
-
+func BenchmarkActiveSeriesTest_single_series(b *testing.B) {
 	for _, num := range activeSeriesTestGoroutines {
 		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
-			benchmarkActiveSeriesConcurrency(b, series, num)
+			benchmarkActiveSeriesConcurrencySingleSeries(b, num)
 		})
 	}
 }
 
-func benchmarkActiveSeriesConcurrency(b *testing.B, series []labels.Labels, goroutines int) {
-	c := NewActiveSeries()
-
-	r := rand.New(rand.NewSource(123456789))
-	ch := make(chan int, b.N)
-	for i := 0; i < b.N; i++ {
-		ch <- r.Intn(len(series))
+func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) {
+	series := labels.Labels{
+		{Name: "a", Value: "a"},
 	}
-	close(ch)
+
+	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
+
+	c := NewActiveSeries()
 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
@@ -143,10 +131,10 @@ func benchmarkActiveSeriesConcurrency(b *testing.B, series []labels.Labels, goro
 
 			now := time.Now()
 
-			for ix := range ch {
-				now = now.Add(time.Duration(ix) * time.Millisecond)
+			for i := 0; i < max; i++ {
+				now = now.Add(time.Duration(i) * time.Millisecond)
 
-				c.UpdateSeries(series[ix], now, copyFn)
+				c.UpdateSeries(series, now, copyFn)
 			}
 		}()
 	}

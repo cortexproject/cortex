@@ -29,7 +29,6 @@ query_range:
   cache_results: true
 
   results_cache:
-    max_freshness: 1m
     cache:
 
       # We're going to use the in-process "FIFO" cache, but you can enable

@@ -85,7 +85,7 @@ func TestCortex(t *testing.T) {
 
 	// check random modules that we expect to be configured when using Target=All
 	require.NotNil(t, serviceMap[Server])
-	require.NotNil(t, serviceMap[Ingester])
+	require.NotNil(t, serviceMap[IngesterService])
 	require.NotNil(t, serviceMap[Ring])
 	require.NotNil(t, serviceMap[DistributorService])
 }

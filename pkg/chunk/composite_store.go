@@ -184,7 +184,7 @@ func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
 	// reduce it by 1 because we want a schema with start <= tm
 	j--
 
-	if j >= 0 && len(c.stores) > j {
+	if 0 <= j && j < len(c.stores) {
 		return c.stores[j].GetChunkFetcher(tm)
 	}
 

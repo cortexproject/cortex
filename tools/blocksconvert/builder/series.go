@@ -92,7 +92,7 @@ func newSeriesList(limit int, dir string) *seriesList {
 	}
 }
 
-func (sl *seriesList) addSeries(m labels.Labels, cs []chunks.Meta, samples uint64, minTime, maxTime int64) error {
+func (sl *seriesList) addSeries(m labels.Labels, cs []chunks.Meta, samples uint64, minTime, maxTime int64) (int, error) {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
@@ -118,7 +118,8 @@ func (sl *seriesList) addSeries(m labels.Labels, cs []chunks.Meta, samples uint6
 		Samples: samples,
 	})
 
-	return sl.flushSeriesNoLock(false)
+	err := sl.flushSeriesNoLock(false)
+	return len(sl.sers), err
 }
 
 func (sl *seriesList) flushSeries() error {

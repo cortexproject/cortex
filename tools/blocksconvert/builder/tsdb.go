@@ -46,9 +46,10 @@ type tsdbBuilder struct {
 
 	writtenSamples  prometheus.Counter
 	processedSeries prometheus.Counter
+	seriesInMemory  prometheus.Gauge
 }
 
-func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter) (*tsdbBuilder, error) {
+func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
 	id, err := ulid.New(ulid.Now(), rand.Reader)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ULID")
@@ -86,6 +87,7 @@ func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, l
 
 		processedSeries: processedSeries,
 		writtenSamples:  writtenSamples,
+		seriesInMemory:  seriesInMemory,
 	}, err
 }
 
@@ -171,8 +173,11 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 	minTime := chs[0].MinTime
 	maxTime := chs[len(chs)-1].MaxTime
 
+	inmem, err := d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
+
+	d.seriesInMemory.Set(float64(inmem))
 	d.writtenSamples.Add(float64(seriesSamples))
-	return d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
+	return err
 }
 
 func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid.ULID, error) {

@@ -715,6 +715,6 @@ func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, u
 	return nil
 }
 
-func (c *baseStore) GetChunkFetcher(chunk Chunk) *Fetcher {
+func (c *baseStore) GetChunkFetcher(_ model.Time) *Fetcher {
 	return c.fetcher
 }

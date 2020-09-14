@@ -45,7 +45,7 @@ func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time
 	return nil
 }
 
-func (m mockStore) GetChunkFetcher(chunk Chunk) *Fetcher {
+func (m mockStore) GetChunkFetcher(tm model.Time) *Fetcher {
 	return nil
 }
 
@@ -125,22 +125,6 @@ func TestCompositeStore(t *testing.T) {
 			[]result{
 				{model.TimeFromUnix(34), model.TimeFromUnix(100) - 1, mockStore(1)},
 				{model.TimeFromUnix(100), model.TimeFromUnix(165), mockStore(2)},
-			},
-		},
-
-		// Test we get only one result when two schema start at same time
-		{
-			compositeStore{
-				stores: []compositeStoreEntry{
-					{model.TimeFromUnix(0), mockStore(1)},
-					{model.TimeFromUnix(10), mockStore(2)},
-					{model.TimeFromUnix(10), mockStore(3)},
-				},
-			},
-			0, 165,
-			[]result{
-				{model.TimeFromUnix(0), model.TimeFromUnix(10) - 1, mockStore(1)},
-				{model.TimeFromUnix(10), model.TimeFromUnix(165), mockStore(3)},
 			},
 		},
 
@@ -257,7 +241,7 @@ type mockStoreGetChunkFetcher struct {
 	chunkFetcher *Fetcher
 }
 
-func (m mockStoreGetChunkFetcher) GetChunkFetcher(chunk Chunk) *Fetcher {
+func (m mockStoreGetChunkFetcher) GetChunkFetcher(tm model.Time) *Fetcher {
 	return m.chunkFetcher
 }
 
@@ -271,36 +255,36 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 
 	for _, tc := range []struct {
 		name            string
-		chunkThrough    model.Time
+		tm              model.Time
 		expectedFetcher *Fetcher
 	}{
 		{
-			name:         "no matching store",
-			chunkThrough: model.TimeFromUnix(0),
+			name: "no matching store",
+			tm:   model.TimeFromUnix(0),
 		},
 		{
 			name:            "first store",
-			chunkThrough:    model.TimeFromUnix(10),
+			tm:              model.TimeFromUnix(10),
 			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "still first store",
-			chunkThrough:    model.TimeFromUnix(11),
+			tm:              model.TimeFromUnix(11),
 			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "second store",
-			chunkThrough:    model.TimeFromUnix(20),
+			tm:              model.TimeFromUnix(20),
 			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "still second store",
-			chunkThrough:    model.TimeFromUnix(21),
+			tm:              model.TimeFromUnix(21),
 			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(Chunk{Through: tc.chunkThrough}))
+			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(tc.tm))
 		})
 	}
 

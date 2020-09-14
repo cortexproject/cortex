@@ -51,6 +51,7 @@
 * [BUGFIX] Cassandra: fixed consistency setting in the CQL session when creating the keyspace. #3105
 * [BUGFIX] Ruler: Config API would return both the `record` and `alert` in `YAML` response keys even when one of them must be empty. #3120
 * [BUGFIX] Index page now uses configured HTTP path prefix when creating links. #3126
+* [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 
 ## 1.3.0 / 2020-08-21
 

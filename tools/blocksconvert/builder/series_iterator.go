@@ -60,17 +60,15 @@ func (sit *seriesIterator) Next() (series, bool) {
 	hasNext, err := sit.files[0].hasNext()
 	sit.errs.Add(err)
 
-	if hasNext {
-		heapifySeries(sit.files, 0)
-	} else {
+	if !hasNext {
 		sit.errs.Add(sit.files[0].close())
-		sit.files = sit.files[1:]
 
-		// heapify everything again, to make sure heap is correct.
-		for ix := len(sit.files) - 1; ix >= 0; ix-- {
-			heapifySeries(sit.files, ix)
-		}
+		// Move last file to the front, and heapify from there.
+		sit.files[0] = sit.files[len(sit.files)-1]
+		sit.files = sit.files[:len(sit.files)-1]
 	}
+
+	heapifySeries(sit.files, 0)
 
 	return result, true
 }

@@ -65,17 +65,15 @@ again:
 	hasNext, err := sit.files[0].hasNext()
 	sit.errs.Add(err)
 
-	if hasNext {
-		heapifySymbols(sit.files, 0)
-	} else {
+	if !hasNext {
 		sit.errs.Add(sit.files[0].close())
-		sit.files = sit.files[1:]
 
-		// heapify everything again, to make sure heap is correct.
-		for ix := len(sit.files) - 1; ix >= 0; ix-- {
-			heapifySymbols(sit.files, ix)
-		}
+		// Move last file to the front, and heapify from there.
+		sit.files[0] = sit.files[len(sit.files)-1]
+		sit.files = sit.files[:len(sit.files)-1]
 	}
+
+	heapifySymbols(sit.files, 0)
 
 	if !sit.returned || sit.last != result {
 		sit.returned = true

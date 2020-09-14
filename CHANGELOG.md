@@ -62,6 +62,7 @@
 * [BUGFIX] Index page no longer shows links that are not valid for running Cortex instance. #3133
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
+* [BUGFIX] No-longer-needed ingester operations from queries are now canceled. #3178
 
 ## 1.3.0 / 2020-08-21
 

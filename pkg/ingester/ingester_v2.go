@@ -49,7 +49,7 @@ type userTSDB struct {
 	*tsdb.DB
 	userID         string
 	refCache       *cortex_tsdb.RefCache
-	activeSeries   *cortex_tsdb.ActiveSeries
+	activeSeries   *ActiveSeries
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
@@ -948,7 +948,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userDB := &userTSDB{
 		userID:              userID,
 		refCache:            cortex_tsdb.NewRefCache(),
-		activeSeries:        cortex_tsdb.NewActiveSeries(),
+		activeSeries:        NewActiveSeries(),
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),

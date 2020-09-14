@@ -1,4 +1,4 @@
-package tsdb
+package ingester
 
 import (
 	"fmt"

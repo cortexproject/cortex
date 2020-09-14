@@ -1,4 +1,4 @@
-package tsdb
+package ingester
 
 import (
 	"math"
@@ -57,14 +57,14 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, now time.Time, labelsC
 // Purge removes expired entries from the cache. This function should be called
 // periodically to avoid memory leaks.
 func (c *ActiveSeries) Purge(keepUntil time.Time) {
-	for s := 0; s < numRefCacheStripes; s++ {
+	for s := 0; s < numActiveSeriesStripes; s++ {
 		c.stripes[s].purge(keepUntil)
 	}
 }
 
 func (c *ActiveSeries) Active() int {
 	total := 0
-	for s := 0; s < numRefCacheStripes; s++ {
+	for s := 0; s < numActiveSeriesStripes; s++ {
 		total += c.stripes[s].getActive()
 	}
 	return total

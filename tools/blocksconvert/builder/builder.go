@@ -431,6 +431,12 @@ func getBlockSize(dir string) (int64, error) {
 		if !info.IsDir() {
 			size += info.Size()
 		}
+
+		// Ignore directory with temporary series files.
+		if info.IsDir() && info.Name() == "series" {
+			return filepath.SkipDir
+		}
+
 		return nil
 	})
 	return size, err

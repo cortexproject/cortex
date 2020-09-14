@@ -32,6 +32,9 @@ import (
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
+// How many series are kept in the memory before sorting and writing them to the file.
+const defaultSeriesBatchSize = 500000
+
 type Config struct {
 	BuilderName     string
 	OutputDirectory string
@@ -338,7 +341,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 		return errors.Wrap(err, "failed to create chunk fetcher")
 	}
 
-	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, planLog, b.processedSeries, b.writtenSamples)
+	tsdbBuilder, err := newTsdbBuilder(b.cfg.OutputDirectory, dayStart, dayEnd, defaultSeriesBatchSize, planLog, b.processedSeries, b.writtenSamples)
 	if err != nil {
 		return errors.Wrap(err, "failed to create TSDB builder")
 	}

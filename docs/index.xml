@@ -2913,10 +2913,14 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;li>&lt;code>store.index-cache-write&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;p> &lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Redis service endpoint to use when caching chunks. If empty, no redis will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># used.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Redis Server endpoint to use for caching. A comma-separated list of endpoints&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># for Redis Cluster or Redis Sentinel. If empty, no redis will be used.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.endpoint&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[endpoint&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.master-name&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[master_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum time to wait before giving up on redis requests.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -2926,13 +2930,13 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.expiration&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[expiration&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum number of idle connections in pool.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.max-idle-conns&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_idle_conns&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">80&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Database index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.db&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[db&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum number of active connections in pool.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.max-active-conns&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_active_conns&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum number of connections in the pool.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.pool-size&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[pool_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Password to use when connecting to redis.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.password&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -2947,16 +2951,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.idle-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enables waiting if there are no idle connections. If the value is false and&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the pool is at the max_active_conns limit, the pool will return a connection&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># with ErrPoolExhausted error and not wait for idle connections.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.wait-on-pool-exhaustion&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[wait_on_pool_exhaustion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Close connections older than this duration. If the value is zero, then the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># pool does not close connections based on age.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.max-conn-lifetime&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_conn_lifetime&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.redis.max-connection-age&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_connection_age&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="memcached_config">&lt;code>memcached_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>memcached_config&lt;/code> block configures how data is stored in Memcached (ie. expiration). The supported CLI flags &lt;code>&amp;lt;prefix&amp;gt;&lt;/code> used to reference this config block are:&lt;/p>
 &lt;ul>
@@ -7238,20 +7236,30 @@ Maximum number of entries in the cache.
 &lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#fifo-cache-config">&lt;code>fifo_cache_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
 &lt;h3 id="redis-experimental">Redis (Experimental)&lt;/h3>
 &lt;p>You can also use &lt;a href="https://redis.io/">Redis&lt;/a> for out-of-process caching; this is a relatively new addition to Cortex and is under active development.&lt;/p>
-&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.enable-tls
+&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.endpoint string
+Redis endpoint to use when caching chunks. If empty, no redis will be used.
+For Redis Server - Redis service endpoint
+For Redis Cluster - comma-separated list of Redis node's endpoints
+For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
+-&amp;lt;prefix&amp;gt;.redis.master-name
+Redis Sentinel master group name.
+An empty string for Redis Server or Redis Cluster
+-&amp;lt;prefix&amp;gt;.redis.enable-tls
 Enables connecting to redis with TLS.
--&amp;lt;prefix&amp;gt;.redis.endpoint string
-Redis service endpoint to use when caching chunks. If empty, no redis will be used.
 -&amp;lt;prefix&amp;gt;.redis.expiration duration
 How long keys stay in the redis.
--&amp;lt;prefix&amp;gt;.redis.max-active-conns int
-Maximum number of active connections in pool.
--&amp;lt;prefix&amp;gt;.redis.max-idle-conns int
-Maximum number of idle connections in pool. (default 80)
+-&amp;lt;prefix&amp;gt;.redis.db int
+Database index. (default 0)
+-&amp;lt;prefix&amp;gt;.redis.pool-size int
+Maximum number of socket connections in pool.
 -&amp;lt;prefix&amp;gt;.redis.password value
 Password to use when connecting to redis.
 -&amp;lt;prefix&amp;gt;.redis.timeout duration
 Maximum time to wait before giving up on redis requests. (default 100ms)
+-&amp;lt;prefix&amp;gt;.redis.idle-timeout duration
+Amount of time after which client closes idle connections.
+-&amp;lt;prefix&amp;gt;.redis.max-connection-age duration
+Amount of time after which client closes connections.
 &lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#redis-config">&lt;code>redis_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
 &lt;h2 id="cortex-caching-opportunities">Cortex Caching Opportunities&lt;/h2>
 &lt;h3 id="chunks-cache">Chunks Cache&lt;/h3>
@@ -8053,6 +8061,17 @@ __replica__: replica2
 &lt;li>[CHANGE] Removed obsolete &lt;code>results_cache.max_freshness&lt;/code> from YAML config (deprecated since Cortex 1.2). &lt;a href="https://github.com/cortexproject/cortex/pull/3145">#3145&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Removed obsolete &lt;code>-promql.lookback-delta&lt;/code> option (deprecated since Cortex 1.2, replaced with &lt;code>-querier.lookback-delta&lt;/code>). &lt;a href="https://github.com/cortexproject/cortex/pull/3144">#3144&lt;/a>&lt;/li>
 &lt;li>[FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the &lt;code>-server.log-source-ips-enabled&lt;/code>. For non standard headers the settings &lt;code>-server.log-source-ips-header&lt;/code> and &lt;code>-server.log-source-ips-regex&lt;/code> can be used. &lt;a href="https://github.com/cortexproject/cortex/pull/2985">#2985&lt;/a>&lt;/li>
+&lt;li>[CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. &lt;a href="https://github.com/cortexproject/cortex/pull/2961">#2961&lt;/a>
+&lt;ul>
+&lt;li>The following changes have been made in Redis configuration:&lt;/li>
+&lt;li>&lt;code>-redis.master_name&lt;/code> added&lt;/li>
+&lt;li>&lt;code>-redis.db&lt;/code> added&lt;/li>
+&lt;li>&lt;code>-redis.max-active-conns&lt;/code> changed to &lt;code>-redis.pool-size&lt;/code>&lt;/li>
+&lt;li>&lt;code>-redis.max-conn-lifetime&lt;/code> changed to &lt;code>-redis.max-connection-age&lt;/code>&lt;/li>
+&lt;li>&lt;code>-redis.max-idle-conns&lt;/code> removed&lt;/li>
+&lt;li>&lt;code>-redis.wait-on-pool-exhaustion&lt;/code> removed&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>[FEATURE] Experimental blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: &lt;a href="https://github.com/cortexproject/cortex/pull/3069">#3069&lt;/a>
 &lt;ul>
 &lt;li>&lt;code>cortex_bucket_stores_tenants_discovered&lt;/code>&lt;/li>
@@ -8088,6 +8107,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] Cassandra: fixed consistency setting in the CQL session when creating the keyspace. &lt;a href="https://github.com/cortexproject/cortex/pull/3105">#3105&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ruler: Config API would return both the &lt;code>record&lt;/code> and &lt;code>alert&lt;/code> in &lt;code>YAML&lt;/code> response keys even when one of them must be empty. &lt;a href="https://github.com/cortexproject/cortex/pull/3120">#3120&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Index page now uses configured HTTP path prefix when creating links. &lt;a href="https://github.com/cortexproject/cortex/pull/3126">#3126&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Index page no longer shows links that are not valid for running Cortex instance. &lt;a href="https://github.com/cortexproject/cortex/pull/3133">#3133&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Configs: prevent validation of templates to fail when using template functions. &lt;a href="https://github.com/cortexproject/cortex/pull/3157">#3157&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="130--2020-08-21">1.3.0 / 2020-08-21&lt;/h2>

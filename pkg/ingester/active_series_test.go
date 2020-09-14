@@ -116,12 +116,11 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 		{Name: "a", Value: "a"},
 	}
 
-	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
-
 	c := NewActiveSeries()
 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
+	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
 
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
@@ -131,9 +130,8 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 
 			now := time.Now()
 
-			for i := 0; i < max; i++ {
-				now = now.Add(time.Duration(i) * time.Millisecond)
-
+			for ix := 0; ix < max; ix++ {
+				now = now.Add(time.Duration(ix) * time.Millisecond)
 				c.UpdateSeries(series, now, copyFn)
 			}
 		}()

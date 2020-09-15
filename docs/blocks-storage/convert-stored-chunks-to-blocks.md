@@ -34,15 +34,15 @@ Scanner is started by running `blocksconvert -target=scanner`. Scanner requires 
 - `-schema-config-file` – this is standard Cortex schema file.
 - `-bigtable.instance`, `-bigtable.project` – options for BigTable access.
 - `-blocks-storage.backend` and corresponding `-blocks-storage.*` options for storing plan files.
-- `-scanner.local-dir` – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.
+- `-scanner.output-dir` – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.
 - `-scanner.allowed-users` – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.
-- `-scanner.ignore-user` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
-- `-scanner.tables-limit` – How many tables should be scanner? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.
+- `-scanner.ignore-users-regex` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
+- `-scanner.tables-limit` – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.
 
 Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
-For each table, it will fully read the table and generate plan for each user and day stored in the table.
-Plan files are then uploaded to the configured blocks-storage bucket, and local copies are deleted.
-After that scanner continues with the next table, until it scans them all or tables-limit is reached.
+For each table, it will fully read the table and generate a plan for each user and day stored in the table.
+Plan files are then uploaded to the configured blocks-storage bucket (at the `-blocksconvert.bucket-prefix` location prefix), and local copies are deleted.
+After that, scanner continues with the next table until it scans them all or `-scanner.tables-limit` is reached.
 
 Note that even though `blocksconvert` has options for configuring different Index store backends, **it only supports BigTable at the moment.**
 
@@ -64,7 +64,7 @@ Scheduler is started by running `blocksconvert -target=scheduler`. It only needs
 It is expected that only single Scheduler process is running. Schedulers consume very little resources.
 
 Scheduler's metrics have `cortex_blocksconvert_scheduler` prefix (number of plans in different states, oldest/newest plan).
-Scheduler also has `/plans` page on HTTP server that shows currently queued plans, and all plans and their status for all users.
+Scheduler HTTP server also exposes  `/plans` page that shows currently queued plans, and all plans and their status for all users.
 
 ### Builder
 
@@ -74,11 +74,18 @@ Builder is started by `blocksconvert -target=builder`. It needs to be configured
 
 - `-builder.scheduler-endpoint` - where to find scheduler, eg. "scheduler:9095"
 - `-schema-config-file` - Cortex schema file, used to find out which chunks store to use for given plan
-- `-gcs.bucketname` – when using GCS as chunks store
+- `-gcs.bucketname` – when using GCS as chunks store (other chunks backend storages, like S3, are supported as well)
 - `-blocks-storage.*` - blocks storage configuration
 - `-builder.output-dir` - Local directory where Builder keeps the block while it is being built. Once block is uploaded to blocks storage, it is deleted from local directory.
 
 Multiple builders may run at the same time, each builder will receive different plan to work on from scheduler.
-Builders are CPU intensive (decoding and merging chunks), and require fast IO for writing chunks.
+Builders are CPU intensive (decoding and merging chunks), and require fast disk IO for writing blocks.
 
-Builders's metrics use `cortex_blocksconvert_builder` prefix, and include total number of fetched chunks and their size, read position of the current plan and plan size, total number of written series and samples, number of chunks that couldn't be downloaded.
+Builders's metrics have `cortex_blocksconvert_builder` prefix, and include total number of fetched chunks and their size, read position of the current plan and plan size, total number of written series and samples, number of chunks that couldn't be downloaded.
+
+### Limitations
+
+The `blocksconvert` toolset currently has the following limitations:
+
+- Supports only BigTable for chunks index backend
+- Supports only chunks schema versions v9, v10 and v11

@@ -37,7 +37,7 @@ type activeSeriesStripe struct {
 // activeSeriesEntry holds a timestamp for single series.
 type activeSeriesEntry struct {
 	lbs   labels.Labels
-	nanos atomic.Int64 // Unix timestamp in nanoseconds.
+	nanos *atomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
 }
 
 func NewActiveSeries() *ActiveSeries {
@@ -79,53 +79,58 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 	nowNanos := now.UnixNano()
 
 	e := s.findEntryForSeries(fp, series)
+	entryTimeSet := false
 	if e == nil {
-		e = s.findOrCreateEntryForSeries(fp, series, labelsCopy)
+		e, entryTimeSet = s.findOrCreateEntryForSeries(fp, series, nowNanos, labelsCopy)
 	}
 
-	if prev := e.nanos.Load(); nowNanos > prev {
-		if e.nanos.CAS(prev, nowNanos) {
-			if prevOldest := s.oldestEntryTs.Load(); nowNanos < prevOldest {
-				s.oldestEntryTs.CAS(prevOldest, 0)
-			}
+	if !entryTimeSet {
+		if prev := e.Load(); nowNanos > prev {
+			entryTimeSet = e.CAS(prev, nowNanos)
+		}
+	}
+
+	if entryTimeSet {
+		if prevOldest := s.oldestEntryTs.Load(); nowNanos < prevOldest {
+			s.oldestEntryTs.CAS(prevOldest, 0)
 		}
 	}
 }
 
-func (s *activeSeriesStripe) findEntryForSeries(fp model.Fingerprint, series labels.Labels) *activeSeriesEntry {
+func (s *activeSeriesStripe) findEntryForSeries(fp model.Fingerprint, series labels.Labels) *atomic.Int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Check if already exists within the entries.
 	for ix, entry := range s.refs[fp] {
 		if labels.Equal(entry.lbs, series) {
-			return &s.refs[fp][ix]
+			return s.refs[fp][ix].nanos
 		}
 	}
 
 	return nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fp model.Fingerprint, series labels.Labels, labelsCopy func(labels.Labels) labels.Labels) *activeSeriesEntry {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fp model.Fingerprint, series labels.Labels, nowNanos int64, labelsCopy func(labels.Labels) labels.Labels) (*atomic.Int64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Check if already exists within the entries.
 	for ix, entry := range s.refs[fp] {
 		if labels.Equal(entry.lbs, series) {
-			return &s.refs[fp][ix]
+			return s.refs[fp][ix].nanos, false
 		}
 	}
 
 	s.active++
 	e := activeSeriesEntry{
-		lbs: labelsCopy(series),
+		lbs:   labelsCopy(series),
+		nanos: atomic.NewInt64(nowNanos),
 	}
 
-	ix := len(s.refs[fp])
 	s.refs[fp] = append(s.refs[fp], e)
 
-	return &s.refs[fp][ix]
+	return e.nanos, true
 }
 
 func (s *activeSeriesStripe) purge(keepUntil time.Time) {

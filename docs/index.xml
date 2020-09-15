@@ -5842,8 +5842,9 @@ The key selling point, he adds, was Cortex’s multi-tenant support, which also 
 if you use MFA), or use a short-term token solution such as
 &lt;a href="https://github.com/uswitch/kiam">kiam&lt;/a>.&lt;/p>
 &lt;h2 id="should-i-use-s3-or-dynamodb-">Should I use S3 or DynamoDB ?&lt;/h2>
-&lt;p>Note that the choices are: &amp;ldquo;chunks&amp;rdquo; of timeseries data in S3 and index
-in DynamoDB, or everything in DynamoDB. Using just S3 is not an option.&lt;/p>
+&lt;p>Note that the choices for the chunks storage backend are: &amp;ldquo;chunks&amp;rdquo; of
+timeseries data in S3 and index in DynamoDB, or everything in DynamoDB.
+Using just S3 is not an option, unless you use the &lt;a href="../../blocks-storage/">blocks storage&lt;/a> engine.&lt;/p>
 &lt;p>Broadly S3 is much more expensive to read and write, while DynamoDB is
 much more expensive to store over months. S3 charges differently, so
 the cross-over will depend on the size of your chunks, and how long

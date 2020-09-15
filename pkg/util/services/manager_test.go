@@ -177,7 +177,9 @@ func TestManagerThatFailsToStart(t *testing.T) {
 	require.Equal(t, states, map[State][]Service{New: {s1, s2, s3}})
 
 	require.NoError(t, m.StartAsync(context.Background()))
-	require.Error(t, m.AwaitHealthy(context.Background())) // will never get healthy, since one service fails to start
+	err = m.AwaitHealthy(context.Background())
+	require.Error(t, err) // will never get healthy, since one service fails to start
+	require.EqualError(t, err, "not healthy, 0 terminated, 1 failed: [failed to start]")
 
 	states = m.ServicesByState()
 	// check that failed state contains s3.

@@ -35,7 +35,7 @@ func TestScanForPlans(t *testing.T) {
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/5.progress.1234234", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/6.finished.01E8GCW9J0HV0992HSZ0N6RAMN", strings.NewReader("")))
 
-	plans, err := scanForPlans(context.Background(), bucket, "migration", "12345")
+	plans, err := scanForPlans(context.Background(), bucket, "migration/12345/")
 	require.NoError(t, err)
 
 	require.Equal(t, map[string]plan{
@@ -77,6 +77,7 @@ func TestSchedulerScan(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user1/1.plan", strings.NewReader("")))
+	// This progress file is too old, will be removed.
 	require.NoError(t, bucket.Upload(context.Background(), fmt.Sprintf("migration/user1/1.inprogress.%d", nowMinus1Hour.Unix()), strings.NewReader("")))
 
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user2/2.plan", strings.NewReader("")))
@@ -98,20 +99,12 @@ func TestSchedulerScan(t *testing.T) {
 	require.NoError(t, s.scanBucketForPlans(context.Background()))
 	require.Equal(t, []queuedPlan{
 		{DayIndex: 4, PlanFile: "migration/user4/4.plan"},
-		{DayIndex: 1, PlanFile: "migration/user1/1.plan"},
 	}, s.plansQueue)
+	require.Equal(t, "migration/user1/1.error", s.allUserPlans["user1"]["1"].ErrorFile)
 
 	{
 		p, pg := s.nextPlanNoRunningCheck(context.Background())
 		require.Equal(t, "migration/user4/4.plan", p)
-		ok, err := bucket.Exists(context.Background(), pg)
-		require.NoError(t, err)
-		require.True(t, ok)
-	}
-
-	{
-		p, pg := s.nextPlanNoRunningCheck(context.Background())
-		require.Equal(t, "migration/user1/1.plan", p)
 		ok, err := bucket.Exists(context.Background(), pg)
 		require.NoError(t, err)
 		require.True(t, ok)

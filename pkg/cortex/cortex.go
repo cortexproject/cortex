@@ -10,9 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -272,13 +270,8 @@ func New(cfg Config) (*Cortex, error) {
 // setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
 // context used by Thanos, in order to get Thanos spans correctly attached to our traces.
 func (t *Cortex) setupThanosTracing() {
-	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-		tracing.UnaryServerInterceptor(opentracing.GlobalTracer()),
-	)
-
-	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-		tracing.StreamServerInterceptor(opentracing.GlobalTracer()),
-	)
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, ThanosTracerUnaryInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.

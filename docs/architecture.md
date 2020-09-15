@@ -21,7 +21,7 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex currently supports two storage engines to store and query the time series:
 
-- Chunks (default, stable)
+- Chunks (default)
 - Blocks
 
 The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.

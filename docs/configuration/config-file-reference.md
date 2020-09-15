@@ -52,8 +52,8 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex service to run. Use "-modules" command line flag to get a list of
-# available options.
+# The Cortex module to run. Use "-modules" command line flag to get a list of
+# available modules, and to see which modules are included in "All".
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -343,6 +343,9 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
+  # Backend storage to use for the ring. Please be aware that memberlist is not
+  # supported by the HA tracker since gossip propagation is too slow for HA
+  # purposes.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, memberlist, multi.
@@ -843,9 +846,8 @@ ruler_client:
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
 
-# Duration to delay the evaluation of rules to ensure they underlying metrics
-# have been pushed to cortex.
-# CLI flag: -ruler.evaluation-delay-duration
+# Deprecated. Please use -ruler.evaluation-delay-duration instead.
+# CLI flag: -ruler.evaluation-delay-duration-deprecated
 [evaluation_delay_duration: <duration> | default = 0s]
 
 # How frequently to poll for rule changes
@@ -2491,6 +2493,26 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # The maximum number of retries to do for failed ops.
 # CLI flag: -<prefix>.etcd.max-retries
 [max_retries: <int> | default = 10]
+
+# Enable TLS.
+# CLI flag: -<prefix>.etcd.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# The TLS certificate file path.
+# CLI flag: -<prefix>.etcd.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# The TLS private key file path.
+# CLI flag: -<prefix>.etcd.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# The trusted CA file path.
+# CLI flag: -<prefix>.etcd.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `consul_config`
@@ -2799,6 +2821,18 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
+# Duration to delay the evaluation of rules to ensure the underlying metrics
+# have been pushed to Cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set when the store-gateway sharding is enabled with the
+# shuffle-sharding strategy. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -experimental.store-gateway.tenant-shard-size
+[store_gateway_tenant_shard_size: <int> | default = 0]
+
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
 # CLI flag: -limits.per-user-override-config
@@ -2822,10 +2856,14 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 &nbsp;
 
 ```yaml
-# Redis service endpoint to use when caching chunks. If empty, no redis will be
-# used.
+# Redis Server endpoint to use for caching. A comma-separated list of endpoints
+# for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
 # CLI flag: -<prefix>.redis.endpoint
 [endpoint: <string> | default = ""]
+
+# Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
+# CLI flag: -<prefix>.redis.master-name
+[master_name: <string> | default = ""]
 
 # Maximum time to wait before giving up on redis requests.
 # CLI flag: -<prefix>.redis.timeout
@@ -2835,13 +2873,13 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.expiration
 [expiration: <duration> | default = 0s]
 
-# Maximum number of idle connections in pool.
-# CLI flag: -<prefix>.redis.max-idle-conns
-[max_idle_conns: <int> | default = 80]
+# Database index.
+# CLI flag: -<prefix>.redis.db
+[db: <int> | default = 0]
 
-# Maximum number of active connections in pool.
-# CLI flag: -<prefix>.redis.max-active-conns
-[max_active_conns: <int> | default = 0]
+# Maximum number of connections in the pool.
+# CLI flag: -<prefix>.redis.pool-size
+[pool_size: <int> | default = 0]
 
 # Password to use when connecting to redis.
 # CLI flag: -<prefix>.redis.password
@@ -2856,16 +2894,10 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.idle-timeout
 [idle_timeout: <duration> | default = 0s]
 
-# Enables waiting if there are no idle connections. If the value is false and
-# the pool is at the max_active_conns limit, the pool will return a connection
-# with ErrPoolExhausted error and not wait for idle connections.
-# CLI flag: -<prefix>.redis.wait-on-pool-exhaustion
-[wait_on_pool_exhaustion: <boolean> | default = false]
-
 # Close connections older than this duration. If the value is zero, then the
 # pool does not close connections based on age.
-# CLI flag: -<prefix>.redis.max-conn-lifetime
-[max_conn_lifetime: <duration> | default = 0s]
+# CLI flag: -<prefix>.redis.max-connection-age
+[max_connection_age: <duration> | default = 0s]
 ```
 
 ### `memcached_config`
@@ -2934,6 +2966,20 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # Use consistent hashing to distribute to memcache servers.
 # CLI flag: -<prefix>.memcached.consistent-hash
 [consistent_hash: <boolean> | default = true]
+
+# Trip circuit-breaker after this number of consecutive dial failures (if zero
+# then circuit-breaker is disabled).
+# CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+[circuit_breaker_consecutive_failures: <int> | default = 0]
+
+# Duration circuit-breaker remains open after tripping (if zero then 60 seconds
+# is used).
+# CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+[circuit_breaker_timeout: <duration> | default = 10s]
+
+# Reset circuit-breaker counts after this long (if zero then never reset).
+# CLI flag: -<prefix>.memcached.circuit-breaker-interval
+[circuit_breaker_interval: <duration> | default = 10s]
 ```
 
 ### `fifo_cache_config`
@@ -3587,6 +3633,10 @@ sharding_ring:
   # shutdown and restored at startup.
   # CLI flag: -experimental.store-gateway.tokens-file-path
   [tokens_file_path: <string> | default = ""]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -experimental.store-gateway.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 ```
 
 ### `purger_config`

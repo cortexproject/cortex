@@ -14,14 +14,17 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -35,7 +38,52 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func TestStoreGateway_InitialSyncWithShardingEnabled(t *testing.T) {
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		setup    func(cfg *Config, limits *validation.Limits)
+		expected error
+	}{
+		"should pass by default": {
+			setup:    func(cfg *Config, limits *validation.Limits) {},
+			expected: nil,
+		},
+		"should fail if the sharding strategy is invalid": {
+			setup: func(cfg *Config, limits *validation.Limits) {
+				cfg.ShardingEnabled = true
+				cfg.ShardingStrategy = "xxx"
+			},
+			expected: errInvalidShardingStrategy,
+		},
+		"should fail if the sharding strategy is shuffle-sharding and shard size has not been set": {
+			setup: func(cfg *Config, limits *validation.Limits) {
+				cfg.ShardingEnabled = true
+				cfg.ShardingStrategy = ShardingStrategyShuffle
+			},
+			expected: errInvalidTenantShardSize,
+		},
+		"should pass if the sharding strategy is shuffle-sharding and shard size has been set": {
+			setup: func(cfg *Config, limits *validation.Limits) {
+				cfg.ShardingEnabled = true
+				cfg.ShardingStrategy = ShardingStrategyShuffle
+				limits.StoreGatewayTenantShardSize = 3
+			},
+			expected: nil,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := &Config{}
+			limits := &validation.Limits{}
+			flagext.DefaultValues(cfg, limits)
+			testData.setup(cfg, limits)
+
+			assert.Equal(t, testData.expected, cfg.Validate(*limits))
+		})
+	}
+}
+
+func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	tests := map[string]struct {
 		initialExists bool
 		initialState  ring.IngesterState
@@ -168,7 +216,8 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
 	// 2 users = total (24 / 12) * 2 = 24 blocks.
-	numBlocks := 24
+	numUsers := 2
+	numBlocks := numUsers * 12
 	now := time.Now()
 	require.NoError(t, mockTSDB(path.Join(storageDir, "user-1"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
 	require.NoError(t, mockTSDB(path.Join(storageDir, "user-2"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
@@ -177,43 +226,65 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]struct {
-		shardingEnabled      bool
+		shardingStrategy     string // Empty string means disabled.
+		tenantShardSize      int    // Used only when the sharding strategy is shuffle-sharding.
 		replicationFactor    int
 		numGateways          int
 		expectedBlocksLoaded int
 	}{
-		"1 gateway, sharding disabled": {
-			shardingEnabled:      false,
+		"sharding disabled, 1 gateway": {
+			shardingStrategy:     "",
 			numGateways:          1,
 			expectedBlocksLoaded: numBlocks,
 		},
-		"2 gateways, sharding disabled": {
-			shardingEnabled:      false,
+		"sharding disabled, 2 gateways": {
+			shardingStrategy:     "",
 			numGateways:          2,
 			expectedBlocksLoaded: 2 * numBlocks, // each gateway loads all the blocks
 		},
-		"1 gateway, sharding enabled, replication factor = 1": {
-			shardingEnabled:      true,
+		"default sharding strategy, 1 gateway, RF = 1": {
+			shardingStrategy:     ShardingStrategyDefault,
 			replicationFactor:    1,
 			numGateways:          1,
 			expectedBlocksLoaded: numBlocks,
 		},
-		"2 gateways, sharding enabled, replication factor = 1": {
-			shardingEnabled:      true,
+		"default sharding strategy, 2 gateways, RF = 1": {
+			shardingStrategy:     ShardingStrategyDefault,
 			replicationFactor:    1,
 			numGateways:          2,
 			expectedBlocksLoaded: numBlocks, // blocks are sharded across gateways
 		},
-		"3 gateways, sharding enabled, replication factor = 2": {
-			shardingEnabled:      true,
+		"default sharding strategy, 3 gateways, RF = 2": {
+			shardingStrategy:     ShardingStrategyDefault,
 			replicationFactor:    2,
 			numGateways:          3,
 			expectedBlocksLoaded: 2 * numBlocks, // blocks are replicated 2 times
 		},
-		"3 gateways, sharding enabled, replication factor = 3": {
-			shardingEnabled:      true,
+		"default sharding strategy, 5 gateways, RF = 3": {
+			shardingStrategy:     ShardingStrategyDefault,
 			replicationFactor:    3,
-			numGateways:          3,
+			numGateways:          5,
+			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
+		},
+		"shuffle sharding strategy, 1 gateway, RF = 1, SS = 1": {
+			shardingStrategy:     ShardingStrategyShuffle,
+			tenantShardSize:      1,
+			replicationFactor:    1,
+			numGateways:          1,
+			expectedBlocksLoaded: numBlocks,
+		},
+		"shuffle sharding strategy, 5 gateways, RF = 2, SS = 3": {
+			shardingStrategy:     ShardingStrategyShuffle,
+			tenantShardSize:      3,
+			replicationFactor:    2,
+			numGateways:          5,
+			expectedBlocksLoaded: 2 * numBlocks, // blocks are replicated 2 times
+		},
+		"shuffle sharding strategy, 20 gateways, RF = 3, SS = 3": {
+			shardingStrategy:     ShardingStrategyShuffle,
+			tenantShardSize:      3,
+			replicationFactor:    3,
+			numGateways:          20,
 			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
 		},
 	}
@@ -222,6 +293,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			ctx := context.Background()
 			storageCfg, cleanup := mockStorageConfig(t)
+			storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test (we explicitly sync stores).
 			defer cleanup()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 
@@ -233,14 +305,26 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			for i := 1; i <= testData.numGateways; i++ {
 				instanceID := fmt.Sprintf("gateway-%d", i)
 
+				limits := defaultLimitsConfig()
 				gatewayCfg := mockGatewayConfig()
-				gatewayCfg.ShardingEnabled = testData.shardingEnabled
 				gatewayCfg.ShardingRing.ReplicationFactor = testData.replicationFactor
 				gatewayCfg.ShardingRing.InstanceID = instanceID
 				gatewayCfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+				gatewayCfg.ShardingRing.RingCheckPeriod = time.Hour // Do not check the ring topology changes in this test (we explicitly sync stores).
+
+				if testData.shardingStrategy == "" {
+					gatewayCfg.ShardingEnabled = false
+				} else {
+					gatewayCfg.ShardingEnabled = true
+					gatewayCfg.ShardingStrategy = testData.shardingStrategy
+					limits.StoreGatewayTenantShardSize = testData.tenantShardSize
+				}
+
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
 
 				reg := prometheus.NewPedanticRegistry()
-				g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+				g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, overrides, mockLoggingLevel(), log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
@@ -252,7 +336,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			}
 
 			// Wait until the ring client of each gateway has synced (to avoid flaky tests on subsequent assertions).
-			if testData.shardingEnabled {
+			if testData.shardingStrategy != "" {
 				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 				defer cancel()
 
@@ -273,10 +357,15 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			// Assert on the number of blocks loaded extracting this information from metrics.
 			metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(registries)
 			assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+			assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
 
-			// The total number of blocks synced (before filtering) is always equal to the total
-			// number of blocks for each instance.
-			assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+			if testData.shardingStrategy == ShardingStrategyShuffle {
+				assert.Equal(t, float64(testData.tenantShardSize*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+				assert.Equal(t, float64(testData.tenantShardSize*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
+			} else {
+				assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+				assert.Equal(t, float64(testData.numGateways*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
+			}
 		})
 	}
 }
@@ -829,4 +918,18 @@ func defaultLimitsOverrides(t *testing.T) *validation.Overrides {
 	require.NoError(t, err)
 
 	return overrides
+}
+
+type mockShardingStrategy struct {
+	mock.Mock
+}
+
+func (m *mockShardingStrategy) FilterUsers(ctx context.Context, userIDs []string) []string {
+	args := m.Called(ctx, userIDs)
+	return args.Get(0).([]string)
+}
+
+func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
+	args := m.Called(ctx, userID, metas, synced)
+	return args.Error(0)
 }

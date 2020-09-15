@@ -108,6 +108,8 @@ The supported KV stores for the HA tracker are:
 * [Consul](https://www.consul.io)
 * [Etcd](https://etcd.io)
 
+Note: Memberlist is not supported. Memberlist-based KV store propagates updates using gossip, which is very slow for HA purposes: result is that different distributors may see different Prometheus server as elected HA replica, which is definitely not desirable.
+
 For more information, please refer to [config for sending HA pairs data to Cortex](production/ha-pair-handling.md) in the documentation.
 
 #### Hashing

@@ -35,6 +35,8 @@ go test -v -tags=requires_docker ./integration -run "^TestChunksStorageAllIndexB
   Docker image used to run Cortex in integration tests (defaults to `quay.io/cortexproject/cortex:latest`)
 - **`CORTEX_CHECKOUT_DIR`**<br />
   The absolute path of the Cortex repository local checkout (defaults to `$GOPATH/src/github.com/cortexproject/cortex`)
+-- **`E2E_TEMP_DIR`**<br />
+  The absolute path to a directory where the integration test will create an additional temporary directory to store files generated during the test.
 
 ### The `requires_docker` tag
 

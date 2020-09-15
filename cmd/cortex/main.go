@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -80,7 +81,7 @@ func main() {
 
 	// Ignore -config.file and -config.expand-env here, since it was already parsed, but it's still present on command line.
 	flagext.IgnoredFlag(flag.CommandLine, configFileOption, "Configuration file to load.")
-	flagext.IgnoredFlag(flag.CommandLine, configExpandENV, "Expands ${var} or $var in config according to the values of the environment variables.")
+	_ = flag.CommandLine.Bool(configExpandENV, false, "Expands ${var} or $var in config according to the values of the environment variables.")
 
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
@@ -151,9 +152,21 @@ func main() {
 	util.CheckFatal("initializing cortex", err)
 
 	if t.Cfg.ListModules {
+		allDeps := t.ModuleManager.DependenciesForModule(cortex.All)
+
 		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
-			fmt.Fprintln(os.Stdout, m)
+			ix := sort.SearchStrings(allDeps, m)
+			included := ix < len(allDeps) && allDeps[ix] == m
+
+			if included {
+				fmt.Fprintln(os.Stdout, m, "*")
+			} else {
+				fmt.Fprintln(os.Stdout, m)
+			}
 		}
+
+		fmt.Fprintln(os.Stdout)
+		fmt.Fprintln(os.Stdout, "Modules marked with * are included in target All.")
 
 		// in test mode we cannot call os.Exit, it will stop to whole test process.
 		if testMode {

@@ -953,7 +953,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		var clientConfig client.Config
 		flagext.DefaultValues(&distributorCfg, &clientConfig)
 
-		distributorCfg.ingesterClientFactory = factory
+		distributorCfg.IngesterClientFactory = factory
 		distributorCfg.ShardByAllLabels = cfg.shardByAllLabels
 		distributorCfg.ExtraQueryDelay = 50 * time.Millisecond
 		distributorCfg.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond

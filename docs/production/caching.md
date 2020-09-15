@@ -95,20 +95,30 @@ See [`fifo_cache_config` documentation](../configuration/config-file-reference.m
 You can also use [Redis](https://redis.io/) for out-of-process caching; this is a relatively new addition to Cortex and is under active development.
 
 ```
+-<prefix>.redis.endpoint string
+    Redis endpoint to use when caching chunks. If empty, no redis will be used.
+    For Redis Server - Redis service endpoint
+    For Redis Cluster - comma-separated list of Redis node's endpoints
+    For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
+-<prefix>.redis.master-name
+    Redis Sentinel master group name.
+    An empty string for Redis Server or Redis Cluster
 -<prefix>.redis.enable-tls
     Enables connecting to redis with TLS.
--<prefix>.redis.endpoint string
-    Redis service endpoint to use when caching chunks. If empty, no redis will be used.
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
--<prefix>.redis.max-active-conns int
-    Maximum number of active connections in pool.
--<prefix>.redis.max-idle-conns int
-    Maximum number of idle connections in pool. (default 80)
+-<prefix>.redis.db int
+    Database index. (default 0)
+-<prefix>.redis.pool-size int
+    Maximum number of socket connections in pool.
 -<prefix>.redis.password value
     Password to use when connecting to redis.
 -<prefix>.redis.timeout duration
     Maximum time to wait before giving up on redis requests. (default 100ms)
+-<prefix>.redis.idle-timeout duration
+    Amount of time after which client closes idle connections.
+-<prefix>.redis.max-connection-age duration
+    Amount of time after which client closes connections.
 ```
 
 See [`redis_config` documentation](../configuration/config-file-reference.md#redis-config) if you use a config file with Cortex.

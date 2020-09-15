@@ -316,7 +316,10 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 	return args
 }
 
-func (s *ConcreteService) Exec(command *Command) (string, error) {
+// Exec runs the provided against a the docker container specified by this
+// service. It returns the stdout, stderr, and error response from attempting
+// to run the command.
+func (s *ConcreteService) Exec(command *Command) (string, string, error) {
 	args := []string{"exec", s.containerName()}
 	args = append(args, command.cmd)
 	args = append(args, command.args...)
@@ -325,12 +328,12 @@ func (s *ConcreteService) Exec(command *Command) (string, error) {
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
-	return stdout.String(), nil
+	err := cmd.Run()
+
+	return stdout.String(), stderr.String(), err
 }
 
 type Command struct {
@@ -394,7 +397,8 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 		return nil
 	}
 
-	return fmt.Errorf("got status code: %v, expected code in range: [%v, %v]", res.StatusCode, p.expectedStatusRangeStart, p.expectedStatusRangeEnd)
+	body, _ := ioutil.ReadAll(res.Body)
+	return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.
@@ -434,7 +438,7 @@ func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
 }
 
 func (p *CmdReadinessProbe) Ready(service *ConcreteService) error {
-	_, err := service.Exec(p.cmd)
+	_, _, err := service.Exec(p.cmd)
 	return err
 }
 
